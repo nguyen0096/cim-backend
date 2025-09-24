@@ -122,6 +122,7 @@ The system uses the following core entities:
 ### Running Tests
 ```bash
 make test
+make test-api
 ```
 
 ### Code Formatting
