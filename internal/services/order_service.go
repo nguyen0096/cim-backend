@@ -17,6 +17,7 @@ type OrderService interface {
 	GetOrdersByCustomer(customerEmail string) ([]models.Order, error)
 	UpdateOrderStatus(id uuid.UUID, status string) error
 	CompleteOrder(id uuid.UUID, userID string) error
+	CountOrders() (int64, error)
 }
 
 type orderService struct {
@@ -95,4 +96,8 @@ func (s *orderService) CompleteOrder(id uuid.UUID, userID string) error {
 	}
 
 	return nil
+}
+
+func (s *orderService) CountOrders() (int64, error) {
+	return s.orderRepo.Count()
 }

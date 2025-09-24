@@ -21,6 +21,7 @@ type OrderService interface {
 	ListOrders(limit, offset int) ([]models.Order, error)
 	UpdateOrderStatus(id uuid.UUID, status string) error
 	CompleteOrder(id uuid.UUID, userID string) error
+	CountOrders() (int64, error)
 }
 
 func NewOrderHandler(orderService OrderService) *OrderHandler {
@@ -30,19 +31,45 @@ func NewOrderHandler(orderService OrderService) *OrderHandler {
 }
 
 func (h *OrderHandler) GetOrders(c echo.Context) error {
+	// Parse query parameters
 	limit, _ := strconv.Atoi(c.QueryParam("limit"))
-	offset, _ := strconv.Atoi(c.QueryParam("offset"))
+	page, _ := strconv.Atoi(c.QueryParam("page"))
 	
+	// Set defaults
 	if limit == 0 {
 		limit = 20
 	}
+	if page == 0 {
+		page = 1
+	}
+	
+	// Calculate offset
+	offset := (page - 1) * limit
 
+	// Get orders and total count
 	orders, err := h.orderService.ListOrders(limit, offset)
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to fetch orders"})
 	}
 
-	return c.JSON(http.StatusOK, orders)
+	total, err := h.orderService.CountOrders()
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to count orders"})
+	}
+
+	// Calculate total pages
+	totalPages := int((total + int64(limit) - 1) / int64(limit))
+
+	// Create response
+	response := map[string]interface{}{
+		"data":       orders,
+		"total":      total,
+		"page":       page,
+		"limit":      limit,
+		"totalPages": totalPages,
+	}
+
+	return c.JSON(http.StatusOK, response)
 }
 
 func (h *OrderHandler) CreateOrder(c echo.Context) error {

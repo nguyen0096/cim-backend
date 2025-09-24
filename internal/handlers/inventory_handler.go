@@ -20,6 +20,8 @@ type InventoryService interface {
 	AdjustInventory(productID uuid.UUID, quantity int, notes string, userID string) error
 	GetLowStock() ([]models.Inventory, error)
 	GetTransactions(productID uuid.UUID, limit, offset int) ([]models.InventoryTransaction, error)
+	CountInventory() (int64, error)
+	CountTransactions(productID uuid.UUID) (int64, error)
 }
 
 func NewInventoryHandler(inventoryService InventoryService) *InventoryHandler {
@@ -29,19 +31,45 @@ func NewInventoryHandler(inventoryService InventoryService) *InventoryHandler {
 }
 
 func (h *InventoryHandler) GetInventory(c echo.Context) error {
+	// Parse query parameters
 	limit, _ := strconv.Atoi(c.QueryParam("limit"))
-	offset, _ := strconv.Atoi(c.QueryParam("offset"))
+	page, _ := strconv.Atoi(c.QueryParam("page"))
 	
+	// Set defaults
 	if limit == 0 {
 		limit = 20
 	}
+	if page == 0 {
+		page = 1
+	}
+	
+	// Calculate offset
+	offset := (page - 1) * limit
 
+	// Get inventory and total count
 	inventory, err := h.inventoryService.GetInventory(limit, offset)
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to fetch inventory"})
 	}
 
-	return c.JSON(http.StatusOK, inventory)
+	total, err := h.inventoryService.CountInventory()
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to count inventory"})
+	}
+
+	// Calculate total pages
+	totalPages := int((total + int64(limit) - 1) / int64(limit))
+
+	// Create response
+	response := map[string]interface{}{
+		"data":       inventory,
+		"total":      total,
+		"page":       page,
+		"limit":      limit,
+		"totalPages": totalPages,
+	}
+
+	return c.JSON(http.StatusOK, response)
 }
 
 func (h *InventoryHandler) UpdateInventory(c echo.Context) error {
@@ -87,13 +115,21 @@ func (h *InventoryHandler) AdjustInventory(c echo.Context) error {
 }
 
 func (h *InventoryHandler) GetTransactions(c echo.Context) error {
+	// Parse query parameters
 	limit, _ := strconv.Atoi(c.QueryParam("limit"))
-	offset, _ := strconv.Atoi(c.QueryParam("offset"))
+	page, _ := strconv.Atoi(c.QueryParam("page"))
 	productIDStr := c.QueryParam("product_id")
 	
+	// Set defaults
 	if limit == 0 {
 		limit = 20
 	}
+	if page == 0 {
+		page = 1
+	}
+	
+	// Calculate offset
+	offset := (page - 1) * limit
 
 	var productID uuid.UUID
 	if productIDStr != "" {
@@ -104,12 +140,30 @@ func (h *InventoryHandler) GetTransactions(c echo.Context) error {
 		}
 	}
 
+	// Get transactions and total count
 	transactions, err := h.inventoryService.GetTransactions(productID, limit, offset)
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to fetch transactions"})
 	}
 
-	return c.JSON(http.StatusOK, transactions)
+	total, err := h.inventoryService.CountTransactions(productID)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to count transactions"})
+	}
+
+	// Calculate total pages
+	totalPages := int((total + int64(limit) - 1) / int64(limit))
+
+	// Create response
+	response := map[string]interface{}{
+		"data":       transactions,
+		"total":      total,
+		"page":       page,
+		"limit":      limit,
+		"totalPages": totalPages,
+	}
+
+	return c.JSON(http.StatusOK, response)
 }
 
 func (h *InventoryHandler) GetLowStock(c echo.Context) error {

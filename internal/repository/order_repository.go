@@ -15,6 +15,7 @@ type OrderRepository interface {
 	List(limit, offset int) ([]models.Order, error)
 	GetByStatus(status string) ([]models.Order, error)
 	GetByCustomer(customerEmail string) ([]models.Order, error)
+	Count() (int64, error)
 }
 
 type orderRepository struct {
@@ -62,4 +63,10 @@ func (r *orderRepository) GetByCustomer(customerEmail string) ([]models.Order, e
 	var orders []models.Order
 	err := r.db.Preload("Items").Preload("Items.Product").Where("customer_email = ?", customerEmail).Find(&orders).Error
 	return orders, err
+}
+
+func (r *orderRepository) Count() (int64, error) {
+	var count int64
+	err := r.db.Model(&models.Order{}).Count(&count).Error
+	return count, err
 }

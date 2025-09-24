@@ -21,6 +21,7 @@ type PurchaseOrderService interface {
 	ListPurchaseOrders(limit, offset int) ([]models.PurchaseOrder, error)
 	UpdatePurchaseOrderStatus(id uuid.UUID, status string) error
 	ReceivePurchaseOrder(id uuid.UUID, userID string) error
+	CountPurchaseOrders() (int64, error)
 }
 
 func NewPurchaseOrderHandler(purchaseOrderService PurchaseOrderService) *PurchaseOrderHandler {
@@ -30,19 +31,45 @@ func NewPurchaseOrderHandler(purchaseOrderService PurchaseOrderService) *Purchas
 }
 
 func (h *PurchaseOrderHandler) GetPurchaseOrders(c echo.Context) error {
+	// Parse query parameters
 	limit, _ := strconv.Atoi(c.QueryParam("limit"))
-	offset, _ := strconv.Atoi(c.QueryParam("offset"))
+	page, _ := strconv.Atoi(c.QueryParam("page"))
 	
+	// Set defaults
 	if limit == 0 {
 		limit = 20
 	}
+	if page == 0 {
+		page = 1
+	}
+	
+	// Calculate offset
+	offset := (page - 1) * limit
 
+	// Get purchase orders and total count
 	purchaseOrders, err := h.purchaseOrderService.ListPurchaseOrders(limit, offset)
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to fetch purchase orders"})
 	}
 
-	return c.JSON(http.StatusOK, purchaseOrders)
+	total, err := h.purchaseOrderService.CountPurchaseOrders()
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to count purchase orders"})
+	}
+
+	// Calculate total pages
+	totalPages := int((total + int64(limit) - 1) / int64(limit))
+
+	// Create response
+	response := map[string]interface{}{
+		"data":       purchaseOrders,
+		"total":      total,
+		"page":       page,
+		"limit":      limit,
+		"totalPages": totalPages,
+	}
+
+	return c.JSON(http.StatusOK, response)
 }
 
 func (h *PurchaseOrderHandler) CreatePurchaseOrder(c echo.Context) error {

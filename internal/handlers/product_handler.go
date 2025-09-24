@@ -21,6 +21,7 @@ type ProductService interface {
 	ListProducts(limit, offset int) ([]models.Product, error)
 	GetProductsBySupplier(supplierID uuid.UUID) ([]models.Product, error)
 	SearchProducts(query string) ([]models.Product, error)
+	CountProducts() (int64, error)
 }
 
 func NewProductHandler(productService ProductService) *ProductHandler {
@@ -30,19 +31,45 @@ func NewProductHandler(productService ProductService) *ProductHandler {
 }
 
 func (h *ProductHandler) GetProducts(c echo.Context) error {
+	// Parse query parameters
 	limit, _ := strconv.Atoi(c.QueryParam("limit"))
-	offset, _ := strconv.Atoi(c.QueryParam("offset"))
+	page, _ := strconv.Atoi(c.QueryParam("page"))
 	
+	// Set defaults
 	if limit == 0 {
 		limit = 20
 	}
+	if page == 0 {
+		page = 1
+	}
+	
+	// Calculate offset
+	offset := (page - 1) * limit
 
+	// Get products and total count
 	products, err := h.productService.ListProducts(limit, offset)
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to fetch products"})
 	}
 
-	return c.JSON(http.StatusOK, products)
+	total, err := h.productService.CountProducts()
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to count products"})
+	}
+
+	// Calculate total pages
+	totalPages := int((total + int64(limit) - 1) / int64(limit))
+
+	// Create response
+	response := map[string]interface{}{
+		"data":       products,
+		"total":      total,
+		"page":       page,
+		"limit":      limit,
+		"totalPages": totalPages,
+	}
+
+	return c.JSON(http.StatusOK, response)
 }
 
 func (h *ProductHandler) CreateProduct(c echo.Context) error {

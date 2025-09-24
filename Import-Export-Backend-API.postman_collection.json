@@ -86,11 +86,13 @@
 							"query": [
 								{
 									"key": "limit",
-									"value": "20"
+									"value": "20",
+									"description": "Items per page (default: 20)"
 								},
 								{
-									"key": "offset",
-									"value": "0"
+									"key": "page",
+									"value": "1",
+									"description": "Page number (default: 1)"
 								}
 							]
 						}
@@ -251,11 +253,13 @@
 							"query": [
 								{
 									"key": "limit",
-									"value": "20"
+									"value": "20",
+									"description": "Items per page (default: 20)"
 								},
 								{
-									"key": "offset",
-									"value": "0"
+									"key": "page",
+									"value": "1",
+									"description": "Page number (default: 1)"
 								}
 							]
 						}
@@ -332,11 +336,13 @@
 								},
 								{
 									"key": "limit",
-									"value": "20"
+									"value": "20",
+									"description": "Items per page (default: 20)"
 								},
 								{
-									"key": "offset",
-									"value": "0"
+									"key": "page",
+									"value": "1",
+									"description": "Page number (default: 1)"
 								}
 							]
 						}
@@ -398,11 +404,13 @@
 							"query": [
 								{
 									"key": "limit",
-									"value": "20"
+									"value": "20",
+									"description": "Items per page (default: 20)"
 								},
 								{
-									"key": "offset",
-									"value": "0"
+									"key": "page",
+									"value": "1",
+									"description": "Page number (default: 1)"
 								}
 							]
 						}
@@ -563,11 +571,13 @@
 							"query": [
 								{
 									"key": "limit",
-									"value": "20"
+									"value": "20",
+									"description": "Items per page (default: 20)"
 								},
 								{
-									"key": "offset",
-									"value": "0"
+									"key": "page",
+									"value": "1",
+									"description": "Page number (default: 1)"
 								}
 							]
 						}
@@ -736,11 +746,13 @@
 							"query": [
 								{
 									"key": "limit",
-									"value": "20"
+									"value": "20",
+									"description": "Items per page (default: 20)"
 								},
 								{
-									"key": "offset",
-									"value": "0"
+									"key": "page",
+									"value": "1",
+									"description": "Page number (default: 1)"
 								}
 							]
 						}

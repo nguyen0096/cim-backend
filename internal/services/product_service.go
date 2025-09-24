@@ -15,6 +15,7 @@ type ProductService interface {
 	ListProducts(limit, offset int) ([]models.Product, error)
 	GetProductsBySupplier(supplierID uuid.UUID) ([]models.Product, error)
 	SearchProducts(query string) ([]models.Product, error)
+	CountProducts() (int64, error)
 }
 
 type productService struct {
@@ -66,4 +67,8 @@ func (s *productService) GetProductsBySupplier(supplierID uuid.UUID) ([]models.P
 
 func (s *productService) SearchProducts(query string) ([]models.Product, error) {
 	return s.productRepo.Search(query)
+}
+
+func (s *productService) CountProducts() (int64, error) {
+	return s.productRepo.Count()
 }

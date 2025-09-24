@@ -17,6 +17,8 @@ type InventoryRepository interface {
 	GetLowStock() ([]models.Inventory, error)
 	GetTransactions(productID uuid.UUID, limit, offset int) ([]models.InventoryTransaction, error)
 	CreateTransaction(transaction *models.InventoryTransaction) error
+	Count() (int64, error)
+	CountTransactions(productID uuid.UUID) (int64, error)
 }
 
 type inventoryRepository struct {
@@ -81,4 +83,20 @@ func (r *inventoryRepository) GetTransactions(productID uuid.UUID, limit, offset
 
 func (r *inventoryRepository) CreateTransaction(transaction *models.InventoryTransaction) error {
 	return r.db.Create(transaction).Error
+}
+
+func (r *inventoryRepository) Count() (int64, error) {
+	var count int64
+	err := r.db.Model(&models.Inventory{}).Count(&count).Error
+	return count, err
+}
+
+func (r *inventoryRepository) CountTransactions(productID uuid.UUID) (int64, error) {
+	var count int64
+	query := r.db.Model(&models.InventoryTransaction{})
+	if productID != uuid.Nil {
+		query = query.Where("product_id = ?", productID)
+	}
+	err := query.Count(&count).Error
+	return count, err
 }

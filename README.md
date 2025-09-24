@@ -77,17 +77,17 @@ A Go-based backend system for order management and warehouse operations with Exc
 - `GET /api/v1/auth/profile` - Get user profile
 
 ### Products
-- `GET /api/v1/products` - List products
+- `GET /api/v1/products` - List products (paginated with page parameter)
 - `POST /api/v1/products` - Create product
 - `GET /api/v1/products/{id}` - Get product details
 - `PUT /api/v1/products/{id}` - Update product
 - `DELETE /api/v1/products/{id}` - Delete product
 
 ### Inventory
-- `GET /api/v1/inventory` - List inventory
+- `GET /api/v1/inventory` - List inventory (paginated with page parameter)
 - `PUT /api/v1/inventory/{id}` - Update inventory
 - `POST /api/v1/inventory/adjust` - Manual inventory adjustment
-- `GET /api/v1/inventory/transactions` - List transactions
+- `GET /api/v1/inventory/transactions` - List transactions (paginated with page parameter)
 - `GET /api/v1/inventory/low-stock` - Get low stock items
 
 ### Suppliers
@@ -98,8 +98,17 @@ A Go-based backend system for order management and warehouse operations with Exc
 - `PUT /api/v1/suppliers/{id}` - Update supplier
 - `DELETE /api/v1/suppliers/{id}` - Delete supplier
 
+### Purchase Orders
+- `GET /api/v1/purchase-orders` - List purchase orders (paginated with page parameter)
+- `POST /api/v1/purchase-orders` - Create purchase order
+- `GET /api/v1/purchase-orders/{id}` - Get purchase order details
+- `PUT /api/v1/purchase-orders/{id}` - Update purchase order
+- `PUT /api/v1/purchase-orders/{id}/status` - Update purchase order status
+- `DELETE /api/v1/purchase-orders/{id}` - Delete purchase order
+- `POST /api/v1/purchase-orders/{id}/receive` - Receive purchase order
+
 ### Orders
-- `GET /api/v1/orders` - List orders
+- `GET /api/v1/orders` - List orders (paginated with page parameter)
 - `POST /api/v1/orders` - Create order
 - `GET /api/v1/orders/{id}` - Get order details
 - `PUT /api/v1/orders/{id}/status` - Update order status

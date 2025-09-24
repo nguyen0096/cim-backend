@@ -15,6 +15,7 @@ type ProductRepository interface {
 	List(limit, offset int) ([]models.Product, error)
 	GetBySupplier(supplierID uuid.UUID) ([]models.Product, error)
 	Search(query string) ([]models.Product, error)
+	Count() (int64, error)
 }
 
 type productRepository struct {
@@ -62,4 +63,10 @@ func (r *productRepository) Search(query string) ([]models.Product, error) {
 	var products []models.Product
 	err := r.db.Preload("Supplier").Preload("Inventory").Where("name ILIKE ? OR sku ILIKE ?", "%"+query+"%", "%"+query+"%").Find(&products).Error
 	return products, err
+}
+
+func (r *productRepository) Count() (int64, error) {
+	var count int64
+	err := r.db.Model(&models.Product{}).Count(&count).Error
+	return count, err
 }

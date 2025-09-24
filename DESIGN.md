@@ -180,7 +180,7 @@ GET  /api/v1/auth/profile
 
 ### Product Management
 ```
-GET    /api/v1/products                    # List products with filtering
+GET    /api/v1/products                    # List products (paginated with page parameter)
 POST   /api/v1/products                    # Create new product
 GET    /api/v1/products/{id}                # Get product details
 PUT    /api/v1/products/{id}                # Update product
@@ -190,17 +190,17 @@ GET    /api/v1/products/{id}/inventory     # Get product inventory
 
 ### Inventory Management
 ```
-GET    /api/v1/inventory                   # List inventory with stock levels
+GET    /api/v1/inventory                   # List inventory with stock levels (paginated with page parameter)
 PUT    /api/v1/inventory/{id}              # Update inventory quantity
 POST   /api/v1/inventory/adjust            # Manual inventory adjustment
-GET    /api/v1/inventory/transactions      # List inventory transactions
+GET    /api/v1/inventory/transactions      # List inventory transactions (paginated with page parameter)
 GET    /api/v1/inventory/low-stock         # Get low stock items
 ```
 
 ### Supplier Management
 ```
-GET    /api/v1/suppliers                   # List suppliers (paginated)
-GET    /api/v1/suppliers/search            # Search suppliers by name, phone, or email
+GET    /api/v1/suppliers                   # List suppliers (paginated with page parameter)
+GET    /api/v1/suppliers/search            # Search suppliers by name, phone, or email (paginated)
 POST   /api/v1/suppliers                   # Create supplier
 GET    /api/v1/suppliers/{id}              # Get supplier details
 PUT    /api/v1/suppliers/{id}              # Update supplier
@@ -209,7 +209,7 @@ DELETE /api/v1/suppliers/{id}              # Delete supplier
 
 ### Purchase Order Management
 ```
-GET    /api/v1/purchase-orders             # List purchase orders
+GET    /api/v1/purchase-orders             # List purchase orders (paginated with page parameter)
 POST   /api/v1/purchase-orders             # Create purchase order
 GET    /api/v1/purchase-orders/{id}        # Get purchase order details
 PUT    /api/v1/purchase-orders/{id}        # Update purchase order
@@ -220,7 +220,7 @@ POST   /api/v1/purchase-orders/{id}/receive # Receive purchase order items
 
 ### Order Management
 ```
-GET    /api/v1/orders                      # List orders
+GET    /api/v1/orders                      # List orders (paginated with page parameter)
 POST   /api/v1/orders                      # Create order
 GET    /api/v1/orders/{id}                 # Get order details
 PUT    /api/v1/orders/{id}                 # Update order

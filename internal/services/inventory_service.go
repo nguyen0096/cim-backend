@@ -18,6 +18,8 @@ type InventoryService interface {
 	GetTransactions(productID uuid.UUID, limit, offset int) ([]models.InventoryTransaction, error)
 	AddInventory(productID uuid.UUID, quantity int, referenceID uuid.UUID, referenceType, notes string, userID string) error
 	RemoveInventory(productID uuid.UUID, quantity int, referenceID uuid.UUID, referenceType, notes string, userID string) error
+	CountInventory() (int64, error)
+	CountTransactions(productID uuid.UUID) (int64, error)
 }
 
 type inventoryService struct {
@@ -149,4 +151,12 @@ type InsufficientInventoryError struct {
 
 func (e *InsufficientInventoryError) Error() string {
 	return "insufficient inventory"
+}
+
+func (s *inventoryService) CountInventory() (int64, error) {
+	return s.inventoryRepo.Count()
+}
+
+func (s *inventoryService) CountTransactions(productID uuid.UUID) (int64, error) {
+	return s.inventoryRepo.CountTransactions(productID)
 }

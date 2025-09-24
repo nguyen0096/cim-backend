@@ -15,6 +15,7 @@ type PurchaseOrderRepository interface {
 	List(limit, offset int) ([]models.PurchaseOrder, error)
 	GetByStatus(status string) ([]models.PurchaseOrder, error)
 	GetBySupplier(supplierID uuid.UUID) ([]models.PurchaseOrder, error)
+	Count() (int64, error)
 }
 
 type purchaseOrderRepository struct {
@@ -62,4 +63,10 @@ func (r *purchaseOrderRepository) GetBySupplier(supplierID uuid.UUID) ([]models.
 	var purchaseOrders []models.PurchaseOrder
 	err := r.db.Preload("Supplier").Preload("Items").Preload("Items.Product").Where("supplier_id = ?", supplierID).Find(&purchaseOrders).Error
 	return purchaseOrders, err
+}
+
+func (r *purchaseOrderRepository) Count() (int64, error) {
+	var count int64
+	err := r.db.Model(&models.PurchaseOrder{}).Count(&count).Error
+	return count, err
 }
