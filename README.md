@@ -75,7 +75,6 @@ A Go-based backend system for order management and warehouse operations with Exc
 ### Authentication
 - `POST /api/v1/auth/verify-token` - Verify Firebase token
 - `GET /api/v1/auth/profile` - Get user profile
-- `PUT /api/v1/auth/profile` - Update user profile
 
 ### Products
 - `GET /api/v1/products` - List products

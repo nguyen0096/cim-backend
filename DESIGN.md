@@ -176,7 +176,6 @@ CREATE INDEX idx_order_items_product ON order_items(product_id);
 ```
 POST /api/v1/auth/verify-token
 GET  /api/v1/auth/profile
-PUT  /api/v1/auth/profile
 ```
 
 ### Product Management
