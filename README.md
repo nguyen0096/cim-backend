@@ -165,7 +165,8 @@ make docker-stop
 | `DB_NAME` | Database name | import_export_db |
 | `SERVER_HOST` | Server host | 0.0.0.0 |
 | `SERVER_PORT` | Server port | 8080 |
-| `JWT_SECRET` | JWT secret key | your-secret-key-here |
+| `FIREBASE_SERVICE_ACCOUNT_PATH` | Firebase service account json file path | ./firebase-service-account.json
+| `FIREBASE_PROJECT_ID` | Firebase Project ID | your-firebase-project-id
 
 ## Excel Integration
 

@@ -1,16 +1,17 @@
 package middleware
 
 import (
-	"import-export-backend/internal/config"
+	"fmt"
+	"import-export-backend/internal/auth"
+	"context"
 	"net/http"
 	"strings"
 
-	"github.com/golang-jwt/jwt/v5"
 	"github.com/labstack/echo/v4"
 )
 
-// AuthMiddleware validates JWT tokens
-func AuthMiddleware() echo.MiddlewareFunc {
+// AuthMiddleware validates Firebase ID tokens
+func AuthMiddleware(firebaseAuth *auth.FirebaseAuthService) echo.MiddlewareFunc {
 	return func(next echo.HandlerFunc) echo.HandlerFunc {
 		return func(c echo.Context) error {
 			authHeader := c.Request().Header.Get("Authorization")
@@ -23,27 +24,28 @@ func AuthMiddleware() echo.MiddlewareFunc {
 				return c.JSON(http.StatusUnauthorized, map[string]string{"error": "Bearer token required"})
 			}
 
-			// Get JWT secret from config
-			cfg := config.Load()
-			secret := cfg.JWT.Secret
-
-			token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
-				// Validate signing method
-				if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
-					return nil, echo.NewHTTPError(http.StatusUnauthorized, "Invalid signing method")
-				}
-				return []byte(secret), nil
-			})
-
-			if err != nil || !token.Valid {
+			// Verify Firebase ID token
+			ctx := context.Background()
+			token, err := firebaseAuth.VerifyToken(ctx, tokenString)
+			if err != nil {
+				fmt.Println("Error verifying token:", err)
 				return c.JSON(http.StatusUnauthorized, map[string]string{"error": "Invalid token"})
 			}
 
-			// Extract claims
-			if claims, ok := token.Claims.(jwt.MapClaims); ok {
-				c.Set("user_id", claims["user_id"])
-				c.Set("user_role", claims["role"])
-				c.Set("user_email", claims["email"])
+			// Extract user information from Firebase token
+			c.Set("user_id", token.UID)
+			c.Set("user_email", token.Claims["email"])
+			
+			// Check for custom claims (role)
+			if role, ok := token.Claims["role"].(string); ok {
+				c.Set("user_role", role)
+			} else {
+				c.Set("user_role", "user") // default role
+			}
+
+			// Set additional Firebase claims
+			if name, ok := token.Claims["name"].(string); ok {
+				c.Set("user_name", name)
 			}
 
 			return next(c)

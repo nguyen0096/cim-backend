@@ -11,6 +11,7 @@ type Config struct {
 	Database DatabaseConfig
 	Server   ServerConfig
 	JWT      JWTConfig
+	Firebase FirebaseConfig
 	Excel    ExcelConfig
 }
 
@@ -29,6 +30,11 @@ type ServerConfig struct {
 
 type JWTConfig struct {
 	Secret string
+}
+
+type FirebaseConfig struct {
+	ServiceAccountPath string
+	ProjectID          string
 }
 
 type ExcelConfig struct {
@@ -52,8 +58,9 @@ func Load() *Config {
 			Host: getEnv("SERVER_HOST", "0.0.0.0"),
 			Port: getEnv("SERVER_PORT", "8080"),
 		},
-		JWT: JWTConfig{
-			Secret: getEnv("JWT_SECRET", "your-secret-key-here"),
+		Firebase: FirebaseConfig{
+			ServiceAccountPath: getEnv("FIREBASE_SERVICE_ACCOUNT_PATH", "./firebase-service-account.json"),
+			ProjectID:          getEnv("FIREBASE_PROJECT_ID", ""),
 		},
 		Excel: ExcelConfig{
 			MaxRows: getEnvAsInt("EXCEL_MAX_ROWS", 10000),

@@ -19,15 +19,8 @@ services:
       context: .
       dockerfile: Dockerfile
     container_name: import_export_backend
-    environment:
-      DB_HOST: postgres
-      DB_PORT: 5432
-      DB_USER: postgres
-      DB_PASSWORD: password
-      DB_NAME: import_export_db
-      SERVER_HOST: 0.0.0.0
-      SERVER_PORT: 8080
-      JWT_SECRET: your-secret-key-here
+    env_file:
+      - .env
     ports:
       - "8080:8080"
     depends_on:

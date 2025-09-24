@@ -8,7 +8,6 @@ import (
 )
 
 type UserService interface {
-	CreateUser(user *models.User) error
 	GetUserByID(id uuid.UUID) (*models.User, error)
 	GetUserByEmail(email string) (*models.User, error)
 	UpdateUser(user *models.User) error
@@ -24,10 +23,6 @@ func NewUserService(userRepo repository.UserRepository) UserService {
 	return &userService{
 		userRepo: userRepo,
 	}
-}
-
-func (s *userService) CreateUser(user *models.User) error {
-	return s.userRepo.Create(user)
 }
 
 func (s *userService) GetUserByID(id uuid.UUID) (*models.User, error) {

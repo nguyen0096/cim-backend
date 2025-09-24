@@ -1,6 +1,7 @@
 package main
 
 import (
+	"import-export-backend/internal/auth"
 	"import-export-backend/internal/config"
 	"import-export-backend/internal/database"
 	"import-export-backend/internal/handlers"
@@ -21,6 +22,12 @@ func main() {
 	// Initialize logger
 	logger := logrus.New()
 	logger.SetLevel(logrus.InfoLevel)
+
+	// Initialize Firebase Auth
+	firebaseAuth, err := auth.NewFirebaseAuthService(cfg.Firebase.ServiceAccountPath)
+	if err != nil {
+		log.Fatal("Failed to initialize Firebase Auth:", err)
+	}
 
 	// Initialize database
 	db, err := database.Initialize(cfg.Database)
@@ -76,13 +83,13 @@ func main() {
 	api := e.Group("/api/v1")
 
 	// Authentication routes
-	auth := api.Group("/auth")
-	auth.POST("/verify-token", userHandler.VerifyToken)
-	auth.GET("/profile", userHandler.GetProfile, middleware.AuthMiddleware())
-	auth.PUT("/profile", userHandler.UpdateProfile, middleware.AuthMiddleware())
+	authGroup := api.Group("/auth")
+	authGroup.POST("/verify-token", userHandler.VerifyToken)
+	authGroup.GET("/profile", userHandler.GetProfile, middleware.AuthMiddleware(firebaseAuth))
+	authGroup.PUT("/profile", userHandler.UpdateProfile, middleware.AuthMiddleware(firebaseAuth))
 
 	// Product routes
-	products := api.Group("/products", middleware.AuthMiddleware())
+	products := api.Group("/products", middleware.AuthMiddleware(firebaseAuth))
 	products.GET("", productHandler.GetProducts)
 	products.POST("", productHandler.CreateProduct)
 	products.GET("/:id", productHandler.GetProduct)
@@ -91,7 +98,7 @@ func main() {
 	products.GET("/:id/inventory", productHandler.GetProductInventory)
 
 	// Inventory routes
-	inventory := api.Group("/inventory", middleware.AuthMiddleware())
+	inventory := api.Group("/inventory", middleware.AuthMiddleware(firebaseAuth))
 	inventory.GET("", inventoryHandler.GetInventory)
 	inventory.PUT("/:id", inventoryHandler.UpdateInventory)
 	inventory.POST("/adjust", inventoryHandler.AdjustInventory)
@@ -99,7 +106,7 @@ func main() {
 	inventory.GET("/low-stock", inventoryHandler.GetLowStock)
 
 	// Supplier routes
-	suppliers := api.Group("/suppliers", middleware.AuthMiddleware())
+	suppliers := api.Group("/suppliers", middleware.AuthMiddleware(firebaseAuth))
 	suppliers.GET("", supplierHandler.GetSuppliers)
 	suppliers.POST("", supplierHandler.CreateSupplier)
 	suppliers.GET("/:id", supplierHandler.GetSupplier)
@@ -107,7 +114,7 @@ func main() {
 	suppliers.DELETE("/:id", supplierHandler.DeleteSupplier)
 
 	// Purchase Order routes
-	purchaseOrders := api.Group("/purchase-orders", middleware.AuthMiddleware())
+	purchaseOrders := api.Group("/purchase-orders", middleware.AuthMiddleware(firebaseAuth))
 	purchaseOrders.GET("", purchaseOrderHandler.GetPurchaseOrders)
 	purchaseOrders.POST("", purchaseOrderHandler.CreatePurchaseOrder)
 	purchaseOrders.GET("/:id", purchaseOrderHandler.GetPurchaseOrder)
@@ -117,7 +124,7 @@ func main() {
 	purchaseOrders.POST("/:id/receive", purchaseOrderHandler.ReceivePurchaseOrder)
 
 	// Order routes
-	orders := api.Group("/orders", middleware.AuthMiddleware())
+	orders := api.Group("/orders", middleware.AuthMiddleware(firebaseAuth))
 	orders.GET("", orderHandler.GetOrders)
 	orders.POST("", orderHandler.CreateOrder)
 	orders.GET("/:id", orderHandler.GetOrder)
@@ -127,7 +134,7 @@ func main() {
 	orders.POST("/:id/complete", orderHandler.CompleteOrder)
 
 	// Excel routes
-	excel := api.Group("/excel", middleware.AuthMiddleware())
+	excel := api.Group("/excel", middleware.AuthMiddleware(firebaseAuth))
 	excel.POST("/import-products", excelHandler.ImportProducts)
 	excel.GET("/export-products", excelHandler.ExportProducts)
 	excel.POST("/import-inventory", excelHandler.ImportInventory)
@@ -136,7 +143,7 @@ func main() {
 	excel.GET("/template-inventory", excelHandler.GetInventoryTemplate)
 
 	// Reports routes
-	reports := api.Group("/reports", middleware.AuthMiddleware())
+	reports := api.Group("/reports", middleware.AuthMiddleware(firebaseAuth))
 	reports.GET("/inventory-summary", inventoryHandler.GetInventorySummary)
 	reports.GET("/low-stock", inventoryHandler.GetLowStock)
 	reports.GET("/purchase-summary", purchaseOrderHandler.GetPurchaseSummary)
