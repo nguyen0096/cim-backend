@@ -14,6 +14,7 @@ type SupplierService interface {
 	DeleteSupplier(id uuid.UUID) error
 	ListSuppliers(limit, offset int) ([]models.Supplier, error)
 	SearchSuppliers(query string) ([]models.Supplier, error)
+	CountSuppliers() (int64, error)
 }
 
 type supplierService struct {
@@ -48,4 +49,8 @@ func (s *supplierService) ListSuppliers(limit, offset int) ([]models.Supplier, e
 
 func (s *supplierService) SearchSuppliers(query string) ([]models.Supplier, error) {
 	return s.supplierRepo.Search(query)
+}
+
+func (s *supplierService) CountSuppliers() (int64, error) {
+	return s.supplierRepo.Count()
 }

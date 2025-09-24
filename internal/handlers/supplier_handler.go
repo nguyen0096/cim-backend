@@ -20,6 +20,7 @@ type SupplierService interface {
 	DeleteSupplier(id uuid.UUID) error
 	ListSuppliers(limit, offset int) ([]models.Supplier, error)
 	SearchSuppliers(query string) ([]models.Supplier, error)
+	CountSuppliers() (int64, error)
 }
 
 func NewSupplierHandler(supplierService SupplierService) *SupplierHandler {
@@ -29,19 +30,45 @@ func NewSupplierHandler(supplierService SupplierService) *SupplierHandler {
 }
 
 func (h *SupplierHandler) GetSuppliers(c echo.Context) error {
+	// Parse query parameters
 	limit, _ := strconv.Atoi(c.QueryParam("limit"))
-	offset, _ := strconv.Atoi(c.QueryParam("offset"))
+	page, _ := strconv.Atoi(c.QueryParam("page"))
 	
+	// Set defaults
 	if limit == 0 {
 		limit = 20
 	}
+	if page == 0 {
+		page = 1
+	}
+	
+	// Calculate offset
+	offset := (page - 1) * limit
 
+	// Get suppliers and total count
 	suppliers, err := h.supplierService.ListSuppliers(limit, offset)
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to fetch suppliers"})
 	}
 
-	return c.JSON(http.StatusOK, suppliers)
+	total, err := h.supplierService.CountSuppliers()
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to count suppliers"})
+	}
+
+	// Calculate total pages
+	totalPages := int((total + int64(limit) - 1) / int64(limit))
+
+	// Create response
+	response := map[string]interface{}{
+		"data":       suppliers,
+		"total":      total,
+		"page":       page,
+		"limit":      limit,
+		"totalPages": totalPages,
+	}
+
+	return c.JSON(http.StatusOK, response)
 }
 
 func (h *SupplierHandler) CreateSupplier(c echo.Context) error {
