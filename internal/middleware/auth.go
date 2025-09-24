@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"import-export-backend/internal/config"
 	"net/http"
 	"strings"
 
@@ -22,12 +23,16 @@ func AuthMiddleware() echo.MiddlewareFunc {
 				return c.JSON(http.StatusUnauthorized, map[string]string{"error": "Bearer token required"})
 			}
 
+			// Get JWT secret from config
+			cfg := config.Load()
+			secret := cfg.JWT.Secret
+
 			token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
 				// Validate signing method
 				if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
 					return nil, echo.NewHTTPError(http.StatusUnauthorized, "Invalid signing method")
 				}
-				return []byte("your-secret-key-here"), nil // This should come from config
+				return []byte(secret), nil
 			})
 
 			if err != nil || !token.Valid {
