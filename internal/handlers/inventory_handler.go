@@ -17,7 +17,7 @@ type InventoryService interface {
 	GetInventory(limit, offset int) ([]models.Inventory, error)
 	GetInventoryByID(id uuid.UUID) (*models.Inventory, error)
 	UpdateInventory(inventory *models.Inventory) error
-	AdjustInventory(productID uuid.UUID, quantity int, notes string, userID uuid.UUID) error
+	AdjustInventory(productID uuid.UUID, quantity int, notes string, userID string) error
 	GetLowStock() ([]models.Inventory, error)
 	GetTransactions(productID uuid.UUID, limit, offset int) ([]models.InventoryTransaction, error)
 }
@@ -75,12 +75,11 @@ func (h *InventoryHandler) AdjustInventory(c echo.Context) error {
 	}
 
 	userID := c.Get("user_id").(string)
-	userUUID, err := uuid.Parse(userID)
-	if err != nil {
+	if userID == "" {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid user ID"})
 	}
 
-	if err := h.inventoryService.AdjustInventory(req.ProductID, req.Quantity, req.Notes, userUUID); err != nil {
+	if err := h.inventoryService.AdjustInventory(req.ProductID, req.Quantity, req.Notes, userID); err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to adjust inventory"})
 	}
 

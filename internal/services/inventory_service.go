@@ -13,11 +13,11 @@ type InventoryService interface {
 	GetInventoryByID(id uuid.UUID) (*models.Inventory, error)
 	GetInventoryByProductID(productID uuid.UUID) (*models.Inventory, error)
 	UpdateInventory(inventory *models.Inventory) error
-	AdjustInventory(productID uuid.UUID, quantity int, notes string, userID uuid.UUID) error
+	AdjustInventory(productID uuid.UUID, quantity int, notes string, userID string) error
 	GetLowStock() ([]models.Inventory, error)
 	GetTransactions(productID uuid.UUID, limit, offset int) ([]models.InventoryTransaction, error)
-	AddInventory(productID uuid.UUID, quantity int, referenceID uuid.UUID, referenceType, notes string, userID uuid.UUID) error
-	RemoveInventory(productID uuid.UUID, quantity int, referenceID uuid.UUID, referenceType, notes string, userID uuid.UUID) error
+	AddInventory(productID uuid.UUID, quantity int, referenceID uuid.UUID, referenceType, notes string, userID string) error
+	RemoveInventory(productID uuid.UUID, quantity int, referenceID uuid.UUID, referenceType, notes string, userID string) error
 }
 
 type inventoryService struct {
@@ -49,7 +49,7 @@ func (s *inventoryService) UpdateInventory(inventory *models.Inventory) error {
 	return s.inventoryRepo.Update(inventory)
 }
 
-func (s *inventoryService) AdjustInventory(productID uuid.UUID, quantity int, notes string, userID uuid.UUID) error {
+func (s *inventoryService) AdjustInventory(productID uuid.UUID, quantity int, notes string, userID string) error {
 	inventory, err := s.inventoryRepo.GetByProductID(productID)
 	if err != nil {
 		return err
@@ -82,7 +82,7 @@ func (s *inventoryService) GetTransactions(productID uuid.UUID, limit, offset in
 	return s.inventoryRepo.GetTransactions(productID, limit, offset)
 }
 
-func (s *inventoryService) AddInventory(productID uuid.UUID, quantity int, referenceID uuid.UUID, referenceType, notes string, userID uuid.UUID) error {
+func (s *inventoryService) AddInventory(productID uuid.UUID, quantity int, referenceID uuid.UUID, referenceType, notes string, userID string) error {
 	inventory, err := s.inventoryRepo.GetByProductID(productID)
 	if err != nil {
 		return err
@@ -109,7 +109,7 @@ func (s *inventoryService) AddInventory(productID uuid.UUID, quantity int, refer
 	return s.inventoryRepo.Update(inventory)
 }
 
-func (s *inventoryService) RemoveInventory(productID uuid.UUID, quantity int, referenceID uuid.UUID, referenceType, notes string, userID uuid.UUID) error {
+func (s *inventoryService) RemoveInventory(productID uuid.UUID, quantity int, referenceID uuid.UUID, referenceType, notes string, userID string) error {
 	inventory, err := s.inventoryRepo.GetByProductID(productID)
 	if err != nil {
 		return err

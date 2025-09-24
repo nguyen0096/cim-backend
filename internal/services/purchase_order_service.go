@@ -16,7 +16,7 @@ type PurchaseOrderService interface {
 	GetPurchaseOrdersByStatus(status string) ([]models.PurchaseOrder, error)
 	GetPurchaseOrdersBySupplier(supplierID uuid.UUID) ([]models.PurchaseOrder, error)
 	UpdatePurchaseOrderStatus(id uuid.UUID, status string) error
-	ReceivePurchaseOrder(id uuid.UUID, userID uuid.UUID) error
+	ReceivePurchaseOrder(id uuid.UUID, userID string) error
 }
 
 type purchaseOrderService struct {
@@ -68,7 +68,7 @@ func (s *purchaseOrderService) UpdatePurchaseOrderStatus(id uuid.UUID, status st
 	return s.purchaseOrderRepo.Update(purchaseOrder)
 }
 
-func (s *purchaseOrderService) ReceivePurchaseOrder(id uuid.UUID, userID uuid.UUID) error {
+func (s *purchaseOrderService) ReceivePurchaseOrder(id uuid.UUID, userID string) error {
 	purchaseOrder, err := s.purchaseOrderRepo.GetByID(id)
 	if err != nil {
 		return err

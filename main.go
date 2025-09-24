@@ -41,7 +41,6 @@ func main() {
 	}
 
 	// Initialize repositories
-	userRepo := repository.NewUserRepository(db)
 	supplierRepo := repository.NewSupplierRepository(db)
 	productRepo := repository.NewProductRepository(db)
 	inventoryRepo := repository.NewInventoryRepository(db)
@@ -49,7 +48,6 @@ func main() {
 	orderRepo := repository.NewOrderRepository(db)
 
 	// Initialize services
-	userService := services.NewUserService(userRepo)
 	supplierService := services.NewSupplierService(supplierRepo)
 	productService := services.NewProductService(productRepo, inventoryRepo)
 	inventoryService := services.NewInventoryService(inventoryRepo, productRepo)
@@ -58,7 +56,7 @@ func main() {
 	excelService := services.NewExcelService(productRepo, inventoryRepo)
 
 	// Initialize handlers
-	userHandler := handlers.NewUserHandler(userService)
+	userHandler := handlers.NewUserHandler()
 	supplierHandler := handlers.NewSupplierHandler(supplierService)
 	productHandler := handlers.NewProductHandler(productService)
 	inventoryHandler := handlers.NewInventoryHandler(inventoryService)
@@ -86,7 +84,6 @@ func main() {
 	authGroup := api.Group("/auth")
 	authGroup.POST("/verify-token", userHandler.VerifyToken)
 	authGroup.GET("/profile", userHandler.GetProfile, middleware.AuthMiddleware(firebaseAuth))
-	authGroup.PUT("/profile", userHandler.UpdateProfile, middleware.AuthMiddleware(firebaseAuth))
 
 	// Product routes
 	products := api.Group("/products", middleware.AuthMiddleware(firebaseAuth))

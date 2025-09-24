@@ -20,7 +20,7 @@ type PurchaseOrderService interface {
 	DeletePurchaseOrder(id uuid.UUID) error
 	ListPurchaseOrders(limit, offset int) ([]models.PurchaseOrder, error)
 	UpdatePurchaseOrderStatus(id uuid.UUID, status string) error
-	ReceivePurchaseOrder(id uuid.UUID, userID uuid.UUID) error
+	ReceivePurchaseOrder(id uuid.UUID, userID string) error
 }
 
 func NewPurchaseOrderHandler(purchaseOrderService PurchaseOrderService) *PurchaseOrderHandler {
@@ -132,12 +132,11 @@ func (h *PurchaseOrderHandler) ReceivePurchaseOrder(c echo.Context) error {
 	}
 
 	userID := c.Get("user_id").(string)
-	userUUID, err := uuid.Parse(userID)
-	if err != nil {
+	if userID == "" {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid user ID"})
 	}
 
-	if err := h.purchaseOrderService.ReceivePurchaseOrder(id, userUUID); err != nil {
+	if err := h.purchaseOrderService.ReceivePurchaseOrder(id, userID); err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to receive purchase order"})
 	}
 

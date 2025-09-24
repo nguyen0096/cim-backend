@@ -7,16 +7,6 @@ import (
 	"gorm.io/gorm"
 )
 
-// User represents a user in the system
-type User struct {
-	ID        uuid.UUID `json:"id" gorm:"type:uuid;primary_key;default:gen_random_uuid()"`
-	Email     string    `json:"email" gorm:"unique;not null"`
-	Role      string    `json:"role" gorm:"not null;check:role IN ('admin', 'staff')"`
-	Name      string    `json:"name" gorm:"not null"`
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
-}
-
 // Supplier represents a supplier
 type Supplier struct {
 	ID           uuid.UUID `json:"id" gorm:"type:uuid;primary_key;default:gen_random_uuid()"`
@@ -65,7 +55,7 @@ type PurchaseOrder struct {
 	Status       string                `json:"status" gorm:"default:pending;check:status IN ('pending', 'approved', 'received', 'cancelled')"`
 	TotalAmount  float64               `json:"total_amount" gorm:"type:decimal(10,2)"`
 	Notes        string                `json:"notes"`
-	CreatedBy    uuid.UUID             `json:"created_by"`
+	CreatedBy    string                `json:"created_by"`
 	CreatedAt    time.Time             `json:"created_at"`
 	UpdatedAt    time.Time             `json:"updated_at"`
 	Items        []PurchaseOrderItem   `json:"items" gorm:"foreignKey:PurchaseOrderID"`
@@ -96,7 +86,7 @@ type InventoryTransaction struct {
 	ReferenceID    uuid.UUID `json:"reference_id"`
 	ReferenceType  string    `json:"reference_type"`
 	Notes          string    `json:"notes"`
-	CreatedBy      uuid.UUID `json:"created_by"`
+	CreatedBy      string    `json:"created_by"`
 	CreatedAt      time.Time `json:"created_at"`
 }
 
@@ -109,7 +99,7 @@ type Order struct {
 	Status       string     `json:"status" gorm:"default:pending;check:status IN ('pending', 'processing', 'completed', 'cancelled')"`
 	TotalAmount  float64    `json:"total_amount" gorm:"type:decimal(10,2)"`
 	Notes        string     `json:"notes"`
-	CreatedBy    uuid.UUID  `json:"created_by"`
+	CreatedBy    string     `json:"created_by"`
 	CreatedAt    time.Time  `json:"created_at"`
 	UpdatedAt    time.Time  `json:"updated_at"`
 	Items        []OrderItem `json:"items" gorm:"foreignKey:OrderID"`
@@ -127,14 +117,6 @@ type OrderItem struct {
 	TotalPrice float64  `json:"total_price" gorm:"type:decimal(10,2)"`
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
-}
-
-// BeforeCreate hook for UUID generation
-func (u *User) BeforeCreate(tx *gorm.DB) error {
-	if u.ID == uuid.Nil {
-		u.ID = uuid.New()
-	}
-	return nil
 }
 
 func (s *Supplier) BeforeCreate(tx *gorm.DB) error {

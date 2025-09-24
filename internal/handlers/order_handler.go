@@ -20,7 +20,7 @@ type OrderService interface {
 	DeleteOrder(id uuid.UUID) error
 	ListOrders(limit, offset int) ([]models.Order, error)
 	UpdateOrderStatus(id uuid.UUID, status string) error
-	CompleteOrder(id uuid.UUID, userID uuid.UUID) error
+	CompleteOrder(id uuid.UUID, userID string) error
 }
 
 func NewOrderHandler(orderService OrderService) *OrderHandler {
@@ -132,12 +132,11 @@ func (h *OrderHandler) CompleteOrder(c echo.Context) error {
 	}
 
 	userID := c.Get("user_id").(string)
-	userUUID, err := uuid.Parse(userID)
-	if err != nil {
+	if userID == "" {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid user ID"})
 	}
 
-	if err := h.orderService.CompleteOrder(id, userUUID); err != nil {
+	if err := h.orderService.CompleteOrder(id, userID); err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to complete order"})
 	}
 
