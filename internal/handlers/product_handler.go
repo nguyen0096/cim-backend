@@ -1,0 +1,110 @@
+package handlers
+
+import (
+	"import-export-backend/internal/models"
+	"net/http"
+	"strconv"
+
+	"github.com/google/uuid"
+	"github.com/labstack/echo/v4"
+)
+
+type ProductHandler struct {
+	productService ProductService
+}
+
+type ProductService interface {
+	CreateProduct(product *models.Product) error
+	GetProductByID(id uuid.UUID) (*models.Product, error)
+	UpdateProduct(product *models.Product) error
+	DeleteProduct(id uuid.UUID) error
+	ListProducts(limit, offset int) ([]models.Product, error)
+	GetProductsBySupplier(supplierID uuid.UUID) ([]models.Product, error)
+	SearchProducts(query string) ([]models.Product, error)
+}
+
+func NewProductHandler(productService ProductService) *ProductHandler {
+	return &ProductHandler{
+		productService: productService,
+	}
+}
+
+func (h *ProductHandler) GetProducts(c echo.Context) error {
+	limit, _ := strconv.Atoi(c.QueryParam("limit"))
+	offset, _ := strconv.Atoi(c.QueryParam("offset"))
+	
+	if limit == 0 {
+		limit = 20
+	}
+
+	products, err := h.productService.ListProducts(limit, offset)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to fetch products"})
+	}
+
+	return c.JSON(http.StatusOK, products)
+}
+
+func (h *ProductHandler) CreateProduct(c echo.Context) error {
+	var product models.Product
+	if err := c.Bind(&product); err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid request body"})
+	}
+
+	if err := h.productService.CreateProduct(&product); err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to create product"})
+	}
+
+	return c.JSON(http.StatusCreated, product)
+}
+
+func (h *ProductHandler) GetProduct(c echo.Context) error {
+	id, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid product ID"})
+	}
+
+	product, err := h.productService.GetProductByID(id)
+	if err != nil {
+		return c.JSON(http.StatusNotFound, map[string]string{"error": "Product not found"})
+	}
+
+	return c.JSON(http.StatusOK, product)
+}
+
+func (h *ProductHandler) UpdateProduct(c echo.Context) error {
+	id, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid product ID"})
+	}
+
+	var product models.Product
+	if err := c.Bind(&product); err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid request body"})
+	}
+
+	product.ID = id
+	if err := h.productService.UpdateProduct(&product); err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to update product"})
+	}
+
+	return c.JSON(http.StatusOK, product)
+}
+
+func (h *ProductHandler) DeleteProduct(c echo.Context) error {
+	id, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid product ID"})
+	}
+
+	if err := h.productService.DeleteProduct(id); err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to delete product"})
+	}
+
+	return c.JSON(http.StatusOK, map[string]string{"message": "Product deleted successfully"})
+}
+
+func (h *ProductHandler) GetProductInventory(c echo.Context) error {
+	// Implementation for getting product inventory
+	return c.JSON(http.StatusOK, map[string]string{"message": "Product inventory endpoint"})
+}

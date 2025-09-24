@@ -1,0 +1,45 @@
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: import_export_postgres
+    environment:
+      POSTGRES_DB: import_export_db
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: password
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
+    networks:
+      - import_export_network
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: import_export_backend
+    environment:
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_USER: postgres
+      DB_PASSWORD: password
+      DB_NAME: import_export_db
+      SERVER_HOST: 0.0.0.0
+      SERVER_PORT: 8080
+      JWT_SECRET: your-secret-key-here
+    ports:
+      - "8080:8080"
+    depends_on:
+      - postgres
+    networks:
+      - import_export_network
+    volumes:
+      - ./uploads:/app/uploads
+
+volumes:
+  postgres_data:
+
+networks:
+  import_export_network:
+    driver: bridge

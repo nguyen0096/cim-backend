@@ -1,0 +1,150 @@
+package main
+
+import (
+	"import-export-backend/internal/config"
+	"import-export-backend/internal/database"
+	"import-export-backend/internal/handlers"
+	"import-export-backend/internal/middleware"
+	"import-export-backend/internal/repository"
+	"import-export-backend/internal/services"
+	"log"
+
+	"github.com/labstack/echo/v4"
+	echoMiddleware "github.com/labstack/echo/v4/middleware"
+	"github.com/sirupsen/logrus"
+)
+
+func main() {
+	// Load configuration
+	cfg := config.Load()
+
+	// Initialize logger
+	logger := logrus.New()
+	logger.SetLevel(logrus.InfoLevel)
+
+	// Initialize database
+	db, err := database.Initialize(cfg.Database)
+	if err != nil {
+		log.Fatal("Failed to initialize database:", err)
+	}
+
+	// Run migrations
+	if err := database.Migrate(db); err != nil {
+		log.Fatal("Failed to run migrations:", err)
+	}
+
+	// Initialize repositories
+	userRepo := repository.NewUserRepository(db)
+	supplierRepo := repository.NewSupplierRepository(db)
+	productRepo := repository.NewProductRepository(db)
+	inventoryRepo := repository.NewInventoryRepository(db)
+	purchaseOrderRepo := repository.NewPurchaseOrderRepository(db)
+	orderRepo := repository.NewOrderRepository(db)
+
+	// Initialize services
+	userService := services.NewUserService(userRepo)
+	supplierService := services.NewSupplierService(supplierRepo)
+	productService := services.NewProductService(productRepo, inventoryRepo)
+	inventoryService := services.NewInventoryService(inventoryRepo, productRepo)
+	purchaseOrderService := services.NewPurchaseOrderService(purchaseOrderRepo, inventoryService)
+	orderService := services.NewOrderService(orderRepo, inventoryService)
+	excelService := services.NewExcelService(productRepo, inventoryRepo)
+
+	// Initialize handlers
+	userHandler := handlers.NewUserHandler(userService)
+	supplierHandler := handlers.NewSupplierHandler(supplierService)
+	productHandler := handlers.NewProductHandler(productService)
+	inventoryHandler := handlers.NewInventoryHandler(inventoryService)
+	purchaseOrderHandler := handlers.NewPurchaseOrderHandler(purchaseOrderService)
+	orderHandler := handlers.NewOrderHandler(orderService)
+	excelHandler := handlers.NewExcelHandler(excelService)
+
+	// Initialize Echo
+	e := echo.New()
+
+	// Middleware
+	e.Use(echoMiddleware.Logger())
+	e.Use(echoMiddleware.Recover())
+	e.Use(echoMiddleware.CORS())
+
+	// Health check
+	e.GET("/health", func(c echo.Context) error {
+		return c.JSON(200, map[string]string{"status": "ok"})
+	})
+
+	// API routes
+	api := e.Group("/api/v1")
+
+	// Authentication routes
+	auth := api.Group("/auth")
+	auth.POST("/verify-token", userHandler.VerifyToken)
+	auth.GET("/profile", userHandler.GetProfile, middleware.AuthMiddleware())
+	auth.PUT("/profile", userHandler.UpdateProfile, middleware.AuthMiddleware())
+
+	// Product routes
+	products := api.Group("/products", middleware.AuthMiddleware())
+	products.GET("", productHandler.GetProducts)
+	products.POST("", productHandler.CreateProduct)
+	products.GET("/:id", productHandler.GetProduct)
+	products.PUT("/:id", productHandler.UpdateProduct)
+	products.DELETE("/:id", productHandler.DeleteProduct)
+	products.GET("/:id/inventory", productHandler.GetProductInventory)
+
+	// Inventory routes
+	inventory := api.Group("/inventory", middleware.AuthMiddleware())
+	inventory.GET("", inventoryHandler.GetInventory)
+	inventory.PUT("/:id", inventoryHandler.UpdateInventory)
+	inventory.POST("/adjust", inventoryHandler.AdjustInventory)
+	inventory.GET("/transactions", inventoryHandler.GetTransactions)
+	inventory.GET("/low-stock", inventoryHandler.GetLowStock)
+
+	// Supplier routes
+	suppliers := api.Group("/suppliers", middleware.AuthMiddleware())
+	suppliers.GET("", supplierHandler.GetSuppliers)
+	suppliers.POST("", supplierHandler.CreateSupplier)
+	suppliers.GET("/:id", supplierHandler.GetSupplier)
+	suppliers.PUT("/:id", supplierHandler.UpdateSupplier)
+	suppliers.DELETE("/:id", supplierHandler.DeleteSupplier)
+
+	// Purchase Order routes
+	purchaseOrders := api.Group("/purchase-orders", middleware.AuthMiddleware())
+	purchaseOrders.GET("", purchaseOrderHandler.GetPurchaseOrders)
+	purchaseOrders.POST("", purchaseOrderHandler.CreatePurchaseOrder)
+	purchaseOrders.GET("/:id", purchaseOrderHandler.GetPurchaseOrder)
+	purchaseOrders.PUT("/:id", purchaseOrderHandler.UpdatePurchaseOrder)
+	purchaseOrders.PUT("/:id/status", purchaseOrderHandler.UpdatePurchaseOrderStatus)
+	purchaseOrders.DELETE("/:id", purchaseOrderHandler.DeletePurchaseOrder)
+	purchaseOrders.POST("/:id/receive", purchaseOrderHandler.ReceivePurchaseOrder)
+
+	// Order routes
+	orders := api.Group("/orders", middleware.AuthMiddleware())
+	orders.GET("", orderHandler.GetOrders)
+	orders.POST("", orderHandler.CreateOrder)
+	orders.GET("/:id", orderHandler.GetOrder)
+	orders.PUT("/:id", orderHandler.UpdateOrder)
+	orders.PUT("/:id/status", orderHandler.UpdateOrderStatus)
+	orders.DELETE("/:id", orderHandler.DeleteOrder)
+	orders.POST("/:id/complete", orderHandler.CompleteOrder)
+
+	// Excel routes
+	excel := api.Group("/excel", middleware.AuthMiddleware())
+	excel.POST("/import-products", excelHandler.ImportProducts)
+	excel.GET("/export-products", excelHandler.ExportProducts)
+	excel.POST("/import-inventory", excelHandler.ImportInventory)
+	excel.GET("/export-inventory", excelHandler.ExportInventory)
+	excel.GET("/template-products", excelHandler.GetProductTemplate)
+	excel.GET("/template-inventory", excelHandler.GetInventoryTemplate)
+
+	// Reports routes
+	reports := api.Group("/reports", middleware.AuthMiddleware())
+	reports.GET("/inventory-summary", inventoryHandler.GetInventorySummary)
+	reports.GET("/low-stock", inventoryHandler.GetLowStock)
+	reports.GET("/purchase-summary", purchaseOrderHandler.GetPurchaseSummary)
+	reports.GET("/order-summary", orderHandler.GetOrderSummary)
+
+	// Start server
+	logger.Infof("Server starting on %s:%s", cfg.Server.Host, cfg.Server.Port)
+	if err := e.Start(cfg.Server.Host + ":" + cfg.Server.Port); err != nil {
+		log.Fatal("Failed to start server:", err)
+	}
+}
