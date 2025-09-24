@@ -14,7 +14,9 @@ type SupplierRepository interface {
 	Delete(id uuid.UUID) error
 	List(limit, offset int) ([]models.Supplier, error)
 	Search(query string) ([]models.Supplier, error)
+	SearchWithPagination(query string, limit, offset int) ([]models.Supplier, error)
 	Count() (int64, error)
+	CountSearch(query string) (int64, error)
 }
 
 type supplierRepository struct {
@@ -54,12 +56,27 @@ func (r *supplierRepository) List(limit, offset int) ([]models.Supplier, error) 
 
 func (r *supplierRepository) Search(query string) ([]models.Supplier, error) {
 	var suppliers []models.Supplier
-	err := r.db.Where("name ILIKE ?", "%"+query+"%").Find(&suppliers).Error
+	err := r.db.Where("name ILIKE ? OR contact_phone ILIKE ? OR contact_email ILIKE ?", 
+		"%"+query+"%", "%"+query+"%", "%"+query+"%").Find(&suppliers).Error
+	return suppliers, err
+}
+
+func (r *supplierRepository) SearchWithPagination(query string, limit, offset int) ([]models.Supplier, error) {
+	var suppliers []models.Supplier
+	err := r.db.Where("name ILIKE ? OR contact_phone ILIKE ? OR contact_email ILIKE ?", 
+		"%"+query+"%", "%"+query+"%", "%"+query+"%").Limit(limit).Offset(offset).Find(&suppliers).Error
 	return suppliers, err
 }
 
 func (r *supplierRepository) Count() (int64, error) {
 	var count int64
 	err := r.db.Model(&models.Supplier{}).Count(&count).Error
+	return count, err
+}
+
+func (r *supplierRepository) CountSearch(query string) (int64, error) {
+	var count int64
+	err := r.db.Model(&models.Supplier{}).Where("name ILIKE ? OR contact_phone ILIKE ? OR contact_email ILIKE ?", 
+		"%"+query+"%", "%"+query+"%", "%"+query+"%").Count(&count).Error
 	return count, err
 }

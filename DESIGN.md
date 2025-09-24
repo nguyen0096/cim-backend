@@ -199,7 +199,8 @@ GET    /api/v1/inventory/low-stock         # Get low stock items
 
 ### Supplier Management
 ```
-GET    /api/v1/suppliers                   # List suppliers
+GET    /api/v1/suppliers                   # List suppliers (paginated)
+GET    /api/v1/suppliers/search            # Search suppliers by name, phone, or email
 POST   /api/v1/suppliers                   # Create supplier
 GET    /api/v1/suppliers/{id}              # Get supplier details
 PUT    /api/v1/suppliers/{id}              # Update supplier
@@ -300,6 +301,30 @@ Response:
   "total_amount": 1999.98,
   "items": [...],
   "created_at": "2024-01-01T00:00:00Z"
+}
+```
+
+### Search Suppliers
+```json
+GET /api/v1/suppliers/search?q=tech&page=1&limit=20
+
+Response:
+{
+  "data": [
+    {
+      "id": "uuid-here",
+      "name": "Tech Supplier Inc",
+      "contact_email": "contact@techsupplier.com",
+      "contact_phone": "+1-555-0123",
+      "address": "123 Tech Street, Tech City, TC 12345",
+      "created_at": "2024-01-01T00:00:00Z",
+      "updated_at": "2024-01-01T00:00:00Z"
+    }
+  ],
+  "total": 5,
+  "page": 1,
+  "limit": 20,
+  "totalPages": 1
 }
 ```
 

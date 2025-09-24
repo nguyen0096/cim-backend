@@ -409,6 +409,40 @@
 					}
 				},
 				{
+					"name": "Search Suppliers",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{auth_token}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/api/v1/suppliers/search?q=tech&page=1&limit=20",
+							"host": ["{{base_url}}"],
+							"path": ["api", "v1", "suppliers", "search"],
+							"query": [
+								{
+									"key": "q",
+									"value": "tech",
+									"description": "Search term for name, phone, or email"
+								},
+								{
+									"key": "page",
+									"value": "1",
+									"description": "Page number (default: 1)"
+								},
+								{
+									"key": "limit",
+									"value": "20",
+									"description": "Items per page (default: 20)"
+								}
+							]
+						}
+					}
+				},
+				{
 					"name": "Create Supplier",
 					"event": [
 						{

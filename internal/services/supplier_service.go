@@ -14,7 +14,9 @@ type SupplierService interface {
 	DeleteSupplier(id uuid.UUID) error
 	ListSuppliers(limit, offset int) ([]models.Supplier, error)
 	SearchSuppliers(query string) ([]models.Supplier, error)
+	SearchSuppliersWithPagination(query string, limit, offset int) ([]models.Supplier, error)
 	CountSuppliers() (int64, error)
+	CountSearchSuppliers(query string) (int64, error)
 }
 
 type supplierService struct {
@@ -51,6 +53,14 @@ func (s *supplierService) SearchSuppliers(query string) ([]models.Supplier, erro
 	return s.supplierRepo.Search(query)
 }
 
+func (s *supplierService) SearchSuppliersWithPagination(query string, limit, offset int) ([]models.Supplier, error) {
+	return s.supplierRepo.SearchWithPagination(query, limit, offset)
+}
+
 func (s *supplierService) CountSuppliers() (int64, error) {
 	return s.supplierRepo.Count()
+}
+
+func (s *supplierService) CountSearchSuppliers(query string) (int64, error) {
+	return s.supplierRepo.CountSearch(query)
 }

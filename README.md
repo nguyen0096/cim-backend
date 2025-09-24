@@ -90,6 +90,14 @@ A Go-based backend system for order management and warehouse operations with Exc
 - `GET /api/v1/inventory/transactions` - List transactions
 - `GET /api/v1/inventory/low-stock` - Get low stock items
 
+### Suppliers
+- `GET /api/v1/suppliers` - List suppliers (paginated)
+- `GET /api/v1/suppliers/search` - Search suppliers by name, phone, or email (paginated)
+- `POST /api/v1/suppliers` - Create supplier
+- `GET /api/v1/suppliers/{id}` - Get supplier details
+- `PUT /api/v1/suppliers/{id}` - Update supplier
+- `DELETE /api/v1/suppliers/{id}` - Delete supplier
+
 ### Orders
 - `GET /api/v1/orders` - List orders
 - `POST /api/v1/orders` - Create order

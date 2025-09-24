@@ -109,6 +109,7 @@ func main() {
 	// Supplier routes
 	suppliers := api.Group("/suppliers", middleware.AuthMiddleware(firebaseAuth))
 	suppliers.GET("", supplierHandler.GetSuppliers)
+	suppliers.GET("/search", supplierHandler.SearchSuppliers)
 	suppliers.POST("", supplierHandler.CreateSupplier)
 	suppliers.GET("/:id", supplierHandler.GetSupplier)
 	suppliers.PUT("/:id", supplierHandler.UpdateSupplier)
