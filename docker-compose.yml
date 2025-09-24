@@ -37,6 +37,18 @@ services:
     volumes:
       - ./uploads:/app/uploads
 
+  pgweb:
+    image: sosedoff/pgweb:latest
+    container_name: import_export_pgweb
+    environment:
+      DATABASE_URL: postgres://postgres:password@postgres:5432/import_export_db?sslmode=disable
+    ports:
+      - "8081:8081"
+    depends_on:
+      - postgres
+    networks:
+      - import_export_network
+
 volumes:
   postgres_data:
 

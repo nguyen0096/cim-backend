@@ -45,6 +45,7 @@ A Go-based backend system for order management and warehouse operations with Exc
 3. **Access the application**
    - API: http://localhost:8080
    - Health check: http://localhost:8080/health
+   - Database Web UI: http://localhost:8081
 
 ### Local Development
 

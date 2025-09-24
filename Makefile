@@ -57,7 +57,7 @@ migrate-down:
 
 # Development setup
 dev-setup:
-	docker-compose up -d postgres
+	docker-compose up -d postgres pgweb
 	sleep 10
 	go run main.go
 
