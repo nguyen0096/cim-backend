@@ -9,13 +9,14 @@ import (
 
 // Supplier represents a supplier
 type Supplier struct {
-	ID           uuid.UUID `json:"id" gorm:"type:uuid;primary_key;default:gen_random_uuid()"`
-	Name         string    `json:"name" gorm:"not null"`
-	ContactEmail string    `json:"contact_email"`
-	ContactPhone string    `json:"contact_phone"`
-	Address      string    `json:"address"`
-	CreatedAt    time.Time `json:"created_at"`
-	UpdatedAt    time.Time `json:"updated_at"`
+	ID           uuid.UUID      `json:"id" gorm:"type:uuid;primary_key;default:gen_random_uuid()"`
+	Name         string         `json:"name" gorm:"not null"`
+	ContactEmail string         `json:"contact_email"`
+	ContactPhone string         `json:"contact_phone"`
+	Address      string         `json:"address"`
+	CreatedAt    time.Time      `json:"created_at"`
+	UpdatedAt    time.Time      `json:"updated_at"`
+	DeletedAt    gorm.DeletedAt `json:"deleted_at,omitempty" gorm:"index"`
 }
 
 // Product represents a product

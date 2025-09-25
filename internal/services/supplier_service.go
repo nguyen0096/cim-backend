@@ -12,6 +12,7 @@ type SupplierService interface {
 	GetSupplierByID(id uuid.UUID) (*models.Supplier, error)
 	UpdateSupplier(supplier *models.Supplier) error
 	DeleteSupplier(id uuid.UUID) error
+	RestoreSupplier(id uuid.UUID) error
 	ListSuppliers(limit, offset int) ([]models.Supplier, error)
 	SearchSuppliers(query string) ([]models.Supplier, error)
 	SearchSuppliersWithPagination(query string, limit, offset int) ([]models.Supplier, error)
@@ -43,6 +44,10 @@ func (s *supplierService) UpdateSupplier(supplier *models.Supplier) error {
 
 func (s *supplierService) DeleteSupplier(id uuid.UUID) error {
 	return s.supplierRepo.Delete(id)
+}
+
+func (s *supplierService) RestoreSupplier(id uuid.UUID) error {
+	return s.supplierRepo.Restore(id)
 }
 
 func (s *supplierService) ListSuppliers(limit, offset int) ([]models.Supplier, error) {

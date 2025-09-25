@@ -116,6 +116,7 @@ func main() {
 	suppliers.GET("/:id", supplierHandler.GetSupplier)
 	suppliers.PUT("/:id", supplierHandler.UpdateSupplier)
 	suppliers.DELETE("/:id", supplierHandler.DeleteSupplier)
+	suppliers.POST("/:id/restore", supplierHandler.RestoreSupplier)
 
 	// Purchase Order routes
 	purchaseOrders := api.Group("/purchase-orders", middleware.AuthMiddleware(firebaseAuth))

@@ -18,6 +18,7 @@ type SupplierService interface {
 	GetSupplierByID(id uuid.UUID) (*models.Supplier, error)
 	UpdateSupplier(supplier *models.Supplier) error
 	DeleteSupplier(id uuid.UUID) error
+	RestoreSupplier(id uuid.UUID) error
 	ListSuppliers(limit, offset int) ([]models.Supplier, error)
 	SearchSuppliers(query string) ([]models.Supplier, error)
 	SearchSuppliersWithPagination(query string, limit, offset int) ([]models.Supplier, error)
@@ -35,7 +36,7 @@ func (h *SupplierHandler) GetSuppliers(c echo.Context) error {
 	// Parse query parameters
 	limit, _ := strconv.Atoi(c.QueryParam("limit"))
 	page, _ := strconv.Atoi(c.QueryParam("page"))
-	
+
 	// Set defaults
 	if limit == 0 {
 		limit = 20
@@ -43,7 +44,7 @@ func (h *SupplierHandler) GetSuppliers(c echo.Context) error {
 	if page == 0 {
 		page = 1
 	}
-	
+
 	// Calculate offset
 	offset := (page - 1) * limit
 
@@ -82,7 +83,7 @@ func (h *SupplierHandler) SearchSuppliers(c echo.Context) error {
 	// Parse query parameters
 	limit, _ := strconv.Atoi(c.QueryParam("limit"))
 	page, _ := strconv.Atoi(c.QueryParam("page"))
-	
+
 	// Set defaults
 	if limit == 0 {
 		limit = 20
@@ -90,7 +91,7 @@ func (h *SupplierHandler) SearchSuppliers(c echo.Context) error {
 	if page == 0 {
 		page = 1
 	}
-	
+
 	// Calculate offset
 	offset := (page - 1) * limit
 
@@ -177,4 +178,17 @@ func (h *SupplierHandler) DeleteSupplier(c echo.Context) error {
 	}
 
 	return c.JSON(http.StatusOK, map[string]string{"message": "Supplier deleted successfully"})
+}
+
+func (h *SupplierHandler) RestoreSupplier(c echo.Context) error {
+	id, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid supplier ID"})
+	}
+
+	if err := h.supplierService.RestoreSupplier(id); err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to restore supplier"})
+	}
+
+	return c.JSON(http.StatusOK, map[string]string{"message": "Supplier restored successfully"})
 }
