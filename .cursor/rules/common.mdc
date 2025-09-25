@@ -4,12 +4,19 @@ globs:
 alwaysApply: true
 ---
 
-- Write clean code, follow SOLID principles in order to easy to reuse and write unit tests.
-- Code should be put in appropriate place.
-- If there're multiple possible solutions, MUST ask user which solution to be used then ONLY IMPLEMENT CHOSEN SOLUTION.
-- The task is not considered done unless user explicitly states. After done making changes, ask user to review and confirm the task is done. If the task is done, check if any documentation is needed.
-- Only make the change the user asked for, DO NOT make assumed changes. If there's any related change that need to be done, raise to the user and ask for action clearance.
-- Except for handlers that have swagger comment, all functions and structs MUST have godoc comment. Keep the comment short by only have a description. For example:
+DO NOT ADD, EDIT OR DELETE EXISTING RULES.
+
+Write clean code, follow SOLID principles in order to easy to reuse and write unit tests.
+
+Code should be put in appropriate place.
+
+If there're multiple possible solutions, MUST ask user which solution to be used then ONLY IMPLEMENT CHOSEN SOLUTION.
+
+The task is not considered done unless user explicitly states. After done making changes, ask user to review and confirm the task is done. If the task is done, check if any documentation is needed.
+
+Only make the change the user asked for, DO NOT make assumed changes. If there's any related change that need to be done, raise to the user and ask for action clearance.
+
+Except for handlers that have swagger comment, all functions and structs MUST have godoc comment. Keep the comment short by only have a description. For example:
 
 ```go
 // PurchaseOrder represents a purchase order
@@ -51,4 +58,10 @@ Test description MUST be written in this format: `should <expected_behavior> whe
 
 ### Rule Feedback
 
-After each task is done
+MUST ALWAYS evaluate the correctness of the applied rules after task completion. Then propose up to 3 additional rules that would improve future performance. Each rule must be:
+
+- Short (one sentence at most)
+- Specific (clear and unambiguous)
+- Actionable (directly usable without interpretation)
+
+DO NOT ADD, EDIT OR DELETE EXISTING RULES.

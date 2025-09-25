@@ -77,6 +77,10 @@ generate-token:
 test-api:
 	./test-api.sh
 
+# Seed database with mock data
+seed-db:
+	go run cmd/util/*.go seed
+
 # Help
 help:
 	@echo "Available commands:"
@@ -97,6 +101,7 @@ help:
 	@echo "  docs           - Generate API documentation"
 	@echo "  generate-token - Generate JWT token for testing"
 	@echo "  test-api       - Test API with sample data"
+	@echo "  seed-db        - Seed database with mock data"
 
 generate:
 	go generate ./...

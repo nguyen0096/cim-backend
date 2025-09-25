@@ -22,3 +22,8 @@ func GetUserEmailFromContext(ctx context.Context) (string, error) {
 
 	return userEmail, nil
 }
+
+// WithUserEmail adds user email to the context
+func WithUserEmail(ctx context.Context, email string) context.Context {
+	return context.WithValue(ctx, AuthContextKeyUserEmail, email)
+}
