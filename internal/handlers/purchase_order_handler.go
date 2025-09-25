@@ -73,6 +73,18 @@ func (h *PurchaseOrderHandler) GetPurchaseOrders(c echo.Context) error {
 	return c.JSON(http.StatusOK, response)
 }
 
+// CreatePurchaseOrder godoc
+// @Summary Create a new purchase order
+// @Description Create a new purchase order with the provided details
+// @Tags purchase-orders
+// @Accept json
+// @Produce json
+// @Param purchase_order body models.PurchaseOrder true "Purchase order data"
+// @Success 201 {object} models.PurchaseOrder "Successfully created purchase order"
+// @Failure 400 {object} map[string]string "Invalid request body"
+// @Failure 500 {object} map[string]string "Failed to create purchase order"
+// @Router /api/purchase-orders [post]
+// @Security BearerAuth
 func (h *PurchaseOrderHandler) CreatePurchaseOrder(c echo.Context) error {
 	var purchaseOrder models.PurchaseOrder
 	if err := c.Bind(&purchaseOrder); err != nil {

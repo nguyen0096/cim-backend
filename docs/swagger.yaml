@@ -2,6 +2,60 @@ basePath: /api/v1
 definitions:
   models.Product:
     type: object
+  models.PurchaseOrder:
+    properties:
+      created_at:
+        type: string
+      created_by:
+        type: string
+      id:
+        type: string
+      items:
+        items:
+          $ref: '#/definitions/models.PurchaseOrderItem'
+        type: array
+      notes:
+        type: string
+      order_number:
+        type: string
+      status:
+        type: string
+      supplier:
+        $ref: '#/definitions/models.Supplier'
+      supplier_id:
+        type: string
+      total_amount:
+        type: number
+      updated_at:
+        type: string
+    type: object
+  models.PurchaseOrderItem:
+    properties:
+      created_at:
+        type: string
+      id:
+        type: string
+      product:
+        $ref: '#/definitions/models.Product'
+      product_id:
+        type: string
+      purchase_order:
+        $ref: '#/definitions/models.PurchaseOrder'
+      purchase_order_id:
+        type: string
+      quantity:
+        type: integer
+      received_quantity:
+        type: integer
+      total_price:
+        type: number
+      unit_price:
+        type: number
+      updated_at:
+        type: string
+    type: object
+  models.Supplier:
+    type: object
 host: localhost:8080
 info:
   contact:
@@ -17,6 +71,42 @@ info:
   title: Import Export Backend API
   version: "1.0"
 paths:
+  /api/purchase-orders:
+    post:
+      consumes:
+      - application/json
+      description: Create a new purchase order with the provided details
+      parameters:
+      - description: Purchase order data
+        in: body
+        name: purchase_order
+        required: true
+        schema:
+          $ref: '#/definitions/models.PurchaseOrder'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Successfully created purchase order
+          schema:
+            $ref: '#/definitions/models.PurchaseOrder'
+        "400":
+          description: Invalid request body
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Failed to create purchase order
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Create a new purchase order
+      tags:
+      - purchase-orders
   /products:
     get:
       consumes:

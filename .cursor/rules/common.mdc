@@ -7,6 +7,8 @@ alwaysApply: true
 - Write clean code, follow SOLID principles in order to easy to reuse and write unit tests.
 - Code should be put in appropriate place.
 - If there're multiple possible solutions, MUST ask user which solution to be used then ONLY IMPLEMENT CHOSEN SOLUTION.
+- The task is not considered done unless user explicitly states. After done making changes, ask user to review and confirm the task is done. If the task is done, check if any documentation is needed.
+- Only make the change the user asked for, DO NOT make assumed changes. If there's any related change that need to be done, raise to the user and ask for action clearance.
 
 ### Repository structure
 

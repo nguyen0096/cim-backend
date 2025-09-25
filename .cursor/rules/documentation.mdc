@@ -1,0 +1,25 @@
+---
+description: Instructions for updating documents
+globs:
+alwaysApply: false
+---
+
+### Postman collection
+
+MUST update Postman collection when there's any change related to API Contract.
+
+- If endpoint is private (that requires auth token), set Authorization header to `Bearer {{auth_token}}` for request.
+- URL must be prefixed with `{{base_url}}`
+- Include example request body for POST/PUT requests.
+- Include all query parameters with descriptions.
+- Set proper headers (Authorization, Content-Type).
+
+### Swagger
+
+- MUST update swagger comments and regenerate swagger docs when there's any change related to API Contract.
+- To regenerate swagger docs, run `make docs`
+
+## DB Schema
+
+- MUST update file `docs/db.diagram` when there's any change related to model.
+- `docs/db.diagram` content is dbdiagram.io format diagram.

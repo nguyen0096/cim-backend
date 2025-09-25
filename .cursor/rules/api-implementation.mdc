@@ -28,14 +28,4 @@ MUST write unit test. Refer to "Writing unit tests" rules
 
 ### Documentation
 
-If any change is made that can change API contract, must update documentation which are placed in `docs` directory
-
-1. Update Postman collection: add/update request with proper configuration
-   - If endpoint is private (that requires auth token), set Authorization header to `Bearer {{auth_token}}` for request.
-   - URL must be prefixed with `{{base_url}}`
-   - Include example request body for POST/PUT requests.
-   - Include all query parameters with descriptions.
-   - Set proper headers (Authorization, Content-Type).
-2. Update swagger docs:
-   - Update swagger comments according to API change.
-   - Run `make docs` to update swagger
+Documentation MUST be updated accordingly.

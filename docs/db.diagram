@@ -1,0 +1,107 @@
+// Database Schema for Import-Export Backend
+// Use with https://dbdiagram.io/
+
+Table suppliers {
+  id uuid [primary key, default: `gen_random_uuid()`]
+  name varchar [not null]
+  contact_email varchar
+  contact_phone varchar
+  address text
+  created_at timestamp [default: `now()`]
+  updated_at timestamp [default: `now()`]
+  deleted_at timestamp [null]
+}
+
+Table products {
+  id uuid [primary key, default: `gen_random_uuid()`]
+  name varchar [not null]
+  description text
+  sku varchar [unique]
+  supplier_id uuid [ref: > suppliers.id]
+  unit_price decimal(10,2)
+  status varchar [default: 'active', note: 'active, inactive, discontinued']
+  created_at timestamp [default: `now()`]
+  updated_at timestamp [default: `now()`]
+  deleted_at timestamp [null]
+}
+
+Table inventories {
+  id uuid [primary key, default: `gen_random_uuid()`]
+  product_id uuid [unique, not null, ref: - products.id]
+  quantity int [default: 0]
+  reorder_level int [default: 0]
+  location varchar
+  last_updated timestamp
+  created_at timestamp [default: `now()`]
+  updated_at timestamp [default: `now()`]
+}
+
+Table purchase_orders {
+  id uuid [primary key, default: `gen_random_uuid()`]
+  order_number varchar [unique, not null]
+  supplier_id uuid [ref: > suppliers.id]
+  status varchar [default: 'pending', note: 'pending, approved, received, cancelled']
+  total_amount decimal(10,2)
+  notes text
+  created_by varchar
+  created_at timestamp [default: `now()`]
+  updated_at timestamp [default: `now()`]
+}
+
+Table purchase_order_items {
+  id uuid [primary key, default: `gen_random_uuid()`]
+  purchase_order_id uuid [ref: > purchase_orders.id]
+  product_id uuid [ref: > products.id]
+  quantity int [not null]
+  unit_price decimal(10,2)
+  total_price decimal(10,2)
+  received_quantity int [default: 0]
+  created_at timestamp [default: `now()`]
+  updated_at timestamp [default: `now()`]
+}
+
+Table orders {
+  id uuid [primary key, default: `gen_random_uuid()`]
+  order_number varchar [unique, not null]
+  customer_name varchar
+  customer_email varchar
+  status varchar [default: 'pending', note: 'pending, processing, completed, cancelled']
+  total_amount decimal(10,2)
+  notes text
+  created_by varchar
+  created_at timestamp [default: `now()`]
+  updated_at timestamp [default: `now()`]
+}
+
+Table order_items {
+  id uuid [primary key, default: `gen_random_uuid()`]
+  order_id uuid [ref: > orders.id]
+  product_id uuid [ref: > products.id]
+  quantity int [not null]
+  unit_price decimal(10,2)
+  total_price decimal(10,2)
+  created_at timestamp [default: `now()`]
+  updated_at timestamp [default: `now()`]
+}
+
+Table inventory_transactions {
+  id uuid [primary key, default: `gen_random_uuid()`]
+  product_id uuid [ref: > products.id]
+  transaction_type varchar [not null, note: 'purchase, sale, adjustment, return']
+  quantity int [not null]
+  reference_id uuid
+  reference_type varchar
+  notes text
+  created_by varchar
+  created_at timestamp [default: `now()`]
+}
+
+// Relationships Notes:
+// - One supplier can have many products
+// - Each product has one inventory record (one-to-one)
+// - One supplier can have many purchase orders
+// - One purchase order can have many items
+// - Each purchase order item references one product
+// - One order can have many order items
+// - Each order item references one product
+// - Inventory transactions track all product movements

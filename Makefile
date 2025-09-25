@@ -1,4 +1,4 @@
-.PHONY: build run test clean docker-build docker-run docker-stop migrate-up migrate-down
+.PHONY: build run test clean docker-build docker-run docker-stop migrate-up migrate-down docs
 
 # Build the application
 build:
