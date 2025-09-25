@@ -3,7 +3,9 @@ package handlers
 import (
 	"import-export-backend/internal/models"
 	"net/http"
+	"regexp"
 	"strconv"
+	"strings"
 
 	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
@@ -30,6 +32,29 @@ func NewSupplierHandler(supplierService SupplierService) *SupplierHandler {
 	return &SupplierHandler{
 		supplierService: supplierService,
 	}
+}
+
+// validateEmail validates email format
+func validateEmail(email string) bool {
+	if email == "" {
+		return true // Email is optional
+	}
+
+	emailRegex := regexp.MustCompile(`^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$`)
+	return emailRegex.MatchString(email)
+}
+
+// validatePhone validates phone number format
+func validatePhone(phone string) bool {
+	if phone == "" {
+		return true // Phone is optional
+	}
+
+	// Remove all non-digit characters for validation
+	cleanPhone := regexp.MustCompile(`\D`).ReplaceAllString(phone, "")
+
+	// Check if phone has 9-15 digits (international format)
+	return len(cleanPhone) >= 9 && len(cleanPhone) <= 15
 }
 
 func (h *SupplierHandler) GetSuppliers(c echo.Context) error {
@@ -131,6 +156,21 @@ func (h *SupplierHandler) CreateSupplier(c echo.Context) error {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid request body"})
 	}
 
+	// Validate required fields
+	if strings.TrimSpace(supplier.Name) == "" {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Supplier name is required"})
+	}
+
+	// Validate email format
+	if !validateEmail(supplier.ContactEmail) {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid email format"})
+	}
+
+	// Validate phone format
+	if !validatePhone(supplier.ContactPhone) {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid phone number format"})
+	}
+
 	if err := h.supplierService.CreateSupplier(&supplier); err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to create supplier"})
 	}
@@ -161,6 +201,21 @@ func (h *SupplierHandler) UpdateSupplier(c echo.Context) error {
 	var supplier models.Supplier
 	if err := c.Bind(&supplier); err != nil {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid request body"})
+	}
+
+	// Validate required fields
+	if strings.TrimSpace(supplier.Name) == "" {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Supplier name is required"})
+	}
+
+	// Validate email format
+	if !validateEmail(supplier.ContactEmail) {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid email format"})
+	}
+
+	// Validate phone format
+	if !validatePhone(supplier.ContactPhone) {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid phone number format"})
 	}
 
 	supplier.ID = id
