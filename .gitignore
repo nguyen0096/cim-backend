@@ -33,3 +33,7 @@ firebase-service-account.json
 # Editor/IDE
 # .idea/
 # .vscode/
+
+
+# MacOS
+.DS_Store

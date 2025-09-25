@@ -1,0 +1,18 @@
+---
+description:
+globs:
+alwaysApply: true
+---
+
+- Write clean code, follow SOLID principles in order to easy to reuse and write unit tests.
+- Code should be put in appropriate place.
+
+### Repository structure
+
+`internal/`
+
+- `handlers/` HTTP request handlers
+- `services/` Business logic layer
+- `repository/` Data access layer
+- `models/` Data models
+  - Each model must reside in a single file to avoid conflicts.

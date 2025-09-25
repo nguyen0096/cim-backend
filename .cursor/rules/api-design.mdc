@@ -1,0 +1,41 @@
+---
+description: API Design Standards
+alwaysApply: false
+---
+
+Follow Restful API design related to:
+
+- API path
+- Response status code. Example: `401 Unauthorized` is used for missing or invalid authentication and `403 Forbidden` is used when insufficient permissions.
+
+List/Search API requirements:
+
+- Request must support these query params:
+
+  - Pagination params:
+    - `page`: Query parameter (default: 1, minimum: 1)
+    - `limit`: Query parameter (default: 20, minimum: 1, maximum: 100)
+  - Seach params:
+    - `q`: Search string.
+    - `sort`: Sort field (optional)
+    - `order`: Sort direction (asc/desc, default: asc)
+
+- Response body format:
+
+```json
+{
+  "data": [], // Not nullable, if there's no record found, this will be empty string
+  "total": number, // Total number of records matching the query
+  "page": number, // Current page number (1-based)
+  "limit": number, //  Number of items per page
+  "totalPages": number // Total number of pages available
+}
+```
+
+Error reponse must be consistent, using following format:
+
+```json
+{
+  "error": "Error message describing what went wrong"
+}
+```

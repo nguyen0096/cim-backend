@@ -1,0 +1,37 @@
+---
+description: API Implementation Workflow
+alwaysApply: false
+---
+
+### Repository
+
+- Implement efficient database queries with LIMIT/OFFSET
+- Use database indexes for search fields
+- Consider caching for frequently accessed data
+- Optimize queries to avoid N+1 problems
+- Set reasonable default limits
+
+### Handler
+
+All protected endpoints must use `middleware.AuthMiddleware(firebaseAuth)`.
+
+If new API is not specified whether authentication is required (whether API is protected or not), ask the user.
+
+All request path and query params must be validated:
+
+- Check pagination bounds (page >= 1, limit 1-100)
+- Validate search query length and content
+- Ensure proper error messages for validation failures
+- Handle edge cases (empty results, invalid parameters)
+
+### Documentation
+
+If any change is made that can change API contract, must update documentation which are placed in `docs` directory
+
+1. Update Postman collection: add/update request with proper configuration
+   - If endpoint is private (that requires auth token), set Authorization header to `Bearer {{auth_token}}` for request.
+   - URL must be prefixed with `{{base_url}}`
+   - Include example request body for POST/PUT requests.
+   - Include all query parameters with descriptions.
+   - Set proper headers (Authorization, Content-Type).
+2. Run `make docs` to update swagger
