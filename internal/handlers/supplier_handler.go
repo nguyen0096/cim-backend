@@ -36,8 +36,8 @@ func (h *SupplierHandler) GetSuppliers(c echo.Context) error {
 	// Parse query parameters
 	limit, _ := strconv.Atoi(c.QueryParam("limit"))
 	page, _ := strconv.Atoi(c.QueryParam("page"))
-	sortBy := c.QueryParam("sort_by")
-	sortOrder := c.QueryParam("sort_order")
+	sortBy := c.QueryParam("sort")
+	sortOrder := c.QueryParam("order")
 
 	// Set defaults
 	if limit == 0 {
@@ -85,8 +85,8 @@ func (h *SupplierHandler) SearchSuppliers(c echo.Context) error {
 	// Parse query parameters
 	limit, _ := strconv.Atoi(c.QueryParam("limit"))
 	page, _ := strconv.Atoi(c.QueryParam("page"))
-	sortBy := c.QueryParam("sort_by")
-	sortOrder := c.QueryParam("sort_order")
+	sortBy := c.QueryParam("sort")
+	sortOrder := c.QueryParam("order")
 
 	// Set defaults
 	if limit == 0 {
