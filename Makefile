@@ -10,7 +10,7 @@ run:
 
 # Run tests
 test:
-	go test -v ./...
+	go test -v ./internal/...
 
 # Run tests with coverage
 test-coverage:

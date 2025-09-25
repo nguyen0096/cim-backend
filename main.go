@@ -117,13 +117,13 @@ func main() {
 
 	// Purchase Order routes
 	purchaseOrders := api.Group("/purchase-orders", middleware.AuthMiddleware(firebaseAuth))
-	purchaseOrders.GET("", purchaseOrderHandler.GetPurchaseOrders)
 	purchaseOrders.POST("", purchaseOrderHandler.CreatePurchaseOrder)
-	purchaseOrders.GET("/:id", purchaseOrderHandler.GetPurchaseOrder)
-	purchaseOrders.PUT("/:id", purchaseOrderHandler.UpdatePurchaseOrder)
-	purchaseOrders.PUT("/:id/status", purchaseOrderHandler.UpdatePurchaseOrderStatus)
-	purchaseOrders.DELETE("/:id", purchaseOrderHandler.DeletePurchaseOrder)
-	purchaseOrders.POST("/:id/receive", purchaseOrderHandler.ReceivePurchaseOrder)
+	// purchaseOrders.GET("", purchaseOrderHandler.GetPurchaseOrders)
+	// purchaseOrders.GET("/:id", purchaseOrderHandler.GetPurchaseOrder)
+	// purchaseOrders.PUT("/:id", purchaseOrderHandler.UpdatePurchaseOrder)
+	// purchaseOrders.PUT("/:id/status", purchaseOrderHandler.UpdatePurchaseOrderStatus)
+	// purchaseOrders.DELETE("/:id", purchaseOrderHandler.DeletePurchaseOrder)
+	// purchaseOrders.POST("/:id/receive", purchaseOrderHandler.ReceivePurchaseOrder)
 
 	// Order routes
 	orders := api.Group("/orders", middleware.AuthMiddleware(firebaseAuth))
