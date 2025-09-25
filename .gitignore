@@ -37,3 +37,9 @@ firebase-service-account.json
 
 # MacOS
 .DS_Store
+
+# Mocks
+*mocks
+
+# Go debug binary
+__debug_bin*

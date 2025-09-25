@@ -33,6 +33,20 @@ func NewProductHandler(productService ProductService) *ProductHandler {
 	}
 }
 
+// GetProducts godoc
+// @Summary Get all products
+// @Description Get a list of all products with pagination and sorting
+// @Tags products
+// @Accept json
+// @Produce json
+// @Param limit query int false "Number of items per page" default(20)
+// @Param page query int false "Page number" default(1)
+// @Param sort query string false "Sort field" default("created_at")
+// @Param order query string false "Sort order (asc/desc)" default("desc")
+// @Success 200 {object} map[string]interface{} "List of products with pagination info"
+// @Failure 500 {object} map[string]interface{} "Internal server error"
+// @Security BearerAuth
+// @Router /products [get]
 func (h *ProductHandler) GetProducts(c echo.Context) error {
 	// Parse query parameters
 	limit, _ := strconv.Atoi(c.QueryParam("limit"))
@@ -126,6 +140,18 @@ func (h *ProductHandler) SearchProducts(c echo.Context) error {
 	return c.JSON(http.StatusOK, response)
 }
 
+// CreateProduct godoc
+// @Summary Create a new product
+// @Description Create a new product with the provided information
+// @Tags products
+// @Accept json
+// @Produce json
+// @Param product body models.Product true "Product information"
+// @Success 201 {object} models.Product "Created product"
+// @Failure 400 {object} map[string]interface{} "Bad request"
+// @Failure 500 {object} map[string]interface{} "Internal server error"
+// @Security BearerAuth
+// @Router /products [post]
 func (h *ProductHandler) CreateProduct(c echo.Context) error {
 	var product models.Product
 	if err := c.Bind(&product); err != nil {

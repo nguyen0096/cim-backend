@@ -13,6 +13,7 @@ type PurchaseOrderHandler struct {
 	purchaseOrderService PurchaseOrderService
 }
 
+//go:generate mockery --name=PurchaseOrderService --structname=PurchaseOrderService --output=./servicemocks --outpkg=servicemocks
 type PurchaseOrderService interface {
 	CreatePurchaseOrder(purchaseOrder *models.PurchaseOrder) error
 	GetPurchaseOrderByID(id uuid.UUID) (*models.PurchaseOrder, error)
@@ -34,7 +35,7 @@ func (h *PurchaseOrderHandler) GetPurchaseOrders(c echo.Context) error {
 	// Parse query parameters
 	limit, _ := strconv.Atoi(c.QueryParam("limit"))
 	page, _ := strconv.Atoi(c.QueryParam("page"))
-	
+
 	// Set defaults
 	if limit == 0 {
 		limit = 20
@@ -42,7 +43,7 @@ func (h *PurchaseOrderHandler) GetPurchaseOrders(c echo.Context) error {
 	if page == 0 {
 		page = 1
 	}
-	
+
 	// Calculate offset
 	offset := (page - 1) * limit
 

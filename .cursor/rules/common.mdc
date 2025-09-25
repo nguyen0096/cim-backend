@@ -12,7 +12,17 @@ alwaysApply: true
 `internal/`
 
 - `handlers/` HTTP request handlers
+  - Service interface is placed in according handler file.
 - `services/` Business logic layer
 - `repository/` Data access layer
 - `models/` Data models
   - Each model must reside in a single file to avoid conflicts.
+
+### Function and Variable naming
+
+Test function naming:
+
+- If target test function is public: `Test<function_name>`. For example: `TestCreatePurchaseOrder`
+- If target test function is private: `Test_<function_name>`. For example: `Test_createPurchaseOrder`
+
+Test description MUST be written in this format: `should <expected_behavior> when <specific_case_condition>`

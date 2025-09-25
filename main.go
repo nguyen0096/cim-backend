@@ -10,10 +10,33 @@ import (
 	"import-export-backend/internal/services"
 	"log"
 
+	_ "import-export-backend/docs" // Import generated docs
+
 	"github.com/labstack/echo/v4"
 	echoMiddleware "github.com/labstack/echo/v4/middleware"
 	"github.com/sirupsen/logrus"
+	echoSwagger "github.com/swaggo/echo-swagger"
 )
+
+// @title Import Export Backend API
+// @version 1.0
+// @description This is an Import Export Backend API server for managing products, inventory, suppliers, and orders.
+// @termsOfService http://swagger.io/terms/
+
+// @contact.name API Support
+// @contact.url http://www.swagger.io/support
+// @contact.email support@swagger.io
+
+// @license.name Apache 2.0
+// @license.url http://www.apache.org/licenses/LICENSE-2.0.html
+
+// @host localhost:8080
+// @BasePath /api/v1
+
+// @securityDefinitions.apikey BearerAuth
+// @in header
+// @name Authorization
+// @description Type "Bearer" followed by a space and JWT token.
 
 func main() {
 	// Load configuration
@@ -75,6 +98,9 @@ func main() {
 		AllowMethods: []string{echo.GET, echo.POST, echo.PUT, echo.DELETE, echo.OPTIONS},
 		AllowHeaders: []string{echo.HeaderOrigin, echo.HeaderContentType, echo.HeaderAccept, echo.HeaderAuthorization},
 	}))
+
+	// Swagger documentation
+	e.GET("/swagger/*", echoSwagger.WrapHandler)
 
 	// Health check
 	e.GET("/health", func(c echo.Context) error {

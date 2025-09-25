@@ -1,4 +1,103 @@
+basePath: /api/v1
+definitions:
+  models.Product:
+    type: object
+host: localhost:8080
 info:
-  contact: {}
-paths: {}
+  contact:
+    email: support@swagger.io
+    name: API Support
+    url: http://www.swagger.io/support
+  description: This is an Import Export Backend API server for managing products,
+    inventory, suppliers, and orders.
+  license:
+    name: Apache 2.0
+    url: http://www.apache.org/licenses/LICENSE-2.0.html
+  termsOfService: http://swagger.io/terms/
+  title: Import Export Backend API
+  version: "1.0"
+paths:
+  /products:
+    get:
+      consumes:
+      - application/json
+      description: Get a list of all products with pagination and sorting
+      parameters:
+      - default: 20
+        description: Number of items per page
+        in: query
+        name: limit
+        type: integer
+      - default: 1
+        description: Page number
+        in: query
+        name: page
+        type: integer
+      - default: '"created_at"'
+        description: Sort field
+        in: query
+        name: sort
+        type: string
+      - default: '"desc"'
+        description: Sort order (asc/desc)
+        in: query
+        name: order
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: List of products with pagination info
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Get all products
+      tags:
+      - products
+    post:
+      consumes:
+      - application/json
+      description: Create a new product with the provided information
+      parameters:
+      - description: Product information
+        in: body
+        name: product
+        required: true
+        schema:
+          $ref: '#/definitions/models.Product'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created product
+          schema:
+            $ref: '#/definitions/models.Product'
+        "400":
+          description: Bad request
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Create a new product
+      tags:
+      - products
+securityDefinitions:
+  BearerAuth:
+    description: Type "Bearer" followed by a space and JWT token.
+    in: header
+    name: Authorization
+    type: apiKey
 swagger: "2.0"

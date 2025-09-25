@@ -24,6 +24,8 @@ All request path and query params must be validated:
 - Ensure proper error messages for validation failures
 - Handle edge cases (empty results, invalid parameters)
 
+MUST write unit test. Refer to "Writing unit tests" rules
+
 ### Documentation
 
 If any change is made that can change API contract, must update documentation which are placed in `docs` directory
