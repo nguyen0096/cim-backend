@@ -40,7 +40,6 @@ func TestCreatePurchaseOrder(t *testing.T) {
 
 		requestBody := models.PurchaseOrder{
 			OrderNumber: "PO-001",
-			SupplierID:  uuid.New(),
 			Status:      "pending",
 			TotalAmount: 1500.50,
 			Notes:       "Test purchase order with all fields",
@@ -77,7 +76,6 @@ func TestCreatePurchaseOrder(t *testing.T) {
 		// Assertions
 		responseOrder := assertSuccessResponse(t, rec, http.StatusCreated)
 		assert.Equal(t, requestBody.OrderNumber, responseOrder.OrderNumber)
-		assert.Equal(t, requestBody.SupplierID, responseOrder.SupplierID)
 		assert.Equal(t, requestBody.TotalAmount, responseOrder.TotalAmount)
 		assert.Equal(t, requestBody.Notes, responseOrder.Notes)
 		assert.Equal(t, requestBody.CreatedBy, responseOrder.CreatedBy)
@@ -89,7 +87,6 @@ func TestCreatePurchaseOrder(t *testing.T) {
 
 		requestBody := models.PurchaseOrder{
 			OrderNumber: "PO-003",
-			SupplierID:  uuid.New(),
 		}
 
 		// Setup mock
@@ -115,7 +112,6 @@ func TestCreatePurchaseOrder(t *testing.T) {
 
 		requestBody := map[string]interface{}{
 			"order_number": "PO-004",
-			"supplier_id":  uuid.New().String(),
 			"total_amount": "invalid_amount", // Invalid type
 		}
 

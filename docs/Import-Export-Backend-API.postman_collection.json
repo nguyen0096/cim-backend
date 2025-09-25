@@ -648,7 +648,7 @@
 						],
 						"body": {
 							"mode": "raw",
-							"raw": "{\n  \"order_number\": \"PO-2024-001\",\n  \"supplier_id\": \"{{supplier_id}}\",\n  \"status\": \"pending\",\n  \"total_amount\": 1999.98,\n  \"notes\": \"Initial purchase order\"\n}"
+							"raw": "{\n  \"order_number\": \"PO-2024-001\",\n  \"status\": \"pending\",\n  \"total_amount\": 1999.98,\n  \"notes\": \"Initial purchase order\"\n}"
 						},
 						"url": {
 							"raw": "{{base_url}}/api/v1/purchase-orders",

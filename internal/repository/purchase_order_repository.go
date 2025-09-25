@@ -14,7 +14,6 @@ type PurchaseOrderRepository interface {
 	Delete(id uuid.UUID) error
 	List(limit, offset int) ([]models.PurchaseOrder, error)
 	GetByStatus(status string) ([]models.PurchaseOrder, error)
-	GetBySupplier(supplierID uuid.UUID) ([]models.PurchaseOrder, error)
 	Count() (int64, error)
 }
 
@@ -32,7 +31,7 @@ func (r *purchaseOrderRepository) Create(purchaseOrder *models.PurchaseOrder) er
 
 func (r *purchaseOrderRepository) GetByID(id uuid.UUID) (*models.PurchaseOrder, error) {
 	var purchaseOrder models.PurchaseOrder
-	err := r.db.Preload("Supplier").Preload("Items").Preload("Items.Product").First(&purchaseOrder, "id = ?", id).Error
+	err := r.db.Preload("Items").Preload("Items.Product").First(&purchaseOrder, "id = ?", id).Error
 	if err != nil {
 		return nil, err
 	}
@@ -49,19 +48,13 @@ func (r *purchaseOrderRepository) Delete(id uuid.UUID) error {
 
 func (r *purchaseOrderRepository) List(limit, offset int) ([]models.PurchaseOrder, error) {
 	var purchaseOrders []models.PurchaseOrder
-	err := r.db.Preload("Supplier").Preload("Items").Preload("Items.Product").Limit(limit).Offset(offset).Find(&purchaseOrders).Error
+	err := r.db.Preload("Items").Preload("Items.Product").Limit(limit).Offset(offset).Find(&purchaseOrders).Error
 	return purchaseOrders, err
 }
 
 func (r *purchaseOrderRepository) GetByStatus(status string) ([]models.PurchaseOrder, error) {
 	var purchaseOrders []models.PurchaseOrder
-	err := r.db.Preload("Supplier").Preload("Items").Preload("Items.Product").Where("status = ?", status).Find(&purchaseOrders).Error
-	return purchaseOrders, err
-}
-
-func (r *purchaseOrderRepository) GetBySupplier(supplierID uuid.UUID) ([]models.PurchaseOrder, error) {
-	var purchaseOrders []models.PurchaseOrder
-	err := r.db.Preload("Supplier").Preload("Items").Preload("Items.Product").Where("supplier_id = ?", supplierID).Find(&purchaseOrders).Error
+	err := r.db.Preload("Items").Preload("Items.Product").Where("status = ?", status).Find(&purchaseOrders).Error
 	return purchaseOrders, err
 }
 

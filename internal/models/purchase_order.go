@@ -10,8 +10,6 @@ import (
 type PurchaseOrder struct {
 	ID          uuid.UUID           `json:"id" gorm:"type:uuid;primary_key;default:gen_random_uuid()"`
 	OrderNumber string              `json:"order_number" gorm:"unique;not null"`
-	SupplierID  uuid.UUID           `json:"supplier_id"`
-	Supplier    Supplier            `json:"supplier" gorm:"foreignKey:SupplierID"`
 	Status      string              `json:"status" gorm:"default:pending;check:status IN ('pending', 'approved', 'received', 'cancelled')"`
 	TotalAmount float64             `json:"total_amount" gorm:"type:decimal(10,2)"`
 	Notes       string              `json:"notes"`

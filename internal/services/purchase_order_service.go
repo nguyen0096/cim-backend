@@ -14,7 +14,6 @@ type PurchaseOrderService interface {
 	DeletePurchaseOrder(id uuid.UUID) error
 	ListPurchaseOrders(limit, offset int) ([]models.PurchaseOrder, error)
 	GetPurchaseOrdersByStatus(status string) ([]models.PurchaseOrder, error)
-	GetPurchaseOrdersBySupplier(supplierID uuid.UUID) ([]models.PurchaseOrder, error)
 	UpdatePurchaseOrderStatus(id uuid.UUID, status string) error
 	ReceivePurchaseOrder(id uuid.UUID, userID string) error
 	CountPurchaseOrders() (int64, error)
@@ -54,10 +53,6 @@ func (s *purchaseOrderService) ListPurchaseOrders(limit, offset int) ([]models.P
 
 func (s *purchaseOrderService) GetPurchaseOrdersByStatus(status string) ([]models.PurchaseOrder, error) {
 	return s.purchaseOrderRepo.GetByStatus(status)
-}
-
-func (s *purchaseOrderService) GetPurchaseOrdersBySupplier(supplierID uuid.UUID) ([]models.PurchaseOrder, error) {
-	return s.purchaseOrderRepo.GetBySupplier(supplierID)
 }
 
 func (s *purchaseOrderService) UpdatePurchaseOrderStatus(id uuid.UUID, status string) error {

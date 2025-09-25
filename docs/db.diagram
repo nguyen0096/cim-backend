@@ -39,7 +39,6 @@ Table inventories {
 Table purchase_orders {
   id uuid [primary key, default: `gen_random_uuid()`]
   order_number varchar [unique, not null]
-  supplier_id uuid [ref: > suppliers.id]
   status varchar [default: 'pending', note: 'pending, approved, received, cancelled']
   total_amount decimal(10,2)
   notes text

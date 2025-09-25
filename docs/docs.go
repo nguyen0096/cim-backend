@@ -230,12 +230,6 @@ const docTemplate = `{
                 "status": {
                     "type": "string"
                 },
-                "supplier": {
-                    "$ref": "#/definitions/models.Supplier"
-                },
-                "supplier_id": {
-                    "type": "string"
-                },
                 "total_amount": {
                     "type": "number"
                 },
