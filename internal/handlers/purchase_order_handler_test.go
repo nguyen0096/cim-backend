@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"import-export-backend/internal/handlers/servicemocks"
+	"import-export-backend/internal/middleware"
 	"import-export-backend/internal/models"
 	"import-export-backend/internal/repository/repositorymocks"
 
@@ -31,7 +32,11 @@ func TestCreatePurchaseOrder(t *testing.T) {
 		handler := NewPurchaseOrderHandler(mockRepo, mockService)
 		e := echo.New()
 
+		// Set up the custom error handler to properly handle validation errors
+		e.HTTPErrorHandler = middleware.CustomErrorHandler
+
 		return &testSetup{
+			mockRepo:    mockRepo,
 			mockService: mockService,
 			handler:     handler,
 			echo:        e,
@@ -48,22 +53,20 @@ func TestCreatePurchaseOrder(t *testing.T) {
 			Notes:       "Test purchase order with all fields",
 			Items: []models.PurchaseOrderItem{
 				{
-					ProductID:  uuid.New(),
+					ProductID:  &[]uuid.UUID{uuid.New()}[0],
 					Quantity:   5,
-					UnitPrice:  100.50,
 					TotalPrice: 502.50,
 				},
 				{
-					ProductID:  uuid.New(),
+					ProductID:  &[]uuid.UUID{uuid.New()}[0],
 					Quantity:   10,
-					UnitPrice:  250.25,
 					TotalPrice: 2502.50,
 				},
 			},
 		}
 
-		// Setup mock
-		setup.mockService.On("CreatePurchaseOrder", mock.AnythingOfType("*models.PurchaseOrder")).Return(nil)
+		// Setup mock - handler calls repository directly
+		setup.mockRepo.On("Create", mock.Anything, mock.AnythingOfType("*models.PurchaseOrder")).Return(nil)
 
 		// Create request and context
 		req, err := createRequest(http.MethodPost, "/purchase-orders", requestBody)
@@ -73,7 +76,9 @@ func TestCreatePurchaseOrder(t *testing.T) {
 
 		// Execute
 		err = setup.handler.CreatePurchaseOrder(c)
-		require.NoError(t, err)
+		if err != nil {
+			setup.echo.HTTPErrorHandler(err, c)
+		}
 
 		// Assertions
 		responseOrder := assertSuccessResponse(t, rec, http.StatusCreated)
@@ -83,16 +88,23 @@ func TestCreatePurchaseOrder(t *testing.T) {
 		assert.Equal(t, requestBody.CreatedBy, responseOrder.CreatedBy)
 	})
 
-	t.Run("should return internal server error when service returns error", func(t *testing.T) {
+	t.Run("should return internal server error when repository returns error", func(t *testing.T) {
 		// Setup
 		setup := setupTest(t)
 
 		requestBody := models.PurchaseOrder{
 			OrderNumber: "PO-003",
+			Items: []models.PurchaseOrderItem{
+				{
+					ProductID:  &[]uuid.UUID{uuid.New()}[0],
+					Quantity:   5,
+					TotalPrice: 502.50,
+				},
+			},
 		}
 
-		// Setup mock
-		setup.mockService.On("CreatePurchaseOrder", mock.AnythingOfType("*models.PurchaseOrder")).Return(errors.New("database error"))
+		// Setup mock - repository returns error
+		setup.mockRepo.On("Create", mock.Anything, mock.AnythingOfType("*models.PurchaseOrder")).Return(errors.New("database error"))
 
 		// Create request and context
 		req, err := createRequest(http.MethodPost, "/purchase-orders", requestBody)
@@ -102,7 +114,9 @@ func TestCreatePurchaseOrder(t *testing.T) {
 
 		// Execute
 		err = setup.handler.CreatePurchaseOrder(c)
-		require.NoError(t, err)
+		if err != nil {
+			setup.echo.HTTPErrorHandler(err, c)
+		}
 
 		// Assertions
 		assertErrorResponse(t, rec, http.StatusInternalServerError, "Failed to create purchase order")
@@ -125,7 +139,9 @@ func TestCreatePurchaseOrder(t *testing.T) {
 
 		// Execute
 		err = setup.handler.CreatePurchaseOrder(c)
-		require.NoError(t, err)
+		if err != nil {
+			setup.echo.HTTPErrorHandler(err, c)
+		}
 
 		// Assertions
 		assertErrorResponse(t, rec, http.StatusBadRequest, "Invalid request body")
@@ -145,18 +161,17 @@ func TestCreatePurchaseOrder(t *testing.T) {
 
 		// Execute
 		err = setup.handler.CreatePurchaseOrder(c)
-		require.NoError(t, err)
+		if err != nil {
+			setup.echo.HTTPErrorHandler(err, c)
+		}
 
 		// Assertions
 		assertErrorResponse(t, rec, http.StatusBadRequest, "Invalid request body")
 	})
 
-	t.Run("should return success when request body is empty", func(t *testing.T) {
+	t.Run("should return bad request when request body is empty", func(t *testing.T) {
 		// Setup
 		setup := setupTest(t)
-
-		// Setup mock - empty body should still create with default values
-		setup.mockService.On("CreatePurchaseOrder", mock.AnythingOfType("*models.PurchaseOrder")).Return(nil)
 
 		// Create request and context
 		req, err := createRequest(http.MethodPost, "/purchase-orders", "")
@@ -166,9 +181,170 @@ func TestCreatePurchaseOrder(t *testing.T) {
 
 		// Execute
 		err = setup.handler.CreatePurchaseOrder(c)
+		if err != nil {
+			setup.echo.HTTPErrorHandler(err, c)
+		}
+
+		// Assertions - should fail validation due to missing required items
+		assertValidationErrorResponse(t, rec)
+	})
+
+	t.Run("should return bad request when items field is missing", func(t *testing.T) {
+		// Setup
+		setup := setupTest(t)
+
+		requestBody := models.PurchaseOrder{
+			OrderNumber: "PO-005",
+			Status:      "pending",
+			TotalAmount: 1500.50,
+			Notes:       "Test purchase order without items",
+			// Items field is missing - should fail validation
+		}
+
+		// Create request and context
+		req, err := createRequest(http.MethodPost, "/purchase-orders", requestBody)
 		require.NoError(t, err)
+		rec := httptest.NewRecorder()
+		c := setup.echo.NewContext(req, rec)
+
+		// Execute
+		err = setup.handler.CreatePurchaseOrder(c)
+		if err != nil {
+			setup.echo.HTTPErrorHandler(err, c)
+		}
 
 		// Assertions
-		assertSuccessResponse(t, rec, http.StatusCreated)
+		assertValidationErrorResponse(t, rec)
+	})
+
+	t.Run("should return bad request when items field is empty array", func(t *testing.T) {
+		// Setup
+		setup := setupTest(t)
+
+		requestBody := models.PurchaseOrder{
+			OrderNumber: "PO-006",
+			Status:      "pending",
+			TotalAmount: 1500.50,
+			Notes:       "Test purchase order with empty items",
+			Items:       []models.PurchaseOrderItem{}, // Empty array - should fail validation (min=1)
+		}
+
+		// Create request and context
+		req, err := createRequest(http.MethodPost, "/purchase-orders", requestBody)
+		require.NoError(t, err)
+		rec := httptest.NewRecorder()
+		c := setup.echo.NewContext(req, rec)
+
+		// Execute
+		err = setup.handler.CreatePurchaseOrder(c)
+		if err != nil {
+			setup.echo.HTTPErrorHandler(err, c)
+		}
+
+		// Assertions
+		assertValidationErrorResponse(t, rec)
+	})
+
+	t.Run("should return bad request when item product_id is missing", func(t *testing.T) {
+		// Setup
+		setup := setupTest(t)
+
+		requestBody := models.PurchaseOrder{
+			OrderNumber: "PO-007",
+			Status:      "pending",
+			TotalAmount: 1500.50,
+			Notes:       "Test purchase order with invalid item",
+			Items: []models.PurchaseOrderItem{
+				{
+					// ProductID is nil - should fail validation (required)
+					ProductID:  nil,
+					Quantity:   5,
+					TotalPrice: 502.50,
+				},
+			},
+		}
+
+		// Create request and context
+		req, err := createRequest(http.MethodPost, "/purchase-orders", requestBody)
+		require.NoError(t, err)
+		rec := httptest.NewRecorder()
+		c := setup.echo.NewContext(req, rec)
+
+		// Execute
+		err = setup.handler.CreatePurchaseOrder(c)
+		if err != nil {
+			setup.echo.HTTPErrorHandler(err, c)
+		}
+
+		// Assertions - should fail validation due to required ProductID
+		assertValidationErrorResponse(t, rec)
+	})
+
+	t.Run("should return bad request when item quantity is zero", func(t *testing.T) {
+		// Setup
+		setup := setupTest(t)
+
+		requestBody := models.PurchaseOrder{
+			OrderNumber: "PO-008",
+			Status:      "pending",
+			TotalAmount: 1500.50,
+			Notes:       "Test purchase order with invalid quantity",
+			Items: []models.PurchaseOrderItem{
+				{
+					ProductID:  &[]uuid.UUID{uuid.New()}[0],
+					Quantity:   0, // Zero quantity - should fail validation (min=1)
+					TotalPrice: 502.50,
+				},
+			},
+		}
+
+		// Create request and context
+		req, err := createRequest(http.MethodPost, "/purchase-orders", requestBody)
+		require.NoError(t, err)
+		rec := httptest.NewRecorder()
+		c := setup.echo.NewContext(req, rec)
+
+		// Execute
+		err = setup.handler.CreatePurchaseOrder(c)
+		if err != nil {
+			setup.echo.HTTPErrorHandler(err, c)
+		}
+
+		// Assertions - this should fail validation due to min=1
+		assertValidationErrorResponse(t, rec)
+	})
+
+	t.Run("should return bad request when item quantity is negative", func(t *testing.T) {
+		// Setup
+		setup := setupTest(t)
+
+		requestBody := models.PurchaseOrder{
+			OrderNumber: "PO-009",
+			Status:      "pending",
+			TotalAmount: 1500.50,
+			Notes:       "Test purchase order with negative quantity",
+			Items: []models.PurchaseOrderItem{
+				{
+					ProductID:  &[]uuid.UUID{uuid.New()}[0],
+					Quantity:   -5, // Negative quantity - should fail validation (min=1)
+					TotalPrice: 502.50,
+				},
+			},
+		}
+
+		// Create request and context
+		req, err := createRequest(http.MethodPost, "/purchase-orders", requestBody)
+		require.NoError(t, err)
+		rec := httptest.NewRecorder()
+		c := setup.echo.NewContext(req, rec)
+
+		// Execute
+		err = setup.handler.CreatePurchaseOrder(c)
+		if err != nil {
+			setup.echo.HTTPErrorHandler(err, c)
+		}
+
+		// Assertions - this should fail validation due to min=1
+		assertValidationErrorResponse(t, rec)
 	})
 }

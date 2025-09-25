@@ -34,3 +34,5 @@ alwaysApply: false
 
   - Use a request body with all fields populated verify if data binding is working for all fields and handler returns correct HTTP status code.
   - Inner service returns error.
+
+- If handler uses validator to validate the request, MUST add sub test cases to cover validation requirements.

@@ -56,12 +56,13 @@ func (s *purchaseOrderService) GetPurchaseOrdersByStatus(status string) ([]model
 	return s.purchaseOrderRepo.GetByStatus(status)
 }
 
+// UpdatePurchaseOrderStatus updates the status of a purchase order
 func (s *purchaseOrderService) UpdatePurchaseOrderStatus(id uuid.UUID, status string) error {
 	purchaseOrder, err := s.purchaseOrderRepo.GetByID(id)
 	if err != nil {
 		return err
 	}
-	purchaseOrder.Status = status
+	purchaseOrder.Status = models.PurchaseOrderStatus(status)
 	return s.purchaseOrderRepo.Update(purchaseOrder)
 }
 
@@ -80,9 +81,9 @@ func (s *purchaseOrderService) ReceivePurchaseOrder(id uuid.UUID, userID string)
 	// Add inventory for each item
 	for _, item := range purchaseOrder.Items {
 		if err := s.inventoryService.AddInventory(
-			item.ProductID,
+			*item.ProductID,
 			item.Quantity,
-			purchaseOrder.ID,
+			*purchaseOrder.ID,
 			"purchase_order",
 			"Received from purchase order",
 			userID,

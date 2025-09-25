@@ -9,6 +9,23 @@ alwaysApply: true
 - If there're multiple possible solutions, MUST ask user which solution to be used then ONLY IMPLEMENT CHOSEN SOLUTION.
 - The task is not considered done unless user explicitly states. After done making changes, ask user to review and confirm the task is done. If the task is done, check if any documentation is needed.
 - Only make the change the user asked for, DO NOT make assumed changes. If there's any related change that need to be done, raise to the user and ask for action clearance.
+- Except for handlers that have swagger comment, all functions and structs MUST have godoc comment. Keep the comment short by only have a description. For example:
+
+```go
+// PurchaseOrder represents a purchase order
+type PurchaseOrder struct {}
+
+// UpdatePurchaseOrderStatus updates the status of a purchase order
+func (s *purchaseOrderService) UpdatePurchaseOrderStatus(id uuid.UUID, status string) error {}
+```
+
+### Error handling
+
+Error MUST be handled correctly.
+
+- Error must be wrapped, either using `AppError` struct or `fmt.Error` with `%w` directive.
+- For business error, use helpers in `error_helpers.go` to create according error. If there's no suitable error code, suggest a new error code and ask user to confirm.
+- By default for other errors that current point of logic is not aware of (caused in inner layer), wrap the error with `fmt.Error`. The format of error message will be: `fmt.Errorf("<MESSAGE>: %w", err)`. `MESSAGE` should describe what current function is trying to do.
 
 ### Repository structure
 
@@ -21,6 +38,8 @@ alwaysApply: true
 - `models/` Data models
   - Each model must reside in a single file to avoid conflicts.
 
+All methods of services and repositories MUST take `ctx context.Context` as first argument.
+
 ### Function and Variable naming
 
 Test function naming:
@@ -29,3 +48,7 @@ Test function naming:
 - If target test function is private: `Test_<function_name>`. For example: `Test_createPurchaseOrder`
 
 Test description MUST be written in this format: `should <expected_behavior> when <specific_case_condition>`
+
+### Rule Feedback
+
+After each task is done

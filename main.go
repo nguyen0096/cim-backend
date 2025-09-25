@@ -90,6 +90,9 @@ func main() {
 	// Initialize Echo
 	e := echo.New()
 
+	// Set custom error handler
+	e.HTTPErrorHandler = middleware.CustomErrorHandler
+
 	// Middleware
 	e.Use(echoMiddleware.Logger())
 	e.Use(echoMiddleware.Recover())

@@ -11,7 +11,7 @@ import (
 )
 
 type Base struct {
-	ID        uuid.UUID      `json:"id" gorm:"type:uuid;primary_key;default:gen_random_uuid()"`
+	ID        *uuid.UUID     `json:"id" gorm:"type:uuid;primary_key;default:gen_random_uuid()"`
 	CreatedBy string         `json:"created_by"`
 	CreatedAt time.Time      `json:"created_at"`
 	UpdatedAt time.Time      `json:"updated_at"`
@@ -138,15 +138,17 @@ func (i *Inventory) BeforeCreate(tx *gorm.DB) error {
 }
 
 func (po *PurchaseOrder) BeforeCreate(tx *gorm.DB) error {
-	if po.ID == uuid.Nil {
-		po.ID = uuid.New()
+	if po.ID == nil {
+		id := uuid.New()
+		po.ID = &id
 	}
 	return nil
 }
 
 func (poi *PurchaseOrderItem) BeforeCreate(tx *gorm.DB) error {
-	if poi.ID == uuid.Nil {
-		poi.ID = uuid.New()
+	if poi.ID == nil {
+		id := uuid.New()
+		poi.ID = &id
 	}
 	return nil
 }

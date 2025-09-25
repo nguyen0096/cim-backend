@@ -4,9 +4,11 @@ import (
 	"context"
 	"import-export-backend/internal/models"
 	"import-export-backend/internal/repository"
+	"import-export-backend/pkg"
 	"net/http"
 	"strconv"
 
+	"github.com/go-playground/validator/v10"
 	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
 )
@@ -95,11 +97,16 @@ func (h *PurchaseOrderHandler) GetPurchaseOrders(c echo.Context) error {
 func (h *PurchaseOrderHandler) CreatePurchaseOrder(c echo.Context) error {
 	var purchaseOrder models.PurchaseOrder
 	if err := c.Bind(&purchaseOrder); err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid request body"})
+		return pkg.ErrInvalidRequestBody(err)
+	}
+
+	validate := validator.New()
+	if err := validate.Struct(purchaseOrder); err != nil {
+		return pkg.ErrValidation("validation failed", err)
 	}
 
 	if err := h.purchaseOrderRepository.Create(c.Request().Context(), &purchaseOrder); err != nil {
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to create purchase order"})
+		return pkg.ErrInternal("Failed to create purchase order", err)
 	}
 
 	return c.JSON(http.StatusCreated, purchaseOrder)
@@ -130,7 +137,7 @@ func (h *PurchaseOrderHandler) UpdatePurchaseOrder(c echo.Context) error {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid request body"})
 	}
 
-	purchaseOrder.ID = id
+	purchaseOrder.ID = &id
 	if err := h.purchaseOrderRepository.Update(&purchaseOrder); err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to update purchase order"})
 	}

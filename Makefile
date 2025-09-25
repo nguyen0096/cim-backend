@@ -98,5 +98,5 @@ help:
 	@echo "  generate-token - Generate JWT token for testing"
 	@echo "  test-api       - Test API with sample data"
 
-mock:
+generate:
 	go generate ./...
