@@ -1,9 +1,10 @@
 package middleware
 
 import (
+	"context"
 	"fmt"
 	"import-export-backend/internal/auth"
-	"context"
+	"import-export-backend/pkg"
 	"net/http"
 	"strings"
 
@@ -33,9 +34,9 @@ func AuthMiddleware(firebaseAuth *auth.FirebaseAuthService) echo.MiddlewareFunc 
 			}
 
 			// Extract user information from Firebase token
-			c.Set("user_id", token.UID)
-			c.Set("user_email", token.Claims["email"])
-			
+			c.Set(pkg.AuthContextKeyUserID, token.UID)
+			c.Set(pkg.AuthContextKeyUserEmail, token.Claims["email"])
+
 			// Check for custom claims (role)
 			if role, ok := token.Claims["role"].(string); ok {
 				c.Set("user_role", role)

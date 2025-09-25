@@ -83,7 +83,7 @@ func main() {
 	supplierHandler := handlers.NewSupplierHandler(supplierService)
 	productHandler := handlers.NewProductHandler(productService)
 	inventoryHandler := handlers.NewInventoryHandler(inventoryService)
-	purchaseOrderHandler := handlers.NewPurchaseOrderHandler(purchaseOrderService)
+	purchaseOrderHandler := handlers.NewPurchaseOrderHandler(purchaseOrderRepo, purchaseOrderService)
 	orderHandler := handlers.NewOrderHandler(orderService)
 	excelHandler := handlers.NewExcelHandler(excelService)
 

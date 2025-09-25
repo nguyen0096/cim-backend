@@ -1,14 +1,16 @@
 package repository
 
 import (
+	"context"
 	"import-export-backend/internal/models"
 
 	"github.com/google/uuid"
 	"gorm.io/gorm"
 )
 
+//go:generate mockery --name=PurchaseOrderRepository --structname=PurchaseOrderRepository --output=./repositorymocks --outpkg=repositorymocks
 type PurchaseOrderRepository interface {
-	Create(purchaseOrder *models.PurchaseOrder) error
+	Create(ctx context.Context, purchaseOrder *models.PurchaseOrder) error
 	GetByID(id uuid.UUID) (*models.PurchaseOrder, error)
 	Update(purchaseOrder *models.PurchaseOrder) error
 	Delete(id uuid.UUID) error
@@ -25,8 +27,8 @@ func NewPurchaseOrderRepository(db *gorm.DB) PurchaseOrderRepository {
 	return &purchaseOrderRepository{db: db}
 }
 
-func (r *purchaseOrderRepository) Create(purchaseOrder *models.PurchaseOrder) error {
-	return r.db.Create(purchaseOrder).Error
+func (r *purchaseOrderRepository) Create(ctx context.Context, purchaseOrder *models.PurchaseOrder) error {
+	return r.db.WithContext(ctx).Create(purchaseOrder).Error
 }
 
 func (r *purchaseOrderRepository) GetByID(id uuid.UUID) (*models.PurchaseOrder, error) {

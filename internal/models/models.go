@@ -1,11 +1,36 @@
 package models
 
 import (
+	"fmt"
 	"time"
 
 	"github.com/google/uuid"
 	"gorm.io/gorm"
+
+	"import-export-backend/pkg"
 )
+
+type Base struct {
+	ID        uuid.UUID      `json:"id" gorm:"type:uuid;primary_key;default:gen_random_uuid()"`
+	CreatedBy string         `json:"created_by"`
+	CreatedAt time.Time      `json:"created_at"`
+	UpdatedAt time.Time      `json:"updated_at"`
+	DeletedAt gorm.DeletedAt `json:"deleted_at,omitempty" gorm:"index"`
+}
+
+func (b *Base) BeforeCreate(tx *gorm.DB) error {
+	// set CreatedBy to the user email
+	if tx.Statement.Context == nil {
+		return fmt.Errorf("context with user email is required to set CreatedBy")
+	}
+
+	userEmail, err := pkg.GetUserEmailFromContext(tx.Statement.Context)
+	if err != nil {
+		return err
+	}
+	b.CreatedBy = userEmail
+	return nil
+}
 
 // Supplier represents a supplier
 type Supplier struct {

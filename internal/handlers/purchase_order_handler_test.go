@@ -8,6 +8,7 @@ import (
 
 	"import-export-backend/internal/handlers/servicemocks"
 	"import-export-backend/internal/models"
+	"import-export-backend/internal/repository/repositorymocks"
 
 	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
@@ -18,14 +19,16 @@ import (
 
 func TestCreatePurchaseOrder(t *testing.T) {
 	type testSetup struct {
+		mockRepo    *repositorymocks.PurchaseOrderRepository
 		mockService *servicemocks.PurchaseOrderService
 		handler     *PurchaseOrderHandler
 		echo        *echo.Echo
 	}
 
 	setupTest := func(t *testing.T) *testSetup {
+		mockRepo := repositorymocks.NewPurchaseOrderRepository(t)
 		mockService := servicemocks.NewPurchaseOrderService(t)
-		handler := NewPurchaseOrderHandler(mockService)
+		handler := NewPurchaseOrderHandler(mockRepo, mockService)
 		e := echo.New()
 
 		return &testSetup{
@@ -43,7 +46,6 @@ func TestCreatePurchaseOrder(t *testing.T) {
 			Status:      "pending",
 			TotalAmount: 1500.50,
 			Notes:       "Test purchase order with all fields",
-			CreatedBy:   "user123",
 			Items: []models.PurchaseOrderItem{
 				{
 					ProductID:  uuid.New(),

@@ -1,6 +1,7 @@
 package services
 
 import (
+	"context"
 	"import-export-backend/internal/models"
 	"import-export-backend/internal/repository"
 
@@ -8,7 +9,7 @@ import (
 )
 
 type PurchaseOrderService interface {
-	CreatePurchaseOrder(purchaseOrder *models.PurchaseOrder) error
+	CreatePurchaseOrder(ctx context.Context, purchaseOrder *models.PurchaseOrder) error
 	GetPurchaseOrderByID(id uuid.UUID) (*models.PurchaseOrder, error)
 	UpdatePurchaseOrder(purchaseOrder *models.PurchaseOrder) error
 	DeletePurchaseOrder(id uuid.UUID) error
@@ -31,8 +32,8 @@ func NewPurchaseOrderService(purchaseOrderRepo repository.PurchaseOrderRepositor
 	}
 }
 
-func (s *purchaseOrderService) CreatePurchaseOrder(purchaseOrder *models.PurchaseOrder) error {
-	return s.purchaseOrderRepo.Create(purchaseOrder)
+func (s *purchaseOrderService) CreatePurchaseOrder(ctx context.Context, purchaseOrder *models.PurchaseOrder) error {
+	return s.purchaseOrderRepo.Create(ctx, purchaseOrder)
 }
 
 func (s *purchaseOrderService) GetPurchaseOrderByID(id uuid.UUID) (*models.PurchaseOrder, error) {

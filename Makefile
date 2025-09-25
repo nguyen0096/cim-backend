@@ -1,5 +1,5 @@
-.PHONY: build run test clean docker-build docker-run docker-stop migrate-up migrate-down docs
-
+.PHONY: build run test clean docker-build docker-run docker-stop migrate-up migrate-down docs mock
+ 
 # Build the application
 build:
 	go build -o bin/main .
@@ -97,3 +97,6 @@ help:
 	@echo "  docs           - Generate API documentation"
 	@echo "  generate-token - Generate JWT token for testing"
 	@echo "  test-api       - Test API with sample data"
+
+mock:
+	go generate ./...

@@ -1,7 +1,9 @@
 package handlers
 
 import (
+	"context"
 	"import-export-backend/internal/models"
+	"import-export-backend/internal/repository"
 	"net/http"
 	"strconv"
 
@@ -10,12 +12,13 @@ import (
 )
 
 type PurchaseOrderHandler struct {
-	purchaseOrderService PurchaseOrderService
+	purchaseOrderRepository repository.PurchaseOrderRepository
+	purchaseOrderService    PurchaseOrderService
 }
 
 //go:generate mockery --name=PurchaseOrderService --structname=PurchaseOrderService --output=./servicemocks --outpkg=servicemocks
 type PurchaseOrderService interface {
-	CreatePurchaseOrder(purchaseOrder *models.PurchaseOrder) error
+	CreatePurchaseOrder(ctx context.Context, purchaseOrder *models.PurchaseOrder) error
 	GetPurchaseOrderByID(id uuid.UUID) (*models.PurchaseOrder, error)
 	UpdatePurchaseOrder(purchaseOrder *models.PurchaseOrder) error
 	DeletePurchaseOrder(id uuid.UUID) error
@@ -25,9 +28,13 @@ type PurchaseOrderService interface {
 	CountPurchaseOrders() (int64, error)
 }
 
-func NewPurchaseOrderHandler(purchaseOrderService PurchaseOrderService) *PurchaseOrderHandler {
+func NewPurchaseOrderHandler(
+	purchaseOrderRepo repository.PurchaseOrderRepository,
+	purchaseOrderService PurchaseOrderService,
+) *PurchaseOrderHandler {
 	return &PurchaseOrderHandler{
-		purchaseOrderService: purchaseOrderService,
+		purchaseOrderRepository: purchaseOrderRepo,
+		purchaseOrderService:    purchaseOrderService,
 	}
 }
 
@@ -48,12 +55,12 @@ func (h *PurchaseOrderHandler) GetPurchaseOrders(c echo.Context) error {
 	offset := (page - 1) * limit
 
 	// Get purchase orders and total count
-	purchaseOrders, err := h.purchaseOrderService.ListPurchaseOrders(limit, offset)
+	purchaseOrders, err := h.purchaseOrderRepository.List(limit, offset)
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to fetch purchase orders"})
 	}
 
-	total, err := h.purchaseOrderService.CountPurchaseOrders()
+	total, err := h.purchaseOrderRepository.Count()
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to count purchase orders"})
 	}
@@ -91,7 +98,7 @@ func (h *PurchaseOrderHandler) CreatePurchaseOrder(c echo.Context) error {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid request body"})
 	}
 
-	if err := h.purchaseOrderService.CreatePurchaseOrder(&purchaseOrder); err != nil {
+	if err := h.purchaseOrderRepository.Create(c.Request().Context(), &purchaseOrder); err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to create purchase order"})
 	}
 
@@ -104,7 +111,7 @@ func (h *PurchaseOrderHandler) GetPurchaseOrder(c echo.Context) error {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid purchase order ID"})
 	}
 
-	purchaseOrder, err := h.purchaseOrderService.GetPurchaseOrderByID(id)
+	purchaseOrder, err := h.purchaseOrderRepository.GetByID(id)
 	if err != nil {
 		return c.JSON(http.StatusNotFound, map[string]string{"error": "Purchase order not found"})
 	}
@@ -124,7 +131,7 @@ func (h *PurchaseOrderHandler) UpdatePurchaseOrder(c echo.Context) error {
 	}
 
 	purchaseOrder.ID = id
-	if err := h.purchaseOrderService.UpdatePurchaseOrder(&purchaseOrder); err != nil {
+	if err := h.purchaseOrderRepository.Update(&purchaseOrder); err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to update purchase order"})
 	}
 
