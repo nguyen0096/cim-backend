@@ -21,7 +21,9 @@ type ProductService interface {
 	ListProducts(limit, offset int) ([]models.Product, error)
 	GetProductsBySupplier(supplierID uuid.UUID) ([]models.Product, error)
 	SearchProducts(query string) ([]models.Product, error)
+	SearchProductsWithPagination(query string, limit, offset int) ([]models.Product, error)
 	CountProducts() (int64, error)
+	CountSearchProducts(query string) (int64, error)
 }
 
 func NewProductHandler(productService ProductService) *ProductHandler {
@@ -55,6 +57,53 @@ func (h *ProductHandler) GetProducts(c echo.Context) error {
 	total, err := h.productService.CountProducts()
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to count products"})
+	}
+
+	// Calculate total pages
+	totalPages := int((total + int64(limit) - 1) / int64(limit))
+
+	// Create response
+	response := map[string]interface{}{
+		"data":       products,
+		"total":      total,
+		"page":       page,
+		"limit":      limit,
+		"totalPages": totalPages,
+	}
+
+	return c.JSON(http.StatusOK, response)
+}
+
+func (h *ProductHandler) SearchProducts(c echo.Context) error {
+	query := c.QueryParam("q")
+	if query == "" {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Query parameter 'q' is required"})
+	}
+
+	// Parse query parameters
+	limit, _ := strconv.Atoi(c.QueryParam("limit"))
+	page, _ := strconv.Atoi(c.QueryParam("page"))
+	
+	// Set defaults
+	if limit == 0 {
+		limit = 20
+	}
+	if page == 0 {
+		page = 1
+	}
+	
+	// Calculate offset
+	offset := (page - 1) * limit
+
+	// Get products and total count
+	products, err := h.productService.SearchProductsWithPagination(query, limit, offset)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to search products"})
+	}
+
+	total, err := h.productService.CountSearchProducts(query)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to count search results"})
 	}
 
 	// Calculate total pages

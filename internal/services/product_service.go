@@ -15,7 +15,9 @@ type ProductService interface {
 	ListProducts(limit, offset int) ([]models.Product, error)
 	GetProductsBySupplier(supplierID uuid.UUID) ([]models.Product, error)
 	SearchProducts(query string) ([]models.Product, error)
+	SearchProductsWithPagination(query string, limit, offset int) ([]models.Product, error)
 	CountProducts() (int64, error)
+	CountSearchProducts(query string) (int64, error)
 }
 
 type productService struct {
@@ -69,6 +71,14 @@ func (s *productService) SearchProducts(query string) ([]models.Product, error) 
 	return s.productRepo.Search(query)
 }
 
+func (s *productService) SearchProductsWithPagination(query string, limit, offset int) ([]models.Product, error) {
+	return s.productRepo.SearchWithPagination(query, limit, offset)
+}
+
 func (s *productService) CountProducts() (int64, error) {
 	return s.productRepo.Count()
+}
+
+func (s *productService) CountSearchProducts(query string) (int64, error) {
+	return s.productRepo.CountSearch(query)
 }

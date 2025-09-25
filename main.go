@@ -92,6 +92,7 @@ func main() {
 	// Product routes
 	products := api.Group("/products", middleware.AuthMiddleware(firebaseAuth))
 	products.GET("", productHandler.GetProducts)
+	products.GET("/search", productHandler.SearchProducts)
 	products.POST("", productHandler.CreateProduct)
 	products.GET("/:id", productHandler.GetProduct)
 	products.PUT("/:id", productHandler.UpdateProduct)
