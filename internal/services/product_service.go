@@ -12,6 +12,7 @@ type ProductService interface {
 	GetProductByID(id uuid.UUID) (*models.Product, error)
 	UpdateProduct(product *models.Product) error
 	DeleteProduct(id uuid.UUID) error
+	RestoreProduct(id uuid.UUID) error
 	ListProducts(limit, offset int) ([]models.Product, error)
 	GetProductsBySupplier(supplierID uuid.UUID) ([]models.Product, error)
 	SearchProducts(query string) ([]models.Product, error)
@@ -57,6 +58,10 @@ func (s *productService) UpdateProduct(product *models.Product) error {
 
 func (s *productService) DeleteProduct(id uuid.UUID) error {
 	return s.productRepo.Delete(id)
+}
+
+func (s *productService) RestoreProduct(id uuid.UUID) error {
+	return s.productRepo.Restore(id)
 }
 
 func (s *productService) ListProducts(limit, offset int) ([]models.Product, error) {

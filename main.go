@@ -97,6 +97,7 @@ func main() {
 	products.GET("/:id", productHandler.GetProduct)
 	products.PUT("/:id", productHandler.UpdateProduct)
 	products.DELETE("/:id", productHandler.DeleteProduct)
+	products.POST("/:id/restore", productHandler.RestoreProduct)
 	products.GET("/:id/inventory", productHandler.GetProductInventory)
 
 	// Inventory routes

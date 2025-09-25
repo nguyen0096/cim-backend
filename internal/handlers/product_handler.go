@@ -18,6 +18,7 @@ type ProductService interface {
 	GetProductByID(id uuid.UUID) (*models.Product, error)
 	UpdateProduct(product *models.Product) error
 	DeleteProduct(id uuid.UUID) error
+	RestoreProduct(id uuid.UUID) error
 	ListProducts(limit, offset int) ([]models.Product, error)
 	GetProductsBySupplier(supplierID uuid.UUID) ([]models.Product, error)
 	SearchProducts(query string) ([]models.Product, error)
@@ -36,7 +37,7 @@ func (h *ProductHandler) GetProducts(c echo.Context) error {
 	// Parse query parameters
 	limit, _ := strconv.Atoi(c.QueryParam("limit"))
 	page, _ := strconv.Atoi(c.QueryParam("page"))
-	
+
 	// Set defaults
 	if limit == 0 {
 		limit = 20
@@ -44,7 +45,7 @@ func (h *ProductHandler) GetProducts(c echo.Context) error {
 	if page == 0 {
 		page = 1
 	}
-	
+
 	// Calculate offset
 	offset := (page - 1) * limit
 
@@ -83,7 +84,7 @@ func (h *ProductHandler) SearchProducts(c echo.Context) error {
 	// Parse query parameters
 	limit, _ := strconv.Atoi(c.QueryParam("limit"))
 	page, _ := strconv.Atoi(c.QueryParam("page"))
-	
+
 	// Set defaults
 	if limit == 0 {
 		limit = 20
@@ -91,7 +92,7 @@ func (h *ProductHandler) SearchProducts(c echo.Context) error {
 	if page == 0 {
 		page = 1
 	}
-	
+
 	// Calculate offset
 	offset := (page - 1) * limit
 
@@ -178,6 +179,19 @@ func (h *ProductHandler) DeleteProduct(c echo.Context) error {
 	}
 
 	return c.JSON(http.StatusOK, map[string]string{"message": "Product deleted successfully"})
+}
+
+func (h *ProductHandler) RestoreProduct(c echo.Context) error {
+	id, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid product ID"})
+	}
+
+	if err := h.productService.RestoreProduct(id); err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to restore product"})
+	}
+
+	return c.JSON(http.StatusOK, map[string]string{"message": "Product restored successfully"})
 }
 
 func (h *ProductHandler) GetProductInventory(c echo.Context) error {

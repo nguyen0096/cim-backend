@@ -12,6 +12,7 @@ type ProductRepository interface {
 	GetByID(id uuid.UUID) (*models.Product, error)
 	Update(product *models.Product) error
 	Delete(id uuid.UUID) error
+	Restore(id uuid.UUID) error
 	List(limit, offset int) ([]models.Product, error)
 	GetBySupplier(supplierID uuid.UUID) ([]models.Product, error)
 	Search(query string) ([]models.Product, error)
@@ -47,6 +48,10 @@ func (r *productRepository) Update(product *models.Product) error {
 
 func (r *productRepository) Delete(id uuid.UUID) error {
 	return r.db.Delete(&models.Product{}, "id = ?", id).Error
+}
+
+func (r *productRepository) Restore(id uuid.UUID) error {
+	return r.db.Unscoped().Model(&models.Product{}).Where("id = ?", id).Update("deleted_at", nil).Error
 }
 
 func (r *productRepository) List(limit, offset int) ([]models.Product, error) {

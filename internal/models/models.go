@@ -20,17 +20,18 @@ type Supplier struct {
 
 // Product represents a product
 type Product struct {
-	ID          uuid.UUID  `json:"id" gorm:"type:uuid;primary_key;default:gen_random_uuid()"`
-	Name        string     `json:"name" gorm:"not null"`
-	Description string     `json:"description"`
-	SKU         string     `json:"sku" gorm:"unique"`
-	SupplierID  uuid.UUID  `json:"supplier_id"`
-	Supplier    Supplier   `json:"supplier" gorm:"foreignKey:SupplierID"`
-	UnitPrice   float64    `json:"unit_price" gorm:"type:decimal(10,2)"`
-	Status      string     `json:"status" gorm:"default:active;check:status IN ('active', 'inactive', 'discontinued')"`
-	CreatedAt   time.Time  `json:"created_at"`
-	UpdatedAt   time.Time  `json:"updated_at"`
-	Inventory   *Inventory `json:"inventory,omitempty" gorm:"foreignKey:ProductID"`
+	ID          uuid.UUID      `json:"id" gorm:"type:uuid;primary_key;default:gen_random_uuid()"`
+	Name        string         `json:"name" gorm:"not null"`
+	Description string         `json:"description"`
+	SKU         string         `json:"sku" gorm:"unique"`
+	SupplierID  uuid.UUID      `json:"supplier_id"`
+	Supplier    Supplier       `json:"supplier" gorm:"foreignKey:SupplierID"`
+	UnitPrice   float64        `json:"unit_price" gorm:"type:decimal(10,2)"`
+	Status      string         `json:"status" gorm:"default:active;check:status IN ('active', 'inactive', 'discontinued')"`
+	CreatedAt   time.Time      `json:"created_at"`
+	UpdatedAt   time.Time      `json:"updated_at"`
+	DeletedAt   gorm.DeletedAt `json:"deleted_at,omitempty" gorm:"index"`
+	Inventory   *Inventory     `json:"inventory,omitempty" gorm:"foreignKey:ProductID"`
 }
 
 // Inventory represents inventory for a product
@@ -48,17 +49,17 @@ type Inventory struct {
 
 // PurchaseOrder represents a purchase order
 type PurchaseOrder struct {
-	ID           uuid.UUID             `json:"id" gorm:"type:uuid;primary_key;default:gen_random_uuid()"`
-	OrderNumber  string                `json:"order_number" gorm:"unique;not null"`
-	SupplierID   uuid.UUID             `json:"supplier_id"`
-	Supplier     Supplier              `json:"supplier" gorm:"foreignKey:SupplierID"`
-	Status       string                `json:"status" gorm:"default:pending;check:status IN ('pending', 'approved', 'received', 'cancelled')"`
-	TotalAmount  float64               `json:"total_amount" gorm:"type:decimal(10,2)"`
-	Notes        string                `json:"notes"`
-	CreatedBy    string                `json:"created_by"`
-	CreatedAt    time.Time             `json:"created_at"`
-	UpdatedAt    time.Time             `json:"updated_at"`
-	Items        []PurchaseOrderItem   `json:"items" gorm:"foreignKey:PurchaseOrderID"`
+	ID          uuid.UUID           `json:"id" gorm:"type:uuid;primary_key;default:gen_random_uuid()"`
+	OrderNumber string              `json:"order_number" gorm:"unique;not null"`
+	SupplierID  uuid.UUID           `json:"supplier_id"`
+	Supplier    Supplier            `json:"supplier" gorm:"foreignKey:SupplierID"`
+	Status      string              `json:"status" gorm:"default:pending;check:status IN ('pending', 'approved', 'received', 'cancelled')"`
+	TotalAmount float64             `json:"total_amount" gorm:"type:decimal(10,2)"`
+	Notes       string              `json:"notes"`
+	CreatedBy   string              `json:"created_by"`
+	CreatedAt   time.Time           `json:"created_at"`
+	UpdatedAt   time.Time           `json:"updated_at"`
+	Items       []PurchaseOrderItem `json:"items" gorm:"foreignKey:PurchaseOrderID"`
 }
 
 // PurchaseOrderItem represents an item in a purchase order
@@ -78,45 +79,45 @@ type PurchaseOrderItem struct {
 
 // InventoryTransaction represents an inventory transaction
 type InventoryTransaction struct {
-	ID             uuid.UUID `json:"id" gorm:"type:uuid;primary_key;default:gen_random_uuid()"`
-	ProductID      uuid.UUID `json:"product_id"`
-	Product        Product   `json:"product" gorm:"foreignKey:ProductID"`
-	TransactionType string   `json:"transaction_type" gorm:"not null;check:transaction_type IN ('purchase', 'sale', 'adjustment', 'return')"`
-	Quantity       int       `json:"quantity" gorm:"not null"`
-	ReferenceID    uuid.UUID `json:"reference_id"`
-	ReferenceType  string    `json:"reference_type"`
-	Notes          string    `json:"notes"`
-	CreatedBy      string    `json:"created_by"`
-	CreatedAt      time.Time `json:"created_at"`
+	ID              uuid.UUID `json:"id" gorm:"type:uuid;primary_key;default:gen_random_uuid()"`
+	ProductID       uuid.UUID `json:"product_id"`
+	Product         Product   `json:"product" gorm:"foreignKey:ProductID"`
+	TransactionType string    `json:"transaction_type" gorm:"not null;check:transaction_type IN ('purchase', 'sale', 'adjustment', 'return')"`
+	Quantity        int       `json:"quantity" gorm:"not null"`
+	ReferenceID     uuid.UUID `json:"reference_id"`
+	ReferenceType   string    `json:"reference_type"`
+	Notes           string    `json:"notes"`
+	CreatedBy       string    `json:"created_by"`
+	CreatedAt       time.Time `json:"created_at"`
 }
 
 // Order represents a customer order
 type Order struct {
-	ID           uuid.UUID  `json:"id" gorm:"type:uuid;primary_key;default:gen_random_uuid()"`
-	OrderNumber  string     `json:"order_number" gorm:"unique;not null"`
-	CustomerName string     `json:"customer_name"`
-	CustomerEmail string    `json:"customer_email"`
-	Status       string     `json:"status" gorm:"default:pending;check:status IN ('pending', 'processing', 'completed', 'cancelled')"`
-	TotalAmount  float64    `json:"total_amount" gorm:"type:decimal(10,2)"`
-	Notes        string     `json:"notes"`
-	CreatedBy    string     `json:"created_by"`
-	CreatedAt    time.Time  `json:"created_at"`
-	UpdatedAt    time.Time  `json:"updated_at"`
-	Items        []OrderItem `json:"items" gorm:"foreignKey:OrderID"`
+	ID            uuid.UUID   `json:"id" gorm:"type:uuid;primary_key;default:gen_random_uuid()"`
+	OrderNumber   string      `json:"order_number" gorm:"unique;not null"`
+	CustomerName  string      `json:"customer_name"`
+	CustomerEmail string      `json:"customer_email"`
+	Status        string      `json:"status" gorm:"default:pending;check:status IN ('pending', 'processing', 'completed', 'cancelled')"`
+	TotalAmount   float64     `json:"total_amount" gorm:"type:decimal(10,2)"`
+	Notes         string      `json:"notes"`
+	CreatedBy     string      `json:"created_by"`
+	CreatedAt     time.Time   `json:"created_at"`
+	UpdatedAt     time.Time   `json:"updated_at"`
+	Items         []OrderItem `json:"items" gorm:"foreignKey:OrderID"`
 }
 
 // OrderItem represents an item in an order
 type OrderItem struct {
-	ID        uuid.UUID `json:"id" gorm:"type:uuid;primary_key;default:gen_random_uuid()"`
-	OrderID   uuid.UUID `json:"order_id"`
-	Order     Order     `json:"order" gorm:"foreignKey:OrderID"`
-	ProductID uuid.UUID `json:"product_id"`
-	Product   Product   `json:"product" gorm:"foreignKey:ProductID"`
-	Quantity  int       `json:"quantity" gorm:"not null"`
-	UnitPrice float64   `json:"unit_price" gorm:"type:decimal(10,2)"`
-	TotalPrice float64  `json:"total_price" gorm:"type:decimal(10,2)"`
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
+	ID         uuid.UUID `json:"id" gorm:"type:uuid;primary_key;default:gen_random_uuid()"`
+	OrderID    uuid.UUID `json:"order_id"`
+	Order      Order     `json:"order" gorm:"foreignKey:OrderID"`
+	ProductID  uuid.UUID `json:"product_id"`
+	Product    Product   `json:"product" gorm:"foreignKey:ProductID"`
+	Quantity   int       `json:"quantity" gorm:"not null"`
+	UnitPrice  float64   `json:"unit_price" gorm:"type:decimal(10,2)"`
+	TotalPrice float64   `json:"total_price" gorm:"type:decimal(10,2)"`
+	CreatedAt  time.Time `json:"created_at"`
+	UpdatedAt  time.Time `json:"updated_at"`
 }
 
 func (s *Supplier) BeforeCreate(tx *gorm.DB) error {
