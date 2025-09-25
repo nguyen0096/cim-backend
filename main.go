@@ -99,8 +99,12 @@ func main() {
 		AllowHeaders: []string{echo.HeaderOrigin, echo.HeaderContentType, echo.HeaderAccept, echo.HeaderAuthorization},
 	}))
 
-	// Swagger documentation
-	e.GET("/swagger/*", echoSwagger.WrapHandler)
+	// Swagger documentation with persistent authorization
+	e.GET("/swagger/*", echoSwagger.EchoWrapHandler(func(c *echoSwagger.Config) {
+		c.DeepLinking = true
+		c.InstanceName = "swagger"
+		c.PersistAuthorization = true
+	}))
 
 	// Health check
 	e.GET("/health", func(c echo.Context) error {

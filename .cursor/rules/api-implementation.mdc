@@ -36,4 +36,6 @@ If any change is made that can change API contract, must update documentation wh
    - Include example request body for POST/PUT requests.
    - Include all query parameters with descriptions.
    - Set proper headers (Authorization, Content-Type).
-2. Run `make docs` to update swagger
+2. Update swagger docs:
+   - Update swagger comments according to API change.
+   - Run `make docs` to update swagger

@@ -6,6 +6,7 @@ alwaysApply: true
 
 - Write clean code, follow SOLID principles in order to easy to reuse and write unit tests.
 - Code should be put in appropriate place.
+- If there're multiple possible solutions, MUST ask user which solution to be used then ONLY IMPLEMENT CHOSEN SOLUTION.
 
 ### Repository structure
 
