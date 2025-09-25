@@ -13,10 +13,10 @@ type ProductService interface {
 	UpdateProduct(product *models.Product) error
 	DeleteProduct(id uuid.UUID) error
 	RestoreProduct(id uuid.UUID) error
-	ListProducts(limit, offset int) ([]models.Product, error)
+	ListProducts(limit, offset int, sortBy, sortOrder string) ([]models.Product, error)
 	GetProductsBySupplier(supplierID uuid.UUID) ([]models.Product, error)
-	SearchProducts(query string) ([]models.Product, error)
-	SearchProductsWithPagination(query string, limit, offset int) ([]models.Product, error)
+	SearchProducts(query string, sortBy, sortOrder string) ([]models.Product, error)
+	SearchProductsWithPagination(query string, limit, offset int, sortBy, sortOrder string) ([]models.Product, error)
 	CountProducts() (int64, error)
 	CountSearchProducts(query string) (int64, error)
 }
@@ -64,20 +64,20 @@ func (s *productService) RestoreProduct(id uuid.UUID) error {
 	return s.productRepo.Restore(id)
 }
 
-func (s *productService) ListProducts(limit, offset int) ([]models.Product, error) {
-	return s.productRepo.List(limit, offset)
+func (s *productService) ListProducts(limit, offset int, sortBy, sortOrder string) ([]models.Product, error) {
+	return s.productRepo.List(limit, offset, sortBy, sortOrder)
 }
 
 func (s *productService) GetProductsBySupplier(supplierID uuid.UUID) ([]models.Product, error) {
 	return s.productRepo.GetBySupplier(supplierID)
 }
 
-func (s *productService) SearchProducts(query string) ([]models.Product, error) {
-	return s.productRepo.Search(query)
+func (s *productService) SearchProducts(query string, sortBy, sortOrder string) ([]models.Product, error) {
+	return s.productRepo.Search(query, sortBy, sortOrder)
 }
 
-func (s *productService) SearchProductsWithPagination(query string, limit, offset int) ([]models.Product, error) {
-	return s.productRepo.SearchWithPagination(query, limit, offset)
+func (s *productService) SearchProductsWithPagination(query string, limit, offset int, sortBy, sortOrder string) ([]models.Product, error) {
+	return s.productRepo.SearchWithPagination(query, limit, offset, sortBy, sortOrder)
 }
 
 func (s *productService) CountProducts() (int64, error) {

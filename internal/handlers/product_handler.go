@@ -19,10 +19,10 @@ type ProductService interface {
 	UpdateProduct(product *models.Product) error
 	DeleteProduct(id uuid.UUID) error
 	RestoreProduct(id uuid.UUID) error
-	ListProducts(limit, offset int) ([]models.Product, error)
+	ListProducts(limit, offset int, sortBy, sortOrder string) ([]models.Product, error)
 	GetProductsBySupplier(supplierID uuid.UUID) ([]models.Product, error)
-	SearchProducts(query string) ([]models.Product, error)
-	SearchProductsWithPagination(query string, limit, offset int) ([]models.Product, error)
+	SearchProducts(query string, sortBy, sortOrder string) ([]models.Product, error)
+	SearchProductsWithPagination(query string, limit, offset int, sortBy, sortOrder string) ([]models.Product, error)
 	CountProducts() (int64, error)
 	CountSearchProducts(query string) (int64, error)
 }
@@ -37,6 +37,8 @@ func (h *ProductHandler) GetProducts(c echo.Context) error {
 	// Parse query parameters
 	limit, _ := strconv.Atoi(c.QueryParam("limit"))
 	page, _ := strconv.Atoi(c.QueryParam("page"))
+	sortBy := c.QueryParam("sort")
+	sortOrder := c.QueryParam("order")
 
 	// Set defaults
 	if limit == 0 {
@@ -50,7 +52,7 @@ func (h *ProductHandler) GetProducts(c echo.Context) error {
 	offset := (page - 1) * limit
 
 	// Get products and total count
-	products, err := h.productService.ListProducts(limit, offset)
+	products, err := h.productService.ListProducts(limit, offset, sortBy, sortOrder)
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to fetch products"})
 	}
@@ -84,6 +86,8 @@ func (h *ProductHandler) SearchProducts(c echo.Context) error {
 	// Parse query parameters
 	limit, _ := strconv.Atoi(c.QueryParam("limit"))
 	page, _ := strconv.Atoi(c.QueryParam("page"))
+	sortBy := c.QueryParam("sort")
+	sortOrder := c.QueryParam("order")
 
 	// Set defaults
 	if limit == 0 {
@@ -97,7 +101,7 @@ func (h *ProductHandler) SearchProducts(c echo.Context) error {
 	offset := (page - 1) * limit
 
 	// Get products and total count
-	products, err := h.productService.SearchProductsWithPagination(query, limit, offset)
+	products, err := h.productService.SearchProductsWithPagination(query, limit, offset, sortBy, sortOrder)
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to search products"})
 	}

@@ -29,7 +29,7 @@ func NewExcelService(productRepo repository.ProductRepository, inventoryRepo rep
 }
 
 func (s *excelService) ExportProducts() (*excelize.File, error) {
-	products, err := s.productRepo.List(1000, 0) // Get all products
+	products, err := s.productRepo.List(1000, 0, "created_at", "desc") // Get all products
 	if err != nil {
 		return nil, err
 	}
@@ -54,7 +54,7 @@ func (s *excelService) ExportProducts() (*excelize.File, error) {
 		file.SetCellValue(sheetName, "D"+strconv.Itoa(row), product.Supplier.Name)
 		file.SetCellValue(sheetName, "E"+strconv.Itoa(row), product.UnitPrice)
 		file.SetCellValue(sheetName, "F"+strconv.Itoa(row), product.Status)
-		
+
 		if product.Inventory != nil {
 			file.SetCellValue(sheetName, "G"+strconv.Itoa(row), product.Inventory.Quantity)
 			file.SetCellValue(sheetName, "H"+strconv.Itoa(row), product.Inventory.ReorderLevel)

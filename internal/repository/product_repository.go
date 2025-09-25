@@ -13,10 +13,10 @@ type ProductRepository interface {
 	Update(product *models.Product) error
 	Delete(id uuid.UUID) error
 	Restore(id uuid.UUID) error
-	List(limit, offset int) ([]models.Product, error)
+	List(limit, offset int, sortBy, sortOrder string) ([]models.Product, error)
 	GetBySupplier(supplierID uuid.UUID) ([]models.Product, error)
-	Search(query string) ([]models.Product, error)
-	SearchWithPagination(query string, limit, offset int) ([]models.Product, error)
+	Search(query string, sortBy, sortOrder string) ([]models.Product, error)
+	SearchWithPagination(query string, limit, offset int, sortBy, sortOrder string) ([]models.Product, error)
 	Count() (int64, error)
 	CountSearch(query string) (int64, error)
 }
@@ -54,9 +54,21 @@ func (r *productRepository) Restore(id uuid.UUID) error {
 	return r.db.Unscoped().Model(&models.Product{}).Where("id = ?", id).Update("deleted_at", nil).Error
 }
 
-func (r *productRepository) List(limit, offset int) ([]models.Product, error) {
+func (r *productRepository) List(limit, offset int, sortBy, sortOrder string) ([]models.Product, error) {
 	var products []models.Product
-	err := r.db.Preload("Supplier").Preload("Inventory").Limit(limit).Offset(offset).Find(&products).Error
+	query := r.db.Preload("Supplier").Preload("Inventory")
+
+	// Apply sorting
+	if sortBy != "" {
+		if sortOrder == "" {
+			sortOrder = "asc"
+		}
+		query = query.Order(sortBy + " " + sortOrder)
+	} else {
+		query = query.Order("created_at desc")
+	}
+
+	err := query.Limit(limit).Offset(offset).Find(&products).Error
 	return products, err
 }
 
@@ -66,15 +78,39 @@ func (r *productRepository) GetBySupplier(supplierID uuid.UUID) ([]models.Produc
 	return products, err
 }
 
-func (r *productRepository) Search(query string) ([]models.Product, error) {
+func (r *productRepository) Search(query string, sortBy, sortOrder string) ([]models.Product, error) {
 	var products []models.Product
-	err := r.db.Preload("Supplier").Preload("Inventory").Where("name ILIKE ? OR sku ILIKE ?", "%"+query+"%", "%"+query+"%").Find(&products).Error
+	dbQuery := r.db.Preload("Supplier").Preload("Inventory").Where("name ILIKE ? OR sku ILIKE ?", "%"+query+"%", "%"+query+"%")
+
+	// Apply sorting
+	if sortBy != "" {
+		if sortOrder == "" {
+			sortOrder = "asc"
+		}
+		dbQuery = dbQuery.Order(sortBy + " " + sortOrder)
+	} else {
+		dbQuery = dbQuery.Order("created_at desc")
+	}
+
+	err := dbQuery.Find(&products).Error
 	return products, err
 }
 
-func (r *productRepository) SearchWithPagination(query string, limit, offset int) ([]models.Product, error) {
+func (r *productRepository) SearchWithPagination(query string, limit, offset int, sortBy, sortOrder string) ([]models.Product, error) {
 	var products []models.Product
-	err := r.db.Preload("Supplier").Preload("Inventory").Where("name ILIKE ? OR sku ILIKE ?", "%"+query+"%", "%"+query+"%").Limit(limit).Offset(offset).Find(&products).Error
+	dbQuery := r.db.Preload("Supplier").Preload("Inventory").Where("name ILIKE ? OR sku ILIKE ?", "%"+query+"%", "%"+query+"%")
+
+	// Apply sorting
+	if sortBy != "" {
+		if sortOrder == "" {
+			sortOrder = "asc"
+		}
+		dbQuery = dbQuery.Order(sortBy + " " + sortOrder)
+	} else {
+		dbQuery = dbQuery.Order("created_at desc")
+	}
+
+	err := dbQuery.Limit(limit).Offset(offset).Find(&products).Error
 	return products, err
 }
 

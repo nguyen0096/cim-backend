@@ -13,9 +13,9 @@ type SupplierRepository interface {
 	Update(supplier *models.Supplier) error
 	Delete(id uuid.UUID) error
 	Restore(id uuid.UUID) error
-	List(limit, offset int) ([]models.Supplier, error)
-	Search(query string) ([]models.Supplier, error)
-	SearchWithPagination(query string, limit, offset int) ([]models.Supplier, error)
+	List(limit, offset int, sortBy, sortOrder string) ([]models.Supplier, error)
+	Search(query string, sortBy, sortOrder string) ([]models.Supplier, error)
+	SearchWithPagination(query string, limit, offset int, sortBy, sortOrder string) ([]models.Supplier, error)
 	Count() (int64, error)
 	CountSearch(query string) (int64, error)
 }
@@ -53,23 +53,59 @@ func (r *supplierRepository) Restore(id uuid.UUID) error {
 	return r.db.Unscoped().Model(&models.Supplier{}).Where("id = ?", id).Update("deleted_at", nil).Error
 }
 
-func (r *supplierRepository) List(limit, offset int) ([]models.Supplier, error) {
+func (r *supplierRepository) List(limit, offset int, sortBy, sortOrder string) ([]models.Supplier, error) {
 	var suppliers []models.Supplier
-	err := r.db.Limit(limit).Offset(offset).Find(&suppliers).Error
+	query := r.db
+
+	// Apply sorting
+	if sortBy != "" {
+		if sortOrder == "" {
+			sortOrder = "asc"
+		}
+		query = query.Order(sortBy + " " + sortOrder)
+	} else {
+		query = query.Order("created_at desc")
+	}
+
+	err := query.Limit(limit).Offset(offset).Find(&suppliers).Error
 	return suppliers, err
 }
 
-func (r *supplierRepository) Search(query string) ([]models.Supplier, error) {
+func (r *supplierRepository) Search(query string, sortBy, sortOrder string) ([]models.Supplier, error) {
 	var suppliers []models.Supplier
-	err := r.db.Where("name ILIKE ? OR contact_phone ILIKE ? OR contact_email ILIKE ?",
-		"%"+query+"%", "%"+query+"%", "%"+query+"%").Find(&suppliers).Error
+	dbQuery := r.db.Where("name ILIKE ? OR contact_phone ILIKE ? OR contact_email ILIKE ?",
+		"%"+query+"%", "%"+query+"%", "%"+query+"%")
+
+	// Apply sorting
+	if sortBy != "" {
+		if sortOrder == "" {
+			sortOrder = "asc"
+		}
+		dbQuery = dbQuery.Order(sortBy + " " + sortOrder)
+	} else {
+		dbQuery = dbQuery.Order("created_at desc")
+	}
+
+	err := dbQuery.Find(&suppliers).Error
 	return suppliers, err
 }
 
-func (r *supplierRepository) SearchWithPagination(query string, limit, offset int) ([]models.Supplier, error) {
+func (r *supplierRepository) SearchWithPagination(query string, limit, offset int, sortBy, sortOrder string) ([]models.Supplier, error) {
 	var suppliers []models.Supplier
-	err := r.db.Where("name ILIKE ? OR contact_phone ILIKE ? OR contact_email ILIKE ?",
-		"%"+query+"%", "%"+query+"%", "%"+query+"%").Limit(limit).Offset(offset).Find(&suppliers).Error
+	dbQuery := r.db.Where("name ILIKE ? OR contact_phone ILIKE ? OR contact_email ILIKE ?",
+		"%"+query+"%", "%"+query+"%", "%"+query+"%")
+
+	// Apply sorting
+	if sortBy != "" {
+		if sortOrder == "" {
+			sortOrder = "asc"
+		}
+		dbQuery = dbQuery.Order(sortBy + " " + sortOrder)
+	} else {
+		dbQuery = dbQuery.Order("created_at desc")
+	}
+
+	err := dbQuery.Limit(limit).Offset(offset).Find(&suppliers).Error
 	return suppliers, err
 }
 

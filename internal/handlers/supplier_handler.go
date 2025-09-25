@@ -19,9 +19,9 @@ type SupplierService interface {
 	UpdateSupplier(supplier *models.Supplier) error
 	DeleteSupplier(id uuid.UUID) error
 	RestoreSupplier(id uuid.UUID) error
-	ListSuppliers(limit, offset int) ([]models.Supplier, error)
-	SearchSuppliers(query string) ([]models.Supplier, error)
-	SearchSuppliersWithPagination(query string, limit, offset int) ([]models.Supplier, error)
+	ListSuppliers(limit, offset int, sortBy, sortOrder string) ([]models.Supplier, error)
+	SearchSuppliers(query string, sortBy, sortOrder string) ([]models.Supplier, error)
+	SearchSuppliersWithPagination(query string, limit, offset int, sortBy, sortOrder string) ([]models.Supplier, error)
 	CountSuppliers() (int64, error)
 	CountSearchSuppliers(query string) (int64, error)
 }
@@ -36,6 +36,8 @@ func (h *SupplierHandler) GetSuppliers(c echo.Context) error {
 	// Parse query parameters
 	limit, _ := strconv.Atoi(c.QueryParam("limit"))
 	page, _ := strconv.Atoi(c.QueryParam("page"))
+	sortBy := c.QueryParam("sort_by")
+	sortOrder := c.QueryParam("sort_order")
 
 	// Set defaults
 	if limit == 0 {
@@ -49,7 +51,7 @@ func (h *SupplierHandler) GetSuppliers(c echo.Context) error {
 	offset := (page - 1) * limit
 
 	// Get suppliers and total count
-	suppliers, err := h.supplierService.ListSuppliers(limit, offset)
+	suppliers, err := h.supplierService.ListSuppliers(limit, offset, sortBy, sortOrder)
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to fetch suppliers"})
 	}
@@ -83,6 +85,8 @@ func (h *SupplierHandler) SearchSuppliers(c echo.Context) error {
 	// Parse query parameters
 	limit, _ := strconv.Atoi(c.QueryParam("limit"))
 	page, _ := strconv.Atoi(c.QueryParam("page"))
+	sortBy := c.QueryParam("sort_by")
+	sortOrder := c.QueryParam("sort_order")
 
 	// Set defaults
 	if limit == 0 {
@@ -96,7 +100,7 @@ func (h *SupplierHandler) SearchSuppliers(c echo.Context) error {
 	offset := (page - 1) * limit
 
 	// Get suppliers and total count
-	suppliers, err := h.supplierService.SearchSuppliersWithPagination(query, limit, offset)
+	suppliers, err := h.supplierService.SearchSuppliersWithPagination(query, limit, offset, sortBy, sortOrder)
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to search suppliers"})
 	}

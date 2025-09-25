@@ -13,9 +13,9 @@ type SupplierService interface {
 	UpdateSupplier(supplier *models.Supplier) error
 	DeleteSupplier(id uuid.UUID) error
 	RestoreSupplier(id uuid.UUID) error
-	ListSuppliers(limit, offset int) ([]models.Supplier, error)
-	SearchSuppliers(query string) ([]models.Supplier, error)
-	SearchSuppliersWithPagination(query string, limit, offset int) ([]models.Supplier, error)
+	ListSuppliers(limit, offset int, sortBy, sortOrder string) ([]models.Supplier, error)
+	SearchSuppliers(query string, sortBy, sortOrder string) ([]models.Supplier, error)
+	SearchSuppliersWithPagination(query string, limit, offset int, sortBy, sortOrder string) ([]models.Supplier, error)
 	CountSuppliers() (int64, error)
 	CountSearchSuppliers(query string) (int64, error)
 }
@@ -50,16 +50,16 @@ func (s *supplierService) RestoreSupplier(id uuid.UUID) error {
 	return s.supplierRepo.Restore(id)
 }
 
-func (s *supplierService) ListSuppliers(limit, offset int) ([]models.Supplier, error) {
-	return s.supplierRepo.List(limit, offset)
+func (s *supplierService) ListSuppliers(limit, offset int, sortBy, sortOrder string) ([]models.Supplier, error) {
+	return s.supplierRepo.List(limit, offset, sortBy, sortOrder)
 }
 
-func (s *supplierService) SearchSuppliers(query string) ([]models.Supplier, error) {
-	return s.supplierRepo.Search(query)
+func (s *supplierService) SearchSuppliers(query string, sortBy, sortOrder string) ([]models.Supplier, error) {
+	return s.supplierRepo.Search(query, sortBy, sortOrder)
 }
 
-func (s *supplierService) SearchSuppliersWithPagination(query string, limit, offset int) ([]models.Supplier, error) {
-	return s.supplierRepo.SearchWithPagination(query, limit, offset)
+func (s *supplierService) SearchSuppliersWithPagination(query string, limit, offset int, sortBy, sortOrder string) ([]models.Supplier, error) {
+	return s.supplierRepo.SearchWithPagination(query, limit, offset, sortBy, sortOrder)
 }
 
 func (s *supplierService) CountSuppliers() (int64, error) {
