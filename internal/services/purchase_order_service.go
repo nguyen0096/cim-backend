@@ -2,8 +2,11 @@ package services
 
 import (
 	"context"
+	"crypto/rand"
+	"fmt"
 	"import-export-backend/internal/models"
 	"import-export-backend/internal/repository"
+	"time"
 
 	"github.com/google/uuid"
 )
@@ -32,7 +35,38 @@ func NewPurchaseOrderService(purchaseOrderRepo repository.PurchaseOrderRepositor
 	}
 }
 
+// generatePurchaseOrderNumber generates a unique purchase order number
+func (s *purchaseOrderService) generatePurchaseOrderNumber() (string, error) {
+	now := time.Now()
+
+	// Generate 2-character random alphanumeric suffix
+	const charset = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+	suffix := make([]byte, 2)
+	if _, err := rand.Read(suffix); err != nil {
+		return "", fmt.Errorf("failed to generate random suffix: %w", err)
+	}
+
+	for i := range suffix {
+		suffix[i] = charset[suffix[i]%byte(len(charset))]
+	}
+
+	// Format: PO-YYMMDD-HHMMSS-XX
+	return fmt.Sprintf("PO-%s-%s",
+		now.Format("060102-150405"),
+		string(suffix)), nil
+}
+
+// CreatePurchaseOrder creates a new purchase order with auto-generated order number
 func (s *purchaseOrderService) CreatePurchaseOrder(ctx context.Context, purchaseOrder *models.PurchaseOrder) error {
+	// Generate order number if not provided
+	if purchaseOrder.OrderNumber == "" {
+		orderNumber, err := s.generatePurchaseOrderNumber()
+		if err != nil {
+			return fmt.Errorf("failed to generate purchase order number: %w", err)
+		}
+		purchaseOrder.OrderNumber = orderNumber
+	}
+
 	return s.purchaseOrderRepo.Create(ctx, purchaseOrder)
 }
 

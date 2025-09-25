@@ -25,6 +25,7 @@ type PurchaseOrderService interface {
 	UpdatePurchaseOrder(purchaseOrder *models.PurchaseOrder) error
 	DeletePurchaseOrder(id uuid.UUID) error
 	ListPurchaseOrders(limit, offset int) ([]models.PurchaseOrder, error)
+	GetPurchaseOrdersByStatus(status string) ([]models.PurchaseOrder, error)
 	UpdatePurchaseOrderStatus(id uuid.UUID, status string) error
 	ReceivePurchaseOrder(id uuid.UUID, userID string) error
 	CountPurchaseOrders() (int64, error)
@@ -57,12 +58,12 @@ func (h *PurchaseOrderHandler) GetPurchaseOrders(c echo.Context) error {
 	offset := (page - 1) * limit
 
 	// Get purchase orders and total count
-	purchaseOrders, err := h.purchaseOrderRepository.List(limit, offset)
+	purchaseOrders, err := h.purchaseOrderService.ListPurchaseOrders(limit, offset)
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to fetch purchase orders"})
 	}
 
-	total, err := h.purchaseOrderRepository.Count()
+	total, err := h.purchaseOrderService.CountPurchaseOrders()
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to count purchase orders"})
 	}
@@ -105,7 +106,7 @@ func (h *PurchaseOrderHandler) CreatePurchaseOrder(c echo.Context) error {
 		return pkg.ErrValidation("validation failed", err)
 	}
 
-	if err := h.purchaseOrderRepository.Create(c.Request().Context(), &purchaseOrder); err != nil {
+	if err := h.purchaseOrderService.CreatePurchaseOrder(c.Request().Context(), &purchaseOrder); err != nil {
 		return pkg.ErrInternal("Failed to create purchase order", err)
 	}
 
@@ -118,7 +119,7 @@ func (h *PurchaseOrderHandler) GetPurchaseOrder(c echo.Context) error {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid purchase order ID"})
 	}
 
-	purchaseOrder, err := h.purchaseOrderRepository.GetByID(id)
+	purchaseOrder, err := h.purchaseOrderService.GetPurchaseOrderByID(id)
 	if err != nil {
 		return c.JSON(http.StatusNotFound, map[string]string{"error": "Purchase order not found"})
 	}
@@ -138,7 +139,7 @@ func (h *PurchaseOrderHandler) UpdatePurchaseOrder(c echo.Context) error {
 	}
 
 	purchaseOrder.ID = &id
-	if err := h.purchaseOrderRepository.Update(&purchaseOrder); err != nil {
+	if err := h.purchaseOrderService.UpdatePurchaseOrder(&purchaseOrder); err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to update purchase order"})
 	}
 

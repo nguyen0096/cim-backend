@@ -6,6 +6,18 @@ alwaysApply: true
 
 DO NOT ADD, EDIT OR DELETE EXISTING RULES.
 
+NEVER provide task completion summaries without explicit user confirmation - always ask "Please review the changes and confirm if the task is complete" before summarizing.
+
+ALWAYS provide rule feedback immediately after completing implementation work, even if the user hasn't explicitly requested it - rule evaluation is mandatory per workspace rules. Detail instructions of providing rule feedback:
+
+- MUST ALWAYS evaluate the correctness of the applied rules after task completion. Then propose up to 3 additional rules that would improve future performance. Each rule must be:
+  - Short (one sentence at most)
+  - Specific (clear and unambiguous)
+  - Actionable (directly usable without interpretation)
+- DO NOT ADD, EDIT OR DELETE EXISTING RULES.
+
+When making code changes, notify the user if tests or documentation may need updating based on the changes made, and ask the user to decide whether to proceed with those updates.
+
 Write clean code, follow SOLID principles in order to easy to reuse and write unit tests.
 
 Code should be put in appropriate place.
@@ -55,13 +67,3 @@ Test function naming:
 - If target test function is private: `Test_<function_name>`. For example: `Test_createPurchaseOrder`
 
 Test description MUST be written in this format: `should <expected_behavior> when <specific_case_condition>`
-
-### Rule Feedback
-
-MUST ALWAYS evaluate the correctness of the applied rules after task completion. Then propose up to 3 additional rules that would improve future performance. Each rule must be:
-
-- Short (one sentence at most)
-- Specific (clear and unambiguous)
-- Actionable (directly usable without interpretation)
-
-DO NOT ADD, EDIT OR DELETE EXISTING RULES.

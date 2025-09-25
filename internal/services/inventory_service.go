@@ -8,6 +8,7 @@ import (
 	"github.com/google/uuid"
 )
 
+//go:generate mockery --name=InventoryService --structname=InventoryService --output=./servicemocks --outpkg=servicemocks
 type InventoryService interface {
 	GetInventory(limit, offset int) ([]models.Inventory, error)
 	GetInventoryByID(id uuid.UUID) (*models.Inventory, error)
@@ -59,11 +60,11 @@ func (s *inventoryService) AdjustInventory(productID uuid.UUID, quantity int, no
 
 	// Create transaction record
 	transaction := &models.InventoryTransaction{
-		ProductID:      productID,
+		ProductID:       productID,
 		TransactionType: "adjustment",
-		Quantity:       quantity,
-		Notes:          notes,
-		CreatedBy:      userID,
+		Quantity:        quantity,
+		Notes:           notes,
+		CreatedBy:       userID,
 	}
 
 	if err := s.inventoryRepo.CreateTransaction(transaction); err != nil {
@@ -92,13 +93,13 @@ func (s *inventoryService) AddInventory(productID uuid.UUID, quantity int, refer
 
 	// Create transaction record
 	transaction := &models.InventoryTransaction{
-		ProductID:      productID,
+		ProductID:       productID,
 		TransactionType: "purchase",
-		Quantity:       quantity,
-		ReferenceID:    referenceID,
-		ReferenceType:  referenceType,
-		Notes:          notes,
-		CreatedBy:      userID,
+		Quantity:        quantity,
+		ReferenceID:     referenceID,
+		ReferenceType:   referenceType,
+		Notes:           notes,
+		CreatedBy:       userID,
 	}
 
 	if err := s.inventoryRepo.CreateTransaction(transaction); err != nil {
@@ -124,13 +125,13 @@ func (s *inventoryService) RemoveInventory(productID uuid.UUID, quantity int, re
 
 	// Create transaction record
 	transaction := &models.InventoryTransaction{
-		ProductID:      productID,
+		ProductID:       productID,
 		TransactionType: "sale",
-		Quantity:       -quantity, // Negative for removal
-		ReferenceID:    referenceID,
-		ReferenceType:  referenceType,
-		Notes:          notes,
-		CreatedBy:      userID,
+		Quantity:        -quantity, // Negative for removal
+		ReferenceID:     referenceID,
+		ReferenceType:   referenceType,
+		Notes:           notes,
+		CreatedBy:       userID,
 	}
 
 	if err := s.inventoryRepo.CreateTransaction(transaction); err != nil {

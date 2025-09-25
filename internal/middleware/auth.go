@@ -33,9 +33,17 @@ func AuthMiddleware(firebaseAuth *auth.FirebaseAuthService) echo.MiddlewareFunc 
 				return c.JSON(http.StatusUnauthorized, map[string]string{"error": "Invalid token"})
 			}
 
-			// Extract user information from Firebase token
+			// Extract user information from Firebase token and set in both echo and request context
 			c.Set(pkg.AuthContextKeyUserID, token.UID)
 			c.Set(pkg.AuthContextKeyUserEmail, token.Claims["email"])
+
+			// Add user information to the request context for GORM hooks and other services
+			reqCtx := c.Request().Context()
+			reqCtx = context.WithValue(reqCtx, pkg.AuthContextKeyUserID, token.UID)
+			if email, ok := token.Claims["email"].(string); ok {
+				reqCtx = pkg.WithUserEmail(reqCtx, email)
+			}
+			c.SetRequest(c.Request().WithContext(reqCtx))
 
 			// Check for custom claims (role)
 			if role, ok := token.Claims["role"].(string); ok {

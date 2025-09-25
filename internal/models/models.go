@@ -15,7 +15,7 @@ type Base struct {
 	CreatedBy string         `json:"created_by"`
 	CreatedAt time.Time      `json:"created_at"`
 	UpdatedAt time.Time      `json:"updated_at"`
-	DeletedAt gorm.DeletedAt `json:"deleted_at,omitempty" gorm:"index"`
+	DeletedAt gorm.DeletedAt `json:"deleted_at" gorm:"index"`
 }
 
 func (b *Base) BeforeCreate(tx *gorm.DB) error {
@@ -51,7 +51,7 @@ type Product struct {
 	Description string         `json:"description"`
 	SKU         string         `json:"sku" gorm:"unique"`
 	SupplierID  uuid.UUID      `json:"supplier_id"`
-	Supplier    Supplier       `json:"supplier" gorm:"foreignKey:SupplierID"`
+	Supplier    Supplier       `json:"supplier,omitempty" gorm:"foreignKey:SupplierID" validate:"-"`
 	UnitPrice   float64        `json:"unit_price" gorm:"type:decimal(10,2)"`
 	Status      string         `json:"status" gorm:"default:active;check:status IN ('active', 'inactive', 'discontinued')"`
 	CreatedAt   time.Time      `json:"created_at"`
@@ -64,7 +64,7 @@ type Product struct {
 type Inventory struct {
 	ID           uuid.UUID `json:"id" gorm:"type:uuid;primary_key;default:gen_random_uuid()"`
 	ProductID    uuid.UUID `json:"product_id" gorm:"unique;not null"`
-	Product      Product   `json:"product" gorm:"foreignKey:ProductID"`
+	Product      Product   `json:"product,omitempty" gorm:"foreignKey:ProductID" validate:"-"`
 	Quantity     int       `json:"quantity" gorm:"default:0"`
 	ReorderLevel int       `json:"reorder_level" gorm:"default:0"`
 	Location     string    `json:"location"`
@@ -133,22 +133,6 @@ func (p *Product) BeforeCreate(tx *gorm.DB) error {
 func (i *Inventory) BeforeCreate(tx *gorm.DB) error {
 	if i.ID == uuid.Nil {
 		i.ID = uuid.New()
-	}
-	return nil
-}
-
-func (po *PurchaseOrder) BeforeCreate(tx *gorm.DB) error {
-	if po.ID == nil {
-		id := uuid.New()
-		po.ID = &id
-	}
-	return nil
-}
-
-func (poi *PurchaseOrderItem) BeforeCreate(tx *gorm.DB) error {
-	if poi.ID == nil {
-		id := uuid.New()
-		poi.ID = &id
 	}
 	return nil
 }
