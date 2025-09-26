@@ -4,66 +4,87 @@ globs:
 alwaysApply: true
 ---
 
-DO NOT ADD, EDIT OR DELETE EXISTING RULES.
+### General Principles
 
-NEVER provide task completion summaries without explicit user confirmation - always ask "Please review the changes and confirm if the task is complete" before summarizing.
+- **NEVER change existing rules**: Never add, edit, or delete existing rules.
+- **Scope control**: ONLY implement what the user explicitly asked. If related changes are needed, pause and ask the user before proceeding.
+- **Task completion**: A task is not “done” until the user explicitly confirms. Always ask: “Please review the changes and confirm if the task is complete.”
 
-ALWAYS provide rule feedback immediately after completing implementation work, even if the user hasn't explicitly requested it - rule evaluation is mandatory per workspace rules. Detail instructions of providing rule feedback:
+### Task Summary Rule
 
-- MUST ALWAYS evaluate the correctness of the applied rules after task completion. Then propose up to 3 additional rules that would improve future performance. Each rule must be:
-  - Short (one sentence at most)
-  - Specific (clear and unambiguous)
-  - Actionable (directly usable without interpretation)
-- DO NOT ADD, EDIT OR DELETE EXISTING RULES.
+- Summaries must give a **clear high-level overview** of what was done.
+- Each change is written as **one short bullet point** (avoid sub-bullets or long explanations).
+- Include:
+  1. **Task name** (1 line).
+  2. **List of main changes** (as many bullets as needed, but each kept short).
+  3. **Next step / confirmation**: Always end with _“Please review and confirm if the task is complete.”_
+- Do **not** include detailed file paths, code snippets, rule proposals, or compliance checklists here — those belong in **Rule Feedback**.
 
-When making code changes, notify the user if tests or documentation may need updating based on the changes made, and ask the user to decide whether to proceed with those updates.
+#### ✅ Example (Good)
 
-Write clean code, follow SOLID principles in order to easy to reuse and write unit tests.
-
-Code should be put in appropriate place.
-
-If there're multiple possible solutions, MUST ask user which solution to be used then ONLY IMPLEMENT CHOSEN SOLUTION.
-
-The task is not considered done unless user explicitly states. After done making changes, ask user to review and confirm the task is done. If the task is done, check if any documentation is needed.
-
-Only make the change the user asked for, DO NOT make assumed changes. If there's any related change that need to be done, raise to the user and ask for action clearance.
-
-Except for handlers that have swagger comment, all functions and structs MUST have godoc comment. Keep the comment short by only have a description. For example:
-
-```go
-// PurchaseOrder represents a purchase order
-type PurchaseOrder struct {}
-
-// UpdatePurchaseOrderStatus updates the status of a purchase order
-func (s *purchaseOrderService) UpdatePurchaseOrderStatus(id uuid.UUID, status string) error {}
+```text
+Task Summary: ListPurchaseOrder API
+- Added pagination, search, and sorting in repository/service/handler.
+- Implemented structured pagination response format.
+- Integrated Swagger documentation.
+- Applied consistent error handling.
+- Added godoc comments for new functions.
+Please review and confirm if the task is complete.
 ```
 
-### Error handling
+#### ❌ Example (Bad – Too Verbose)
 
-Error MUST be handled correctly.
+```text
+1. Created reusable PaginationParams struct in internal/models/pagination.go with default validation...
+2. Enhanced List() method in purchase_order_repository.go with ILIKE search...
+3. Implemented automatic parameter validation in service layer...
+4. Renamed handler method from GetPurchaseOrders to ListPurchaseOrders...
+```
 
-- Error must be wrapped, either using `AppError` struct or `fmt.Error` with `%w` directive.
-- For business error, use helpers in `error_helpers.go` to create according error. If there's no suitable error code, suggest a new error code and ask user to confirm.
-- By default for other errors that current point of logic is not aware of (caused in inner layer), wrap the error with `fmt.Error`. The format of error message will be: `fmt.Errorf("<MESSAGE>: %w", err)`. `MESSAGE` should describe what current function is trying to do.
+### Rule Feedback
 
-### Repository structure
+- After each task, evaluate rule compliance.
+- Always provide rule feedback, even if not requested.
+- Feedback must include:
+  1. Whether rules were followed correctly.
+  2. Up to 3 new proposed rules to improve performance. Each must be short (1 sentence), specific, and actionable.
 
-`internal/`
+### Coding Practices
 
-- `handlers/` HTTP request handlers
-  - Service interface is placed in according handler file.
-- `services/` Business logic layer
-- `repository/` Data access layer
-- `models/` Data models
-  - Each model must reside in a single file to avoid conflicts.
+- Write clean code following SOLID principles.
+- Place code in the correct layer (`handlers/`, `services/`, `repository/`, `models/`).
+- If multiple valid solutions exist, ask the user which to use before coding.
+- Notify the user if tests or docs may need updates; ask before making those changes.
+- All service/repository methods must take `ctx context.Context` as the first parameter.
 
-All methods of services and repositories MUST take `ctx context.Context` as first argument.
+### Documentation
 
-### Function and Variable naming
+- Functions and structs (except handlers with swagger) must have short godoc comments.
+  Example:
+  // PurchaseOrder represents a purchase order
+  type PurchaseOrder struct {}
 
-Test function naming:
+  // UpdatePurchaseOrderStatus updates the status of a purchase order
+  func (s \*purchaseOrderService) UpdatePurchaseOrderStatus(id uuid.UUID, status string) error {}
 
-- If target test function is public: `Test<function_name>`. For example: `TestCreatePurchaseOrder`
-- If target test function is private: `Test_<function_name>`. For example: `Test_createPurchaseOrder`
+### Error Handling
 
-Test description MUST be written in this format: `should <expected_behavior> when <specific_case_condition>`
+- Always handle errors.
+- Wrap errors with AppError or `fmt.Errorf("<MESSAGE>: %w", err)`.
+- Use `error_helpers.go` for business errors; if a suitable code is missing, propose one and ask the user.
+- MESSAGE should describe what the current function attempted.
+
+### Testing
+
+- Test naming:
+  - Public: `Test<FunctionName>`
+  - Private: `Test_<functionName>`
+- Test description format: `should <expected_behavior> when <specific_case>`
+
+### Repository Structure
+
+internal/
+├── handlers/ # HTTP handlers; service interfaces inline
+├── services/ # Business logic
+├── repository/ # Data access
+└── models/ # Data models (1 model per file)
