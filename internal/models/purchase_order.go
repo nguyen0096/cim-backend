@@ -7,17 +7,18 @@ import (
 type PurchaseOrderStatus string
 
 const (
-	PurchaseOrderStatusPending   PurchaseOrderStatus = "order_placed"
-	PurchaseOrderStatusApproved  PurchaseOrderStatus = "partially_completed"
-	PurchaseOrderStatusReceived  PurchaseOrderStatus = "completed"
-	PurchaseOrderStatusCancelled PurchaseOrderStatus = "cancelled"
+	PurchaseOrderStatusPending        PurchaseOrderStatus = "order_placed"
+	PurchaseOrderStatusApproved       PurchaseOrderStatus = "partially_delivered"
+	PurchaseOrderStatusFullyDelivered PurchaseOrderStatus = "fully_delivered"
+	PurchaseOrderStatusReceived       PurchaseOrderStatus = "completed"
+	PurchaseOrderStatusCancelled      PurchaseOrderStatus = "cancelled"
 )
 
 // PurchaseOrder represents a purchase order
 type PurchaseOrder struct {
 	Base
 	OrderNumber string              `json:"order_number" gorm:"unique;not null"`
-	Status      PurchaseOrderStatus `json:"status" gorm:"default:order_placed;check:status IN ('order_placed', 'partially_completed', 'completed', 'cancelled')"`
+	Status      PurchaseOrderStatus `json:"status" gorm:"default:order_placed;check:status IN ('order_placed', 'partially_delivered', 'fully_delivered', 'completed', 'cancelled')"`
 	TotalAmount float64             `json:"total_amount" gorm:"type:decimal(10,2)"`
 	Notes       string              `json:"notes"`
 	Items       []PurchaseOrderItem `json:"items" gorm:"foreignKey:PurchaseOrderID" validate:"required,min=1,dive"`

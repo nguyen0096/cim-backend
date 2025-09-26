@@ -1,0 +1,9 @@
+---
+description: Business requirements
+globs:
+alwaysApply: false
+---
+
+Each Purchase Order has at least one Purchase Order Item.
+
+Purchase Order can have multiple Purchase Order Item that its Product belongs to multiple Suppliers. Example: Purchase Order A can order same product, which is Coca Cola drink from multiple suppliers. In that case, Purchase Order A has 2 Purchase Order Item(s). Each Purchase Order Item has different ProductID.
