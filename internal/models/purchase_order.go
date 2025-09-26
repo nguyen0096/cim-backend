@@ -26,7 +26,7 @@ type PurchaseOrder struct {
 // PurchaseOrderItem represents an item in a purchase order
 type PurchaseOrderItem struct {
 	Base
-	PurchaseOrderID  uuid.UUID      `json:"purchase_order_id"`
+	PurchaseOrderID  *uuid.UUID     `json:"purchase_order_id"`
 	PurchaseOrder    *PurchaseOrder `json:"purchase_order,omitempty" gorm:"foreignKey:PurchaseOrderID" validate:"-"`
 	ProductID        *uuid.UUID     `json:"product_id" validate:"required"`
 	Product          *Product       `json:"product,omitempty" gorm:"foreignKey:ProductID" validate:"-"`

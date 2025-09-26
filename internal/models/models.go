@@ -51,7 +51,7 @@ type Product struct {
 	Description string         `json:"description"`
 	SKU         string         `json:"sku" gorm:"unique"`
 	SupplierID  uuid.UUID      `json:"supplier_id"`
-	Supplier    Supplier       `json:"supplier,omitempty" gorm:"foreignKey:SupplierID" validate:"-"`
+	Supplier    *Supplier      `json:"supplier,omitempty" gorm:"foreignKey:SupplierID" validate:"-"`
 	UnitPrice   float64        `json:"unit_price" gorm:"type:decimal(10,2)"`
 	Status      string         `json:"status" gorm:"default:active;check:status IN ('active', 'inactive', 'discontinued')"`
 	CreatedAt   time.Time      `json:"created_at"`
