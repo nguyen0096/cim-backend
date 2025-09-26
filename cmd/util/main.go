@@ -34,6 +34,49 @@ var seedCmd = &cobra.Command{
 	},
 }
 
+var migrateCmd = &cobra.Command{
+	Use:   "migrate",
+	Short: "Database migration commands",
+	Long:  "Run database migrations to create, update, or rollback the database schema",
+	Run: func(cmd *cobra.Command, args []string) {
+		// Default to migrate up if no subcommand is provided
+		fmt.Println("🔄 Running database migrations...")
+		if err := runMigrations(); err != nil {
+			fmt.Fprintf(os.Stderr, "Error running migrations: %v\n", err)
+			os.Exit(1)
+		}
+		fmt.Println("✓ Database migrations completed successfully!")
+	},
+}
+
+var migrateUpCmd = &cobra.Command{
+	Use:   "up",
+	Short: "Run database migrations",
+	Long:  "Run database migrations to create or update the database schema",
+	Run: func(cmd *cobra.Command, args []string) {
+		fmt.Println("🔄 Running database migrations...")
+		if err := runMigrations(); err != nil {
+			fmt.Fprintf(os.Stderr, "Error running migrations: %v\n", err)
+			os.Exit(1)
+		}
+		fmt.Println("✓ Database migrations completed successfully!")
+	},
+}
+
+var migrateDownCmd = &cobra.Command{
+	Use:   "down",
+	Short: "Rollback database migrations",
+	Long:  "Drop all database tables (complete rollback)",
+	Run: func(cmd *cobra.Command, args []string) {
+		fmt.Println("⚠️  Rolling back database migrations (dropping all tables)...")
+		if err := rollbackMigrations(); err != nil {
+			fmt.Fprintf(os.Stderr, "Error rolling back migrations: %v\n", err)
+			os.Exit(1)
+		}
+		fmt.Println("✓ Database rollback completed successfully!")
+	},
+}
+
 func init() {
 	// Load environment variables from .env file
 	if err := godotenv.Load(); err != nil {
@@ -45,8 +88,13 @@ func init() {
 	defaultUsername = os.Getenv("FIREBASE_TEST_USER")
 	defaultPassword = os.Getenv("FIREBASE_TEST_PASSWORD")
 
+	// Add subcommands to migrate command
+	migrateCmd.AddCommand(migrateUpCmd)
+	migrateCmd.AddCommand(migrateDownCmd)
+
 	rootCmd.AddCommand(authCmd)
 	rootCmd.AddCommand(seedCmd)
+	rootCmd.AddCommand(migrateCmd)
 }
 
 func main() {

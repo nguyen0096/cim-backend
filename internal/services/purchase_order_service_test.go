@@ -62,7 +62,7 @@ func TestCreatePurchaseOrder(t *testing.T) {
 
 		purchaseOrder := &models.PurchaseOrder{
 			// OrderNumber is empty - should be auto-generated
-			Status:      models.PurchaseOrderStatusPending,
+			Status:      models.PurchaseOrderStatusOrderPlaced,
 			TotalAmount: 1500.50,
 			Notes:       "Test purchase order",
 			Items: []models.PurchaseOrderItem{
@@ -107,7 +107,7 @@ func TestCreatePurchaseOrder(t *testing.T) {
 		existingOrderNumber := "CUSTOM-PO-123"
 		purchaseOrder := &models.PurchaseOrder{
 			OrderNumber: existingOrderNumber,
-			Status:      models.PurchaseOrderStatusPending,
+			Status:      models.PurchaseOrderStatusOrderPlaced,
 			TotalAmount: 1500.50,
 			Notes:       "Test purchase order with existing order number",
 			Items: []models.PurchaseOrderItem{
@@ -141,7 +141,7 @@ func TestCreatePurchaseOrder(t *testing.T) {
 		service := NewPurchaseOrderService(mockRepo, mockInventoryService)
 
 		purchaseOrder := &models.PurchaseOrder{
-			Status:      models.PurchaseOrderStatusPending,
+			Status:      models.PurchaseOrderStatusOrderPlaced,
 			TotalAmount: 1500.50,
 			Items: []models.PurchaseOrderItem{
 				{

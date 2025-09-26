@@ -50,10 +50,10 @@ docker-logs:
 
 # Database migrations
 migrate-up:
-	docker-compose exec app go run main.go migrate up
+	go run ./cmd/util migrate up
 
 migrate-down:
-	docker-compose exec app go run main.go migrate down
+	go run ./cmd/util migrate down
 
 # Development setup
 dev-setup:

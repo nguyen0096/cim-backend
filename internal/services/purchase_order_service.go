@@ -66,6 +66,9 @@ func (s *purchaseOrderService) CreatePurchaseOrder(ctx context.Context, purchase
 		purchaseOrder.OrderNumber = orderNumber
 	}
 
+	// Set status to order_placed for new purchase orders
+	purchaseOrder.Status = models.PurchaseOrderStatusOrderPlaced
+
 	return s.purchaseOrderRepo.Create(ctx, purchaseOrder)
 }
 
@@ -118,7 +121,7 @@ func (s *purchaseOrderService) ReceivePurchaseOrder(id uuid.UUID, userID string)
 	}
 
 	// Update status to received
-	purchaseOrder.Status = "received"
+	purchaseOrder.Status = models.PurchaseOrderStatusCompleted
 	if err := s.purchaseOrderRepo.Update(purchaseOrder); err != nil {
 		return err
 	}

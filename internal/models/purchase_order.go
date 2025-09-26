@@ -7,11 +7,11 @@ import (
 type PurchaseOrderStatus string
 
 const (
-	PurchaseOrderStatusPending        PurchaseOrderStatus = "order_placed"
-	PurchaseOrderStatusApproved       PurchaseOrderStatus = "partially_delivered"
-	PurchaseOrderStatusFullyDelivered PurchaseOrderStatus = "fully_delivered"
-	PurchaseOrderStatusReceived       PurchaseOrderStatus = "completed"
-	PurchaseOrderStatusCancelled      PurchaseOrderStatus = "cancelled"
+	PurchaseOrderStatusOrderPlaced        PurchaseOrderStatus = "order_placed"
+	PurchaseOrderStatusPartiallyDelivered PurchaseOrderStatus = "partially_delivered"
+	PurchaseOrderStatusFullyDelivered     PurchaseOrderStatus = "fully_delivered"
+	PurchaseOrderStatusCompleted          PurchaseOrderStatus = "completed"
+	PurchaseOrderStatusCancelled          PurchaseOrderStatus = "cancelled"
 )
 
 // PurchaseOrder represents a purchase order
