@@ -153,8 +153,8 @@ func main() {
 
 	// Purchase Order routes
 	purchaseOrders := api.Group("/purchase-orders", middleware.AuthMiddleware(firebaseAuth))
+	purchaseOrders.GET("", purchaseOrderHandler.ListPurchaseOrders)
 	purchaseOrders.POST("", purchaseOrderHandler.CreatePurchaseOrder)
-	// purchaseOrders.GET("", purchaseOrderHandler.GetPurchaseOrders)
 	// purchaseOrders.GET("/:id", purchaseOrderHandler.GetPurchaseOrder)
 	// purchaseOrders.PUT("/:id", purchaseOrderHandler.UpdatePurchaseOrder)
 	// purchaseOrders.PUT("/:id/status", purchaseOrderHandler.UpdatePurchaseOrderStatus)

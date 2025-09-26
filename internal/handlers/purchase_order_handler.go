@@ -6,7 +6,6 @@ import (
 	"import-export-backend/internal/repository"
 	"import-export-backend/pkg"
 	"net/http"
-	"strconv"
 
 	"github.com/go-playground/validator/v10"
 	"github.com/google/uuid"
@@ -24,11 +23,10 @@ type PurchaseOrderService interface {
 	GetPurchaseOrderByID(id uuid.UUID) (*models.PurchaseOrder, error)
 	UpdatePurchaseOrder(purchaseOrder *models.PurchaseOrder) error
 	DeletePurchaseOrder(id uuid.UUID) error
-	ListPurchaseOrders(limit, offset int) ([]models.PurchaseOrder, error)
+	ListPurchaseOrders(ctx context.Context, params models.PaginationParams) (*models.PaginationResult[models.PurchaseOrder], error)
 	GetPurchaseOrdersByStatus(status string) ([]models.PurchaseOrder, error)
 	UpdatePurchaseOrderStatus(id uuid.UUID, status string) error
 	ReceivePurchaseOrder(id uuid.UUID, userID string) error
-	CountPurchaseOrders() (int64, error)
 }
 
 func NewPurchaseOrderHandler(
@@ -41,46 +39,36 @@ func NewPurchaseOrderHandler(
 	}
 }
 
-func (h *PurchaseOrderHandler) GetPurchaseOrders(c echo.Context) error {
-	// Parse query parameters
-	limit, _ := strconv.Atoi(c.QueryParam("limit"))
-	page, _ := strconv.Atoi(c.QueryParam("page"))
-
-	// Set defaults
-	if limit == 0 {
-		limit = 20
+// ListPurchaseOrders godoc
+// @Summary List purchase orders
+// @Description Retrieve a paginated list of purchase orders with optional search and sorting
+// @Tags purchase-orders
+// @Accept json
+// @Produce json
+// @Param page query int false "Page number (default: 1, minimum: 1)"
+// @Param limit query int false "Number of items per page (default: 20, minimum: 1, maximum: 100)"
+// @Param q query string false "Search term for order number or notes"
+// @Param sort query string false "Sort field (order_number, status, total_amount, created_at, updated_at)"
+// @Param order query string false "Sort direction (asc, desc, default: asc)"
+// @Success 200 {object} models.PaginationResult[models.PurchaseOrder] "Successfully retrieved purchase orders"
+// @Failure 400 {object} map[string]string "Invalid request parameters"
+// @Failure 500 {object} map[string]string "Failed to fetch purchase orders"
+// @Router /api/purchase-orders [get]
+// @Security BearerAuth
+func (h *PurchaseOrderHandler) ListPurchaseOrders(c echo.Context) error {
+	// Parse query parameters into pagination params
+	var params models.PaginationParams
+	if err := c.Bind(&params); err != nil {
+		return pkg.ErrValidation("Invalid query parameters", err)
 	}
-	if page == 0 {
-		page = 1
-	}
 
-	// Calculate offset
-	offset := (page - 1) * limit
-
-	// Get purchase orders and total count
-	purchaseOrders, err := h.purchaseOrderService.ListPurchaseOrders(limit, offset)
+	// Get paginated purchase orders
+	result, err := h.purchaseOrderService.ListPurchaseOrders(c.Request().Context(), params)
 	if err != nil {
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to fetch purchase orders"})
+		return pkg.ErrInternal("Failed to fetch purchase orders", err)
 	}
 
-	total, err := h.purchaseOrderService.CountPurchaseOrders()
-	if err != nil {
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to count purchase orders"})
-	}
-
-	// Calculate total pages
-	totalPages := int((total + int64(limit) - 1) / int64(limit))
-
-	// Create response
-	response := map[string]interface{}{
-		"data":       purchaseOrders,
-		"total":      total,
-		"page":       page,
-		"limit":      limit,
-		"totalPages": totalPages,
-	}
-
-	return c.JSON(http.StatusOK, response)
+	return c.JSON(http.StatusOK, result)
 }
 
 // CreatePurchaseOrder godoc

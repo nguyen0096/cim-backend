@@ -4,6 +4,7 @@ go 1.25
 
 require (
 	firebase.google.com/go/v4 v4.13.0
+	github.com/go-playground/validator/v10 v10.27.0
 	github.com/google/uuid v1.5.0
 	github.com/joho/godotenv v1.5.1
 	github.com/labstack/echo/v4 v4.13.4
@@ -48,7 +49,6 @@ require (
 	github.com/go-openapi/swag/yamlutils v0.25.0 // indirect
 	github.com/go-playground/locales v0.14.1 // indirect
 	github.com/go-playground/universal-translator v0.18.1 // indirect
-	github.com/go-playground/validator/v10 v10.27.0 // indirect
 	github.com/golang-jwt/jwt/v4 v4.5.0 // indirect
 	github.com/golang/groupcache v0.0.0-20210331224755-41bb18bfe9da // indirect
 	github.com/golang/protobuf v1.5.3 // indirect
