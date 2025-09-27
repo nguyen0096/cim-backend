@@ -128,7 +128,7 @@ func testRevenueExpenseExcelRepository(t *testing.T) {
 
 	// Compare last expense with expected expense
 	t.Log("\n🔍 Comparing last expense with expected expense...")
-	require.True(t, compareExpenses(sampleExpense, lastExpense))
+	compareExpenses(t, sampleExpense, lastExpense)
 
 	// Read last transaction date
 	t.Log("🔄 Reading last transaction date...")
@@ -170,13 +170,13 @@ func testRevenueExpenseExcelRepository(t *testing.T) {
 
 	// Compare last expense with expected expense
 	t.Log("\n🔍 Comparing last expense with expected expense...")
-	require.True(t, compareExpenses(sampleExpense2, lastExpense2))
+	compareExpenses(t, sampleExpense2, lastExpense2)
 
 	t.Log("✅ Thu chi Excel repository test completed successfully")
 }
 
 // compareExpenses compares two expense maps and returns true if they match
-func compareExpenses(expected, actual map[string]interface{}) bool {
+func compareExpenses(t *testing.T, expected, actual map[string]interface{}) bool {
 	// Check if all expected keys exist in actual and have matching values
 	for key, expectedValue := range expected {
 		if expectedValue == nil || expectedValue == "" {
@@ -184,8 +184,7 @@ func compareExpenses(expected, actual map[string]interface{}) bool {
 		}
 		actualValue, exists := actual[key]
 		if !exists {
-			fmt.Printf("   Missing key in actual: %s\n", key)
-			return false
+			require.FailNowf(t, "Missing key in actual", "key: %s", key)
 		}
 
 		// Convert both values to strings for comparison (since Excel values are strings)
@@ -193,16 +192,14 @@ func compareExpenses(expected, actual map[string]interface{}) bool {
 		actualStr := fmt.Sprintf("%v", actualValue)
 
 		if expectedStr != actualStr {
-			fmt.Printf("   Value mismatch for key '%s': expected '%s', got '%s'\n", key, expectedStr, actualStr)
-			return false
+			require.FailNowf(t, "Value mismatch for key", "expected '%s', got '%s'", expectedStr, actualStr)
 		}
 	}
 
 	// Check if actual has any extra keys that weren't in expected
 	for key := range actual {
 		if _, exists := expected[key]; !exists {
-			fmt.Printf("   Extra key in actual: %s\n", key)
-			return false
+			require.FailNowf(t, "Extra key in actual", "key: %s", key)
 		}
 	}
 
