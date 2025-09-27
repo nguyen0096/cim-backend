@@ -1,23 +1,24 @@
 package services
 
 import (
+	"context"
 	"import-export-backend/internal/models"
 	"import-export-backend/internal/repository"
 )
 
 //go:generate mockery --name=InventoryService --structname=InventoryService --output=./servicemocks --outpkg=servicemocks
 type InventoryService interface {
-	GetInventory(limit, offset int) ([]models.Inventory, error)
-	GetInventoryByID(id uint) (*models.Inventory, error)
-	GetInventoryByProductID(productID uint) (*models.Inventory, error)
-	UpdateInventory(inventory *models.Inventory) error
-	AdjustInventory(productID uint, quantity int, notes string, userID string) error
-	GetLowStock() ([]models.Inventory, error)
-	GetTransactions(productID uint, limit, offset int) ([]models.InventoryTransaction, error)
-	AddInventory(productID uint, quantity int, referenceID uint, referenceType, notes string, userID string) error
-	RemoveInventory(productID uint, quantity int, referenceID uint, referenceType, notes string, userID string) error
-	CountInventory() (int64, error)
-	CountTransactions(productID uint) (int64, error)
+	GetInventory(ctx context.Context, limit, offset int) ([]models.Inventory, error)
+	GetInventoryByID(ctx context.Context, id uint) (*models.Inventory, error)
+	GetInventoryByProductID(ctx context.Context, productID uint) (*models.Inventory, error)
+	UpdateInventory(ctx context.Context, inventory *models.Inventory) error
+	AdjustInventory(ctx context.Context, productID uint, quantity int, notes string) error
+	GetLowStock(ctx context.Context) ([]models.Inventory, error)
+	GetTransactions(ctx context.Context, productID uint, limit, offset int) ([]models.InventoryTransaction, error)
+	AddInventory(ctx context.Context, productID uint, quantity int, referenceID uint, referenceType, notes string) error
+	RemoveInventory(ctx context.Context, productID uint, quantity int, referenceID uint, referenceType, notes string) error
+	CountInventory(ctx context.Context) (int64, error)
+	CountTransactions(ctx context.Context, productID uint) (int64, error)
 }
 
 type inventoryService struct {
@@ -32,24 +33,24 @@ func NewInventoryService(inventoryRepo repository.InventoryRepository, productRe
 	}
 }
 
-func (s *inventoryService) GetInventory(limit, offset int) ([]models.Inventory, error) {
-	return s.inventoryRepo.List(limit, offset)
+func (s *inventoryService) GetInventory(ctx context.Context, limit, offset int) ([]models.Inventory, error) {
+	return s.inventoryRepo.List(ctx, limit, offset)
 }
 
-func (s *inventoryService) GetInventoryByID(id uint) (*models.Inventory, error) {
-	return s.inventoryRepo.GetByID(id)
+func (s *inventoryService) GetInventoryByID(ctx context.Context, id uint) (*models.Inventory, error) {
+	return s.inventoryRepo.GetByID(ctx, id)
 }
 
-func (s *inventoryService) GetInventoryByProductID(productID uint) (*models.Inventory, error) {
-	return s.inventoryRepo.GetByProductID(productID)
+func (s *inventoryService) GetInventoryByProductID(ctx context.Context, productID uint) (*models.Inventory, error) {
+	return s.inventoryRepo.GetByProductID(ctx, productID)
 }
 
-func (s *inventoryService) UpdateInventory(inventory *models.Inventory) error {
-	return s.inventoryRepo.Update(inventory)
+func (s *inventoryService) UpdateInventory(ctx context.Context, inventory *models.Inventory) error {
+	return s.inventoryRepo.Update(ctx, inventory)
 }
 
-func (s *inventoryService) AdjustInventory(productID uint, quantity int, notes string, userID string) error {
-	inventory, err := s.inventoryRepo.GetByProductID(productID)
+func (s *inventoryService) AdjustInventory(ctx context.Context, productID uint, quantity int, notes string) error {
+	inventory, err := s.inventoryRepo.GetByProductID(ctx, productID)
 	if err != nil {
 		return err
 	}
@@ -60,28 +61,27 @@ func (s *inventoryService) AdjustInventory(productID uint, quantity int, notes s
 		TransactionType: "adjustment",
 		Quantity:        quantity,
 		Notes:           notes,
-		CreatedBy:       userID,
 	}
 
-	if err := s.inventoryRepo.CreateTransaction(transaction); err != nil {
+	if err := s.inventoryRepo.CreateTransaction(ctx, transaction); err != nil {
 		return err
 	}
 
 	// Update inventory quantity
 	inventory.Quantity += quantity
-	return s.inventoryRepo.Update(inventory)
+	return s.inventoryRepo.Update(ctx, inventory)
 }
 
-func (s *inventoryService) GetLowStock() ([]models.Inventory, error) {
-	return s.inventoryRepo.GetLowStock()
+func (s *inventoryService) GetLowStock(ctx context.Context) ([]models.Inventory, error) {
+	return s.inventoryRepo.GetLowStock(ctx)
 }
 
-func (s *inventoryService) GetTransactions(productID uint, limit, offset int) ([]models.InventoryTransaction, error) {
-	return s.inventoryRepo.GetTransactions(productID, limit, offset)
+func (s *inventoryService) GetTransactions(ctx context.Context, productID uint, limit, offset int) ([]models.InventoryTransaction, error) {
+	return s.inventoryRepo.GetTransactions(ctx, productID, limit, offset)
 }
 
-func (s *inventoryService) AddInventory(productID uint, quantity int, referenceID uint, referenceType, notes string, userID string) error {
-	inventory, err := s.inventoryRepo.GetByProductID(productID)
+func (s *inventoryService) AddInventory(ctx context.Context, productID uint, quantity int, referenceID uint, referenceType, notes string) error {
+	inventory, err := s.inventoryRepo.GetByProductID(ctx, productID)
 	if err != nil {
 		return err
 	}
@@ -94,20 +94,19 @@ func (s *inventoryService) AddInventory(productID uint, quantity int, referenceI
 		ReferenceID:     referenceID,
 		ReferenceType:   referenceType,
 		Notes:           notes,
-		CreatedBy:       userID,
 	}
 
-	if err := s.inventoryRepo.CreateTransaction(transaction); err != nil {
+	if err := s.inventoryRepo.CreateTransaction(ctx, transaction); err != nil {
 		return err
 	}
 
 	// Update inventory quantity
 	inventory.Quantity += quantity
-	return s.inventoryRepo.Update(inventory)
+	return s.inventoryRepo.Update(ctx, inventory)
 }
 
-func (s *inventoryService) RemoveInventory(productID uint, quantity int, referenceID uint, referenceType, notes string, userID string) error {
-	inventory, err := s.inventoryRepo.GetByProductID(productID)
+func (s *inventoryService) RemoveInventory(ctx context.Context, productID uint, quantity int, referenceID uint, referenceType, notes string) error {
+	inventory, err := s.inventoryRepo.GetByProductID(ctx, productID)
 	if err != nil {
 		return err
 	}
@@ -125,16 +124,15 @@ func (s *inventoryService) RemoveInventory(productID uint, quantity int, referen
 		ReferenceID:     referenceID,
 		ReferenceType:   referenceType,
 		Notes:           notes,
-		CreatedBy:       userID,
 	}
 
-	if err := s.inventoryRepo.CreateTransaction(transaction); err != nil {
+	if err := s.inventoryRepo.CreateTransaction(ctx, transaction); err != nil {
 		return err
 	}
 
 	// Update inventory quantity
 	inventory.Quantity -= quantity
-	return s.inventoryRepo.Update(inventory)
+	return s.inventoryRepo.Update(ctx, inventory)
 }
 
 // Custom error for insufficient inventory
@@ -147,10 +145,10 @@ func (e *InsufficientInventoryError) Error() string {
 	return "insufficient inventory"
 }
 
-func (s *inventoryService) CountInventory() (int64, error) {
-	return s.inventoryRepo.Count()
+func (s *inventoryService) CountInventory(ctx context.Context) (int64, error) {
+	return s.inventoryRepo.Count(ctx)
 }
 
-func (s *inventoryService) CountTransactions(productID uint) (int64, error) {
-	return s.inventoryRepo.CountTransactions(productID)
+func (s *inventoryService) CountTransactions(ctx context.Context, productID uint) (int64, error) {
+	return s.inventoryRepo.CountTransactions(ctx, productID)
 }

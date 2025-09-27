@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"import-export-backend/internal/models"
 	"net/http"
 	"strconv"
@@ -13,14 +14,14 @@ type InventoryHandler struct {
 }
 
 type InventoryService interface {
-	GetInventory(limit, offset int) ([]models.Inventory, error)
-	GetInventoryByID(id uint) (*models.Inventory, error)
-	UpdateInventory(inventory *models.Inventory) error
-	AdjustInventory(productID uint, quantity int, notes string, userID string) error
-	GetLowStock() ([]models.Inventory, error)
-	GetTransactions(productID uint, limit, offset int) ([]models.InventoryTransaction, error)
-	CountInventory() (int64, error)
-	CountTransactions(productID uint) (int64, error)
+	GetInventory(ctx context.Context, limit, offset int) ([]models.Inventory, error)
+	GetInventoryByID(ctx context.Context, id uint) (*models.Inventory, error)
+	UpdateInventory(ctx context.Context, inventory *models.Inventory) error
+	AdjustInventory(ctx context.Context, productID uint, quantity int, notes string) error
+	GetLowStock(ctx context.Context) ([]models.Inventory, error)
+	GetTransactions(ctx context.Context, productID uint, limit, offset int) ([]models.InventoryTransaction, error)
+	CountInventory(ctx context.Context) (int64, error)
+	CountTransactions(ctx context.Context, productID uint) (int64, error)
 }
 
 func NewInventoryHandler(inventoryService InventoryService) *InventoryHandler {
@@ -46,12 +47,12 @@ func (h *InventoryHandler) GetInventory(c echo.Context) error {
 	offset := (page - 1) * limit
 
 	// Get inventory and total count
-	inventory, err := h.inventoryService.GetInventory(limit, offset)
+	inventory, err := h.inventoryService.GetInventory(c.Request().Context(), limit, offset)
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to fetch inventory"})
 	}
 
-	total, err := h.inventoryService.CountInventory()
+	total, err := h.inventoryService.CountInventory(c.Request().Context())
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to count inventory"})
 	}
@@ -85,7 +86,7 @@ func (h *InventoryHandler) UpdateInventory(c echo.Context) error {
 	}
 
 	inventory.ID = id
-	if err := h.inventoryService.UpdateInventory(&inventory); err != nil {
+	if err := h.inventoryService.UpdateInventory(c.Request().Context(), &inventory); err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to update inventory"})
 	}
 
@@ -103,12 +104,7 @@ func (h *InventoryHandler) AdjustInventory(c echo.Context) error {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid request body"})
 	}
 
-	userID := c.Get("user_id").(string)
-	if userID == "" {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid user ID"})
-	}
-
-	if err := h.inventoryService.AdjustInventory(req.ProductID, req.Quantity, req.Notes, userID); err != nil {
+	if err := h.inventoryService.AdjustInventory(c.Request().Context(), req.ProductID, req.Quantity, req.Notes); err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to adjust inventory"})
 	}
 
@@ -144,12 +140,12 @@ func (h *InventoryHandler) GetTransactions(c echo.Context) error {
 	}
 
 	// Get transactions and total count
-	transactions, err := h.inventoryService.GetTransactions(productID, limit, offset)
+	transactions, err := h.inventoryService.GetTransactions(c.Request().Context(), productID, limit, offset)
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to fetch transactions"})
 	}
 
-	total, err := h.inventoryService.CountTransactions(productID)
+	total, err := h.inventoryService.CountTransactions(c.Request().Context(), productID)
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to count transactions"})
 	}
@@ -170,7 +166,7 @@ func (h *InventoryHandler) GetTransactions(c echo.Context) error {
 }
 
 func (h *InventoryHandler) GetLowStock(c echo.Context) error {
-	inventory, err := h.inventoryService.GetLowStock()
+	inventory, err := h.inventoryService.GetLowStock(c.Request().Context())
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to fetch low stock items"})
 	}
