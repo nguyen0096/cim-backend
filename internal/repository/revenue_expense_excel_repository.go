@@ -48,10 +48,10 @@ var (
 // RevenueExpenseExcelRepository handles data access for revenue/expense Excel operations
 type RevenueExpenseExcelRepository interface {
 	InitializeWithFile(ctx context.Context, filePath string) error
-	AddExpense(ctx context.Context, expenseData map[string]interface{}) error
-	GetLastExpense(ctx context.Context) (map[string]interface{}, error)
-	GetLastTransactionDate(ctx context.Context) (time.Time, error)
-	DeleteLastNRows(ctx context.Context, n int) error
+	AddExpense(ctx context.Context, sheetName string, expenseData map[string]interface{}) error
+	GetLastExpense(ctx context.Context, sheetName string) (map[string]interface{}, error)
+	GetLastTransactionDate(ctx context.Context, sheetName string) (time.Time, error)
+	DeleteLastNRows(ctx context.Context, sheetName string, n int) error
 	GetSchema(ctx context.Context) *models.FileMetadata
 	Close() error
 	ForceCacheRefresh()
@@ -186,7 +186,9 @@ func (r *revenueExpenseExcelRepository) findLastTransactionDateInfo(rows [][]str
 
 // addTransactionDateRow adds a new row with today's date if needed
 func (r *revenueExpenseExcelRepository) addTransactionDateRow(file *excelize.File, sheetName string, targetRow int, today time.Time, dateFormat string) error {
-	if len(r.fileMetadata.Sheets) == 0 || len(r.fileMetadata.Sheets[0].Headers) == 0 {
+	// Find the sheet metadata for the specified sheet
+	sheetMetadata := r.findSheetMetadata(sheetName)
+	if sheetMetadata == nil || len(sheetMetadata.Headers) == 0 {
 		return nil
 	}
 
@@ -196,7 +198,7 @@ func (r *revenueExpenseExcelRepository) addTransactionDateRow(file *excelize.Fil
 		return fmt.Errorf("failed to create date style: %w", err)
 	}
 
-	firstColumn := r.fileMetadata.Sheets[0].Headers[0]
+	firstColumn := sheetMetadata.Headers[0]
 	cellName, _ := excelize.CoordinatesToCellName(firstColumn.ColumnIndex, targetRow)
 
 	file.SetCellStyle(sheetName, cellName, cellName, styleID)
@@ -212,7 +214,13 @@ func (r *revenueExpenseExcelRepository) addExpenseDataRow(file *excelize.File, s
 		return fmt.Errorf("failed to create data style: %w", err)
 	}
 
-	for _, column := range r.fileMetadata.Sheets[0].Headers {
+	// Find the sheet metadata for the specified sheet
+	sheetMetadata := r.findSheetMetadata(sheetName)
+	if sheetMetadata == nil {
+		return fmt.Errorf("sheet %s not found in metadata", sheetName)
+	}
+
+	for _, column := range sheetMetadata.Headers {
 		cellName, _ := excelize.CoordinatesToCellName(column.ColumnIndex+1, targetRow)
 		file.SetCellStyle(sheetName, cellName, cellName, styleID)
 
@@ -224,6 +232,20 @@ func (r *revenueExpenseExcelRepository) addExpenseDataRow(file *excelize.File, s
 		}
 	}
 
+	return nil
+}
+
+// findSheetMetadata finds the metadata for a specific sheet by name
+func (r *revenueExpenseExcelRepository) findSheetMetadata(sheetName string) *models.ExcelSheetMetadata {
+	if r.fileMetadata == nil {
+		return nil
+	}
+
+	for _, sheet := range r.fileMetadata.Sheets {
+		if sheet.SheetName == sheetName {
+			return &sheet
+		}
+	}
 	return nil
 }
 
@@ -241,7 +263,7 @@ func (r *revenueExpenseExcelRepository) validateRepositoryState() error {
 }
 
 // AddExpense adds a new expense entry to the Excel file
-func (r *revenueExpenseExcelRepository) AddExpense(ctx context.Context, expenseData map[string]interface{}) error {
+func (r *revenueExpenseExcelRepository) AddExpense(ctx context.Context, sheetName string, expenseData map[string]interface{}) error {
 	// Validate repository state and expense data
 	if err := r.validateRepositoryState(); err != nil {
 		return err
@@ -251,7 +273,7 @@ func (r *revenueExpenseExcelRepository) AddExpense(ctx context.Context, expenseD
 	}
 
 	// Get file and sheet data
-	file, sheetName, rows, err := r.getFileAndSheetData()
+	file, _, rows, err := r.getFileAndSheetData(sheetName)
 	if err != nil {
 		return err
 	}
@@ -293,14 +315,14 @@ func (r *revenueExpenseExcelRepository) AddExpense(ctx context.Context, expenseD
 }
 
 // GetLastExpense retrieves the most recent expense entry from the Excel file
-func (r *revenueExpenseExcelRepository) GetLastExpense(ctx context.Context) (map[string]interface{}, error) {
+func (r *revenueExpenseExcelRepository) GetLastExpense(ctx context.Context, sheetName string) (map[string]interface{}, error) {
 	// Validate repository state
 	if err := r.validateRepositoryState(); err != nil {
 		return nil, err
 	}
 
 	// Get file and sheet data
-	_, _, rows, err := r.getFileAndSheetData()
+	_, _, rows, err := r.getFileAndSheetData(sheetName)
 	if err != nil {
 		return nil, err
 	}
@@ -314,9 +336,14 @@ func (r *revenueExpenseExcelRepository) GetLastExpense(ctx context.Context) (map
 
 	// Build the expense data map using the headers
 	expenseData := make(map[string]interface{})
-	headers := r.fileMetadata.Sheets[0].Headers
 
-	for _, header := range headers {
+	// Find the sheet metadata for the specified sheet
+	sheetMetadata := r.findSheetMetadata(sheetName)
+	if sheetMetadata == nil {
+		return nil, fmt.Errorf("sheet %s not found in metadata", sheetName)
+	}
+
+	for _, header := range sheetMetadata.Headers {
 		if header.ColumnIndex < len(lastDataRow) {
 			cellValue := strings.TrimSpace(lastDataRow[header.ColumnIndex])
 			if cellValue != "" {
@@ -329,14 +356,14 @@ func (r *revenueExpenseExcelRepository) GetLastExpense(ctx context.Context) (map
 }
 
 // GetLastTransactionDate retrieves the date of the most recent transaction from the Excel file
-func (r *revenueExpenseExcelRepository) GetLastTransactionDate(ctx context.Context) (time.Time, error) {
+func (r *revenueExpenseExcelRepository) GetLastTransactionDate(ctx context.Context, sheetName string) (time.Time, error) {
 	// Validate repository state
 	if err := r.validateRepositoryState(); err != nil {
 		return time.Time{}, err
 	}
 
 	// Get file and sheet data
-	_, _, rows, err := r.getFileAndSheetData()
+	_, _, rows, err := r.getFileAndSheetData(sheetName)
 	if err != nil {
 		return time.Time{}, err
 	}
@@ -359,13 +386,13 @@ func (r *revenueExpenseExcelRepository) GetLastTransactionDate(ctx context.Conte
 }
 
 // DeleteLastNRows removes the last n data rows from the Excel file
-func (r *revenueExpenseExcelRepository) DeleteLastNRows(ctx context.Context, n int) error {
+func (r *revenueExpenseExcelRepository) DeleteLastNRows(ctx context.Context, sheetName string, n int) error {
 	if r.fileMetadata == nil {
 		return fmt.Errorf("repository not initialized, call InitializeWithFile first")
 	}
 
 	// Get file and sheet data
-	file, sheetName, rows, err := r.getFileAndSheetData()
+	file, _, rows, err := r.getFileAndSheetData(sheetName)
 	if err != nil {
 		return err
 	}
@@ -547,18 +574,17 @@ func (r *revenueExpenseExcelRepository) hasNonEmptyData(row []string) bool {
 }
 
 // getFileAndSheetData opens the Excel file and returns file, sheet name, and rows
-func (r *revenueExpenseExcelRepository) getFileAndSheetData() (*excelize.File, string, [][]string, error) {
+func (r *revenueExpenseExcelRepository) getFileAndSheetData(sheetName string) (*excelize.File, string, [][]string, error) {
 	file, err := r.getCachedFile()
 	if err != nil {
 		return nil, "", nil, err
 	}
 
-	// Use the first sheet from metadata
-	if len(r.fileMetadata.Sheets) == 0 {
-		return nil, "", nil, fmt.Errorf("no sheets found in metadata")
+	// Validate that the sheet exists in metadata
+	sheetMetadata := r.findSheetMetadata(sheetName)
+	if sheetMetadata == nil {
+		return nil, "", nil, fmt.Errorf("sheet %s not found in metadata", sheetName)
 	}
-
-	sheetName := r.fileMetadata.Sheets[0].SheetName
 
 	// Check if we have cached rows and they're still valid
 	r.cacheMutex.RLock()

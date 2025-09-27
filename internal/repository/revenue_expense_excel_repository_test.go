@@ -23,11 +23,12 @@ func TestRevenueExpenseExcelRepository(t *testing.T) {
 func testRevenueExpenseExcelRepository(t *testing.T) {
 	t.Log("=== Excel test: handling with THU CHI Excel ===")
 	ctx := context.Background()
+	sheetName := "TIỀN MẶT"
 	revenueExpenseExcelRepo := NewRevenueExpenseExcelRepository()
 	numberOfRowsToDelete := 0
 	t.Cleanup(func() {
 		t.Log("Cleaning up...")
-		err := revenueExpenseExcelRepo.DeleteLastNRows(ctx, numberOfRowsToDelete)
+		err := revenueExpenseExcelRepo.DeleteLastNRows(ctx, sheetName, numberOfRowsToDelete)
 		require.Nil(t, err)
 		t.Log("✅ Rows deleted successfully")
 	})
@@ -106,7 +107,7 @@ func testRevenueExpenseExcelRepository(t *testing.T) {
 
 	// Read last transaction date
 	t.Log("🔄 Reading last transaction date...")
-	lastTransactionDate, err := revenueExpenseExcelRepo.GetLastTransactionDate(ctx)
+	lastTransactionDate, err := revenueExpenseExcelRepo.GetLastTransactionDate(ctx, sheetName)
 	require.Nil(t, err)
 	t.Logf("✅ Last transaction date retrieved: %v\n", lastTransactionDate)
 
@@ -115,14 +116,14 @@ func testRevenueExpenseExcelRepository(t *testing.T) {
 
 	// Add expense
 	t.Log("🔄 Adding sample expense using detected columns...")
-	err = revenueExpenseExcelRepo.AddExpense(ctx, sampleExpense)
+	err = revenueExpenseExcelRepo.AddExpense(ctx, sheetName, sampleExpense)
 	require.Nil(t, err)
 	t.Log("✅ Sample expense added successfully")
 	numberOfRowsToDelete += 2 // Include date row and expense row
 
 	// Try to read last expense
 	t.Log("🔄 Reading last expense...")
-	lastExpense, err := revenueExpenseExcelRepo.GetLastExpense(ctx)
+	lastExpense, err := revenueExpenseExcelRepo.GetLastExpense(ctx, sheetName)
 	require.Nil(t, err)
 	t.Logf("✅ Last expense retrieved: %v\n", lastExpense)
 
@@ -132,7 +133,7 @@ func testRevenueExpenseExcelRepository(t *testing.T) {
 
 	// Read last transaction date
 	t.Log("🔄 Reading last transaction date...")
-	lastTransactionDate2, err := revenueExpenseExcelRepo.GetLastTransactionDate(ctx)
+	lastTransactionDate2, err := revenueExpenseExcelRepo.GetLastTransactionDate(ctx, sheetName)
 	require.Nil(t, err)
 	t.Logf("✅ Last transaction date retrieved: %v\n", lastTransactionDate2)
 
@@ -157,14 +158,14 @@ func testRevenueExpenseExcelRepository(t *testing.T) {
 
 	// Add another expense
 	t.Log("🔄 Adding sample expense using detected columns...")
-	err = revenueExpenseExcelRepo.AddExpense(ctx, sampleExpense2)
+	err = revenueExpenseExcelRepo.AddExpense(ctx, sheetName, sampleExpense2)
 	require.Nil(t, err)
 	t.Log("✅ Sample expense added successfully")
 	numberOfRowsToDelete += 1 // Now only include expense row
 
 	// Try to read last expense
 	t.Log("🔄 Reading last expense...")
-	lastExpense2, err := revenueExpenseExcelRepo.GetLastExpense(ctx)
+	lastExpense2, err := revenueExpenseExcelRepo.GetLastExpense(ctx, sheetName)
 	require.Nil(t, err)
 	t.Logf("✅ Last expense retrieved: %v\n", lastExpense2)
 

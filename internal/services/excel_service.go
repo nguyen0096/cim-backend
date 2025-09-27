@@ -151,7 +151,7 @@ type ExcelService interface {
 	GetInventoryTemplateWithStyle(ctx context.Context, headerStyle, dataStyle *CellStyle) (*excelize.File, error)
 	// Revenue/Expense Excel operations
 	InitializeRevenueExpenseFile(ctx context.Context, filePath string) error
-	AddExpense(ctx context.Context, expenseData map[string]interface{}) error
+	AddExpense(ctx context.Context, sheetName string, expenseData map[string]interface{}) error
 	GetRevenueExpenseSchema(ctx context.Context) *models.FileMetadata
 }
 
@@ -523,8 +523,8 @@ func (s *excelService) InitializeRevenueExpenseFile(ctx context.Context, filePat
 }
 
 // AddExpense adds a new expense entry to the Excel file
-func (s *excelService) AddExpense(ctx context.Context, expenseData map[string]interface{}) error {
-	return s.revenueExpenseExcelRepo.AddExpense(ctx, expenseData)
+func (s *excelService) AddExpense(ctx context.Context, sheetName string, expenseData map[string]interface{}) error {
+	return s.revenueExpenseExcelRepo.AddExpense(ctx, sheetName, expenseData)
 }
 
 // GetRevenueExpenseSchema returns the Excel file schema
