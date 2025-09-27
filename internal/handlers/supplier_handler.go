@@ -7,7 +7,6 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
 )
 
@@ -17,10 +16,10 @@ type SupplierHandler struct {
 
 type SupplierService interface {
 	CreateSupplier(supplier *models.Supplier) error
-	GetSupplierByID(id uuid.UUID) (*models.Supplier, error)
+	GetSupplierByID(id uint) (*models.Supplier, error)
 	UpdateSupplier(supplier *models.Supplier) error
-	DeleteSupplier(id uuid.UUID) error
-	RestoreSupplier(id uuid.UUID) error
+	DeleteSupplier(id uint) error
+	RestoreSupplier(id uint) error
 	ListSuppliers(limit, offset int, sortBy, sortOrder string) ([]models.Supplier, error)
 	SearchSuppliers(query string, sortBy, sortOrder string) ([]models.Supplier, error)
 	SearchSuppliersWithPagination(query string, limit, offset int, sortBy, sortOrder string) ([]models.Supplier, error)
@@ -179,7 +178,12 @@ func (h *SupplierHandler) CreateSupplier(c echo.Context) error {
 }
 
 func (h *SupplierHandler) GetSupplier(c echo.Context) error {
-	id, err := uuid.Parse(c.Param("id"))
+	idStr := c.Param("id")
+	idInt, err := strconv.Atoi(idStr)
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid ID format"})
+	}
+	id := uint(idInt)
 	if err != nil {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid supplier ID"})
 	}
@@ -193,7 +197,12 @@ func (h *SupplierHandler) GetSupplier(c echo.Context) error {
 }
 
 func (h *SupplierHandler) UpdateSupplier(c echo.Context) error {
-	id, err := uuid.Parse(c.Param("id"))
+	idStr := c.Param("id")
+	idInt, err := strconv.Atoi(idStr)
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid ID format"})
+	}
+	id := uint(idInt)
 	if err != nil {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid supplier ID"})
 	}
@@ -218,7 +227,7 @@ func (h *SupplierHandler) UpdateSupplier(c echo.Context) error {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid phone number format"})
 	}
 
-	supplier.ID = &id
+	supplier.ID = id
 	if err := h.supplierService.UpdateSupplier(&supplier); err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to update supplier"})
 	}
@@ -227,7 +236,12 @@ func (h *SupplierHandler) UpdateSupplier(c echo.Context) error {
 }
 
 func (h *SupplierHandler) DeleteSupplier(c echo.Context) error {
-	id, err := uuid.Parse(c.Param("id"))
+	idStr := c.Param("id")
+	idInt, err := strconv.Atoi(idStr)
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid ID format"})
+	}
+	id := uint(idInt)
 	if err != nil {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid supplier ID"})
 	}
@@ -240,7 +254,12 @@ func (h *SupplierHandler) DeleteSupplier(c echo.Context) error {
 }
 
 func (h *SupplierHandler) RestoreSupplier(c echo.Context) error {
-	id, err := uuid.Parse(c.Param("id"))
+	idStr := c.Param("id")
+	idInt, err := strconv.Atoi(idStr)
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid ID format"})
+	}
+	id := uint(idInt)
 	if err != nil {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid supplier ID"})
 	}

@@ -1,9 +1,5 @@
 package models
 
-import (
-	"github.com/google/uuid"
-)
-
 type PurchaseOrderStatus string
 
 const (
@@ -27,9 +23,9 @@ type PurchaseOrder struct {
 // PurchaseOrderItem represents an item in a purchase order
 type PurchaseOrderItem struct {
 	Base
-	PurchaseOrderID  *uuid.UUID     `json:"purchase_order_id"`
+	PurchaseOrderID  *uint          `json:"purchase_order_id"`
 	PurchaseOrder    *PurchaseOrder `json:"purchase_order,omitempty" gorm:"foreignKey:PurchaseOrderID" validate:"-"`
-	ProductID        *uuid.UUID     `json:"product_id" validate:"required"`
+	ProductID        *uint          `json:"product_id" validate:"required"`
 	Product          *Product       `json:"product,omitempty" gorm:"foreignKey:ProductID" validate:"-"`
 	Quantity         int            `json:"quantity" gorm:"not null" validate:"required,min=1"`
 	TotalPrice       float64        `json:"total_price" gorm:"type:decimal(10,2)"`

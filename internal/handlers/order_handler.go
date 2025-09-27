@@ -5,7 +5,6 @@ import (
 	"net/http"
 	"strconv"
 
-	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
 )
 
@@ -15,12 +14,12 @@ type OrderHandler struct {
 
 type OrderService interface {
 	CreateOrder(order *models.Order) error
-	GetOrderByID(id uuid.UUID) (*models.Order, error)
+	GetOrderByID(id uint) (*models.Order, error)
 	UpdateOrder(order *models.Order) error
-	DeleteOrder(id uuid.UUID) error
+	DeleteOrder(id uint) error
 	ListOrders(limit, offset int) ([]models.Order, error)
-	UpdateOrderStatus(id uuid.UUID, status string) error
-	CompleteOrder(id uuid.UUID, userID string) error
+	UpdateOrderStatus(id uint, status string) error
+	CompleteOrder(id uint, userID string) error
 	CountOrders() (int64, error)
 }
 
@@ -86,7 +85,12 @@ func (h *OrderHandler) CreateOrder(c echo.Context) error {
 }
 
 func (h *OrderHandler) GetOrder(c echo.Context) error {
-	id, err := uuid.Parse(c.Param("id"))
+	idStr := c.Param("id")
+	idInt, err := strconv.Atoi(idStr)
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid ID format"})
+	}
+	id := uint(idInt)
 	if err != nil {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid order ID"})
 	}
@@ -100,7 +104,12 @@ func (h *OrderHandler) GetOrder(c echo.Context) error {
 }
 
 func (h *OrderHandler) UpdateOrder(c echo.Context) error {
-	id, err := uuid.Parse(c.Param("id"))
+	idStr := c.Param("id")
+	idInt, err := strconv.Atoi(idStr)
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid ID format"})
+	}
+	id := uint(idInt)
 	if err != nil {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid order ID"})
 	}
@@ -119,7 +128,12 @@ func (h *OrderHandler) UpdateOrder(c echo.Context) error {
 }
 
 func (h *OrderHandler) UpdateOrderStatus(c echo.Context) error {
-	id, err := uuid.Parse(c.Param("id"))
+	idStr := c.Param("id")
+	idInt, err := strconv.Atoi(idStr)
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid ID format"})
+	}
+	id := uint(idInt)
 	if err != nil {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid order ID"})
 	}
@@ -140,7 +154,12 @@ func (h *OrderHandler) UpdateOrderStatus(c echo.Context) error {
 }
 
 func (h *OrderHandler) DeleteOrder(c echo.Context) error {
-	id, err := uuid.Parse(c.Param("id"))
+	idStr := c.Param("id")
+	idInt, err := strconv.Atoi(idStr)
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid ID format"})
+	}
+	id := uint(idInt)
 	if err != nil {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid order ID"})
 	}
@@ -153,7 +172,12 @@ func (h *OrderHandler) DeleteOrder(c echo.Context) error {
 }
 
 func (h *OrderHandler) CompleteOrder(c echo.Context) error {
-	id, err := uuid.Parse(c.Param("id"))
+	idStr := c.Param("id")
+	idInt, err := strconv.Atoi(idStr)
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid ID format"})
+	}
+	id := uint(idInt)
 	if err != nil {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid order ID"})
 	}

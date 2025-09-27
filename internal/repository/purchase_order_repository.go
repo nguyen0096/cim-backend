@@ -4,16 +4,15 @@ import (
 	"context"
 	"import-export-backend/internal/models"
 
-	"github.com/google/uuid"
 	"gorm.io/gorm"
 )
 
 //go:generate mockery --name=PurchaseOrderRepository --structname=PurchaseOrderRepository --output=./repositorymocks --outpkg=repositorymocks
 type PurchaseOrderRepository interface {
 	Create(ctx context.Context, purchaseOrder *models.PurchaseOrder) error
-	GetByID(id uuid.UUID) (*models.PurchaseOrder, error)
+	GetByID(id uint) (*models.PurchaseOrder, error)
 	Update(purchaseOrder *models.PurchaseOrder) error
-	Delete(id uuid.UUID) error
+	Delete(id uint) error
 	List(ctx context.Context, params models.PaginationParams) ([]models.PurchaseOrder, int64, error)
 	GetByStatus(status string) ([]models.PurchaseOrder, error)
 }
@@ -30,7 +29,7 @@ func (r *purchaseOrderRepository) Create(ctx context.Context, purchaseOrder *mod
 	return r.db.WithContext(ctx).Create(purchaseOrder).Error
 }
 
-func (r *purchaseOrderRepository) GetByID(id uuid.UUID) (*models.PurchaseOrder, error) {
+func (r *purchaseOrderRepository) GetByID(id uint) (*models.PurchaseOrder, error) {
 	var purchaseOrder models.PurchaseOrder
 	err := r.db.Preload("Items").Preload("Items.Product").First(&purchaseOrder, "id = ?", id).Error
 	if err != nil {
@@ -43,7 +42,7 @@ func (r *purchaseOrderRepository) Update(purchaseOrder *models.PurchaseOrder) er
 	return r.db.Save(purchaseOrder).Error
 }
 
-func (r *purchaseOrderRepository) Delete(id uuid.UUID) error {
+func (r *purchaseOrderRepository) Delete(id uint) error {
 	return r.db.Delete(&models.PurchaseOrder{}, "id = ?", id).Error
 }
 

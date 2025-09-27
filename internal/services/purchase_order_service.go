@@ -7,19 +7,17 @@ import (
 	"import-export-backend/internal/models"
 	"import-export-backend/internal/repository"
 	"time"
-
-	"github.com/google/uuid"
 )
 
 type PurchaseOrderService interface {
 	CreatePurchaseOrder(ctx context.Context, purchaseOrder *models.PurchaseOrder) error
-	GetPurchaseOrderByID(id uuid.UUID) (*models.PurchaseOrder, error)
+	GetPurchaseOrderByID(id uint) (*models.PurchaseOrder, error)
 	UpdatePurchaseOrder(purchaseOrder *models.PurchaseOrder) error
-	DeletePurchaseOrder(id uuid.UUID) error
+	DeletePurchaseOrder(id uint) error
 	ListPurchaseOrders(ctx context.Context, params models.PaginationParams) (*models.PaginationResult[models.PurchaseOrder], error)
 	GetPurchaseOrdersByStatus(status string) ([]models.PurchaseOrder, error)
-	UpdatePurchaseOrderStatus(id uuid.UUID, status string) error
-	ReceivePurchaseOrder(id uuid.UUID, userID string) error
+	UpdatePurchaseOrderStatus(id uint, status string) error
+	ReceivePurchaseOrder(id uint, userID string) error
 }
 
 type purchaseOrderService struct {
@@ -72,7 +70,7 @@ func (s *purchaseOrderService) CreatePurchaseOrder(ctx context.Context, purchase
 	return s.purchaseOrderRepo.Create(ctx, purchaseOrder)
 }
 
-func (s *purchaseOrderService) GetPurchaseOrderByID(id uuid.UUID) (*models.PurchaseOrder, error) {
+func (s *purchaseOrderService) GetPurchaseOrderByID(id uint) (*models.PurchaseOrder, error) {
 	return s.purchaseOrderRepo.GetByID(id)
 }
 
@@ -80,7 +78,7 @@ func (s *purchaseOrderService) UpdatePurchaseOrder(purchaseOrder *models.Purchas
 	return s.purchaseOrderRepo.Update(purchaseOrder)
 }
 
-func (s *purchaseOrderService) DeletePurchaseOrder(id uuid.UUID) error {
+func (s *purchaseOrderService) DeletePurchaseOrder(id uint) error {
 	return s.purchaseOrderRepo.Delete(id)
 }
 
@@ -105,7 +103,7 @@ func (s *purchaseOrderService) GetPurchaseOrdersByStatus(status string) ([]model
 }
 
 // UpdatePurchaseOrderStatus updates the status of a purchase order
-func (s *purchaseOrderService) UpdatePurchaseOrderStatus(id uuid.UUID, status string) error {
+func (s *purchaseOrderService) UpdatePurchaseOrderStatus(id uint, status string) error {
 	purchaseOrder, err := s.purchaseOrderRepo.GetByID(id)
 	if err != nil {
 		return err
@@ -114,7 +112,7 @@ func (s *purchaseOrderService) UpdatePurchaseOrderStatus(id uuid.UUID, status st
 	return s.purchaseOrderRepo.Update(purchaseOrder)
 }
 
-func (s *purchaseOrderService) ReceivePurchaseOrder(id uuid.UUID, userID string) error {
+func (s *purchaseOrderService) ReceivePurchaseOrder(id uint, userID string) error {
 	purchaseOrder, err := s.purchaseOrderRepo.GetByID(id)
 	if err != nil {
 		return err
@@ -131,7 +129,7 @@ func (s *purchaseOrderService) ReceivePurchaseOrder(id uuid.UUID, userID string)
 		if err := s.inventoryService.AddInventory(
 			*item.ProductID,
 			item.Quantity,
-			*purchaseOrder.ID,
+			purchaseOrder.ID,
 			"purchase_order",
 			"Received from purchase order",
 			userID,

@@ -3,18 +3,16 @@ package services
 import (
 	"import-export-backend/internal/models"
 	"import-export-backend/internal/repository"
-
-	"github.com/google/uuid"
 )
 
 type ProductService interface {
 	CreateProduct(product *models.Product) error
-	GetProductByID(id uuid.UUID) (*models.Product, error)
+	GetProductByID(id uint) (*models.Product, error)
 	UpdateProduct(product *models.Product) error
-	DeleteProduct(id uuid.UUID) error
-	RestoreProduct(id uuid.UUID) error
+	DeleteProduct(id uint) error
+	RestoreProduct(id uint) error
 	ListProducts(limit, offset int, sortBy, sortOrder string) ([]models.Product, error)
-	GetProductsBySupplier(supplierID uuid.UUID) ([]models.Product, error)
+	GetProductsBySupplier(supplierID uint) ([]models.Product, error)
 	SearchProducts(query string, sortBy, sortOrder string) ([]models.Product, error)
 	SearchProductsWithPagination(query string, limit, offset int, sortBy, sortOrder string) ([]models.Product, error)
 	CountProducts() (int64, error)
@@ -48,7 +46,7 @@ func (s *productService) CreateProduct(product *models.Product) error {
 	return s.inventoryRepo.Create(inventory)
 }
 
-func (s *productService) GetProductByID(id uuid.UUID) (*models.Product, error) {
+func (s *productService) GetProductByID(id uint) (*models.Product, error) {
 	return s.productRepo.GetByID(id)
 }
 
@@ -56,11 +54,11 @@ func (s *productService) UpdateProduct(product *models.Product) error {
 	return s.productRepo.Update(product)
 }
 
-func (s *productService) DeleteProduct(id uuid.UUID) error {
+func (s *productService) DeleteProduct(id uint) error {
 	return s.productRepo.Delete(id)
 }
 
-func (s *productService) RestoreProduct(id uuid.UUID) error {
+func (s *productService) RestoreProduct(id uint) error {
 	return s.productRepo.Restore(id)
 }
 
@@ -68,7 +66,7 @@ func (s *productService) ListProducts(limit, offset int, sortBy, sortOrder strin
 	return s.productRepo.List(limit, offset, sortBy, sortOrder)
 }
 
-func (s *productService) GetProductsBySupplier(supplierID uuid.UUID) ([]models.Product, error) {
+func (s *productService) GetProductsBySupplier(supplierID uint) ([]models.Product, error) {
 	return s.productRepo.GetBySupplier(supplierID)
 }
 

@@ -48,7 +48,7 @@ func (s *excelService) ExportProducts() (*excelize.File, error) {
 	// Data
 	for i, product := range products {
 		row := i + 2
-		file.SetCellValue(sheetName, "A"+strconv.Itoa(row), product.ID.String())
+		file.SetCellValue(sheetName, "A"+strconv.Itoa(row), strconv.Itoa(int(product.ID)))
 		file.SetCellValue(sheetName, "B"+strconv.Itoa(row), product.Name)
 		file.SetCellValue(sheetName, "C"+strconv.Itoa(row), product.Supplier.Name)
 		file.SetCellValue(sheetName, "D"+strconv.Itoa(row), product.UnitPrice)
@@ -84,7 +84,7 @@ func (s *excelService) ExportInventory() (*excelize.File, error) {
 	// Data
 	for i, inv := range inventory {
 		row := i + 2
-		file.SetCellValue(sheetName, "A"+strconv.Itoa(row), inv.ProductID.String())
+		file.SetCellValue(sheetName, "A"+strconv.Itoa(row), strconv.Itoa(int(inv.ProductID)))
 		file.SetCellValue(sheetName, "B"+strconv.Itoa(row), inv.Product.Name)
 		file.SetCellValue(sheetName, "C"+strconv.Itoa(row), inv.Quantity)
 		file.SetCellValue(sheetName, "D"+strconv.Itoa(row), inv.ReorderLevel)

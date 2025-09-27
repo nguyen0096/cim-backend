@@ -5,7 +5,6 @@ import (
 	"net/http"
 	"strconv"
 
-	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
 )
 
@@ -15,13 +14,13 @@ type InventoryHandler struct {
 
 type InventoryService interface {
 	GetInventory(limit, offset int) ([]models.Inventory, error)
-	GetInventoryByID(id uuid.UUID) (*models.Inventory, error)
+	GetInventoryByID(id uint) (*models.Inventory, error)
 	UpdateInventory(inventory *models.Inventory) error
-	AdjustInventory(productID uuid.UUID, quantity int, notes string, userID string) error
+	AdjustInventory(productID uint, quantity int, notes string, userID string) error
 	GetLowStock() ([]models.Inventory, error)
-	GetTransactions(productID uuid.UUID, limit, offset int) ([]models.InventoryTransaction, error)
+	GetTransactions(productID uint, limit, offset int) ([]models.InventoryTransaction, error)
 	CountInventory() (int64, error)
-	CountTransactions(productID uuid.UUID) (int64, error)
+	CountTransactions(productID uint) (int64, error)
 }
 
 func NewInventoryHandler(inventoryService InventoryService) *InventoryHandler {
@@ -34,7 +33,7 @@ func (h *InventoryHandler) GetInventory(c echo.Context) error {
 	// Parse query parameters
 	limit, _ := strconv.Atoi(c.QueryParam("limit"))
 	page, _ := strconv.Atoi(c.QueryParam("page"))
-	
+
 	// Set defaults
 	if limit == 0 {
 		limit = 20
@@ -42,7 +41,7 @@ func (h *InventoryHandler) GetInventory(c echo.Context) error {
 	if page == 0 {
 		page = 1
 	}
-	
+
 	// Calculate offset
 	offset := (page - 1) * limit
 
@@ -73,17 +72,19 @@ func (h *InventoryHandler) GetInventory(c echo.Context) error {
 }
 
 func (h *InventoryHandler) UpdateInventory(c echo.Context) error {
-	id, err := uuid.Parse(c.Param("id"))
+	idStr := c.Param("id")
+	idInt, err := strconv.Atoi(idStr)
 	if err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid inventory ID"})
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid ID format"})
 	}
+	id := uint(idInt)
 
 	var inventory models.Inventory
 	if err := c.Bind(&inventory); err != nil {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid request body"})
 	}
 
-	inventory.ID = &id
+	inventory.ID = id
 	if err := h.inventoryService.UpdateInventory(&inventory); err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to update inventory"})
 	}
@@ -93,9 +94,9 @@ func (h *InventoryHandler) UpdateInventory(c echo.Context) error {
 
 func (h *InventoryHandler) AdjustInventory(c echo.Context) error {
 	var req struct {
-		ProductID uuid.UUID `json:"product_id"`
-		Quantity  int       `json:"quantity"`
-		Notes     string    `json:"notes"`
+		ProductID uint   `json:"product_id"`
+		Quantity  int    `json:"quantity"`
+		Notes     string `json:"notes"`
 	}
 
 	if err := c.Bind(&req); err != nil {
@@ -119,7 +120,7 @@ func (h *InventoryHandler) GetTransactions(c echo.Context) error {
 	limit, _ := strconv.Atoi(c.QueryParam("limit"))
 	page, _ := strconv.Atoi(c.QueryParam("page"))
 	productIDStr := c.QueryParam("product_id")
-	
+
 	// Set defaults
 	if limit == 0 {
 		limit = 20
@@ -127,14 +128,16 @@ func (h *InventoryHandler) GetTransactions(c echo.Context) error {
 	if page == 0 {
 		page = 1
 	}
-	
+
 	// Calculate offset
 	offset := (page - 1) * limit
 
-	var productID uuid.UUID
+	var productID uint
 	if productIDStr != "" {
 		var err error
-		productID, err = uuid.Parse(productIDStr)
+		var parsedID int
+		parsedID, err = strconv.Atoi(productIDStr)
+		productID = uint(parsedID)
 		if err != nil {
 			return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid product ID"})
 		}

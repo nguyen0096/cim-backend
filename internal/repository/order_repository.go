@@ -3,15 +3,14 @@ package repository
 import (
 	"import-export-backend/internal/models"
 
-	"github.com/google/uuid"
 	"gorm.io/gorm"
 )
 
 type OrderRepository interface {
 	Create(order *models.Order) error
-	GetByID(id uuid.UUID) (*models.Order, error)
+	GetByID(id uint) (*models.Order, error)
 	Update(order *models.Order) error
-	Delete(id uuid.UUID) error
+	Delete(id uint) error
 	List(limit, offset int) ([]models.Order, error)
 	GetByStatus(status string) ([]models.Order, error)
 	GetByCustomer(customerEmail string) ([]models.Order, error)
@@ -30,7 +29,7 @@ func (r *orderRepository) Create(order *models.Order) error {
 	return r.db.Create(order).Error
 }
 
-func (r *orderRepository) GetByID(id uuid.UUID) (*models.Order, error) {
+func (r *orderRepository) GetByID(id uint) (*models.Order, error) {
 	var order models.Order
 	err := r.db.Preload("Items").Preload("Items.Product").First(&order, "id = ?", id).Error
 	if err != nil {
@@ -43,7 +42,7 @@ func (r *orderRepository) Update(order *models.Order) error {
 	return r.db.Save(order).Error
 }
 
-func (r *orderRepository) Delete(id uuid.UUID) error {
+func (r *orderRepository) Delete(id uint) error {
 	return r.db.Delete(&models.Order{}, "id = ?", id).Error
 }
 

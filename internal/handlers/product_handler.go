@@ -5,7 +5,6 @@ import (
 	"net/http"
 	"strconv"
 
-	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
 )
 
@@ -15,12 +14,12 @@ type ProductHandler struct {
 
 type ProductService interface {
 	CreateProduct(product *models.Product) error
-	GetProductByID(id uuid.UUID) (*models.Product, error)
+	GetProductByID(id uint) (*models.Product, error)
 	UpdateProduct(product *models.Product) error
-	DeleteProduct(id uuid.UUID) error
-	RestoreProduct(id uuid.UUID) error
+	DeleteProduct(id uint) error
+	RestoreProduct(id uint) error
 	ListProducts(limit, offset int, sortBy, sortOrder string) ([]models.Product, error)
-	GetProductsBySupplier(supplierID uuid.UUID) ([]models.Product, error)
+	GetProductsBySupplier(supplierID uint) ([]models.Product, error)
 	SearchProducts(query string, sortBy, sortOrder string) ([]models.Product, error)
 	SearchProductsWithPagination(query string, limit, offset int, sortBy, sortOrder string) ([]models.Product, error)
 	CountProducts() (int64, error)
@@ -171,7 +170,12 @@ func (h *ProductHandler) CreateProduct(c echo.Context) error {
 }
 
 func (h *ProductHandler) GetProduct(c echo.Context) error {
-	id, err := uuid.Parse(c.Param("id"))
+	idStr := c.Param("id")
+	idInt, err := strconv.Atoi(idStr)
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid ID format"})
+	}
+	id := uint(idInt)
 	if err != nil {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid product ID"})
 	}
@@ -185,7 +189,12 @@ func (h *ProductHandler) GetProduct(c echo.Context) error {
 }
 
 func (h *ProductHandler) UpdateProduct(c echo.Context) error {
-	id, err := uuid.Parse(c.Param("id"))
+	idStr := c.Param("id")
+	idInt, err := strconv.Atoi(idStr)
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid ID format"})
+	}
+	id := uint(idInt)
 	if err != nil {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid product ID"})
 	}
@@ -200,7 +209,7 @@ func (h *ProductHandler) UpdateProduct(c echo.Context) error {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid unit type. Please use a valid unit type like 'piece', 'kg', 'liter', etc."})
 	}
 
-	product.ID = &id
+	product.ID = id
 	if err := h.productService.UpdateProduct(&product); err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to update product"})
 	}
@@ -209,7 +218,12 @@ func (h *ProductHandler) UpdateProduct(c echo.Context) error {
 }
 
 func (h *ProductHandler) DeleteProduct(c echo.Context) error {
-	id, err := uuid.Parse(c.Param("id"))
+	idStr := c.Param("id")
+	idInt, err := strconv.Atoi(idStr)
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid ID format"})
+	}
+	id := uint(idInt)
 	if err != nil {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid product ID"})
 	}
@@ -222,7 +236,12 @@ func (h *ProductHandler) DeleteProduct(c echo.Context) error {
 }
 
 func (h *ProductHandler) RestoreProduct(c echo.Context) error {
-	id, err := uuid.Parse(c.Param("id"))
+	idStr := c.Param("id")
+	idInt, err := strconv.Atoi(idStr)
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid ID format"})
+	}
+	id := uint(idInt)
 	if err != nil {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid product ID"})
 	}

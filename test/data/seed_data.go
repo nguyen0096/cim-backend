@@ -3,45 +3,7 @@ package data
 import (
 	"import-export-backend/internal/models"
 	"time"
-
-	"github.com/google/uuid"
 )
-
-// SupplierIDs contains predefined supplier UUIDs for consistent referencing
-var SupplierIDs = struct {
-	TechElectronics uuid.UUID
-	OfficeSupply    uuid.UUID
-	GlobalParts     uuid.UUID
-}{
-	TechElectronics: uuid.MustParse("550e8400-e29b-41d4-a716-446655440001"),
-	OfficeSupply:    uuid.MustParse("550e8400-e29b-41d4-a716-446655440002"),
-	GlobalParts:     uuid.MustParse("550e8400-e29b-41d4-a716-446655440003"),
-}
-
-// ProductIDs contains predefined product UUIDs for consistent referencing
-var ProductIDs = struct {
-	MacBookPro         uuid.UUID
-	GamingMonitor      uuid.UUID
-	MechanicalKeyboard uuid.UUID
-	WirelessMouse      uuid.UUID
-	OfficeChair        uuid.UUID
-	StandingDesk       uuid.UUID
-	USBCHub            uuid.UUID
-	Webcam             uuid.UUID
-	Headphones         uuid.UUID
-	TabletPro          uuid.UUID
-}{
-	MacBookPro:         uuid.MustParse("660e8400-e29b-41d4-a716-446655440001"),
-	GamingMonitor:      uuid.MustParse("660e8400-e29b-41d4-a716-446655440002"),
-	MechanicalKeyboard: uuid.MustParse("660e8400-e29b-41d4-a716-446655440003"),
-	WirelessMouse:      uuid.MustParse("660e8400-e29b-41d4-a716-446655440004"),
-	OfficeChair:        uuid.MustParse("660e8400-e29b-41d4-a716-446655440005"),
-	StandingDesk:       uuid.MustParse("660e8400-e29b-41d4-a716-446655440006"),
-	USBCHub:            uuid.MustParse("660e8400-e29b-41d4-a716-446655440007"),
-	Webcam:             uuid.MustParse("660e8400-e29b-41d4-a716-446655440008"),
-	Headphones:         uuid.MustParse("660e8400-e29b-41d4-a716-446655440009"),
-	TabletPro:          uuid.MustParse("660e8400-e29b-41d4-a716-446655440010"),
-}
 
 // Suppliers contains all test supplier data
 func Suppliers() []models.Supplier {
@@ -50,7 +12,6 @@ func Suppliers() []models.Supplier {
 	return []models.Supplier{
 		{
 			Base: models.Base{
-				ID:        &SupplierIDs.TechElectronics,
 				CreatedAt: now,
 				UpdatedAt: now,
 			},
@@ -61,7 +22,6 @@ func Suppliers() []models.Supplier {
 		},
 		{
 			Base: models.Base{
-				ID:        &SupplierIDs.OfficeSupply,
 				CreatedAt: now,
 				UpdatedAt: now,
 			},
@@ -72,7 +32,6 @@ func Suppliers() []models.Supplier {
 		},
 		{
 			Base: models.Base{
-				ID:        &SupplierIDs.GlobalParts,
 				CreatedAt: now,
 				UpdatedAt: now,
 			},
@@ -85,127 +44,117 @@ func Suppliers() []models.Supplier {
 }
 
 // Products contains all test product data
-func Products() []models.Product {
+func Products(supplierIDs []uint) []models.Product {
 	now := time.Now()
 
 	return []models.Product{
 		{
 			Base: models.Base{
-				ID:        &ProductIDs.MacBookPro,
 				CreatedAt: now,
 				UpdatedAt: now,
 			},
 			Name:        "MacBook Pro 16-inch M3",
 			Description: "Professional laptop with M3 chip, 32GB RAM, 1TB SSD",
-			SupplierID:  SupplierIDs.TechElectronics,
+			SupplierID:  supplierIDs[0], // Tech Electronics
 			UnitPrice:   2999.99,
 			Status:      "active",
 		},
 		{
 			Base: models.Base{
-				ID:        &ProductIDs.GamingMonitor,
 				CreatedAt: now,
 				UpdatedAt: now,
 			},
 			Name:        "LG UltraGear 27\" 4K Gaming Monitor",
 			Description: "27-inch 4K UHD gaming monitor with 144Hz refresh rate",
-			SupplierID:  SupplierIDs.TechElectronics,
+			SupplierID:  supplierIDs[0], // Tech Electronics
 			UnitPrice:   599.99,
 			Status:      "active",
 		},
 		{
 			Base: models.Base{
-				ID:        &ProductIDs.MechanicalKeyboard,
 				CreatedAt: now,
 				UpdatedAt: now,
 			},
 			Name:        "Keychron K8 Mechanical Keyboard",
 			Description: "Wireless mechanical keyboard with RGB backlight and hot-swappable switches",
-			SupplierID:  SupplierIDs.TechElectronics,
+			SupplierID:  supplierIDs[0], // Tech Electronics
 			UnitPrice:   89.99,
 			Status:      "active",
 		},
 		{
 			Base: models.Base{
-				ID:        &ProductIDs.WirelessMouse,
 				CreatedAt: now,
 				UpdatedAt: now,
 			},
 			Name:        "Logitech MX Master 3S",
 			Description: "Advanced wireless mouse with precision scrolling and customizable buttons",
-			SupplierID:  SupplierIDs.TechElectronics,
+			SupplierID:  supplierIDs[0], // Tech Electronics
 			UnitPrice:   99.99,
 			Status:      "active",
 		},
 		{
 			Base: models.Base{
-				ID:        &ProductIDs.OfficeChair,
 				CreatedAt: now,
 				UpdatedAt: now,
 			},
 			Name:        "Herman Miller Aeron Chair",
 			Description: "Ergonomic office chair with lumbar support and breathable mesh",
-			SupplierID:  SupplierIDs.OfficeSupply,
+			SupplierID:  supplierIDs[1], // Office Supply
 			UnitPrice:   1395.00,
 			Status:      "active",
 		},
 		{
 			Base: models.Base{
-				ID:        &ProductIDs.StandingDesk,
 				CreatedAt: now,
 				UpdatedAt: now,
 			},
 			Name:        "UPLIFT Standing Desk 60x30",
 			Description: "Height-adjustable standing desk with bamboo top and memory settings",
-			SupplierID:  SupplierIDs.OfficeSupply,
+			SupplierID:  supplierIDs[1], // Office Supply
 			UnitPrice:   799.00,
 			Status:      "active",
 		},
 		{
 			Base: models.Base{
-				ID:        &ProductIDs.USBCHub,
 				CreatedAt: now,
 				UpdatedAt: now,
 			},
 			Name:        "CalDigit TS4 Thunderbolt 4 Hub",
 			Description: "18-port Thunderbolt 4 hub with 98W charging and 40Gbps data transfer",
-			SupplierID:  SupplierIDs.GlobalParts,
+			SupplierID:  supplierIDs[2], // Global Parts
 			UnitPrice:   399.95,
 			Status:      "active",
 		},
 		{
 			Base: models.Base{
-				ID:        &ProductIDs.Webcam,
 				CreatedAt: now,
 				UpdatedAt: now,
 			},
 			Name:        "Logitech Brio 4K Webcam",
 			Description: "Ultra HD 4K webcam with HDR and Windows Hello support",
-			SupplierID:  SupplierIDs.GlobalParts,
+			SupplierID:  supplierIDs[2], // Global Parts
 			UnitPrice:   199.99,
 			Status:      "active",
 		},
 		{
 			Base: models.Base{
-				ID:        &ProductIDs.Headphones,
 				CreatedAt: now,
 				UpdatedAt: now,
 			},
 			Name:        "Sony WH-1000XM5 Headphones",
 			Description: "Industry-leading noise cancelling wireless headphones with 30-hour battery",
-			SupplierID:  SupplierIDs.TechElectronics,
+			SupplierID:  supplierIDs[0], // Tech Electronics
 			UnitPrice:   399.99,
 			Status:      "active",
 		},
 		{
 			Base: models.Base{
-				ID:        &ProductIDs.TabletPro,
 				CreatedAt: now,
 				UpdatedAt: now,
 			},
 			Name:        "iPad Pro 12.9\" M2",
 			Description: "12.9-inch iPad Pro with M2 chip, 256GB storage, and Liquid Retina XDR display",
-			SupplierID:  SupplierIDs.TechElectronics,
+			SupplierID:  supplierIDs[0], // Tech Electronics
 			UnitPrice:   1099.99,
 			Status:      "active",
 		},
@@ -214,7 +163,7 @@ func Products() []models.Product {
 
 // InventoryData represents inventory configuration for a product
 type InventoryData struct {
-	ProductID    uuid.UUID
+	ProductID    uint
 	Quantity     int
 	ReorderLevel int
 	Location     string
@@ -222,38 +171,34 @@ type InventoryData struct {
 
 // InventoryConfigs contains inventory configuration for all products
 var InventoryConfigs = []InventoryData{
-	{ProductIDs.MacBookPro, 15, 5, "Warehouse A"},
-	{ProductIDs.GamingMonitor, 30, 10, "Warehouse B"},
-	{ProductIDs.MechanicalKeyboard, 45, 15, "Warehouse C"},
-	{ProductIDs.WirelessMouse, 25, 8, "Warehouse A"},
-	{ProductIDs.OfficeChair, 8, 3, "Warehouse B"},
-	{ProductIDs.StandingDesk, 12, 5, "Warehouse C"},
-	{ProductIDs.USBCHub, 20, 8, "Warehouse A"},
-	{ProductIDs.Webcam, 35, 12, "Warehouse B"},
-	{ProductIDs.Headphones, 18, 6, "Warehouse C"},
-	{ProductIDs.TabletPro, 22, 8, "Warehouse A"},
+	{1, 15, 5, "Warehouse A"},
+	{2, 30, 10, "Warehouse B"},
+	{3, 45, 15, "Warehouse C"},
+	{4, 25, 8, "Warehouse A"},
+	{5, 8, 3, "Warehouse B"},
+	{6, 12, 5, "Warehouse C"},
+	{7, 20, 8, "Warehouse A"},
+	{8, 35, 12, "Warehouse B"},
+	{9, 18, 6, "Warehouse C"},
+	{10, 22, 8, "Warehouse A"},
 }
 
 // Inventory contains all test inventory data
-func Inventory() []models.Inventory {
+func Inventory(productIDs []uint) []models.Inventory {
 	now := time.Now()
 
 	inventory := make([]models.Inventory, len(InventoryConfigs))
 	for i, config := range InventoryConfigs {
 		inventory[i] = models.Inventory{
 			Base: models.Base{
-				ID:        &uuid.UUID{},
 				CreatedAt: now,
 				UpdatedAt: now,
 			},
-			ProductID:    &config.ProductID,
+			ProductID:    config.ProductID,
 			Quantity:     config.Quantity,
 			ReorderLevel: config.ReorderLevel,
 			Location:     config.Location,
 		}
-		// Generate new UUID for each inventory record
-		id := uuid.New()
-		inventory[i].ID = &id
 	}
 
 	return inventory

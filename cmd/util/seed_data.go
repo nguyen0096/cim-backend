@@ -43,19 +43,23 @@ func seedDatabase() error {
 	// Seed in correct order (respecting foreign key constraints)
 
 	// 1. Suppliers
+	var supplierIDs []uint
 	for _, supplier := range seedData.Suppliers {
 		if err := tx.Create(&supplier).Error; err != nil {
 			tx.Rollback()
 			return fmt.Errorf("failed to create supplier: %w", err)
 		}
+		supplierIDs = append(supplierIDs, supplier.ID)
 	}
 
 	// 2. Products
+	var productIDs []uint
 	for _, product := range seedData.Products {
 		if err := tx.Create(&product).Error; err != nil {
 			tx.Rollback()
 			return fmt.Errorf("failed to create product: %w", err)
 		}
+		productIDs = append(productIDs, product.ID)
 	}
 
 	// 3. Inventory
@@ -76,9 +80,23 @@ func seedDatabase() error {
 
 // generateSeedData creates the mock data using the centralized test data
 func generateSeedData() SeedData {
+	suppliers := data.Suppliers()
+	// Generate supplier IDs (they will be auto-generated, but we need them for products)
+	supplierIDs := make([]uint, len(suppliers))
+	for i := range suppliers {
+		supplierIDs[i] = uint(i + 1) // Assuming suppliers will get IDs 1, 2, 3...
+	}
+
+	products := data.Products(supplierIDs)
+	// Generate product IDs (they will be auto-generated, but we need them for inventory)
+	productIDs := make([]uint, len(products))
+	for i := range products {
+		productIDs[i] = uint(i + 1) // Assuming products will get IDs 1, 2, 3...
+	}
+
 	return SeedData{
-		Suppliers: data.Suppliers(),
-		Products:  data.Products(),
-		Inventory: data.Inventory(),
+		Suppliers: suppliers,
+		Products:  products,
+		Inventory: data.Inventory(productIDs),
 	}
 }

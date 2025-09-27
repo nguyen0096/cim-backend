@@ -3,16 +3,15 @@ package repository
 import (
 	"import-export-backend/internal/models"
 
-	"github.com/google/uuid"
 	"gorm.io/gorm"
 )
 
 type SupplierRepository interface {
 	Create(supplier *models.Supplier) error
-	GetByID(id uuid.UUID) (*models.Supplier, error)
+	GetByID(id uint) (*models.Supplier, error)
 	Update(supplier *models.Supplier) error
-	Delete(id uuid.UUID) error
-	Restore(id uuid.UUID) error
+	Delete(id uint) error
+	Restore(id uint) error
 	List(limit, offset int, sortBy, sortOrder string) ([]models.Supplier, error)
 	Search(query string, sortBy, sortOrder string) ([]models.Supplier, error)
 	SearchWithPagination(query string, limit, offset int, sortBy, sortOrder string) ([]models.Supplier, error)
@@ -32,7 +31,7 @@ func (r *supplierRepository) Create(supplier *models.Supplier) error {
 	return r.db.Create(supplier).Error
 }
 
-func (r *supplierRepository) GetByID(id uuid.UUID) (*models.Supplier, error) {
+func (r *supplierRepository) GetByID(id uint) (*models.Supplier, error) {
 	var supplier models.Supplier
 	err := r.db.First(&supplier, "id = ?", id).Error
 	if err != nil {
@@ -45,11 +44,11 @@ func (r *supplierRepository) Update(supplier *models.Supplier) error {
 	return r.db.Save(supplier).Error
 }
 
-func (r *supplierRepository) Delete(id uuid.UUID) error {
+func (r *supplierRepository) Delete(id uint) error {
 	return r.db.Delete(&models.Supplier{}, "id = ?", id).Error
 }
 
-func (r *supplierRepository) Restore(id uuid.UUID) error {
+func (r *supplierRepository) Restore(id uint) error {
 	return r.db.Unscoped().Model(&models.Supplier{}).Where("id = ?", id).Update("deleted_at", nil).Error
 }
 

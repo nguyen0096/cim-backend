@@ -3,16 +3,14 @@ package services
 import (
 	"import-export-backend/internal/models"
 	"import-export-backend/internal/repository"
-
-	"github.com/google/uuid"
 )
 
 type SupplierService interface {
 	CreateSupplier(supplier *models.Supplier) error
-	GetSupplierByID(id uuid.UUID) (*models.Supplier, error)
+	GetSupplierByID(id uint) (*models.Supplier, error)
 	UpdateSupplier(supplier *models.Supplier) error
-	DeleteSupplier(id uuid.UUID) error
-	RestoreSupplier(id uuid.UUID) error
+	DeleteSupplier(id uint) error
+	RestoreSupplier(id uint) error
 	ListSuppliers(limit, offset int, sortBy, sortOrder string) ([]models.Supplier, error)
 	SearchSuppliers(query string, sortBy, sortOrder string) ([]models.Supplier, error)
 	SearchSuppliersWithPagination(query string, limit, offset int, sortBy, sortOrder string) ([]models.Supplier, error)
@@ -34,7 +32,7 @@ func (s *supplierService) CreateSupplier(supplier *models.Supplier) error {
 	return s.supplierRepo.Create(supplier)
 }
 
-func (s *supplierService) GetSupplierByID(id uuid.UUID) (*models.Supplier, error) {
+func (s *supplierService) GetSupplierByID(id uint) (*models.Supplier, error) {
 	return s.supplierRepo.GetByID(id)
 }
 
@@ -42,11 +40,11 @@ func (s *supplierService) UpdateSupplier(supplier *models.Supplier) error {
 	return s.supplierRepo.Update(supplier)
 }
 
-func (s *supplierService) DeleteSupplier(id uuid.UUID) error {
+func (s *supplierService) DeleteSupplier(id uint) error {
 	return s.supplierRepo.Delete(id)
 }
 
-func (s *supplierService) RestoreSupplier(id uuid.UUID) error {
+func (s *supplierService) RestoreSupplier(id uint) error {
 	return s.supplierRepo.Restore(id)
 }
 

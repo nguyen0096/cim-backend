@@ -3,20 +3,18 @@ package services
 import (
 	"import-export-backend/internal/models"
 	"import-export-backend/internal/repository"
-
-	"github.com/google/uuid"
 )
 
 type OrderService interface {
 	CreateOrder(order *models.Order) error
-	GetOrderByID(id uuid.UUID) (*models.Order, error)
+	GetOrderByID(id uint) (*models.Order, error)
 	UpdateOrder(order *models.Order) error
-	DeleteOrder(id uuid.UUID) error
+	DeleteOrder(id uint) error
 	ListOrders(limit, offset int) ([]models.Order, error)
 	GetOrdersByStatus(status string) ([]models.Order, error)
 	GetOrdersByCustomer(customerEmail string) ([]models.Order, error)
-	UpdateOrderStatus(id uuid.UUID, status string) error
-	CompleteOrder(id uuid.UUID, userID string) error
+	UpdateOrderStatus(id uint, status string) error
+	CompleteOrder(id uint, userID string) error
 	CountOrders() (int64, error)
 }
 
@@ -36,7 +34,7 @@ func (s *orderService) CreateOrder(order *models.Order) error {
 	return s.orderRepo.Create(order)
 }
 
-func (s *orderService) GetOrderByID(id uuid.UUID) (*models.Order, error) {
+func (s *orderService) GetOrderByID(id uint) (*models.Order, error) {
 	return s.orderRepo.GetByID(id)
 }
 
@@ -44,7 +42,7 @@ func (s *orderService) UpdateOrder(order *models.Order) error {
 	return s.orderRepo.Update(order)
 }
 
-func (s *orderService) DeleteOrder(id uuid.UUID) error {
+func (s *orderService) DeleteOrder(id uint) error {
 	return s.orderRepo.Delete(id)
 }
 
@@ -60,7 +58,7 @@ func (s *orderService) GetOrdersByCustomer(customerEmail string) ([]models.Order
 	return s.orderRepo.GetByCustomer(customerEmail)
 }
 
-func (s *orderService) UpdateOrderStatus(id uuid.UUID, status string) error {
+func (s *orderService) UpdateOrderStatus(id uint, status string) error {
 	order, err := s.orderRepo.GetByID(id)
 	if err != nil {
 		return err
@@ -69,7 +67,7 @@ func (s *orderService) UpdateOrderStatus(id uuid.UUID, status string) error {
 	return s.orderRepo.Update(order)
 }
 
-func (s *orderService) CompleteOrder(id uuid.UUID, userID string) error {
+func (s *orderService) CompleteOrder(id uint, userID string) error {
 	order, err := s.orderRepo.GetByID(id)
 	if err != nil {
 		return err
