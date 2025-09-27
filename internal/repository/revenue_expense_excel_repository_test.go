@@ -12,11 +12,25 @@ import (
 
 // TestRevenueExpenseExcelRepository tests the Excel handling classes with the Thu chi.xlsx file
 func TestRevenueExpenseExcelRepository(t *testing.T) {
+	iterations := 2
+	for i := 0; i < iterations; i++ {
+		t.Run(fmt.Sprintf("Iteration %d", i+1), func(t *testing.T) {
+			testRevenueExpenseExcelRepository(t)
+		})
+	}
+}
+
+func testRevenueExpenseExcelRepository(t *testing.T) {
 	t.Log("=== Excel test: handling with THU CHI Excel ===")
-
 	ctx := context.Background()
-
 	revenueExpenseExcelRepo := NewRevenueExpenseExcelRepository()
+	numberOfRowsToDelete := 0
+	t.Cleanup(func() {
+		t.Log("Cleaning up...")
+		err := revenueExpenseExcelRepo.DeleteLastNRows(ctx, numberOfRowsToDelete)
+		require.Nil(t, err)
+		t.Log("✅ Rows deleted successfully")
+	})
 
 	// Initialize with the Thu chi.xlsx file
 	err := revenueExpenseExcelRepo.InitializeWithFile(ctx, "testdata/Thu chi.xlsx")
@@ -69,15 +83,6 @@ func TestRevenueExpenseExcelRepository(t *testing.T) {
 			t.Logf("   %s → %s field\n", header.ColumnName, header.ColumnName)
 		}
 	}
-
-	numberOfRowsToDelete := 0
-	t.Cleanup(func() {
-		t.Log("Cleaning up...")
-		err := revenueExpenseExcelRepo.DeleteLastNRows(ctx, numberOfRowsToDelete)
-		require.Nil(t, err)
-		t.Log("✅ Rows deleted successfully")
-	})
-
 	// Attempt to add expense using detected columns
 	sampleExpense := map[string]interface{}{}
 	for _, header := range schema.Sheets[0].Headers {
