@@ -9,7 +9,6 @@ type Product struct {
 	Base
 	Name        string     `json:"name" gorm:"not null"`
 	Description string     `json:"description"`
-	SKU         string     `json:"sku" gorm:"unique"`
 	SupplierID  uuid.UUID  `json:"supplier_id"`
 	Supplier    *Supplier  `json:"supplier,omitempty" gorm:"foreignKey:SupplierID" validate:"-"`
 	UnitPrice   float64    `json:"unit_price" gorm:"type:decimal(13,2)"`

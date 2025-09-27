@@ -40,7 +40,6 @@ PRODUCT_RESPONSE=$(curl -s -X POST "$BASE_URL/api/v1/products" \
   -d "{
     \"name\": \"Laptop Computer\",
     \"description\": \"High-performance laptop\",
-    \"sku\": \"LAPTOP-001\",
     \"supplier_id\": \"$SUPPLIER_ID\",
     \"unit_price\": 999.99,
     \"status\": \"active\"

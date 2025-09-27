@@ -80,7 +80,7 @@ func (r *productRepository) GetBySupplier(supplierID uuid.UUID) ([]models.Produc
 
 func (r *productRepository) Search(query string, sortBy, sortOrder string) ([]models.Product, error) {
 	var products []models.Product
-	dbQuery := r.db.Preload("Supplier").Preload("Inventory").Where("name ILIKE ? OR sku ILIKE ?", "%"+query+"%", "%"+query+"%")
+	dbQuery := r.db.Preload("Supplier").Preload("Inventory").Where("name ILIKE ?", "%"+query+"%")
 
 	// Apply sorting
 	if sortBy != "" {
@@ -98,7 +98,7 @@ func (r *productRepository) Search(query string, sortBy, sortOrder string) ([]mo
 
 func (r *productRepository) SearchWithPagination(query string, limit, offset int, sortBy, sortOrder string) ([]models.Product, error) {
 	var products []models.Product
-	dbQuery := r.db.Preload("Supplier").Preload("Inventory").Where("name ILIKE ? OR sku ILIKE ?", "%"+query+"%", "%"+query+"%")
+	dbQuery := r.db.Preload("Supplier").Preload("Inventory").Where("name ILIKE ?", "%"+query+"%")
 
 	// Apply sorting
 	if sortBy != "" {
@@ -122,6 +122,6 @@ func (r *productRepository) Count() (int64, error) {
 
 func (r *productRepository) CountSearch(query string) (int64, error) {
 	var count int64
-	err := r.db.Model(&models.Product{}).Where("name ILIKE ? OR sku ILIKE ?", "%"+query+"%", "%"+query+"%").Count(&count).Error
+	err := r.db.Model(&models.Product{}).Where("name ILIKE ?", "%"+query+"%").Count(&count).Error
 	return count, err
 }

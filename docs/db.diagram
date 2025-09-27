@@ -16,7 +16,6 @@ Table products {
   id uuid [primary key, default: `gen_random_uuid()`]
   name varchar [not null]
   description text
-  sku varchar [unique]
   supplier_id uuid [ref: > suppliers.id]
   unit_price decimal(10,2)
   status varchar [default: 'active', note: 'active, inactive, discontinued']

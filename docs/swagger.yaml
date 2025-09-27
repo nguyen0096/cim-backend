@@ -10,8 +10,6 @@ definitions:
         type: string
       description:
         type: string
-      sku:
-        type: string
       supplier_id:
         type: string
         format: uuid

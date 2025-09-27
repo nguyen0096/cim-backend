@@ -116,7 +116,7 @@
 								{
 									"key": "q",
 									"value": "laptop",
-									"description": "Search term for name or SKU"
+									"description": "Search term for name"
 								},
 								{
 									"key": "page",
@@ -163,7 +163,7 @@
 						],
 						"body": {
 							"mode": "raw",
-							"raw": "{\n  \"name\": \"Laptop Computer\",\n  \"description\": \"High-performance laptop\",\n  \"sku\": \"LAPTOP-001\",\n  \"supplier_id\": \"{{supplier_id}}\",\n  \"unit_price\": 999.99,\n  \"status\": \"active\"\n}"
+							"raw": "{\n  \"name\": \"Laptop Computer\",\n  \"description\": \"High-performance laptop\",\n  \"supplier_id\": \"{{supplier_id}}\",\n  \"unit_price\": 999.99,\n  \"status\": \"active\"\n}"
 						},
 						"url": {
 							"raw": "{{base_url}}/api/v1/products",
@@ -205,7 +205,7 @@
 						],
 						"body": {
 							"mode": "raw",
-							"raw": "{\n  \"name\": \"Updated Laptop Computer\",\n  \"description\": \"Updated high-performance laptop\",\n  \"sku\": \"LAPTOP-001-UPDATED\",\n  \"unit_price\": 1099.99,\n  \"status\": \"active\"\n}"
+							"raw": "{\n  \"name\": \"Updated Laptop Computer\",\n  \"description\": \"Updated high-performance laptop\",\n  \"unit_price\": 1099.99,\n  \"status\": \"active\"\n}"
 						},
 						"url": {
 							"raw": "{{base_url}}/api/v1/products/{{product_id}}",
