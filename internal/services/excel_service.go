@@ -1,6 +1,7 @@
 package services
 
 import (
+	"context"
 	"import-export-backend/internal/repository"
 	"strconv"
 
@@ -8,12 +9,12 @@ import (
 )
 
 type ExcelService interface {
-	ExportProducts() (*excelize.File, error)
-	ExportInventory() (*excelize.File, error)
-	ImportProducts(file *excelize.File) error
-	ImportInventory(file *excelize.File) error
-	GetProductTemplate() (*excelize.File, error)
-	GetInventoryTemplate() (*excelize.File, error)
+	ExportProducts(ctx context.Context) (*excelize.File, error)
+	ExportInventory(ctx context.Context) (*excelize.File, error)
+	ImportProducts(ctx context.Context, file *excelize.File) error
+	ImportInventory(ctx context.Context, file *excelize.File) error
+	GetProductTemplate(ctx context.Context) (*excelize.File, error)
+	GetInventoryTemplate(ctx context.Context) (*excelize.File, error)
 }
 
 type excelService struct {
@@ -28,8 +29,8 @@ func NewExcelService(productRepo repository.ProductRepository, inventoryRepo rep
 	}
 }
 
-func (s *excelService) ExportProducts() (*excelize.File, error) {
-	products, err := s.productRepo.List(1000, 0, "created_at", "desc") // Get all products
+func (s *excelService) ExportProducts(ctx context.Context) (*excelize.File, error) {
+	products, err := s.productRepo.List(ctx, 1000, 0, "created_at", "desc") // Get all products
 	if err != nil {
 		return nil, err
 	}
@@ -64,8 +65,8 @@ func (s *excelService) ExportProducts() (*excelize.File, error) {
 	return file, nil
 }
 
-func (s *excelService) ExportInventory() (*excelize.File, error) {
-	inventory, err := s.inventoryRepo.List(1000, 0) // Get all inventory
+func (s *excelService) ExportInventory(ctx context.Context) (*excelize.File, error) {
+	inventory, err := s.inventoryRepo.List(ctx, 1000, 0) // Get all inventory
 	if err != nil {
 		return nil, err
 	}
@@ -97,19 +98,19 @@ func (s *excelService) ExportInventory() (*excelize.File, error) {
 	return file, nil
 }
 
-func (s *excelService) ImportProducts(file *excelize.File) error {
+func (s *excelService) ImportProducts(ctx context.Context, file *excelize.File) error {
 	// Implementation for importing products from Excel
 	// This would read the Excel file and create/update products
 	return nil
 }
 
-func (s *excelService) ImportInventory(file *excelize.File) error {
+func (s *excelService) ImportInventory(ctx context.Context, file *excelize.File) error {
 	// Implementation for importing inventory from Excel
 	// This would read the Excel file and update inventory quantities
 	return nil
 }
 
-func (s *excelService) GetProductTemplate() (*excelize.File, error) {
+func (s *excelService) GetProductTemplate(ctx context.Context) (*excelize.File, error) {
 	file := excelize.NewFile()
 	sheetName := "Products"
 	file.NewSheet(sheetName)
@@ -131,7 +132,7 @@ func (s *excelService) GetProductTemplate() (*excelize.File, error) {
 	return file, nil
 }
 
-func (s *excelService) GetInventoryTemplate() (*excelize.File, error) {
+func (s *excelService) GetInventoryTemplate(ctx context.Context) (*excelize.File, error) {
 	file := excelize.NewFile()
 	sheetName := "Inventory"
 	file.NewSheet(sheetName)
