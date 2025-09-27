@@ -1,22 +1,23 @@
 package repository
 
 import (
+	"context"
 	"import-export-backend/internal/models"
 
 	"gorm.io/gorm"
 )
 
 type SupplierRepository interface {
-	Create(supplier *models.Supplier) error
-	GetByID(id uint) (*models.Supplier, error)
-	Update(supplier *models.Supplier) error
-	Delete(id uint) error
-	Restore(id uint) error
-	List(limit, offset int, sortBy, sortOrder string) ([]models.Supplier, error)
-	Search(query string, sortBy, sortOrder string) ([]models.Supplier, error)
-	SearchWithPagination(query string, limit, offset int, sortBy, sortOrder string) ([]models.Supplier, error)
-	Count() (int64, error)
-	CountSearch(query string) (int64, error)
+	Create(ctx context.Context, supplier *models.Supplier) error
+	GetByID(ctx context.Context, id uint) (*models.Supplier, error)
+	Update(ctx context.Context, supplier *models.Supplier) error
+	Delete(ctx context.Context, id uint) error
+	Restore(ctx context.Context, id uint) error
+	List(ctx context.Context, limit, offset int, sortBy, sortOrder string) ([]models.Supplier, error)
+	Search(ctx context.Context, query string, sortBy, sortOrder string) ([]models.Supplier, error)
+	SearchWithPagination(ctx context.Context, query string, limit, offset int, sortBy, sortOrder string) ([]models.Supplier, error)
+	Count(ctx context.Context) (int64, error)
+	CountSearch(ctx context.Context, query string) (int64, error)
 }
 
 type supplierRepository struct {
@@ -27,34 +28,34 @@ func NewSupplierRepository(db *gorm.DB) SupplierRepository {
 	return &supplierRepository{db: db}
 }
 
-func (r *supplierRepository) Create(supplier *models.Supplier) error {
-	return r.db.Create(supplier).Error
+func (r *supplierRepository) Create(ctx context.Context, supplier *models.Supplier) error {
+	return r.db.WithContext(ctx).Create(supplier).Error
 }
 
-func (r *supplierRepository) GetByID(id uint) (*models.Supplier, error) {
+func (r *supplierRepository) GetByID(ctx context.Context, id uint) (*models.Supplier, error) {
 	var supplier models.Supplier
-	err := r.db.First(&supplier, "id = ?", id).Error
+	err := r.db.WithContext(ctx).First(&supplier, "id = ?", id).Error
 	if err != nil {
 		return nil, err
 	}
 	return &supplier, nil
 }
 
-func (r *supplierRepository) Update(supplier *models.Supplier) error {
-	return r.db.Save(supplier).Error
+func (r *supplierRepository) Update(ctx context.Context, supplier *models.Supplier) error {
+	return r.db.WithContext(ctx).Save(supplier).Error
 }
 
-func (r *supplierRepository) Delete(id uint) error {
-	return r.db.Delete(&models.Supplier{}, "id = ?", id).Error
+func (r *supplierRepository) Delete(ctx context.Context, id uint) error {
+	return r.db.WithContext(ctx).Delete(&models.Supplier{}, "id = ?", id).Error
 }
 
-func (r *supplierRepository) Restore(id uint) error {
-	return r.db.Unscoped().Model(&models.Supplier{}).Where("id = ?", id).Update("deleted_at", nil).Error
+func (r *supplierRepository) Restore(ctx context.Context, id uint) error {
+	return r.db.WithContext(ctx).Unscoped().Model(&models.Supplier{}).Where("id = ?", id).Update("deleted_at", nil).Error
 }
 
-func (r *supplierRepository) List(limit, offset int, sortBy, sortOrder string) ([]models.Supplier, error) {
+func (r *supplierRepository) List(ctx context.Context, limit, offset int, sortBy, sortOrder string) ([]models.Supplier, error) {
 	var suppliers []models.Supplier
-	query := r.db
+	query := r.db.WithContext(ctx)
 
 	// Apply sorting
 	if sortBy != "" {
@@ -70,9 +71,9 @@ func (r *supplierRepository) List(limit, offset int, sortBy, sortOrder string) (
 	return suppliers, err
 }
 
-func (r *supplierRepository) Search(query string, sortBy, sortOrder string) ([]models.Supplier, error) {
+func (r *supplierRepository) Search(ctx context.Context, query string, sortBy, sortOrder string) ([]models.Supplier, error) {
 	var suppliers []models.Supplier
-	dbQuery := r.db.Where("name ILIKE ? OR contact_phone ILIKE ? OR contact_email ILIKE ?",
+	dbQuery := r.db.WithContext(ctx).Where("name ILIKE ? OR contact_phone ILIKE ? OR contact_email ILIKE ?",
 		"%"+query+"%", "%"+query+"%", "%"+query+"%")
 
 	// Apply sorting
@@ -89,9 +90,9 @@ func (r *supplierRepository) Search(query string, sortBy, sortOrder string) ([]m
 	return suppliers, err
 }
 
-func (r *supplierRepository) SearchWithPagination(query string, limit, offset int, sortBy, sortOrder string) ([]models.Supplier, error) {
+func (r *supplierRepository) SearchWithPagination(ctx context.Context, query string, limit, offset int, sortBy, sortOrder string) ([]models.Supplier, error) {
 	var suppliers []models.Supplier
-	dbQuery := r.db.Where("name ILIKE ? OR contact_phone ILIKE ? OR contact_email ILIKE ?",
+	dbQuery := r.db.WithContext(ctx).Where("name ILIKE ? OR contact_phone ILIKE ? OR contact_email ILIKE ?",
 		"%"+query+"%", "%"+query+"%", "%"+query+"%")
 
 	// Apply sorting
@@ -108,15 +109,15 @@ func (r *supplierRepository) SearchWithPagination(query string, limit, offset in
 	return suppliers, err
 }
 
-func (r *supplierRepository) Count() (int64, error) {
+func (r *supplierRepository) Count(ctx context.Context) (int64, error) {
 	var count int64
-	err := r.db.Model(&models.Supplier{}).Count(&count).Error
+	err := r.db.WithContext(ctx).Model(&models.Supplier{}).Count(&count).Error
 	return count, err
 }
 
-func (r *supplierRepository) CountSearch(query string) (int64, error) {
+func (r *supplierRepository) CountSearch(ctx context.Context, query string) (int64, error) {
 	var count int64
-	err := r.db.Model(&models.Supplier{}).Where("name ILIKE ? OR contact_phone ILIKE ? OR contact_email ILIKE ?",
+	err := r.db.WithContext(ctx).Model(&models.Supplier{}).Where("name ILIKE ? OR contact_phone ILIKE ? OR contact_email ILIKE ?",
 		"%"+query+"%", "%"+query+"%", "%"+query+"%").Count(&count).Error
 	return count, err
 }

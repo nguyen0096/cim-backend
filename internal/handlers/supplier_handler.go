@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"import-export-backend/internal/models"
 	"net/http"
 	"regexp"
@@ -15,16 +16,16 @@ type SupplierHandler struct {
 }
 
 type SupplierService interface {
-	CreateSupplier(supplier *models.Supplier) error
-	GetSupplierByID(id uint) (*models.Supplier, error)
-	UpdateSupplier(supplier *models.Supplier) error
-	DeleteSupplier(id uint) error
-	RestoreSupplier(id uint) error
-	ListSuppliers(limit, offset int, sortBy, sortOrder string) ([]models.Supplier, error)
-	SearchSuppliers(query string, sortBy, sortOrder string) ([]models.Supplier, error)
-	SearchSuppliersWithPagination(query string, limit, offset int, sortBy, sortOrder string) ([]models.Supplier, error)
-	CountSuppliers() (int64, error)
-	CountSearchSuppliers(query string) (int64, error)
+	CreateSupplier(ctx context.Context, supplier *models.Supplier) error
+	GetSupplierByID(ctx context.Context, id uint) (*models.Supplier, error)
+	UpdateSupplier(ctx context.Context, supplier *models.Supplier) error
+	DeleteSupplier(ctx context.Context, id uint) error
+	RestoreSupplier(ctx context.Context, id uint) error
+	ListSuppliers(ctx context.Context, limit, offset int, sortBy, sortOrder string) ([]models.Supplier, error)
+	SearchSuppliers(ctx context.Context, query string, sortBy, sortOrder string) ([]models.Supplier, error)
+	SearchSuppliersWithPagination(ctx context.Context, query string, limit, offset int, sortBy, sortOrder string) ([]models.Supplier, error)
+	CountSuppliers(ctx context.Context) (int64, error)
+	CountSearchSuppliers(ctx context.Context, query string) (int64, error)
 }
 
 func NewSupplierHandler(supplierService SupplierService) *SupplierHandler {
@@ -75,12 +76,12 @@ func (h *SupplierHandler) GetSuppliers(c echo.Context) error {
 	offset := (page - 1) * limit
 
 	// Get suppliers and total count
-	suppliers, err := h.supplierService.ListSuppliers(limit, offset, sortBy, sortOrder)
+	suppliers, err := h.supplierService.ListSuppliers(c.Request().Context(), limit, offset, sortBy, sortOrder)
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to fetch suppliers"})
 	}
 
-	total, err := h.supplierService.CountSuppliers()
+	total, err := h.supplierService.CountSuppliers(c.Request().Context())
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to count suppliers"})
 	}
@@ -124,12 +125,12 @@ func (h *SupplierHandler) SearchSuppliers(c echo.Context) error {
 	offset := (page - 1) * limit
 
 	// Get suppliers and total count
-	suppliers, err := h.supplierService.SearchSuppliersWithPagination(query, limit, offset, sortBy, sortOrder)
+	suppliers, err := h.supplierService.SearchSuppliersWithPagination(c.Request().Context(), query, limit, offset, sortBy, sortOrder)
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to search suppliers"})
 	}
 
-	total, err := h.supplierService.CountSearchSuppliers(query)
+	total, err := h.supplierService.CountSearchSuppliers(c.Request().Context(), query)
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to count search results"})
 	}
@@ -170,7 +171,7 @@ func (h *SupplierHandler) CreateSupplier(c echo.Context) error {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid phone number format"})
 	}
 
-	if err := h.supplierService.CreateSupplier(&supplier); err != nil {
+	if err := h.supplierService.CreateSupplier(c.Request().Context(), &supplier); err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to create supplier"})
 	}
 
@@ -188,7 +189,7 @@ func (h *SupplierHandler) GetSupplier(c echo.Context) error {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid supplier ID"})
 	}
 
-	supplier, err := h.supplierService.GetSupplierByID(id)
+	supplier, err := h.supplierService.GetSupplierByID(c.Request().Context(), id)
 	if err != nil {
 		return c.JSON(http.StatusNotFound, map[string]string{"error": "Supplier not found"})
 	}
@@ -228,7 +229,7 @@ func (h *SupplierHandler) UpdateSupplier(c echo.Context) error {
 	}
 
 	supplier.ID = id
-	if err := h.supplierService.UpdateSupplier(&supplier); err != nil {
+	if err := h.supplierService.UpdateSupplier(c.Request().Context(), &supplier); err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to update supplier"})
 	}
 
@@ -246,7 +247,7 @@ func (h *SupplierHandler) DeleteSupplier(c echo.Context) error {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid supplier ID"})
 	}
 
-	if err := h.supplierService.DeleteSupplier(id); err != nil {
+	if err := h.supplierService.DeleteSupplier(c.Request().Context(), id); err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to delete supplier"})
 	}
 
@@ -264,7 +265,7 @@ func (h *SupplierHandler) RestoreSupplier(c echo.Context) error {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid supplier ID"})
 	}
 
-	if err := h.supplierService.RestoreSupplier(id); err != nil {
+	if err := h.supplierService.RestoreSupplier(c.Request().Context(), id); err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to restore supplier"})
 	}
 
