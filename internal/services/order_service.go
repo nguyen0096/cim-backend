@@ -1,6 +1,7 @@
 package services
 
 import (
+	"context"
 	"import-export-backend/internal/models"
 	"import-export-backend/internal/repository"
 )
@@ -14,7 +15,7 @@ type OrderService interface {
 	GetOrdersByStatus(status string) ([]models.Order, error)
 	GetOrdersByCustomer(customerEmail string) ([]models.Order, error)
 	UpdateOrderStatus(id uint, status string) error
-	CompleteOrder(id uint, userID string) error
+	CompleteOrder(ctx context.Context, id uint) error
 	CountOrders() (int64, error)
 }
 
@@ -67,7 +68,7 @@ func (s *orderService) UpdateOrderStatus(id uint, status string) error {
 	return s.orderRepo.Update(order)
 }
 
-func (s *orderService) CompleteOrder(id uint, userID string) error {
+func (s *orderService) CompleteOrder(ctx context.Context, id uint) error {
 	order, err := s.orderRepo.GetByID(id)
 	if err != nil {
 		return err
@@ -82,12 +83,12 @@ func (s *orderService) CompleteOrder(id uint, userID string) error {
 	// Remove inventory for each item
 	for _, item := range order.Items {
 		if err := s.inventoryService.RemoveInventory(
+			ctx,
 			item.ProductID,
 			item.Quantity,
 			order.ID,
 			"order",
 			"Order completed",
-			userID,
 		); err != nil {
 			return err
 		}

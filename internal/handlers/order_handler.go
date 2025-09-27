@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"import-export-backend/internal/models"
 	"net/http"
 	"strconv"
@@ -19,7 +20,7 @@ type OrderService interface {
 	DeleteOrder(id uint) error
 	ListOrders(limit, offset int) ([]models.Order, error)
 	UpdateOrderStatus(id uint, status string) error
-	CompleteOrder(id uint, userID string) error
+	CompleteOrder(ctx context.Context, id uint) error
 	CountOrders() (int64, error)
 }
 
@@ -182,12 +183,7 @@ func (h *OrderHandler) CompleteOrder(c echo.Context) error {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid order ID"})
 	}
 
-	userID := c.Get("user_id").(string)
-	if userID == "" {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid user ID"})
-	}
-
-	if err := h.orderService.CompleteOrder(id, userID); err != nil {
+	if err := h.orderService.CompleteOrder(c.Request().Context(), id); err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to complete order"})
 	}
 
