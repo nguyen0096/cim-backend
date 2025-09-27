@@ -71,7 +71,15 @@ func (s *purchaseOrderService) CreatePurchaseOrder(ctx context.Context, purchase
 }
 
 func (s *purchaseOrderService) GetPurchaseOrderByID(id uint) (*models.PurchaseOrder, error) {
-	return s.purchaseOrderRepo.GetByID(id)
+	purchaseOrder, err := s.purchaseOrderRepo.GetByID(id)
+	if err != nil {
+		return nil, err
+	}
+
+	// Calculate total amount based on items
+	purchaseOrder.TotalAmount = purchaseOrder.CalculateTotalAmount()
+
+	return purchaseOrder, nil
 }
 
 func (s *purchaseOrderService) UpdatePurchaseOrder(purchaseOrder *models.PurchaseOrder) error {
@@ -93,13 +101,28 @@ func (s *purchaseOrderService) ListPurchaseOrders(ctx context.Context, params mo
 		return nil, err
 	}
 
+	// Calculate total amount for each purchase order based on items
+	for i := range purchaseOrders {
+		purchaseOrders[i].TotalAmount = purchaseOrders[i].CalculateTotalAmount()
+	}
+
 	// Create pagination result
 	result := models.NewPaginationResult(purchaseOrders, total, params.Page, params.Limit)
 	return result, nil
 }
 
 func (s *purchaseOrderService) GetPurchaseOrdersByStatus(status string) ([]models.PurchaseOrder, error) {
-	return s.purchaseOrderRepo.GetByStatus(status)
+	purchaseOrders, err := s.purchaseOrderRepo.GetByStatus(status)
+	if err != nil {
+		return nil, err
+	}
+
+	// Calculate total amount for each purchase order based on items
+	for i := range purchaseOrders {
+		purchaseOrders[i].TotalAmount = purchaseOrders[i].CalculateTotalAmount()
+	}
+
+	return purchaseOrders, nil
 }
 
 // UpdatePurchaseOrderStatus updates the status of a purchase order

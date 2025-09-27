@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"fmt"
 	"import-export-backend/internal/models"
 
 	"gorm.io/gorm"
@@ -65,7 +66,7 @@ func (r *purchaseOrderRepository) List(ctx context.Context, params models.Pagina
 	}
 
 	// Build query for data with preloads
-	dataQuery := r.db.WithContext(ctx).Preload("Items").Preload("Items.Product")
+	dataQuery := r.db.WithContext(ctx).Preload("Items.Product.Supplier")
 
 	// Apply same search filter for data
 	if params.Search != "" {
@@ -89,7 +90,11 @@ func (r *purchaseOrderRepository) List(ctx context.Context, params models.Pagina
 		dataQuery = dataQuery.Order("created_at DESC") // Default sorting
 	}
 
-	err = dataQuery.Limit(params.Limit).Offset(params.GetOffset()).Find(&purchaseOrders).Error
+	err = dataQuery.Limit(params.Limit).Offset(params.GetOffset()).
+		Find(&purchaseOrders).Error
+	if err != nil {
+		return nil, 0, fmt.Errorf("failed to fetch purchase orders: %w", err)
+	}
 	return purchaseOrders, total, err
 }
 

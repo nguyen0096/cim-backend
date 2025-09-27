@@ -88,3 +88,11 @@ internal/
 ├── services/ # Business logic
 ├── repository/ # Data access
 └── models/ # Data models (1 model per file)
+
+### 🚫 Panic Safety
+
+- Code must **never cause runtime panics** — all unexpected states must be handled safely with errors, not crashes.
+- Be especially careful with **nil dereference**, slice/map bounds, and unchecked type assertions.
+- Always validate inputs and check for nil or out-of-range access before use.
+- Use the “comma-ok” pattern for type assertions and safe defaults for empty results.
+- **Goal:** no panic should ever reach production — all errors must be caught, wrapped, and returned.

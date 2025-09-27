@@ -51,7 +51,7 @@ func TestCreatePurchaseOrder(t *testing.T) {
 			Status:      models.PurchaseOrderStatusOrderPlaced,
 			TotalAmount: 1500.50,
 			Notes:       "Test purchase order with all fields",
-			Items: []models.PurchaseOrderItem{
+			Items: []*models.PurchaseOrderItem{
 				{
 					ProductID:  &[]uuid.UUID{uuid.New()}[0],
 					Quantity:   5,
@@ -96,7 +96,7 @@ func TestCreatePurchaseOrder(t *testing.T) {
 			Status:      models.PurchaseOrderStatusOrderPlaced,
 			TotalAmount: 1500.50,
 			Notes:       "Test purchase order without order number",
-			Items: []models.PurchaseOrderItem{
+			Items: []*models.PurchaseOrderItem{
 				{
 					ProductID:  &[]uuid.UUID{uuid.New()}[0],
 					Quantity:   5,
@@ -134,7 +134,7 @@ func TestCreatePurchaseOrder(t *testing.T) {
 
 		requestBody := models.PurchaseOrder{
 			OrderNumber: "PO-003",
-			Items: []models.PurchaseOrderItem{
+			Items: []*models.PurchaseOrderItem{
 				{
 					ProductID:  &[]uuid.UUID{uuid.New()}[0],
 					Quantity:   5,
@@ -266,7 +266,7 @@ func TestCreatePurchaseOrder(t *testing.T) {
 			Status:      models.PurchaseOrderStatusOrderPlaced,
 			TotalAmount: 1500.50,
 			Notes:       "Test purchase order with empty items",
-			Items:       []models.PurchaseOrderItem{}, // Empty array - should fail validation (min=1)
+			Items:       []*models.PurchaseOrderItem{}, // Empty array - should fail validation (min=1)
 		}
 
 		// Create request and context
@@ -294,7 +294,7 @@ func TestCreatePurchaseOrder(t *testing.T) {
 			Status:      models.PurchaseOrderStatusOrderPlaced,
 			TotalAmount: 1500.50,
 			Notes:       "Test purchase order with invalid item",
-			Items: []models.PurchaseOrderItem{
+			Items: []*models.PurchaseOrderItem{
 				{
 					// ProductID is nil - should fail validation (required)
 					ProductID:  nil,
@@ -329,7 +329,7 @@ func TestCreatePurchaseOrder(t *testing.T) {
 			Status:      models.PurchaseOrderStatusOrderPlaced,
 			TotalAmount: 1500.50,
 			Notes:       "Test purchase order with invalid quantity",
-			Items: []models.PurchaseOrderItem{
+			Items: []*models.PurchaseOrderItem{
 				{
 					ProductID:  &[]uuid.UUID{uuid.New()}[0],
 					Quantity:   0, // Zero quantity - should fail validation (min=1)
@@ -363,7 +363,7 @@ func TestCreatePurchaseOrder(t *testing.T) {
 			Status:      models.PurchaseOrderStatusOrderPlaced,
 			TotalAmount: 1500.50,
 			Notes:       "Test purchase order with negative quantity",
-			Items: []models.PurchaseOrderItem{
+			Items: []*models.PurchaseOrderItem{
 				{
 					ProductID:  &[]uuid.UUID{uuid.New()}[0],
 					Quantity:   -5, // Negative quantity - should fail validation (min=1)
