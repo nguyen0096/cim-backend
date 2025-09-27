@@ -35,6 +35,10 @@ func testRevenueExpenseExcelRepository(t *testing.T) {
 	// Initialize with the Thu chi.xlsx file
 	err := revenueExpenseExcelRepo.InitializeWithFile(ctx, "testdata/Thu chi.xlsx")
 	require.Nil(t, err)
+
+	// Force cache refresh to ensure we read fresh data
+	revenueExpenseExcelRepo.ForceCacheRefresh()
+
 	t.Log("✅ Service initialized successfully")
 
 	// Get and display schema

@@ -4,7 +4,9 @@ import (
 	"context"
 	"fmt"
 	"import-export-backend/internal/models"
+	"os"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/xuri/excelize/v2"
@@ -51,12 +53,22 @@ type RevenueExpenseExcelRepository interface {
 	GetLastTransactionDate(ctx context.Context) (time.Time, error)
 	DeleteLastNRows(ctx context.Context, n int) error
 	GetSchema(ctx context.Context) *models.FileMetadata
+	Close() error
+	ForceCacheRefresh()
 }
 
 // revenueExpenseExcelRepository implements RevenueExpenseExcelRepository
 type revenueExpenseExcelRepository struct {
 	ctx          context.Context
 	fileMetadata *models.FileMetadata
+	fileCache    *excelize.File
+	lastModified time.Time
+	cacheMutex   sync.RWMutex
+
+	// Performance optimization caches
+	rowsCache      [][]string
+	headerRowCache int
+	cacheValid     bool
 }
 
 // NewRevenueExpenseExcelRepository creates a new RevenueExpenseExcelRepository
@@ -243,7 +255,7 @@ func (r *revenueExpenseExcelRepository) AddExpense(ctx context.Context, expenseD
 	if err != nil {
 		return err
 	}
-	defer file.Close()
+	// Note: Don't close file here as it's cached
 
 	// Find header row
 	headerRow := r.findHeaderRow(rows)
@@ -274,6 +286,9 @@ func (r *revenueExpenseExcelRepository) AddExpense(ctx context.Context, expenseD
 		return fmt.Errorf("failed to save file: %w", err)
 	}
 
+	// Invalidate cache after saving to ensure next read gets fresh data
+	r.invalidateCache()
+
 	return nil
 }
 
@@ -285,11 +300,11 @@ func (r *revenueExpenseExcelRepository) GetLastExpense(ctx context.Context) (map
 	}
 
 	// Get file and sheet data
-	file, _, rows, err := r.getFileAndSheetData()
+	_, _, rows, err := r.getFileAndSheetData()
 	if err != nil {
 		return nil, err
 	}
-	defer file.Close()
+	// Note: Don't close file here as it's cached
 
 	// Find the last data row
 	lastDataRow, err := r.findLastTransactionRow(rows)
@@ -321,11 +336,11 @@ func (r *revenueExpenseExcelRepository) GetLastTransactionDate(ctx context.Conte
 	}
 
 	// Get file and sheet data
-	file, _, rows, err := r.getFileAndSheetData()
+	_, _, rows, err := r.getFileAndSheetData()
 	if err != nil {
 		return time.Time{}, err
 	}
-	defer file.Close()
+	// Note: Don't close file here as it's cached
 
 	// Find the last data row
 	lastDateRow, err := r.findLastDateRow(rows)
@@ -349,28 +364,12 @@ func (r *revenueExpenseExcelRepository) DeleteLastNRows(ctx context.Context, n i
 		return fmt.Errorf("repository not initialized, call InitializeWithFile first")
 	}
 
-	file, err := excelize.OpenFile(r.fileMetadata.FilePath)
+	// Get file and sheet data
+	file, sheetName, rows, err := r.getFileAndSheetData()
 	if err != nil {
-		return fmt.Errorf("failed to open file: %w", err)
+		return err
 	}
-	defer file.Close()
-
-	// Use the first sheet from metadata
-	if len(r.fileMetadata.Sheets) == 0 {
-		return fmt.Errorf("no sheets found in metadata")
-	}
-
-	sheetName := r.fileMetadata.Sheets[0].SheetName
-
-	// Get current rows
-	rows, err := file.GetRows(sheetName)
-	if err != nil {
-		return fmt.Errorf("failed to get rows: %w", err)
-	}
-
-	if len(rows) == 0 {
-		return fmt.Errorf("no data found in sheet")
-	}
+	// Note: Don't close file here as it's cached
 
 	// Find header row
 	headerRow := r.findHeaderRow(rows)
@@ -421,6 +420,9 @@ func (r *revenueExpenseExcelRepository) DeleteLastNRows(ctx context.Context, n i
 	if err != nil {
 		return fmt.Errorf("failed to save file: %w", err)
 	}
+
+	// Invalidate cache after saving to ensure next read gets fresh data
+	r.invalidateCache()
 
 	return nil
 }
@@ -478,6 +480,17 @@ func (r *revenueExpenseExcelRepository) extractSheetMetadata(file *excelize.File
 
 // findHeaderRow finds the row that contains column headers
 func (r *revenueExpenseExcelRepository) findHeaderRow(rows [][]string) int {
+	// Check if we have cached header row
+	r.cacheMutex.RLock()
+	if r.cacheValid && r.headerRowCache >= 0 {
+		headerRow := r.headerRowCache
+		r.cacheMutex.RUnlock()
+		return headerRow
+	}
+	r.cacheMutex.RUnlock()
+
+	// Find header row
+	headerRow := -1
 	for i, row := range rows {
 		if len(row) == 0 {
 			continue
@@ -493,45 +506,84 @@ func (r *revenueExpenseExcelRepository) findHeaderRow(rows [][]string) int {
 
 		// If we have at least 3 non-empty cells, consider it a header row
 		if headerCount >= 3 {
-			return i
+			headerRow = i
+			break
 		}
 	}
 
-	return -1
+	// Cache the header row
+	r.cacheMutex.Lock()
+	r.headerRowCache = headerRow
+	r.cacheMutex.Unlock()
+
+	return headerRow
 }
 
 // isCommentOrEmpty checks if a cell value is a comment or empty
 func (r *revenueExpenseExcelRepository) isCommentOrEmpty(value string) bool {
+	// Fast path for empty strings
+	if len(value) == 0 {
+		return true
+	}
+
+	// Fast path for strings that are just whitespace
 	trimmed := strings.TrimSpace(value)
-	return trimmed == "" || strings.HasPrefix(trimmed, "#") || strings.HasPrefix(trimmed, "//")
+	if len(trimmed) == 0 {
+		return true
+	}
+
+	// Check for comments
+	return strings.HasPrefix(trimmed, "#") || strings.HasPrefix(trimmed, "//")
+}
+
+// hasNonEmptyData checks if a row has any non-empty data (optimized)
+func (r *revenueExpenseExcelRepository) hasNonEmptyData(row []string) bool {
+	for _, cell := range row {
+		if len(cell) > 0 && strings.TrimSpace(cell) != "" {
+			return true
+		}
+	}
+	return false
 }
 
 // getFileAndSheetData opens the Excel file and returns file, sheet name, and rows
 func (r *revenueExpenseExcelRepository) getFileAndSheetData() (*excelize.File, string, [][]string, error) {
-	file, err := excelize.OpenFile(r.fileMetadata.FilePath)
+	file, err := r.getCachedFile()
 	if err != nil {
-		return nil, "", nil, fmt.Errorf("failed to open file: %w", err)
+		return nil, "", nil, err
 	}
 
 	// Use the first sheet from metadata
 	if len(r.fileMetadata.Sheets) == 0 {
-		file.Close()
 		return nil, "", nil, fmt.Errorf("no sheets found in metadata")
 	}
 
 	sheetName := r.fileMetadata.Sheets[0].SheetName
 
+	// Check if we have cached rows and they're still valid
+	r.cacheMutex.RLock()
+	if r.cacheValid && len(r.rowsCache) > 0 {
+		rows := r.rowsCache
+		r.cacheMutex.RUnlock()
+		return file, sheetName, rows, nil
+	}
+	r.cacheMutex.RUnlock()
+
 	// Get current rows
 	rows, err := file.GetRows(sheetName)
 	if err != nil {
-		file.Close()
 		return nil, "", nil, fmt.Errorf("failed to get rows: %w", err)
 	}
 
 	if len(rows) == 0 {
-		file.Close()
 		return nil, "", nil, fmt.Errorf("no data found in sheet")
 	}
+
+	// Cache the rows for future use
+	r.cacheMutex.Lock()
+	r.rowsCache = rows
+	r.cacheValid = true
+	r.cacheMutex.Unlock()
 
 	return file, sheetName, rows, nil
 }
@@ -545,26 +597,24 @@ func (r *revenueExpenseExcelRepository) findLastTransactionRow(rows [][]string) 
 	}
 
 	// Find the last data row (scan from bottom up, starting after the header)
+	var lastRow []string
 	for i := len(rows) - 1; i >= headerRow+1; i-- {
 		if len(rows[i]) == 0 {
 			continue
 		}
 
-		// Check if this row has any non-empty data
-		hasData := false
-		for _, cell := range rows[i] {
-			if strings.TrimSpace(cell) != "" {
-				hasData = true
-				break
-			}
-		}
-
-		if hasData {
-			return rows[i], nil
+		// Check if this row has any non-empty data (optimized)
+		if r.hasNonEmptyData(rows[i]) {
+			lastRow = rows[i]
+			break
 		}
 	}
 
-	return nil, fmt.Errorf("no transaction rows found")
+	if len(lastRow) == 0 {
+		return nil, fmt.Errorf("no transaction rows found")
+	}
+
+	return lastRow, nil
 }
 
 func (r *revenueExpenseExcelRepository) findLastDateRow(rows [][]string) ([]string, error) {
@@ -575,17 +625,23 @@ func (r *revenueExpenseExcelRepository) findLastDateRow(rows [][]string) ([]stri
 	}
 
 	// Find the last data row (scan from bottom up, starting after the header)
+	var lastRow []string
 	for i := len(rows) - 1; i >= headerRow+1; i-- {
 		if len(rows[i]) == 0 {
 			continue
 		}
 
 		if strings.TrimSpace(rows[i][0]) != "" {
-			return rows[i], nil
+			lastRow = rows[i]
+			break
 		}
 	}
 
-	return nil, fmt.Errorf("no date rows found")
+	if len(lastRow) == 0 {
+		return nil, fmt.Errorf("no date rows found")
+	}
+
+	return lastRow, nil
 }
 
 // validateExpenseData validates the expense data before adding it
@@ -618,4 +674,76 @@ func (r *revenueExpenseExcelRepository) validateExpenseData(expenseData map[stri
 func (r *revenueExpenseExcelRepository) getTodayDate() time.Time {
 	now := time.Now()
 	return time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+}
+
+// getCachedFile returns a cached file handle or opens a new one if needed
+func (r *revenueExpenseExcelRepository) getCachedFile() (*excelize.File, error) {
+	r.cacheMutex.Lock()
+	defer r.cacheMutex.Unlock()
+
+	// Check if file exists and get its modification time
+	fileInfo, err := os.Stat(r.fileMetadata.FilePath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get file info: %w", err)
+	}
+
+	// If we have a cached file and it's still valid, return it
+	if r.fileCache != nil && !fileInfo.ModTime().After(r.lastModified) {
+		return r.fileCache, nil
+	}
+
+	// Close existing cached file if it exists
+	if r.fileCache != nil {
+		r.fileCache.Close()
+	}
+
+	// Open new file
+	file, err := excelize.OpenFile(r.fileMetadata.FilePath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to open file: %w", err)
+	}
+
+	// Cache the file and update metadata
+	r.fileCache = file
+	r.lastModified = fileInfo.ModTime()
+
+	return file, nil
+}
+
+// invalidateCache marks the file cache as invalid, forcing a reload on next access
+func (r *revenueExpenseExcelRepository) invalidateCache() {
+	r.cacheMutex.Lock()
+	defer r.cacheMutex.Unlock()
+
+	if r.fileCache != nil {
+		r.fileCache.Close()
+		r.fileCache = nil
+	}
+
+	// Invalidate all data caches
+	r.rowsCache = nil
+	r.headerRowCache = -1
+	r.cacheValid = false
+}
+
+// closeCachedFile closes the cached file if it exists
+func (r *revenueExpenseExcelRepository) closeCachedFile() {
+	r.cacheMutex.Lock()
+	defer r.cacheMutex.Unlock()
+
+	if r.fileCache != nil {
+		r.fileCache.Close()
+		r.fileCache = nil
+	}
+}
+
+// Close closes the repository and releases any cached resources
+func (r *revenueExpenseExcelRepository) Close() error {
+	r.closeCachedFile()
+	return nil
+}
+
+// ForceCacheRefresh forces a cache refresh on the next file access
+func (r *revenueExpenseExcelRepository) ForceCacheRefresh() {
+	r.invalidateCache()
 }
