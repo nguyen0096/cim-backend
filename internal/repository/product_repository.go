@@ -1,23 +1,24 @@
 package repository
 
 import (
+	"context"
 	"import-export-backend/internal/models"
 
 	"gorm.io/gorm"
 )
 
 type ProductRepository interface {
-	Create(product *models.Product) error
-	GetByID(id uint) (*models.Product, error)
-	Update(product *models.Product) error
-	Delete(id uint) error
-	Restore(id uint) error
-	List(limit, offset int, sortBy, sortOrder string) ([]models.Product, error)
-	GetBySupplier(supplierID uint) ([]models.Product, error)
-	Search(query string, sortBy, sortOrder string) ([]models.Product, error)
-	SearchWithPagination(query string, limit, offset int, sortBy, sortOrder string) ([]models.Product, error)
-	Count() (int64, error)
-	CountSearch(query string) (int64, error)
+	Create(ctx context.Context, product *models.Product) error
+	GetByID(ctx context.Context, id uint) (*models.Product, error)
+	Update(ctx context.Context, product *models.Product) error
+	Delete(ctx context.Context, id uint) error
+	Restore(ctx context.Context, id uint) error
+	List(ctx context.Context, limit, offset int, sortBy, sortOrder string) ([]models.Product, error)
+	GetBySupplier(ctx context.Context, supplierID uint) ([]models.Product, error)
+	Search(ctx context.Context, query string, sortBy, sortOrder string) ([]models.Product, error)
+	SearchWithPagination(ctx context.Context, query string, limit, offset int, sortBy, sortOrder string) ([]models.Product, error)
+	Count(ctx context.Context) (int64, error)
+	CountSearch(ctx context.Context, query string) (int64, error)
 }
 
 type productRepository struct {
@@ -28,34 +29,34 @@ func NewProductRepository(db *gorm.DB) ProductRepository {
 	return &productRepository{db: db}
 }
 
-func (r *productRepository) Create(product *models.Product) error {
-	return r.db.Create(product).Error
+func (r *productRepository) Create(ctx context.Context, product *models.Product) error {
+	return r.db.WithContext(ctx).Create(product).Error
 }
 
-func (r *productRepository) GetByID(id uint) (*models.Product, error) {
+func (r *productRepository) GetByID(ctx context.Context, id uint) (*models.Product, error) {
 	var product models.Product
-	err := r.db.Preload("Supplier").Preload("Inventory").First(&product, "id = ?", id).Error
+	err := r.db.WithContext(ctx).Preload("Supplier").Preload("Inventory").First(&product, "id = ?", id).Error
 	if err != nil {
 		return nil, err
 	}
 	return &product, nil
 }
 
-func (r *productRepository) Update(product *models.Product) error {
-	return r.db.Save(product).Error
+func (r *productRepository) Update(ctx context.Context, product *models.Product) error {
+	return r.db.WithContext(ctx).Save(product).Error
 }
 
-func (r *productRepository) Delete(id uint) error {
-	return r.db.Delete(&models.Product{}, "id = ?", id).Error
+func (r *productRepository) Delete(ctx context.Context, id uint) error {
+	return r.db.WithContext(ctx).Delete(&models.Product{}, "id = ?", id).Error
 }
 
-func (r *productRepository) Restore(id uint) error {
-	return r.db.Unscoped().Model(&models.Product{}).Where("id = ?", id).Update("deleted_at", nil).Error
+func (r *productRepository) Restore(ctx context.Context, id uint) error {
+	return r.db.WithContext(ctx).Unscoped().Model(&models.Product{}).Where("id = ?", id).Update("deleted_at", nil).Error
 }
 
-func (r *productRepository) List(limit, offset int, sortBy, sortOrder string) ([]models.Product, error) {
+func (r *productRepository) List(ctx context.Context, limit, offset int, sortBy, sortOrder string) ([]models.Product, error) {
 	var products []models.Product
-	query := r.db.Preload("Supplier").Preload("Inventory")
+	query := r.db.WithContext(ctx).Preload("Supplier").Preload("Inventory")
 
 	// Apply sorting
 	if sortBy != "" {
@@ -71,15 +72,15 @@ func (r *productRepository) List(limit, offset int, sortBy, sortOrder string) ([
 	return products, err
 }
 
-func (r *productRepository) GetBySupplier(supplierID uint) ([]models.Product, error) {
+func (r *productRepository) GetBySupplier(ctx context.Context, supplierID uint) ([]models.Product, error) {
 	var products []models.Product
-	err := r.db.Preload("Supplier").Preload("Inventory").Where("supplier_id = ?", supplierID).Find(&products).Error
+	err := r.db.WithContext(ctx).Preload("Supplier").Preload("Inventory").Where("supplier_id = ?", supplierID).Find(&products).Error
 	return products, err
 }
 
-func (r *productRepository) Search(query string, sortBy, sortOrder string) ([]models.Product, error) {
+func (r *productRepository) Search(ctx context.Context, query string, sortBy, sortOrder string) ([]models.Product, error) {
 	var products []models.Product
-	dbQuery := r.db.Preload("Supplier").Preload("Inventory").Where("name ILIKE ?", "%"+query+"%")
+	dbQuery := r.db.WithContext(ctx).Preload("Supplier").Preload("Inventory").Where("name ILIKE ?", "%"+query+"%")
 
 	// Apply sorting
 	if sortBy != "" {
@@ -95,9 +96,9 @@ func (r *productRepository) Search(query string, sortBy, sortOrder string) ([]mo
 	return products, err
 }
 
-func (r *productRepository) SearchWithPagination(query string, limit, offset int, sortBy, sortOrder string) ([]models.Product, error) {
+func (r *productRepository) SearchWithPagination(ctx context.Context, query string, limit, offset int, sortBy, sortOrder string) ([]models.Product, error) {
 	var products []models.Product
-	dbQuery := r.db.Preload("Supplier").Preload("Inventory").Where("name ILIKE ?", "%"+query+"%")
+	dbQuery := r.db.WithContext(ctx).Preload("Supplier").Preload("Inventory").Where("name ILIKE ?", "%"+query+"%")
 
 	// Apply sorting
 	if sortBy != "" {
@@ -113,14 +114,14 @@ func (r *productRepository) SearchWithPagination(query string, limit, offset int
 	return products, err
 }
 
-func (r *productRepository) Count() (int64, error) {
+func (r *productRepository) Count(ctx context.Context) (int64, error) {
 	var count int64
-	err := r.db.Model(&models.Product{}).Count(&count).Error
+	err := r.db.WithContext(ctx).Model(&models.Product{}).Count(&count).Error
 	return count, err
 }
 
-func (r *productRepository) CountSearch(query string) (int64, error) {
+func (r *productRepository) CountSearch(ctx context.Context, query string) (int64, error) {
 	var count int64
-	err := r.db.Model(&models.Product{}).Where("name ILIKE ?", "%"+query+"%").Count(&count).Error
+	err := r.db.WithContext(ctx).Model(&models.Product{}).Where("name ILIKE ?", "%"+query+"%").Count(&count).Error
 	return count, err
 }

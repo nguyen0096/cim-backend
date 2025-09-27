@@ -1,35 +1,58 @@
 package handlers
 
 import (
+	"context"
 	"import-export-backend/internal/models"
 	"net/http"
 	"strconv"
+	"time"
 
+	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
+	"github.com/sirupsen/logrus"
 )
 
 type ProductHandler struct {
 	productService ProductService
+	logger         *logrus.Logger
 }
 
 type ProductService interface {
-	CreateProduct(product *models.Product) error
-	GetProductByID(id uint) (*models.Product, error)
-	UpdateProduct(product *models.Product) error
-	DeleteProduct(id uint) error
-	RestoreProduct(id uint) error
-	ListProducts(limit, offset int, sortBy, sortOrder string) ([]models.Product, error)
-	GetProductsBySupplier(supplierID uint) ([]models.Product, error)
-	SearchProducts(query string, sortBy, sortOrder string) ([]models.Product, error)
-	SearchProductsWithPagination(query string, limit, offset int, sortBy, sortOrder string) ([]models.Product, error)
-	CountProducts() (int64, error)
-	CountSearchProducts(query string) (int64, error)
+	CreateProduct(ctx context.Context, product *models.Product) error
+	GetProductByID(ctx context.Context, id uint) (*models.Product, error)
+	UpdateProduct(ctx context.Context, product *models.Product) error
+	DeleteProduct(ctx context.Context, id uint) error
+	RestoreProduct(ctx context.Context, id uint) error
+	ListProducts(ctx context.Context, limit, offset int, sortBy, sortOrder string) ([]models.Product, error)
+	GetProductsBySupplier(ctx context.Context, supplierID uint) ([]models.Product, error)
+	SearchProducts(ctx context.Context, query string, sortBy, sortOrder string) ([]models.Product, error)
+	SearchProductsWithPagination(ctx context.Context, query string, limit, offset int, sortBy, sortOrder string) ([]models.Product, error)
+	CountProducts(ctx context.Context) (int64, error)
+	CountSearchProducts(ctx context.Context, query string) (int64, error)
 }
 
-func NewProductHandler(productService ProductService) *ProductHandler {
+func NewProductHandler(productService ProductService, logger *logrus.Logger) *ProductHandler {
 	return &ProductHandler{
 		productService: productService,
+		logger:         logger,
 	}
+}
+
+// getRequestLogger creates a structured logger with request context
+func (h *ProductHandler) getRequestLogger(c echo.Context, operation string) *logrus.Entry {
+	correlationID := c.Request().Header.Get("X-Correlation-ID")
+	if correlationID == "" {
+		correlationID = uuid.New().String()
+	}
+
+	return h.logger.WithFields(logrus.Fields{
+		"operation":      operation,
+		"method":         c.Request().Method,
+		"path":           c.Request().URL.Path,
+		"correlation_id": correlationID,
+		"user_agent":     c.Request().UserAgent(),
+		"remote_addr":    c.Request().RemoteAddr,
+	})
 }
 
 // GetProducts godoc
@@ -47,6 +70,9 @@ func NewProductHandler(productService ProductService) *ProductHandler {
 // @Security BearerAuth
 // @Router /products [get]
 func (h *ProductHandler) GetProducts(c echo.Context) error {
+	startTime := time.Now()
+	logger := h.getRequestLogger(c, "GetProducts")
+
 	// Parse query parameters
 	limit, _ := strconv.Atoi(c.QueryParam("limit"))
 	page, _ := strconv.Atoi(c.QueryParam("page"))
@@ -64,19 +90,37 @@ func (h *ProductHandler) GetProducts(c echo.Context) error {
 	// Calculate offset
 	offset := (page - 1) * limit
 
+	logger.WithFields(logrus.Fields{
+		"limit":      limit,
+		"page":       page,
+		"offset":     offset,
+		"sort_by":    sortBy,
+		"sort_order": sortOrder,
+	}).Info("Getting products with pagination")
+
 	// Get products and total count
-	products, err := h.productService.ListProducts(limit, offset, sortBy, sortOrder)
+	products, err := h.productService.ListProducts(c.Request().Context(), limit, offset, sortBy, sortOrder)
 	if err != nil {
+		logger.WithError(err).Error("Failed to fetch products from service")
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to fetch products"})
 	}
 
-	total, err := h.productService.CountProducts()
+	total, err := h.productService.CountProducts(c.Request().Context())
 	if err != nil {
+		logger.WithError(err).Error("Failed to count products")
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to count products"})
 	}
 
 	// Calculate total pages
 	totalPages := int((total + int64(limit) - 1) / int64(limit))
+
+	duration := time.Since(startTime)
+	logger.WithFields(logrus.Fields{
+		"products_count": len(products),
+		"total_products": total,
+		"total_pages":    totalPages,
+		"duration_ms":    duration.Milliseconds(),
+	}).Info("Successfully retrieved products")
 
 	// Create response
 	response := map[string]interface{}{
@@ -91,8 +135,12 @@ func (h *ProductHandler) GetProducts(c echo.Context) error {
 }
 
 func (h *ProductHandler) SearchProducts(c echo.Context) error {
+	startTime := time.Now()
+	logger := h.getRequestLogger(c, "SearchProducts")
+
 	query := c.QueryParam("q")
 	if query == "" {
+		logger.Warn("Search request without query parameter")
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Query parameter 'q' is required"})
 	}
 
@@ -113,19 +161,39 @@ func (h *ProductHandler) SearchProducts(c echo.Context) error {
 	// Calculate offset
 	offset := (page - 1) * limit
 
+	logger.WithFields(logrus.Fields{
+		"query":      query,
+		"limit":      limit,
+		"page":       page,
+		"offset":     offset,
+		"sort_by":    sortBy,
+		"sort_order": sortOrder,
+	}).Info("Searching products")
+
 	// Get products and total count
-	products, err := h.productService.SearchProductsWithPagination(query, limit, offset, sortBy, sortOrder)
+	products, err := h.productService.SearchProductsWithPagination(c.Request().Context(), query, limit, offset, sortBy, sortOrder)
 	if err != nil {
+		logger.WithError(err).WithField("query", query).Error("Failed to search products")
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to search products"})
 	}
 
-	total, err := h.productService.CountSearchProducts(query)
+	total, err := h.productService.CountSearchProducts(c.Request().Context(), query)
 	if err != nil {
+		logger.WithError(err).WithField("query", query).Error("Failed to count search results")
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to count search results"})
 	}
 
 	// Calculate total pages
 	totalPages := int((total + int64(limit) - 1) / int64(limit))
+
+	duration := time.Since(startTime)
+	logger.WithFields(logrus.Fields{
+		"query":         query,
+		"results_count": len(products),
+		"total_results": total,
+		"total_pages":   totalPages,
+		"duration_ms":   duration.Milliseconds(),
+	}).Info("Search completed successfully")
 
 	// Create response
 	response := map[string]interface{}{
@@ -152,108 +220,198 @@ func (h *ProductHandler) SearchProducts(c echo.Context) error {
 // @Security BearerAuth
 // @Router /products [post]
 func (h *ProductHandler) CreateProduct(c echo.Context) error {
+	startTime := time.Now()
+	logger := h.getRequestLogger(c, "CreateProduct")
+
 	var product models.Product
 	if err := c.Bind(&product); err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid request body"})
+		logger.WithError(err).Error("Failed to bind request body")
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid request body", "details": err.Error()})
 	}
 
+	logger.WithFields(logrus.Fields{
+		"product_name": product.Name,
+		"unit_type":    product.UnitType,
+		"supplier_id":  product.SupplierID,
+	}).Info("Creating new product")
+
 	// Validate UnitType if provided
-	if product.UnitType != "" {
+	if product.UnitType == "" {
+		logger.Warn("Product creation attempted with empty unit type")
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid unit type. Please use a valid unit type like 'piece', 'kg', 'liter', etc."})
 	}
 
-	if err := h.productService.CreateProduct(&product); err != nil {
+	if err := h.productService.CreateProduct(c.Request().Context(), &product); err != nil {
+		logger.WithError(err).WithField("product_name", product.Name).Error("Failed to create product in service")
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to create product"})
 	}
+
+	duration := time.Since(startTime)
+	logger.WithFields(logrus.Fields{
+		"product_id":   product.ID,
+		"product_name": product.Name,
+		"duration_ms":  duration.Milliseconds(),
+	}).Info("Product created successfully")
 
 	return c.JSON(http.StatusCreated, product)
 }
 
 func (h *ProductHandler) GetProduct(c echo.Context) error {
+	startTime := time.Now()
+	logger := h.getRequestLogger(c, "GetProduct")
+
 	idStr := c.Param("id")
 	idInt, err := strconv.Atoi(idStr)
 	if err != nil {
+		logger.WithError(err).WithField("id_string", idStr).Error("Invalid ID format")
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid ID format"})
 	}
 	id := uint(idInt)
 	if err != nil {
+		logger.WithError(err).WithField("id", id).Error("Invalid product ID")
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid product ID"})
 	}
 
-	product, err := h.productService.GetProductByID(id)
+	logger.WithField("product_id", id).Info("Getting product by ID")
+
+	product, err := h.productService.GetProductByID(c.Request().Context(), id)
 	if err != nil {
+		logger.WithError(err).WithField("product_id", id).Error("Product not found")
 		return c.JSON(http.StatusNotFound, map[string]string{"error": "Product not found"})
 	}
+
+	duration := time.Since(startTime)
+	logger.WithFields(logrus.Fields{
+		"product_id":   id,
+		"product_name": product.Name,
+		"duration_ms":  duration.Milliseconds(),
+	}).Info("Product retrieved successfully")
 
 	return c.JSON(http.StatusOK, product)
 }
 
 func (h *ProductHandler) UpdateProduct(c echo.Context) error {
+	startTime := time.Now()
+	logger := h.getRequestLogger(c, "UpdateProduct")
+
 	idStr := c.Param("id")
 	idInt, err := strconv.Atoi(idStr)
 	if err != nil {
+		logger.WithError(err).WithField("id_string", idStr).Error("Invalid ID format")
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid ID format"})
 	}
 	id := uint(idInt)
 	if err != nil {
+		logger.WithError(err).WithField("id", id).Error("Invalid product ID")
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid product ID"})
 	}
 
 	var product models.Product
 	if err := c.Bind(&product); err != nil {
+		logger.WithError(err).WithField("product_id", id).Error("Failed to bind request body")
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid request body"})
 	}
 
 	// Validate UnitType if provided
-	if product.UnitType != "" {
+	if product.UnitType == "" {
+		logger.WithField("product_id", id).Warn("Product update attempted with empty unit type")
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid unit type. Please use a valid unit type like 'piece', 'kg', 'liter', etc."})
 	}
 
 	product.ID = id
-	if err := h.productService.UpdateProduct(&product); err != nil {
+	logger.WithFields(logrus.Fields{
+		"product_id":   id,
+		"product_name": product.Name,
+		"unit_type":    product.UnitType,
+	}).Info("Updating product")
+
+	if err := h.productService.UpdateProduct(c.Request().Context(), &product); err != nil {
+		logger.WithError(err).WithField("product_id", id).Error("Failed to update product in service")
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to update product"})
 	}
+
+	duration := time.Since(startTime)
+	logger.WithFields(logrus.Fields{
+		"product_id":   id,
+		"product_name": product.Name,
+		"duration_ms":  duration.Milliseconds(),
+	}).Info("Product updated successfully")
 
 	return c.JSON(http.StatusOK, product)
 }
 
 func (h *ProductHandler) DeleteProduct(c echo.Context) error {
+	startTime := time.Now()
+	logger := h.getRequestLogger(c, "DeleteProduct")
+
 	idStr := c.Param("id")
 	idInt, err := strconv.Atoi(idStr)
 	if err != nil {
+		logger.WithError(err).WithField("id_string", idStr).Error("Invalid ID format")
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid ID format"})
 	}
 	id := uint(idInt)
 	if err != nil {
+		logger.WithError(err).WithField("id", id).Error("Invalid product ID")
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid product ID"})
 	}
 
-	if err := h.productService.DeleteProduct(id); err != nil {
+	logger.WithField("product_id", id).Info("Deleting product")
+
+	if err := h.productService.DeleteProduct(c.Request().Context(), id); err != nil {
+		logger.WithError(err).WithField("product_id", id).Error("Failed to delete product in service")
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to delete product"})
 	}
+
+	duration := time.Since(startTime)
+	logger.WithFields(logrus.Fields{
+		"product_id":  id,
+		"duration_ms": duration.Milliseconds(),
+	}).Info("Product deleted successfully")
 
 	return c.JSON(http.StatusOK, map[string]string{"message": "Product deleted successfully"})
 }
 
 func (h *ProductHandler) RestoreProduct(c echo.Context) error {
+	startTime := time.Now()
+	logger := h.getRequestLogger(c, "RestoreProduct")
+
 	idStr := c.Param("id")
 	idInt, err := strconv.Atoi(idStr)
 	if err != nil {
+		logger.WithError(err).WithField("id_string", idStr).Error("Invalid ID format")
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid ID format"})
 	}
 	id := uint(idInt)
 	if err != nil {
+		logger.WithError(err).WithField("id", id).Error("Invalid product ID")
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid product ID"})
 	}
 
-	if err := h.productService.RestoreProduct(id); err != nil {
+	logger.WithField("product_id", id).Info("Restoring product")
+
+	if err := h.productService.RestoreProduct(c.Request().Context(), id); err != nil {
+		logger.WithError(err).WithField("product_id", id).Error("Failed to restore product in service")
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to restore product"})
 	}
+
+	duration := time.Since(startTime)
+	logger.WithFields(logrus.Fields{
+		"product_id":  id,
+		"duration_ms": duration.Milliseconds(),
+	}).Info("Product restored successfully")
 
 	return c.JSON(http.StatusOK, map[string]string{"message": "Product restored successfully"})
 }
 
 func (h *ProductHandler) GetProductInventory(c echo.Context) error {
-	// Implementation for getting product inventory
+	startTime := time.Now()
+	logger := h.getRequestLogger(c, "GetProductInventory")
+
+	logger.Info("Getting product inventory - endpoint not yet implemented")
+
+	duration := time.Since(startTime)
+	logger.WithField("duration_ms", duration.Milliseconds()).Info("Product inventory endpoint accessed")
+
 	return c.JSON(http.StatusOK, map[string]string{"message": "Product inventory endpoint"})
 }
