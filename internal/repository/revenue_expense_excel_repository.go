@@ -126,6 +126,7 @@ func (r *revenueExpenseExcelRepository) AddExpense(ctx context.Context, expenseD
 
 	// Check if a row with today's date already exists
 	isNewTransactionDateRequired := false
+	detectedDateFormat := availableDateFormats[0]
 
 	// Helper function to determine if a date string matches today's date in any supported format
 	isToday := func(dateStr string) bool {
@@ -135,6 +136,8 @@ func (r *revenueExpenseExcelRepository) AddExpense(ctx context.Context, expenseD
 			if err != nil {
 				continue
 			}
+
+			detectedDateFormat = dateFormat
 
 			if date.Format(dateFormat) == today.Format(dateFormat) {
 				return true
@@ -161,22 +164,79 @@ func (r *revenueExpenseExcelRepository) AddExpense(ctx context.Context, expenseD
 
 	targetRow := len(rows) + 1
 
+	// Helper function to detect Excel date format from existing data
+	detectExcelDateFormat := func(goDateFormat string) string {
+		switch goDateFormat {
+		case "1/02/2006", "01/02/2006":
+			return "mm/dd/yyyy"
+		case "02/1/2006", "02/01/2006":
+			return "dd/mm/yyyy"
+		case "1-02-2006", "01-02-2006":
+			return "mm-dd-yyyy"
+		case "02-01-2006", "02-1-2006":
+			return "dd-mm-yyyy"
+		case "2006-1-02", "2006-01-02":
+			return "yyyy-mm-dd"
+		case "2006/1/02", "2006/01/02":
+			return "yyyy/mm/dd"
+		default:
+			return "mm/dd/yyyy" // default fallback
+		}
+	}
+
 	// If no row with today's date exists, create a new row
 	if isNewTransactionDateRequired {
-		// First, add today's date to the first column (use standard format)
 		if len(r.fileMetadata.Sheets[0].Headers) > 0 {
+			excelDateFormat := detectExcelDateFormat(detectedDateFormat)
+			styleID, err := file.NewStyle(&excelize.Style{
+				Font: &excelize.Font{
+					Family: "Times New Roman",
+					Bold:   true,
+				},
+				Border: []excelize.Border{
+					{Type: "left", Color: "000000", Style: 1},
+					{Type: "top", Color: "000000", Style: 1},
+					{Type: "bottom", Color: "000000", Style: 1},
+					{Type: "right", Color: "000000", Style: 1},
+				},
+				CustomNumFmt: &excelDateFormat,
+			})
+			if err != nil {
+				return fmt.Errorf("failed to create style: %w", err)
+			}
+
 			firstColumn := r.fileMetadata.Sheets[0].Headers[0]
 			cellName, _ := excelize.CoordinatesToCellName(firstColumn.ColumnIndex, targetRow)
+			file.SetCellStyle(sheetName, cellName, cellName, styleID)
 			file.SetCellValue(sheetName, cellName, today)
 		}
 		targetRow++
 	}
 
+	styleID, err := file.NewStyle(&excelize.Style{
+		Font: &excelize.Font{
+			Family: "Times New Roman",
+			Bold:   true,
+		},
+		Border: []excelize.Border{
+			{Type: "left", Color: "000000", Style: 1},
+			{Type: "top", Color: "000000", Style: 1},
+			{Type: "bottom", Color: "000000", Style: 1},
+			{Type: "right", Color: "000000", Style: 1},
+		},
+	})
 	// Add the expense data to the target row
 	for _, column := range r.fileMetadata.Sheets[0].Headers {
+		cellName, _ := excelize.CoordinatesToCellName(column.ColumnIndex+1, targetRow)
+		file.SetCellStyle(sheetName, cellName, cellName, styleID)
 		if value, exists := expenseData[column.ColumnName]; exists {
-			cellName, _ := excelize.CoordinatesToCellName(column.ColumnIndex+1, targetRow)
-			file.SetCellValue(sheetName, cellName, value)
+
+			// Convert value to uppercase string
+			valueStr := fmt.Sprintf("%v", value)
+			uppercaseValue := strings.ToUpper(valueStr)
+
+			// Set cell value and apply formatting
+			file.SetCellValue(sheetName, cellName, uppercaseValue)
 		}
 	}
 
@@ -532,20 +592,41 @@ func (r *revenueExpenseExcelRepository) matchesCriteria(expense, criteria map[st
 // isTodayDate checks if the given date string matches today's date in any common format
 func (r *revenueExpenseExcelRepository) isTodayDate(dateValue string) bool {
 	today := time.Now()
-	todayFormats := []string{
-		today.Format("2006-01-02"),
-		today.Format("02/01/2006"),
-		today.Format("01/02/2006"),
-		today.Format("2006/01/02"),
-		today.Format("02-01-2006"),
-		today.Format("01-02-2006"),
-		today.Format("2006-01-02 15:04:05"),
-		today.Format("02/01/2006 15:04"),
+	availableDateFormats := []string{
+		"1/02/2006",
+		"01/02/2006",
+		"02/1/2006",
+		"02/01/2006",
+		"1-02-2006",
+		"01-02-2006",
+		"02-01-2006",
+		"02-1-2006",
+		"2006-1-02",
+		"2006-01-02",
+		"2006/1/02",
+		"2006/01/02",
+		"2006-01-02 15:04:05",
+		"02/01/2006 15:04",
+		"01/02/2006 15:04",
 	}
 
 	trimmedDate := strings.TrimSpace(dateValue)
-	for _, todayFormat := range todayFormats {
-		if trimmedDate == todayFormat {
+	if trimmedDate == "" {
+		return false
+	}
+
+	for _, dateFormat := range availableDateFormats {
+		// try parse dateValue
+		date, err := time.Parse(dateFormat, trimmedDate)
+		if err != nil {
+			continue
+		}
+
+		// Compare dates by truncating time components and comparing only date parts
+		dateOnly := time.Date(date.Year(), date.Month(), date.Day(), 0, 0, 0, 0, date.Location())
+		todayOnly := time.Date(today.Year(), today.Month(), today.Day(), 0, 0, 0, 0, today.Location())
+
+		if dateOnly.Equal(todayOnly) {
 			return true
 		}
 	}

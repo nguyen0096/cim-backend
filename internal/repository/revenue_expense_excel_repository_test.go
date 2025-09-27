@@ -3,10 +3,11 @@ package repository
 import (
 	"context"
 	"fmt"
+	"strings"
 	"testing"
 	"time"
 
-	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // TestRevenueExpenseExcelRepository tests the Excel handling classes with the Thu chi.xlsx file
@@ -19,7 +20,7 @@ func TestRevenueExpenseExcelRepository(t *testing.T) {
 
 	// Initialize with the Thu chi.xlsx file
 	err := revenueExpenseExcelRepo.InitializeWithFile(ctx, "testdata/Thu chi.xlsx")
-	assert.Nil(t, err)
+	require.Nil(t, err)
 	t.Log("✅ Service initialized successfully")
 
 	// Get and display schema
@@ -73,7 +74,7 @@ func TestRevenueExpenseExcelRepository(t *testing.T) {
 	t.Cleanup(func() {
 		t.Log("Cleaning up...")
 		err := revenueExpenseExcelRepo.DeleteLastNRows(ctx, numberOfRowsToDelete)
-		assert.Nil(t, err)
+		require.Nil(t, err)
 		t.Log("✅ Rows deleted successfully")
 	})
 
@@ -97,37 +98,37 @@ func TestRevenueExpenseExcelRepository(t *testing.T) {
 	// Read last transaction date
 	t.Log("🔄 Reading last transaction date...")
 	lastTransactionDate, err := revenueExpenseExcelRepo.GetLastTransactionDate(ctx)
-	assert.Nil(t, err)
+	require.Nil(t, err)
 	t.Logf("✅ Last transaction date retrieved: %v\n", lastTransactionDate)
 
 	// Verify that last transaction date is not today
-	assert.NotEqual(t, lastTransactionDate.Format("2006-01-02"), time.Now().Format("2006-01-02"))
+	require.NotEqual(t, lastTransactionDate.Format("2006-01-02"), time.Now().Format("2006-01-02"))
 
 	// Add expense
 	t.Log("🔄 Adding sample expense using detected columns...")
 	err = revenueExpenseExcelRepo.AddExpense(ctx, sampleExpense)
-	assert.Nil(t, err)
+	require.Nil(t, err)
 	t.Log("✅ Sample expense added successfully")
 	numberOfRowsToDelete += 2 // Include date row and expense row
 
 	// Try to read last expense
 	t.Log("🔄 Reading last expense...")
 	lastExpense, err := revenueExpenseExcelRepo.GetLastExpense(ctx)
-	assert.Nil(t, err)
+	require.Nil(t, err)
 	t.Logf("✅ Last expense retrieved: %v\n", lastExpense)
 
 	// Compare last expense with expected expense
 	t.Log("\n🔍 Comparing last expense with expected expense...")
-	assert.True(t, compareExpenses(sampleExpense, lastExpense))
+	require.True(t, compareExpenses(sampleExpense, lastExpense))
 
 	// Read last transaction date
 	t.Log("🔄 Reading last transaction date...")
 	lastTransactionDate2, err := revenueExpenseExcelRepo.GetLastTransactionDate(ctx)
-	assert.Nil(t, err)
+	require.Nil(t, err)
 	t.Logf("✅ Last transaction date retrieved: %v\n", lastTransactionDate2)
 
 	// Verify that last transaction date is today
-	assert.Equal(t, lastTransactionDate2.Format("2006-01-02"), time.Now().Format("2006-01-02"))
+	require.Equal(t, lastTransactionDate2.Format("2006-01-02"), time.Now().Format("2006-01-02"))
 
 	sampleExpense2 := map[string]interface{}{}
 	for _, header := range schema.Sheets[0].Headers {
@@ -148,19 +149,19 @@ func TestRevenueExpenseExcelRepository(t *testing.T) {
 	// Add another expense
 	t.Log("🔄 Adding sample expense using detected columns...")
 	err = revenueExpenseExcelRepo.AddExpense(ctx, sampleExpense2)
-	assert.Nil(t, err)
+	require.Nil(t, err)
 	t.Log("✅ Sample expense added successfully")
 	numberOfRowsToDelete += 1 // Now only include expense row
 
 	// Try to read last expense
 	t.Log("🔄 Reading last expense...")
 	lastExpense2, err := revenueExpenseExcelRepo.GetLastExpense(ctx)
-	assert.Nil(t, err)
+	require.Nil(t, err)
 	t.Logf("✅ Last expense retrieved: %v\n", lastExpense2)
 
 	// Compare last expense with expected expense
 	t.Log("\n🔍 Comparing last expense with expected expense...")
-	assert.True(t, compareExpenses(sampleExpense2, lastExpense2))
+	require.True(t, compareExpenses(sampleExpense2, lastExpense2))
 
 	t.Log("✅ Thu chi Excel repository test completed successfully")
 }
@@ -179,7 +180,7 @@ func compareExpenses(expected, actual map[string]interface{}) bool {
 		}
 
 		// Convert both values to strings for comparison (since Excel values are strings)
-		expectedStr := fmt.Sprintf("%v", expectedValue)
+		expectedStr := strings.ToUpper(fmt.Sprintf("%v", expectedValue))
 		actualStr := fmt.Sprintf("%v", actualValue)
 
 		if expectedStr != actualStr {
