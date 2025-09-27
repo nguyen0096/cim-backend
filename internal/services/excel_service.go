@@ -59,7 +59,6 @@ func (s *excelService) ExportProducts() (*excelize.File, error) {
 			file.SetCellValue(sheetName, "G"+strconv.Itoa(row), product.Inventory.Quantity)
 			file.SetCellValue(sheetName, "H"+strconv.Itoa(row), product.Inventory.ReorderLevel)
 			file.SetCellValue(sheetName, "I"+strconv.Itoa(row), product.Inventory.Location)
-			file.SetCellValue(sheetName, "J"+strconv.Itoa(row), product.Inventory.LastUpdated.Format("2006-01-02 15:04:05"))
 		}
 	}
 
@@ -95,7 +94,6 @@ func (s *excelService) ExportInventory() (*excelize.File, error) {
 		file.SetCellValue(sheetName, "G"+strconv.Itoa(row), "N/A") // Last transaction - would need to query transactions
 		file.SetCellValue(sheetName, "H"+strconv.Itoa(row), "N/A") // Transaction type
 		file.SetCellValue(sheetName, "I"+strconv.Itoa(row), "N/A") // Quantity changed
-		file.SetCellValue(sheetName, "J"+strconv.Itoa(row), inv.LastUpdated.Format("2006-01-02 15:04:05"))
 	}
 
 	return file, nil

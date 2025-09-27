@@ -83,7 +83,7 @@ func (h *InventoryHandler) UpdateInventory(c echo.Context) error {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid request body"})
 	}
 
-	inventory.ID = id
+	inventory.ID = &id
 	if err := h.inventoryService.UpdateInventory(&inventory); err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to update inventory"})
 	}

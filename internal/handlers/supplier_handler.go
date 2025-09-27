@@ -218,7 +218,7 @@ func (h *SupplierHandler) UpdateSupplier(c echo.Context) error {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid phone number format"})
 	}
 
-	supplier.ID = id
+	supplier.ID = &id
 	if err := h.supplierService.UpdateSupplier(&supplier); err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to update supplier"})
 	}

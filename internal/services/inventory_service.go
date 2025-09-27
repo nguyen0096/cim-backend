@@ -3,7 +3,6 @@ package services
 import (
 	"import-export-backend/internal/models"
 	"import-export-backend/internal/repository"
-	"time"
 
 	"github.com/google/uuid"
 )
@@ -48,7 +47,6 @@ func (s *inventoryService) GetInventoryByProductID(productID uuid.UUID) (*models
 }
 
 func (s *inventoryService) UpdateInventory(inventory *models.Inventory) error {
-	inventory.LastUpdated = time.Now()
 	return s.inventoryRepo.Update(inventory)
 }
 
@@ -73,7 +71,6 @@ func (s *inventoryService) AdjustInventory(productID uuid.UUID, quantity int, no
 
 	// Update inventory quantity
 	inventory.Quantity += quantity
-	inventory.LastUpdated = time.Now()
 	return s.inventoryRepo.Update(inventory)
 }
 
@@ -108,7 +105,6 @@ func (s *inventoryService) AddInventory(productID uuid.UUID, quantity int, refer
 
 	// Update inventory quantity
 	inventory.Quantity += quantity
-	inventory.LastUpdated = time.Now()
 	return s.inventoryRepo.Update(inventory)
 }
 
@@ -140,7 +136,6 @@ func (s *inventoryService) RemoveInventory(productID uuid.UUID, quantity int, re
 
 	// Update inventory quantity
 	inventory.Quantity -= quantity
-	inventory.LastUpdated = time.Now()
 	return s.inventoryRepo.Update(inventory)
 }
 

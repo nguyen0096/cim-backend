@@ -32,45 +32,14 @@ func (b *Base) BeforeCreate(tx *gorm.DB) error {
 	return nil
 }
 
-// Supplier represents a supplier
-type Supplier struct {
-	ID           uuid.UUID      `json:"id" gorm:"type:uuid;primary_key;default:gen_random_uuid()"`
-	Name         string         `json:"name" gorm:"not null"`
-	ContactEmail string         `json:"contact_email"`
-	ContactPhone string         `json:"contact_phone"`
-	Address      string         `json:"address"`
-	CreatedAt    time.Time      `json:"created_at"`
-	UpdatedAt    time.Time      `json:"updated_at"`
-	DeletedAt    gorm.DeletedAt `json:"deleted_at,omitempty" gorm:"index"`
-}
-
-// Product represents a product
-type Product struct {
-	ID          uuid.UUID      `json:"id" gorm:"type:uuid;primary_key;default:gen_random_uuid()"`
-	Name        string         `json:"name" gorm:"not null"`
-	Description string         `json:"description"`
-	SKU         string         `json:"sku" gorm:"unique"`
-	SupplierID  uuid.UUID      `json:"supplier_id"`
-	Supplier    *Supplier      `json:"supplier,omitempty" gorm:"foreignKey:SupplierID" validate:"-"`
-	UnitPrice   float64        `json:"unit_price" gorm:"type:decimal(10,2)"`
-	Status      string         `json:"status" gorm:"default:active;check:status IN ('active', 'inactive', 'discontinued')"`
-	CreatedAt   time.Time      `json:"created_at"`
-	UpdatedAt   time.Time      `json:"updated_at"`
-	DeletedAt   gorm.DeletedAt `json:"deleted_at,omitempty" gorm:"index"`
-	Inventory   *Inventory     `json:"inventory,omitempty" gorm:"foreignKey:ProductID"`
-}
-
 // Inventory represents inventory for a product
 type Inventory struct {
-	ID           uuid.UUID `json:"id" gorm:"type:uuid;primary_key;default:gen_random_uuid()"`
-	ProductID    uuid.UUID `json:"product_id" gorm:"unique;not null"`
-	Product      Product   `json:"product,omitempty" gorm:"foreignKey:ProductID" validate:"-"`
+	Base
+	ProductID    *uuid.UUID `json:"product_id" gorm:"unique;not null"`
+	Product      *Product   `json:"product,omitempty" gorm:"foreignKey:ProductID" validate:"-"`
 	Quantity     int       `json:"quantity" gorm:"default:0"`
 	ReorderLevel int       `json:"reorder_level" gorm:"default:0"`
 	Location     string    `json:"location"`
-	LastUpdated  time.Time `json:"last_updated"`
-	CreatedAt    time.Time `json:"created_at"`
-	UpdatedAt    time.Time `json:"updated_at"`
 }
 
 // InventoryTransaction represents an inventory transaction
@@ -114,27 +83,6 @@ type OrderItem struct {
 	TotalPrice float64   `json:"total_price" gorm:"type:decimal(10,2)"`
 	CreatedAt  time.Time `json:"created_at"`
 	UpdatedAt  time.Time `json:"updated_at"`
-}
-
-func (s *Supplier) BeforeCreate(tx *gorm.DB) error {
-	if s.ID == uuid.Nil {
-		s.ID = uuid.New()
-	}
-	return nil
-}
-
-func (p *Product) BeforeCreate(tx *gorm.DB) error {
-	if p.ID == uuid.Nil {
-		p.ID = uuid.New()
-	}
-	return nil
-}
-
-func (i *Inventory) BeforeCreate(tx *gorm.DB) error {
-	if i.ID == uuid.Nil {
-		i.ID = uuid.New()
-	}
-	return nil
 }
 
 func (it *InventoryTransaction) BeforeCreate(tx *gorm.DB) error {

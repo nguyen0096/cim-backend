@@ -2,6 +2,41 @@ basePath: /api/v1
 definitions:
   models.Product:
     type: object
+    properties:
+      id:
+        type: string
+        format: uuid
+      name:
+        type: string
+      description:
+        type: string
+      sku:
+        type: string
+      supplier_id:
+        type: string
+        format: uuid
+      supplier:
+        $ref: '#/definitions/models.Supplier'
+      unit_price:
+        type: number
+        format: float
+      unit_type:
+        type: string
+        description: "Unit type for the product (e.g., 'piece', 'kg', 'liter', etc.)"
+      status:
+        type: string
+        enum: ["active", "inactive", "discontinued"]
+      created_at:
+        type: string
+        format: date-time
+      updated_at:
+        type: string
+        format: date-time
+      deleted_at:
+        type: string
+        format: date-time
+      inventory:
+        $ref: '#/definitions/models.Inventory'
   models.PurchaseOrder:
     properties:
       created_at:

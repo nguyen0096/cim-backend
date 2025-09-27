@@ -158,6 +158,11 @@ func (h *ProductHandler) CreateProduct(c echo.Context) error {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid request body"})
 	}
 
+	// Validate UnitType if provided
+	if product.UnitType != "" {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid unit type. Please use a valid unit type like 'piece', 'kg', 'liter', etc."})
+	}
+
 	if err := h.productService.CreateProduct(&product); err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to create product"})
 	}
@@ -190,7 +195,12 @@ func (h *ProductHandler) UpdateProduct(c echo.Context) error {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid request body"})
 	}
 
-	product.ID = id
+	// Validate UnitType if provided
+	if product.UnitType != "" {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid unit type. Please use a valid unit type like 'piece', 'kg', 'liter', etc."})
+	}
+
+	product.ID = &id
 	if err := h.productService.UpdateProduct(&product); err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to update product"})
 	}
