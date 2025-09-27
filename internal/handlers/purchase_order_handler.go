@@ -26,7 +26,7 @@ type PurchaseOrderService interface {
 	ListPurchaseOrders(ctx context.Context, params models.PaginationParams) (*models.PaginationResult[models.PurchaseOrder], error)
 	GetPurchaseOrdersByStatus(status string) ([]models.PurchaseOrder, error)
 	UpdatePurchaseOrderStatus(id uint, status string) error
-	ReceivePurchaseOrder(id uint, userID string) error
+	ReceivePurchaseOrder(ctx context.Context, id uint) error
 }
 
 func NewPurchaseOrderHandler(
@@ -199,12 +199,7 @@ func (h *PurchaseOrderHandler) ReceivePurchaseOrder(c echo.Context) error {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid purchase order ID"})
 	}
 
-	userID := c.Get("user_id").(string)
-	if userID == "" {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid user ID"})
-	}
-
-	if err := h.purchaseOrderService.ReceivePurchaseOrder(id, userID); err != nil {
+	if err := h.purchaseOrderService.ReceivePurchaseOrder(c.Request().Context(), id); err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to receive purchase order"})
 	}
 

@@ -17,7 +17,7 @@ type PurchaseOrderService interface {
 	ListPurchaseOrders(ctx context.Context, params models.PaginationParams) (*models.PaginationResult[models.PurchaseOrder], error)
 	GetPurchaseOrdersByStatus(status string) ([]models.PurchaseOrder, error)
 	UpdatePurchaseOrderStatus(id uint, status string) error
-	ReceivePurchaseOrder(id uint, userID string) error
+	ReceivePurchaseOrder(ctx context.Context, id uint) error
 }
 
 type purchaseOrderService struct {
@@ -112,7 +112,7 @@ func (s *purchaseOrderService) UpdatePurchaseOrderStatus(id uint, status string)
 	return s.purchaseOrderRepo.Update(purchaseOrder)
 }
 
-func (s *purchaseOrderService) ReceivePurchaseOrder(id uint, userID string) error {
+func (s *purchaseOrderService) ReceivePurchaseOrder(ctx context.Context, id uint) error {
 	purchaseOrder, err := s.purchaseOrderRepo.GetByID(id)
 	if err != nil {
 		return err
@@ -127,12 +127,12 @@ func (s *purchaseOrderService) ReceivePurchaseOrder(id uint, userID string) erro
 	// Add inventory for each item
 	for _, item := range purchaseOrder.Items {
 		if err := s.inventoryService.AddInventory(
+			ctx,
 			*item.ProductID,
 			item.Quantity,
 			purchaseOrder.ID,
 			"purchase_order",
 			"Received from purchase order",
-			userID,
 		); err != nil {
 			return err
 		}

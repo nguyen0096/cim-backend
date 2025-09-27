@@ -9,7 +9,6 @@ import (
 	"regexp"
 	"testing"
 
-	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
@@ -67,7 +66,7 @@ func TestCreatePurchaseOrder(t *testing.T) {
 			Notes:       "Test purchase order",
 			Items: []models.PurchaseOrderItem{
 				{
-					ProductID:  &[]uuid.UUID{uuid.New()}[0],
+					ProductID:  &[]uint{1}[0],
 					Quantity:   5,
 					TotalPrice: 502.50,
 				},
@@ -112,7 +111,7 @@ func TestCreatePurchaseOrder(t *testing.T) {
 			Notes:       "Test purchase order with existing order number",
 			Items: []models.PurchaseOrderItem{
 				{
-					ProductID:  &[]uuid.UUID{uuid.New()}[0],
+					ProductID:  &[]uint{1}[0],
 					Quantity:   5,
 					TotalPrice: 502.50,
 				},
@@ -145,7 +144,7 @@ func TestCreatePurchaseOrder(t *testing.T) {
 			TotalAmount: 1500.50,
 			Items: []models.PurchaseOrderItem{
 				{
-					ProductID:  &[]uuid.UUID{uuid.New()}[0],
+					ProductID:  &[]uint{1}[0],
 					Quantity:   5,
 					TotalPrice: 502.50,
 				},
