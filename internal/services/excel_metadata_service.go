@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"import-export-backend/internal/models"
+	"import-export-backend/internal/repository"
 	"strconv"
 	"strings"
 	"time"
@@ -255,7 +256,7 @@ func (s *ExcelMetadataService) ParseExcelFile(filePath string) (models.Parser, e
 		return nil, fmt.Errorf("metadata store not initialized")
 	}
 
-	parser, err := NewExcelParser(s.ctx, s.fileMetadata, filePath)
+	parser, err := repository.NewExcelParser(s.ctx, s.fileMetadata, filePath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create parser: %w", err)
 	}
@@ -269,7 +270,7 @@ func (s *ExcelMetadataService) WriteToExcel(filePath string) (models.Writer, err
 		return nil, fmt.Errorf("metadata store not initialized")
 	}
 
-	writer, err := NewExcelWriter(s.ctx, s.fileMetadata, filePath)
+	writer, err := repository.NewExcelWriter(s.ctx, s.fileMetadata, filePath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create writer: %w", err)
 	}

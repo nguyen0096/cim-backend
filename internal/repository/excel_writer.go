@@ -1,4 +1,4 @@
-package services
+package repository
 
 import (
 	"bytes"
@@ -8,6 +8,43 @@ import (
 
 	"github.com/xuri/excelize/v2"
 )
+
+// ExcelWriterRepository defines the interface for Excel writing operations
+type ExcelWriterRepository interface {
+	NewWriter(ctx context.Context, metadataStore *models.FileMetadata, filePath string) (ExcelWriterInterface, error)
+	NewWriterFromBuffer(ctx context.Context, metadataStore *models.FileMetadata, buffer []byte, filePath string) (ExcelWriterInterface, error)
+}
+
+// ExcelWriterInterface defines the interface for writing to Excel files
+type ExcelWriterInterface interface {
+	AppendRow(rowData map[string]interface{}) error
+	AppendRowToSheet(sheetName string, rowData map[string]interface{}) error
+	AppendRowWithValidation(sheetName string, rowData map[string]interface{}) error
+	AppendRows(sheetName string, rows []map[string]interface{}) error
+	GetCellValue(sheetName, cellReference string) (interface{}, error)
+	SetCellValue(sheetName, cellReference string, value interface{}) error
+	Save() error
+	SaveToPath(filePath string) error
+	Close() error
+}
+
+// excelWriterRepository implements ExcelWriterRepository
+type excelWriterRepository struct{}
+
+// NewExcelWriterRepository creates a new ExcelWriterRepository
+func NewExcelWriterRepository() ExcelWriterRepository {
+	return &excelWriterRepository{}
+}
+
+// NewWriter creates a new ExcelWriter instance for an existing file
+func (r *excelWriterRepository) NewWriter(ctx context.Context, metadataStore *models.FileMetadata, filePath string) (ExcelWriterInterface, error) {
+	return NewExcelWriter(ctx, metadataStore, filePath)
+}
+
+// NewWriterFromBuffer creates a new ExcelWriter from a buffer
+func (r *excelWriterRepository) NewWriterFromBuffer(ctx context.Context, metadataStore *models.FileMetadata, buffer []byte, filePath string) (ExcelWriterInterface, error) {
+	return NewExcelWriterFromBuffer(ctx, metadataStore, buffer, filePath)
+}
 
 // ExcelWriter implements the Writer interface to append rows to Excel files
 type ExcelWriter struct {

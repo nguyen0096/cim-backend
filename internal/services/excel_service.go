@@ -151,10 +151,7 @@ type ExcelService interface {
 	GetInventoryTemplateWithStyle(ctx context.Context, headerStyle, dataStyle *CellStyle) (*excelize.File, error)
 	// Revenue/Expense Excel operations
 	InitializeRevenueExpenseFile(ctx context.Context, filePath string) error
-	ReadAllExpenses(ctx context.Context) ([]map[string]interface{}, error)
 	AddExpense(ctx context.Context, expenseData map[string]interface{}) error
-	AddMultipleExpenses(ctx context.Context, expenses []map[string]interface{}) error
-	SearchExpenses(ctx context.Context, criteria map[string]interface{}) ([]map[string]interface{}, error)
 	GetRevenueExpenseSchema(ctx context.Context) *models.FileMetadata
 }
 
@@ -525,24 +522,9 @@ func (s *excelService) InitializeRevenueExpenseFile(ctx context.Context, filePat
 	return s.revenueExpenseExcelRepo.InitializeWithFile(ctx, filePath)
 }
 
-// ReadAllExpenses reads all expense entries from the Excel file
-func (s *excelService) ReadAllExpenses(ctx context.Context) ([]map[string]interface{}, error) {
-	return s.revenueExpenseExcelRepo.ReadAllExpenses(ctx)
-}
-
 // AddExpense adds a new expense entry to the Excel file
 func (s *excelService) AddExpense(ctx context.Context, expenseData map[string]interface{}) error {
 	return s.revenueExpenseExcelRepo.AddExpense(ctx, expenseData)
-}
-
-// AddMultipleExpenses adds multiple expense entries at once
-func (s *excelService) AddMultipleExpenses(ctx context.Context, expenses []map[string]interface{}) error {
-	return s.revenueExpenseExcelRepo.AddMultipleExpenses(ctx, expenses)
-}
-
-// SearchExpenses returns expenses matching search criteria
-func (s *excelService) SearchExpenses(ctx context.Context, criteria map[string]interface{}) ([]map[string]interface{}, error) {
-	return s.revenueExpenseExcelRepo.SearchExpenses(ctx, criteria)
 }
 
 // GetRevenueExpenseSchema returns the Excel file schema

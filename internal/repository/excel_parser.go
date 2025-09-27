@@ -1,4 +1,4 @@
-package services
+package repository
 
 import (
 	"bytes"
@@ -9,6 +9,39 @@ import (
 
 	"github.com/xuri/excelize/v2"
 )
+
+// ExcelParserRepository defines the interface for Excel parsing operations
+type ExcelParserRepository interface {
+	NewParser(ctx context.Context, metadataStore *models.FileMetadata, filePath string) (ExcelParserInterface, error)
+	NewParserFromBuffer(ctx context.Context, metadataStore *models.FileMetadata, buffer []byte) (ExcelParserInterface, error)
+}
+
+// ExcelParserInterface defines the interface for parsing Excel files
+type ExcelParserInterface interface {
+	Parse() ([]map[string]interface{}, error)
+	ParseSheet(sheetName string) ([]map[string]interface{}, error)
+	GetSheetData(sheetName string) ([][]string, error)
+	GetSheetNames() []string
+	Close() error
+}
+
+// excelParserRepository implements ExcelParserRepository
+type excelParserRepository struct{}
+
+// NewExcelParserRepository creates a new ExcelParserRepository
+func NewExcelParserRepository() ExcelParserRepository {
+	return &excelParserRepository{}
+}
+
+// NewParser creates a new ExcelParser instance
+func (r *excelParserRepository) NewParser(ctx context.Context, metadataStore *models.FileMetadata, filePath string) (ExcelParserInterface, error) {
+	return NewExcelParser(ctx, metadataStore, filePath)
+}
+
+// NewParserFromBuffer creates a new ExcelParser from a file buffer
+func (r *excelParserRepository) NewParserFromBuffer(ctx context.Context, metadataStore *models.FileMetadata, buffer []byte) (ExcelParserInterface, error) {
+	return NewExcelParserFromBuffer(ctx, metadataStore, buffer)
+}
 
 // ExcelParser implements the Parser interface to parse Excel files based on metadata
 type ExcelParser struct {

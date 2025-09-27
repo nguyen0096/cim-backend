@@ -13,10 +13,10 @@ import (
 // RevenueExpenseExcelRepository handles data access for revenue/expense Excel operations
 type RevenueExpenseExcelRepository interface {
 	InitializeWithFile(ctx context.Context, filePath string) error
-	ReadAllExpenses(ctx context.Context) ([]map[string]interface{}, error)
 	AddExpense(ctx context.Context, expenseData map[string]interface{}) error
-	AddMultipleExpenses(ctx context.Context, expenses []map[string]interface{}) error
-	SearchExpenses(ctx context.Context, criteria map[string]interface{}) ([]map[string]interface{}, error)
+	GetLastExpense(ctx context.Context) (map[string]interface{}, error)
+	GetLastTransactionDate(ctx context.Context) (time.Time, error)
+	DeleteLastNRows(ctx context.Context, n int) error
 	GetSchema(ctx context.Context) *models.FileMetadata
 }
 
@@ -71,63 +71,7 @@ func (r *revenueExpenseExcelRepository) InitializeWithFile(ctx context.Context, 
 	return nil
 }
 
-// ReadAllExpenses reads all expense entries from the Excel file
-func (r *revenueExpenseExcelRepository) ReadAllExpenses(ctx context.Context) ([]map[string]interface{}, error) {
-	if r.fileMetadata == nil {
-		return nil, fmt.Errorf("repository not initialized, call InitializeWithFile first")
-	}
-
-	file, err := excelize.OpenFile(r.fileMetadata.FilePath)
-	if err != nil {
-		return nil, fmt.Errorf("failed to open file: %w", err)
-	}
-	defer file.Close()
-
-	// Use the first sheet from metadata
-	if len(r.fileMetadata.Sheets) == 0 {
-		return nil, fmt.Errorf("no sheets found in metadata")
-	}
-
-	sheetName := r.fileMetadata.Sheets[0].SheetName
-	rows, err := file.GetRows(sheetName)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get rows from sheet %s: %w", sheetName, err)
-	}
-
-	if len(rows) == 0 {
-		return []map[string]interface{}{}, nil
-	}
-
-	// Find header row
-	headerRow := r.findHeaderRow(rows)
-	if headerRow < 0 || headerRow >= len(rows) {
-		return nil, fmt.Errorf("no header row found")
-	}
-
-	// Extract headers
-	headers := rows[headerRow]
-	var result []map[string]interface{}
-
-	// Process data rows
-	for i := headerRow + 1; i < len(rows); i++ {
-		row := rows[i]
-		if len(row) == 0 {
-			continue
-		}
-
-		rowData := make(map[string]interface{})
-		for j, cellValue := range row {
-			if j < len(headers) && headers[j] != "" {
-				rowData[headers[j]] = cellValue
-			}
-		}
-		result = append(result, rowData)
-	}
-
-	return result, nil
-}
-
-// AddExpense adds a new expense entry to the Excel file
+// AddExpense adds a new expense entry to the Excel file using ExcelWriter
 func (r *revenueExpenseExcelRepository) AddExpense(ctx context.Context, expenseData map[string]interface{}) error {
 	if r.fileMetadata == nil {
 		return fmt.Errorf("repository not initialized, call InitializeWithFile first")
@@ -245,8 +189,175 @@ func (r *revenueExpenseExcelRepository) AddExpense(ctx context.Context, expenseD
 	return nil
 }
 
-// AddMultipleExpenses adds multiple expense entries at once
-func (r *revenueExpenseExcelRepository) AddMultipleExpenses(ctx context.Context, expenses []map[string]interface{}) error {
+// GetLastExpense retrieves the most recent expense entry from the Excel file
+func (r *revenueExpenseExcelRepository) GetLastExpense(ctx context.Context) (map[string]interface{}, error) {
+	if r.fileMetadata == nil {
+		return nil, fmt.Errorf("repository not initialized, call InitializeWithFile first")
+	}
+
+	file, err := excelize.OpenFile(r.fileMetadata.FilePath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to open file: %w", err)
+	}
+	defer file.Close()
+
+	// Use the first sheet from metadata
+	if len(r.fileMetadata.Sheets) == 0 {
+		return nil, fmt.Errorf("no sheets found in metadata")
+	}
+
+	sheetName := r.fileMetadata.Sheets[0].SheetName
+
+	// Get current rows
+	rows, err := file.GetRows(sheetName)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get rows: %w", err)
+	}
+
+	if len(rows) == 0 {
+		return nil, fmt.Errorf("no data found in sheet")
+	}
+
+	// Find header row
+	headerRow := r.findHeaderRow(rows)
+	if headerRow < 0 || headerRow >= len(rows) {
+		return nil, fmt.Errorf("no header row found")
+	}
+
+	// Find the last data row (scan from bottom up, starting after the header)
+	var lastDataRow []string
+	for i := len(rows) - 1; i >= headerRow+1; i-- {
+		if len(rows[i]) == 0 {
+			continue
+		}
+
+		// Check if this row has any non-empty data
+		hasData := false
+		for _, cell := range rows[i] {
+			if strings.TrimSpace(cell) != "" {
+				hasData = true
+				break
+			}
+		}
+
+		if hasData {
+			lastDataRow = rows[i]
+			break
+		}
+	}
+
+	if len(lastDataRow) == 0 {
+		return nil, fmt.Errorf("no data rows found")
+	}
+
+	// Build the expense data map using the headers
+	expenseData := make(map[string]interface{})
+	headers := r.fileMetadata.Sheets[0].Headers
+
+	for _, header := range headers {
+		if header.ColumnIndex < len(lastDataRow) {
+			cellValue := strings.TrimSpace(lastDataRow[header.ColumnIndex])
+			if cellValue != "" {
+				expenseData[header.ColumnName] = cellValue
+			}
+		}
+	}
+
+	return expenseData, nil
+}
+
+// GetLastTransactionDate retrieves the date of the most recent transaction from the Excel file
+func (r *revenueExpenseExcelRepository) GetLastTransactionDate(ctx context.Context) (time.Time, error) {
+	if r.fileMetadata == nil {
+		return time.Time{}, fmt.Errorf("repository not initialized, call InitializeWithFile first")
+	}
+
+	file, err := excelize.OpenFile(r.fileMetadata.FilePath)
+	if err != nil {
+		return time.Time{}, fmt.Errorf("failed to open file: %w", err)
+	}
+	defer file.Close()
+
+	// Use the first sheet from metadata
+	if len(r.fileMetadata.Sheets) == 0 {
+		return time.Time{}, fmt.Errorf("no sheets found in metadata")
+	}
+
+	sheetName := r.fileMetadata.Sheets[0].SheetName
+
+	// Get current rows
+	rows, err := file.GetRows(sheetName)
+	if err != nil {
+		return time.Time{}, fmt.Errorf("failed to get rows: %w", err)
+	}
+
+	if len(rows) == 0 {
+		return time.Time{}, fmt.Errorf("no data found in sheet")
+	}
+
+	// Find header row
+	headerRow := r.findHeaderRow(rows)
+	if headerRow < 0 || headerRow >= len(rows) {
+		return time.Time{}, fmt.Errorf("no header row found")
+	}
+
+	// Available date formats that might be used in Excel
+	availableDateFormats := []string{
+		"1/02/2006",
+		"01/02/2006",
+		"02/1/2006",
+		"02/01/2006",
+		"1-02-2006",
+		"01-02-2006",
+		"02-01-2006",
+		"02-1-2006",
+		"2006-1-02",
+		"2006-01-02",
+		"2006/1/02",
+		"2006/01/02",
+		"2006-01-02 15:04:05",
+		"02/01/2006 15:04",
+		"01/02/2006 15:04",
+	}
+
+	// Find the last transaction date (scan from bottom up, starting after the header)
+	for i := len(rows) - 1; i >= headerRow+1; i-- {
+		if len(rows[i]) == 0 {
+			continue
+		}
+
+		// Check if this row has any non-empty data
+		hasData := false
+		for _, cell := range rows[i] {
+			if strings.TrimSpace(cell) != "" {
+				hasData = true
+				break
+			}
+		}
+
+		if !hasData {
+			continue
+		}
+
+		// Get the date from the first column (assuming first column contains dates)
+		if len(rows[i]) > 0 {
+			dateValue := strings.TrimSpace(rows[i][0])
+			if dateValue != "" {
+				// Try to parse the date using various formats
+				for _, dateFormat := range availableDateFormats {
+					if parsedDate, err := time.Parse(dateFormat, dateValue); err == nil {
+						return parsedDate, nil
+					}
+				}
+			}
+		}
+	}
+
+	return time.Time{}, fmt.Errorf("no transaction date found")
+}
+
+// DeleteLastNRows removes the last n data rows from the Excel file
+func (r *revenueExpenseExcelRepository) DeleteLastNRows(ctx context.Context, n int) error {
 	if r.fileMetadata == nil {
 		return fmt.Errorf("repository not initialized, call InitializeWithFile first")
 	}
@@ -280,69 +391,41 @@ func (r *revenueExpenseExcelRepository) AddMultipleExpenses(ctx context.Context,
 		return fmt.Errorf("no header row found")
 	}
 
-	// Get today's date in various formats that might be used in Excel
-	today := time.Now()
-	todayFormats := []string{
-		today.Format("01/02/2006"),
-		today.Format("01-02-2006"),
-		today.Format("2006-01-02"),
-		today.Format("2006/01/02"),
-		today.Format("02-01-2006"),
-		today.Format("02/01/2006"),
-		today.Format("2006-01-02 15:04:05"),
-		today.Format("02/01/2006 15:04"),
-	}
-
-	// Find if there's already a row with today's date
-	targetRow := -1
+	// Find all data rows (rows with actual data after the header)
+	var dataRowIndices []int
 	for i := headerRow + 1; i < len(rows); i++ {
-		if len(rows[i]) > 0 {
-			// Check the first column (date column) for today's date
-			dateValue := strings.TrimSpace(rows[i][0])
-			for _, todayFormat := range todayFormats {
-				if dateValue == todayFormat {
-					targetRow = i + 1 // Excel rows are 1-indexed
-					break
-				}
-			}
-			if targetRow != -1 {
+		if len(rows[i]) == 0 {
+			continue
+		}
+
+		// Check if this row has any non-empty data
+		hasData := false
+		for _, cell := range rows[i] {
+			if strings.TrimSpace(cell) != "" {
+				hasData = true
 				break
 			}
 		}
-	}
 
-	// If no row with today's date exists, create a new row
-	if targetRow == -1 {
-		targetRow = len(rows) + 1
-
-		// First, add today's date to the first column (use standard format)
-		if len(r.fileMetadata.Sheets[0].Headers) > 0 {
-			firstColumn := r.fileMetadata.Sheets[0].Headers[0]
-			cellName, _ := excelize.CoordinatesToCellName(firstColumn.ColumnIndex+1, targetRow)
-			file.SetCellValue(sheetName, cellName, today.Format("2006-01-02"))
+		if hasData {
+			dataRowIndices = append(dataRowIndices, i)
 		}
 	}
 
-	// Add all expenses to the target row (or create additional rows if needed)
-	currentRow := targetRow
-	for i, expense := range expenses {
-		// For multiple expenses, if we're not on the first expense, we might need new rows
-		if i > 0 {
-			currentRow = len(rows) + 1 + i
-			// Add today's date to the new row (use standard format)
-			if len(r.fileMetadata.Sheets[0].Headers) > 0 {
-				firstColumn := r.fileMetadata.Sheets[0].Headers[0]
-				cellName, _ := excelize.CoordinatesToCellName(firstColumn.ColumnIndex+1, currentRow)
-				file.SetCellValue(sheetName, cellName, today.Format("2006-01-02"))
-			}
-		}
+	// Check if we have at least n data rows to delete
+	if len(dataRowIndices) < n {
+		return fmt.Errorf("not enough data rows to delete (found %d, need at least %d)", len(dataRowIndices), n)
+	}
 
-		// Add the expense data to the current row
-		for _, column := range r.fileMetadata.Sheets[0].Headers {
-			if value, exists := expense[column.ColumnName]; exists {
-				cellName, _ := excelize.CoordinatesToCellName(column.ColumnIndex+1, currentRow)
-				file.SetCellValue(sheetName, cellName, value)
-			}
+	// Get the last n data row indices (1-based for Excel)
+	lastNRowIndices := dataRowIndices[len(dataRowIndices)-n:]
+
+	// Delete the rows in reverse order to maintain correct indices
+	for i := len(lastNRowIndices) - 1; i >= 0; i-- {
+		rowIndex := lastNRowIndices[i] + 1 // Convert to 1-based index for Excel
+		err := file.RemoveRow(sheetName, rowIndex)
+		if err != nil {
+			return fmt.Errorf("failed to delete row %d: %w", rowIndex, err)
 		}
 	}
 
@@ -353,23 +436,6 @@ func (r *revenueExpenseExcelRepository) AddMultipleExpenses(ctx context.Context,
 	}
 
 	return nil
-}
-
-// SearchExpenses returns expenses matching search criteria
-func (r *revenueExpenseExcelRepository) SearchExpenses(ctx context.Context, criteria map[string]interface{}) ([]map[string]interface{}, error) {
-	allExpenses, err := r.ReadAllExpenses(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read expenses: %w", err)
-	}
-
-	var filteredExpenses []map[string]interface{}
-	for _, expense := range allExpenses {
-		if r.matchesCriteria(expense, criteria) {
-			filteredExpenses = append(filteredExpenses, expense)
-		}
-	}
-
-	return filteredExpenses, nil
 }
 
 // GetSchema returns the Excel file schema
