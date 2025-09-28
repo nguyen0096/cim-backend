@@ -69,10 +69,9 @@ Please review and confirm if the task is complete.
 
 ### Error Handling
 
-- Always handle errors.
-- Wrap errors with AppError or `fmt.Errorf("<MESSAGE>: %w", err)`.
-- Use `error_helpers.go` for business errors; if a suitable code is missing, propose one and ask the user.
-- MESSAGE should describe what the current function attempted.
+- Use AppError (with helpers in `error_helpers.go`) for known/expected errors (validation, business logic violations). For internal service calls or unexpected errors, wrap with fmt.Errorf("operation description: %w", err) to preserve original error types.
+- **Every error return MUST either be an AppError initialization or wrapped with `fmt.Errorf`**. **NEVER RETURN RAW ERRORS** from other functions.
+- When wrapping errors, use lowercase descriptive messages: `fmt.Errorf("failed to [operation] [resource]: %w", err)`.
 
 ### Testing
 
@@ -89,7 +88,7 @@ internal/
 ├── repository/ # Data access
 └── models/ # Data models (1 model per file)
 
-### 🚫 Panic Safety
+### Panic Safety
 
 - Code must **never cause runtime panics** — all unexpected states must be handled safely with errors, not crashes.
 - Be especially careful with **nil dereference**, slice/map bounds, and unchecked type assertions.

@@ -10,8 +10,8 @@ import (
 	"import-export-backend/internal/middleware"
 	"import-export-backend/internal/models"
 	"import-export-backend/internal/repository/repositorymocks"
+	"import-export-backend/pkg"
 
-	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
@@ -53,12 +53,12 @@ func TestCreatePurchaseOrder(t *testing.T) {
 			Notes:       "Test purchase order with all fields",
 			Items: []*models.PurchaseOrderItem{
 				{
-					ProductID:  &[]uuid.UUID{uuid.New()}[0],
+					ProductID:  pkg.Ptr(uint(1)),
 					Quantity:   5,
 					TotalPrice: 502.50,
 				},
 				{
-					ProductID:  &[]uuid.UUID{uuid.New()}[0],
+					ProductID:  pkg.Ptr(uint(1)),
 					Quantity:   10,
 					TotalPrice: 2502.50,
 				},
@@ -98,7 +98,7 @@ func TestCreatePurchaseOrder(t *testing.T) {
 			Notes:       "Test purchase order without order number",
 			Items: []*models.PurchaseOrderItem{
 				{
-					ProductID:  &[]uuid.UUID{uuid.New()}[0],
+					ProductID:  pkg.Ptr(uint(1)),
 					Quantity:   5,
 					TotalPrice: 502.50,
 				},
@@ -136,7 +136,7 @@ func TestCreatePurchaseOrder(t *testing.T) {
 			OrderNumber: "PO-003",
 			Items: []*models.PurchaseOrderItem{
 				{
-					ProductID:  &[]uuid.UUID{uuid.New()}[0],
+					ProductID:  pkg.Ptr(uint(1)),
 					Quantity:   5,
 					TotalPrice: 502.50,
 				},
@@ -331,7 +331,7 @@ func TestCreatePurchaseOrder(t *testing.T) {
 			Notes:       "Test purchase order with invalid quantity",
 			Items: []*models.PurchaseOrderItem{
 				{
-					ProductID:  &[]uuid.UUID{uuid.New()}[0],
+					ProductID:  pkg.Ptr(uint(1)),
 					Quantity:   0, // Zero quantity - should fail validation (min=1)
 					TotalPrice: 502.50,
 				},
@@ -365,7 +365,7 @@ func TestCreatePurchaseOrder(t *testing.T) {
 			Notes:       "Test purchase order with negative quantity",
 			Items: []*models.PurchaseOrderItem{
 				{
-					ProductID:  &[]uuid.UUID{uuid.New()}[0],
+					ProductID:  pkg.Ptr(uint(1)),
 					Quantity:   -5, // Negative quantity - should fail validation (min=1)
 					TotalPrice: 502.50,
 				},

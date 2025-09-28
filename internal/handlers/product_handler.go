@@ -3,6 +3,7 @@ package handlers
 import (
 	"context"
 	"import-export-backend/internal/models"
+	"import-export-backend/pkg"
 	"net/http"
 	"strconv"
 	"time"
@@ -260,16 +261,10 @@ func (h *ProductHandler) GetProduct(c echo.Context) error {
 	startTime := time.Now()
 	logger := h.getRequestLogger(c, "GetProduct")
 
-	idStr := c.Param("id")
-	idInt, err := strconv.Atoi(idStr)
+	id, err := pkg.ExtractIDParam(c)
 	if err != nil {
-		logger.WithError(err).WithField("id_string", idStr).Error("Invalid ID format")
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid ID format"})
-	}
-	id := uint(idInt)
-	if err != nil {
-		logger.WithError(err).WithField("id", id).Error("Invalid product ID")
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid product ID"})
+		logger.WithError(err).Error("Invalid ID format")
+		return err
 	}
 
 	logger.WithField("product_id", id).Info("Getting product by ID")
@@ -294,16 +289,10 @@ func (h *ProductHandler) UpdateProduct(c echo.Context) error {
 	startTime := time.Now()
 	logger := h.getRequestLogger(c, "UpdateProduct")
 
-	idStr := c.Param("id")
-	idInt, err := strconv.Atoi(idStr)
+	id, err := pkg.ExtractIDParam(c)
 	if err != nil {
-		logger.WithError(err).WithField("id_string", idStr).Error("Invalid ID format")
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid ID format"})
-	}
-	id := uint(idInt)
-	if err != nil {
-		logger.WithError(err).WithField("id", id).Error("Invalid product ID")
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid product ID"})
+		logger.WithError(err).Error("Invalid ID format")
+		return err
 	}
 
 	var product models.Product
@@ -344,16 +333,10 @@ func (h *ProductHandler) DeleteProduct(c echo.Context) error {
 	startTime := time.Now()
 	logger := h.getRequestLogger(c, "DeleteProduct")
 
-	idStr := c.Param("id")
-	idInt, err := strconv.Atoi(idStr)
+	id, err := pkg.ExtractIDParam(c)
 	if err != nil {
-		logger.WithError(err).WithField("id_string", idStr).Error("Invalid ID format")
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid ID format"})
-	}
-	id := uint(idInt)
-	if err != nil {
-		logger.WithError(err).WithField("id", id).Error("Invalid product ID")
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid product ID"})
+		logger.WithError(err).Error("Invalid ID format")
+		return err
 	}
 
 	logger.WithField("product_id", id).Info("Deleting product")
@@ -376,16 +359,10 @@ func (h *ProductHandler) RestoreProduct(c echo.Context) error {
 	startTime := time.Now()
 	logger := h.getRequestLogger(c, "RestoreProduct")
 
-	idStr := c.Param("id")
-	idInt, err := strconv.Atoi(idStr)
+	id, err := pkg.ExtractIDParam(c)
 	if err != nil {
-		logger.WithError(err).WithField("id_string", idStr).Error("Invalid ID format")
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid ID format"})
-	}
-	id := uint(idInt)
-	if err != nil {
-		logger.WithError(err).WithField("id", id).Error("Invalid product ID")
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid product ID"})
+		logger.WithError(err).Error("Invalid ID format")
+		return err
 	}
 
 	logger.WithField("product_id", id).Info("Restoring product")

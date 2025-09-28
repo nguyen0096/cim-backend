@@ -3,6 +3,7 @@ package handlers
 import (
 	"context"
 	"import-export-backend/internal/models"
+	"import-export-backend/pkg"
 	"net/http"
 	"strconv"
 
@@ -73,12 +74,10 @@ func (h *InventoryHandler) GetInventory(c echo.Context) error {
 }
 
 func (h *InventoryHandler) UpdateInventory(c echo.Context) error {
-	idStr := c.Param("id")
-	idInt, err := strconv.Atoi(idStr)
+	id, err := pkg.ExtractIDParam(c)
 	if err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid ID format"})
+		return err
 	}
-	id := uint(idInt)
 
 	var inventory models.Inventory
 	if err := c.Bind(&inventory); err != nil {

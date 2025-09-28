@@ -2,11 +2,11 @@ package handlers
 
 import (
 	"context"
+	"fmt"
 	"import-export-backend/internal/models"
 	"import-export-backend/internal/repository"
 	"import-export-backend/pkg"
 	"net/http"
-	"strconv"
 
 	"github.com/go-playground/validator/v10"
 	"github.com/labstack/echo/v4"
@@ -102,57 +102,42 @@ func (h *PurchaseOrderHandler) CreatePurchaseOrder(c echo.Context) error {
 }
 
 func (h *PurchaseOrderHandler) GetPurchaseOrder(c echo.Context) error {
-	idStr := c.Param("id")
-	idInt, err := strconv.Atoi(idStr)
+	id, err := pkg.ExtractIDParam(c)
 	if err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid ID format"})
-	}
-	id := uint(idInt)
-	if err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid purchase order ID"})
+		return err
 	}
 
 	purchaseOrder, err := h.purchaseOrderService.GetPurchaseOrderByID(id)
 	if err != nil {
-		return c.JSON(http.StatusNotFound, map[string]string{"error": "Purchase order not found"})
+		return fmt.Errorf("failed to get purchase order: %w", err)
 	}
 
 	return c.JSON(http.StatusOK, purchaseOrder)
 }
 
 func (h *PurchaseOrderHandler) UpdatePurchaseOrder(c echo.Context) error {
-	idStr := c.Param("id")
-	idInt, err := strconv.Atoi(idStr)
+	id, err := pkg.ExtractIDParam(c)
 	if err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid ID format"})
-	}
-	id := uint(idInt)
-	if err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid purchase order ID"})
+		return err
 	}
 
 	var purchaseOrder models.PurchaseOrder
 	if err := c.Bind(&purchaseOrder); err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid request body"})
+		return pkg.ErrInvalidRequestBody(err)
 	}
 
 	purchaseOrder.ID = id
 	if err := h.purchaseOrderService.UpdatePurchaseOrder(&purchaseOrder); err != nil {
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to update purchase order"})
+		return fmt.Errorf("failed to update purchase order: %w", err)
 	}
 
 	return c.JSON(http.StatusOK, purchaseOrder)
 }
 
 func (h *PurchaseOrderHandler) UpdatePurchaseOrderStatus(c echo.Context) error {
-	idStr := c.Param("id")
-	idInt, err := strconv.Atoi(idStr)
+	id, err := pkg.ExtractIDParam(c)
 	if err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid ID format"})
-	}
-	id := uint(idInt)
-	if err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid purchase order ID"})
+		return err
 	}
 
 	var req struct {
@@ -160,47 +145,37 @@ func (h *PurchaseOrderHandler) UpdatePurchaseOrderStatus(c echo.Context) error {
 	}
 
 	if err := c.Bind(&req); err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid request body"})
+		return pkg.ErrInvalidRequestBody(err)
 	}
 
 	if err := h.purchaseOrderService.UpdatePurchaseOrderStatus(id, req.Status); err != nil {
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to update purchase order status"})
+		return fmt.Errorf("failed to update purchase order status: %w", err)
 	}
 
 	return c.JSON(http.StatusOK, map[string]string{"message": "Purchase order status updated successfully"})
 }
 
 func (h *PurchaseOrderHandler) DeletePurchaseOrder(c echo.Context) error {
-	idStr := c.Param("id")
-	idInt, err := strconv.Atoi(idStr)
+	id, err := pkg.ExtractIDParam(c)
 	if err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid ID format"})
-	}
-	id := uint(idInt)
-	if err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid purchase order ID"})
+		return err
 	}
 
 	if err := h.purchaseOrderService.DeletePurchaseOrder(id); err != nil {
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to delete purchase order"})
+		return fmt.Errorf("failed to delete purchase order: %w", err)
 	}
 
 	return c.JSON(http.StatusOK, map[string]string{"message": "Purchase order deleted successfully"})
 }
 
 func (h *PurchaseOrderHandler) ReceivePurchaseOrder(c echo.Context) error {
-	idStr := c.Param("id")
-	idInt, err := strconv.Atoi(idStr)
+	id, err := pkg.ExtractIDParam(c)
 	if err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid ID format"})
-	}
-	id := uint(idInt)
-	if err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid purchase order ID"})
+		return err
 	}
 
 	if err := h.purchaseOrderService.ReceivePurchaseOrder(c.Request().Context(), id); err != nil {
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to receive purchase order"})
+		return fmt.Errorf("failed to receive purchase order: %w", err)
 	}
 
 	return c.JSON(http.StatusOK, map[string]string{"message": "Purchase order received successfully"})

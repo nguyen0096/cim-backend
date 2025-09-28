@@ -3,6 +3,7 @@ package handlers
 import (
 	"context"
 	"import-export-backend/internal/models"
+	"import-export-backend/pkg"
 	"net/http"
 	"strconv"
 
@@ -34,7 +35,7 @@ func (h *OrderHandler) GetOrders(c echo.Context) error {
 	// Parse query parameters
 	limit, _ := strconv.Atoi(c.QueryParam("limit"))
 	page, _ := strconv.Atoi(c.QueryParam("page"))
-	
+
 	// Set defaults
 	if limit == 0 {
 		limit = 20
@@ -42,7 +43,7 @@ func (h *OrderHandler) GetOrders(c echo.Context) error {
 	if page == 0 {
 		page = 1
 	}
-	
+
 	// Calculate offset
 	offset := (page - 1) * limit
 
@@ -86,14 +87,9 @@ func (h *OrderHandler) CreateOrder(c echo.Context) error {
 }
 
 func (h *OrderHandler) GetOrder(c echo.Context) error {
-	idStr := c.Param("id")
-	idInt, err := strconv.Atoi(idStr)
+	id, err := pkg.ExtractIDParam(c)
 	if err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid ID format"})
-	}
-	id := uint(idInt)
-	if err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid order ID"})
+		return err
 	}
 
 	order, err := h.orderService.GetOrderByID(id)
@@ -105,14 +101,9 @@ func (h *OrderHandler) GetOrder(c echo.Context) error {
 }
 
 func (h *OrderHandler) UpdateOrder(c echo.Context) error {
-	idStr := c.Param("id")
-	idInt, err := strconv.Atoi(idStr)
+	id, err := pkg.ExtractIDParam(c)
 	if err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid ID format"})
-	}
-	id := uint(idInt)
-	if err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid order ID"})
+		return err
 	}
 
 	var order models.Order
@@ -129,14 +120,9 @@ func (h *OrderHandler) UpdateOrder(c echo.Context) error {
 }
 
 func (h *OrderHandler) UpdateOrderStatus(c echo.Context) error {
-	idStr := c.Param("id")
-	idInt, err := strconv.Atoi(idStr)
+	id, err := pkg.ExtractIDParam(c)
 	if err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid ID format"})
-	}
-	id := uint(idInt)
-	if err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid order ID"})
+		return err
 	}
 
 	var req struct {
@@ -155,14 +141,9 @@ func (h *OrderHandler) UpdateOrderStatus(c echo.Context) error {
 }
 
 func (h *OrderHandler) DeleteOrder(c echo.Context) error {
-	idStr := c.Param("id")
-	idInt, err := strconv.Atoi(idStr)
+	id, err := pkg.ExtractIDParam(c)
 	if err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid ID format"})
-	}
-	id := uint(idInt)
-	if err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid order ID"})
+		return err
 	}
 
 	if err := h.orderService.DeleteOrder(id); err != nil {
@@ -173,14 +154,9 @@ func (h *OrderHandler) DeleteOrder(c echo.Context) error {
 }
 
 func (h *OrderHandler) CompleteOrder(c echo.Context) error {
-	idStr := c.Param("id")
-	idInt, err := strconv.Atoi(idStr)
+	id, err := pkg.ExtractIDParam(c)
 	if err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid ID format"})
-	}
-	id := uint(idInt)
-	if err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid order ID"})
+		return err
 	}
 
 	if err := h.orderService.CompleteOrder(c.Request().Context(), id); err != nil {

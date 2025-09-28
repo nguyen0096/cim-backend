@@ -2,7 +2,9 @@ package handlers
 
 import (
 	"context"
+	"fmt"
 	"import-export-backend/internal/models"
+	"import-export-backend/pkg"
 	"net/http"
 	"regexp"
 	"strconv"
@@ -179,33 +181,23 @@ func (h *SupplierHandler) CreateSupplier(c echo.Context) error {
 }
 
 func (h *SupplierHandler) GetSupplier(c echo.Context) error {
-	idStr := c.Param("id")
-	idInt, err := strconv.Atoi(idStr)
+	id, err := pkg.ExtractIDParam(c)
 	if err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid ID format"})
-	}
-	id := uint(idInt)
-	if err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid supplier ID"})
+		return err
 	}
 
 	supplier, err := h.supplierService.GetSupplierByID(c.Request().Context(), id)
 	if err != nil {
-		return c.JSON(http.StatusNotFound, map[string]string{"error": "Supplier not found"})
+		return fmt.Errorf("failed to get supplier: %w", err)
 	}
 
 	return c.JSON(http.StatusOK, supplier)
 }
 
 func (h *SupplierHandler) UpdateSupplier(c echo.Context) error {
-	idStr := c.Param("id")
-	idInt, err := strconv.Atoi(idStr)
+	id, err := pkg.ExtractIDParam(c)
 	if err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid ID format"})
-	}
-	id := uint(idInt)
-	if err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid supplier ID"})
+		return err
 	}
 
 	var supplier models.Supplier
@@ -237,14 +229,9 @@ func (h *SupplierHandler) UpdateSupplier(c echo.Context) error {
 }
 
 func (h *SupplierHandler) DeleteSupplier(c echo.Context) error {
-	idStr := c.Param("id")
-	idInt, err := strconv.Atoi(idStr)
+	id, err := pkg.ExtractIDParam(c)
 	if err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid ID format"})
-	}
-	id := uint(idInt)
-	if err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid supplier ID"})
+		return err
 	}
 
 	if err := h.supplierService.DeleteSupplier(c.Request().Context(), id); err != nil {
@@ -255,13 +242,12 @@ func (h *SupplierHandler) DeleteSupplier(c echo.Context) error {
 }
 
 func (h *SupplierHandler) RestoreSupplier(c echo.Context) error {
-	idStr := c.Param("id")
-	idInt, err := strconv.Atoi(idStr)
+	id, err := pkg.ExtractIDParam(c)
 	if err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid ID format"})
+		return err
 	}
-	id := uint(idInt)
-	if err != nil {
+
+	if err := h.supplierService.RestoreSupplier(c.Request().Context(), id); err != nil {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid supplier ID"})
 	}
 
