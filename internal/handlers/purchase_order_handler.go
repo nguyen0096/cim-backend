@@ -1,10 +1,10 @@
 package handlers
 
 import (
-	"context"
 	"fmt"
 	"import-export-backend/internal/models"
 	"import-export-backend/internal/repository"
+	"import-export-backend/internal/services"
 	"import-export-backend/pkg"
 	"net/http"
 
@@ -14,24 +14,12 @@ import (
 
 type PurchaseOrderHandler struct {
 	purchaseOrderRepository repository.PurchaseOrderRepository
-	purchaseOrderService    PurchaseOrderService
-}
-
-//go:generate mockery --name=PurchaseOrderService --structname=PurchaseOrderService --output=./servicemocks --outpkg=servicemocks
-type PurchaseOrderService interface {
-	CreatePurchaseOrder(ctx context.Context, purchaseOrder *models.PurchaseOrder) error
-	GetPurchaseOrderByID(id uint) (*models.PurchaseOrder, error)
-	UpdatePurchaseOrder(purchaseOrder *models.PurchaseOrder) error
-	DeletePurchaseOrder(id uint) error
-	ListPurchaseOrders(ctx context.Context, params models.PaginationParams) (*models.PaginationResult[models.PurchaseOrder], error)
-	GetPurchaseOrdersByStatus(status string) ([]models.PurchaseOrder, error)
-	UpdatePurchaseOrderStatus(id uint, status string) error
-	ReceivePurchaseOrder(ctx context.Context, id uint) error
+	purchaseOrderService    services.PurchaseOrderService
 }
 
 func NewPurchaseOrderHandler(
 	purchaseOrderRepo repository.PurchaseOrderRepository,
-	purchaseOrderService PurchaseOrderService,
+	purchaseOrderService services.PurchaseOrderService,
 ) *PurchaseOrderHandler {
 	return &PurchaseOrderHandler{
 		purchaseOrderRepository: purchaseOrderRepo,
@@ -41,7 +29,7 @@ func NewPurchaseOrderHandler(
 
 // ListPurchaseOrders godoc
 // @Summary List purchase orders
-// @Description Retrieve a paginated list of purchase orders with optional search and sorting
+// @Description Retrieve a paginated list of purchase orders with optional search, sorting, and date range filtering
 // @Tags purchase-orders
 // @Accept json
 // @Produce json
@@ -50,6 +38,8 @@ func NewPurchaseOrderHandler(
 // @Param q query string false "Search term for order number or notes"
 // @Param sort query string false "Sort field (order_number, status, total_amount, created_at, updated_at)"
 // @Param order query string false "Sort direction (asc, desc, default: asc)"
+// @Param start_date query string false "Start date for filtering (format: YYYY-MM-DD)"
+// @Param end_date query string false "End date for filtering (format: YYYY-MM-DD)"
 // @Success 200 {object} models.PaginationResult[models.PurchaseOrder] "Successfully retrieved purchase orders"
 // @Failure 400 {object} map[string]string "Invalid request parameters"
 // @Failure 500 {object} map[string]string "Failed to fetch purchase orders"
@@ -127,7 +117,7 @@ func (h *PurchaseOrderHandler) UpdatePurchaseOrder(c echo.Context) error {
 	}
 
 	purchaseOrder.ID = id
-	if err := h.purchaseOrderService.UpdatePurchaseOrder(&purchaseOrder); err != nil {
+	if err := h.purchaseOrderService.UpdatePurchaseOrder(c.Request().Context(), &purchaseOrder); err != nil {
 		return fmt.Errorf("failed to update purchase order: %w", err)
 	}
 
@@ -148,7 +138,7 @@ func (h *PurchaseOrderHandler) UpdatePurchaseOrderStatus(c echo.Context) error {
 		return pkg.ErrInvalidRequestBody(err)
 	}
 
-	if err := h.purchaseOrderService.UpdatePurchaseOrderStatus(id, req.Status); err != nil {
+	if err := h.purchaseOrderService.UpdatePurchaseOrderStatus(c.Request().Context(), id, req.Status); err != nil {
 		return fmt.Errorf("failed to update purchase order status: %w", err)
 	}
 

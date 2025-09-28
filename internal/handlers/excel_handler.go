@@ -153,7 +153,7 @@ func (h *ExcelHandler) GetInventoryTemplate(c echo.Context) error {
 // @Tags excel
 // @Accept json
 // @Produce json
-// @Param request body VerifyFileRequest true "File verification request"
+// @Param request body object true "File verification request"
 // @Success 200 {object} map[string]string "Verification successful"
 // @Failure 400 {object} map[string]string "Invalid request"
 // @Failure 404 {object} map[string]string "File or sheet not found"

@@ -10,11 +10,13 @@ const (
 
 // PaginationParams represents pagination and filtering parameters
 type PaginationParams struct {
-	Page   int    `json:"page" query:"page"`
-	Limit  int    `json:"limit" query:"limit"`
-	Search string `json:"q" query:"q"`
-	Sort   string `json:"sort" query:"sort"`
-	Order  string `json:"order" query:"order"`
+	Page      int    `json:"page" query:"page"`
+	Limit     int    `json:"limit" query:"limit"`
+	Search    string `json:"q" query:"q"`
+	Sort      string `json:"sort" query:"sort"`
+	Order     string `json:"order" query:"order"`
+	StartDate string `json:"start_date" query:"start_date" example:"2023-01-01"`
+	EndDate   string `json:"end_date" query:"end_date" example:"2023-12-31"`
 }
 
 // PaginationResult represents paginated response

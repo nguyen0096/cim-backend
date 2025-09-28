@@ -160,7 +160,7 @@ func main() {
 	purchaseOrders.POST("", purchaseOrderHandler.CreatePurchaseOrder)
 	// purchaseOrders.GET("/:id", purchaseOrderHandler.GetPurchaseOrder)
 	// purchaseOrders.PUT("/:id", purchaseOrderHandler.UpdatePurchaseOrder)
-	// purchaseOrders.PUT("/:id/status", purchaseOrderHandler.UpdatePurchaseOrderStatus)
+	purchaseOrders.PUT("/:id/status", purchaseOrderHandler.UpdatePurchaseOrderStatus)
 	// purchaseOrders.DELETE("/:id", purchaseOrderHandler.DeletePurchaseOrder)
 	// purchaseOrders.POST("/:id/receive", purchaseOrderHandler.ReceivePurchaseOrder)
 

@@ -9,14 +9,15 @@ import (
 	"time"
 )
 
+//go:generate mockery --name=PurchaseOrderService --structname=PurchaseOrderService --output=./servicemocks --outpkg=servicemocks
 type PurchaseOrderService interface {
 	CreatePurchaseOrder(ctx context.Context, purchaseOrder *models.PurchaseOrder) error
 	GetPurchaseOrderByID(id uint) (*models.PurchaseOrder, error)
-	UpdatePurchaseOrder(purchaseOrder *models.PurchaseOrder) error
+	UpdatePurchaseOrder(ctx context.Context, purchaseOrder *models.PurchaseOrder) error
 	DeletePurchaseOrder(id uint) error
 	ListPurchaseOrders(ctx context.Context, params models.PaginationParams) (*models.PaginationResult[models.PurchaseOrder], error)
 	GetPurchaseOrdersByStatus(status string) ([]models.PurchaseOrder, error)
-	UpdatePurchaseOrderStatus(id uint, status string) error
+	UpdatePurchaseOrderStatus(ctx context.Context, id uint, status string) error
 	ReceivePurchaseOrder(ctx context.Context, id uint) error
 }
 
@@ -82,8 +83,8 @@ func (s *purchaseOrderService) GetPurchaseOrderByID(id uint) (*models.PurchaseOr
 	return purchaseOrder, nil
 }
 
-func (s *purchaseOrderService) UpdatePurchaseOrder(purchaseOrder *models.PurchaseOrder) error {
-	return s.purchaseOrderRepo.Update(purchaseOrder)
+func (s *purchaseOrderService) UpdatePurchaseOrder(ctx context.Context, purchaseOrder *models.PurchaseOrder) error {
+	return s.purchaseOrderRepo.Update(ctx, purchaseOrder)
 }
 
 func (s *purchaseOrderService) DeletePurchaseOrder(id uint) error {
@@ -126,13 +127,13 @@ func (s *purchaseOrderService) GetPurchaseOrdersByStatus(status string) ([]model
 }
 
 // UpdatePurchaseOrderStatus updates the status of a purchase order
-func (s *purchaseOrderService) UpdatePurchaseOrderStatus(id uint, status string) error {
+func (s *purchaseOrderService) UpdatePurchaseOrderStatus(ctx context.Context, id uint, status string) error {
 	purchaseOrder, err := s.purchaseOrderRepo.GetByID(id)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to get purchase order: %w", err)
 	}
 	purchaseOrder.Status = models.PurchaseOrderStatus(status)
-	return s.purchaseOrderRepo.Update(purchaseOrder)
+	return s.purchaseOrderRepo.Update(ctx, purchaseOrder)
 }
 
 func (s *purchaseOrderService) ReceivePurchaseOrder(ctx context.Context, id uint) error {
@@ -143,8 +144,8 @@ func (s *purchaseOrderService) ReceivePurchaseOrder(ctx context.Context, id uint
 
 	// Update status to received
 	purchaseOrder.Status = models.PurchaseOrderStatusCompleted
-	if err := s.purchaseOrderRepo.Update(purchaseOrder); err != nil {
-		return err
+	if err := s.purchaseOrderRepo.Update(ctx, purchaseOrder); err != nil {
+		return fmt.Errorf("failed to update purchase order: %w", err)
 	}
 
 	// Add inventory for each item

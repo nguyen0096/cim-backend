@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"import-export-backend/internal/models"
+	"time"
 
 	"gorm.io/gorm"
 )
@@ -12,7 +13,7 @@ import (
 type PurchaseOrderRepository interface {
 	Create(ctx context.Context, purchaseOrder *models.PurchaseOrder) error
 	GetByID(id uint) (*models.PurchaseOrder, error)
-	Update(purchaseOrder *models.PurchaseOrder) error
+	Update(ctx context.Context, purchaseOrder *models.PurchaseOrder) error
 	Delete(id uint) error
 	List(ctx context.Context, params models.PaginationParams) ([]models.PurchaseOrder, int64, error)
 	GetByStatus(status string) ([]models.PurchaseOrder, error)
@@ -39,8 +40,8 @@ func (r *purchaseOrderRepository) GetByID(id uint) (*models.PurchaseOrder, error
 	return &purchaseOrder, nil
 }
 
-func (r *purchaseOrderRepository) Update(purchaseOrder *models.PurchaseOrder) error {
-	return r.db.Save(purchaseOrder).Error
+func (r *purchaseOrderRepository) Update(ctx context.Context, purchaseOrder *models.PurchaseOrder) error {
+	return r.db.WithContext(ctx).Save(purchaseOrder).Error
 }
 
 func (r *purchaseOrderRepository) Delete(id uint) error {
@@ -57,6 +58,26 @@ func (r *purchaseOrderRepository) List(ctx context.Context, params models.Pagina
 	// Apply search filter
 	if params.Search != "" {
 		baseQuery = baseQuery.Where("order_number ILIKE ? OR notes ILIKE ?", "%"+params.Search+"%", "%"+params.Search+"%")
+	}
+
+	// Apply date range filter
+	if params.StartDate != "" || params.EndDate != "" {
+		if params.StartDate != "" {
+			startTime, err := time.Parse("2006-01-02", params.StartDate)
+			if err != nil {
+				return nil, 0, fmt.Errorf("invalid start_date format, expected YYYY-MM-DD: %w", err)
+			}
+			baseQuery = baseQuery.Where("created_at >= ?", startTime)
+		}
+		if params.EndDate != "" {
+			endTime, err := time.Parse("2006-01-02", params.EndDate)
+			if err != nil {
+				return nil, 0, fmt.Errorf("invalid end_date format, expected YYYY-MM-DD: %w", err)
+			}
+			// Add one day to include the entire end date
+			endTime = endTime.Add(24 * time.Hour)
+			baseQuery = baseQuery.Where("created_at < ?", endTime)
+		}
 	}
 
 	// Get total count first
