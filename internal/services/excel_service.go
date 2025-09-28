@@ -154,6 +154,7 @@ type ExcelService interface {
 	InitializeRevenueExpenseFile(ctx context.Context, filePath string) error
 	AddExpense(ctx context.Context, sheetName string, expenseData map[string]interface{}) error
 	GetRevenueExpenseSchema(ctx context.Context) *models.FileMetadata
+	VerifyFileAndSheet(ctx context.Context, filePath string, sheetName string) error
 }
 
 type excelService struct {
@@ -531,4 +532,9 @@ func (s *excelService) AddExpense(ctx context.Context, sheetName string, expense
 // GetRevenueExpenseSchema returns the Excel file schema
 func (s *excelService) GetRevenueExpenseSchema(ctx context.Context) *models.FileMetadata {
 	return s.revenueExpenseExcelRepo.GetSchema(ctx)
+}
+
+// VerifyFileAndSheet verifies that the filepath and sheetname exist
+func (s *excelService) VerifyFileAndSheet(ctx context.Context, filePath string, sheetName string) error {
+	return s.revenueExpenseExcelRepo.VerifyFileAndSheet(ctx, filePath, sheetName)
 }

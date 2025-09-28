@@ -1,7 +1,7 @@
 package handlers
 
 import (
-	"context"
+	"import-export-backend/internal/services"
 	"net/http"
 
 	"github.com/labstack/echo/v4"
@@ -9,19 +9,10 @@ import (
 )
 
 type ExcelHandler struct {
-	excelService ExcelService
+	excelService services.ExcelService
 }
 
-type ExcelService interface {
-	ExportProducts(ctx context.Context) (*excelize.File, error)
-	ExportInventory(ctx context.Context) (*excelize.File, error)
-	ImportProducts(ctx context.Context, file *excelize.File) error
-	ImportInventory(ctx context.Context, file *excelize.File) error
-	GetProductTemplate(ctx context.Context) (*excelize.File, error)
-	GetInventoryTemplate(ctx context.Context) (*excelize.File, error)
-}
-
-func NewExcelHandler(excelService ExcelService) *ExcelHandler {
+func NewExcelHandler(excelService services.ExcelService) *ExcelHandler {
 	return &ExcelHandler{
 		excelService: excelService,
 	}
@@ -154,4 +145,42 @@ func (h *ExcelHandler) GetInventoryTemplate(c echo.Context) error {
 	}
 
 	return c.Blob(http.StatusOK, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", buffer.Bytes())
+}
+
+// VerifyFileAndSheet verifies that the filepath and sheetname exist
+// @Summary Verify Excel file and sheet
+// @Description Verifies that the specified filepath and sheetname exist and are valid
+// @Tags excel
+// @Accept json
+// @Produce json
+// @Param request body VerifyFileRequest true "File verification request"
+// @Success 200 {object} map[string]string "Verification successful"
+// @Failure 400 {object} map[string]string "Invalid request"
+// @Failure 404 {object} map[string]string "File or sheet not found"
+// @Failure 500 {object} map[string]string "Internal server error"
+// @Router /excel/verify [post]
+func (h *ExcelHandler) VerifyFileAndSheet(c echo.Context) error {
+	var request struct {
+		FilePath  string `json:"filepath"`
+		SheetName string `json:"sheetname"`
+	}
+
+	if err := c.Bind(&request); err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid request format"})
+	}
+
+	// Manual validation
+	if request.FilePath == "" {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Filepath is required"})
+	}
+
+	if request.SheetName == "" {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Sheet name is required"})
+	}
+
+	if err := h.excelService.VerifyFileAndSheet(c.Request().Context(), request.FilePath, request.SheetName); err != nil {
+		return c.JSON(http.StatusNotFound, map[string]string{"error": "File or sheet verification failed: " + err.Error()})
+	}
+
+	return c.JSON(http.StatusOK, map[string]string{"message": "File and sheet verification successful"})
 }

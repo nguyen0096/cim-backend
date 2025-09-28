@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"import-export-backend/internal/models"
+	"os"
 	"strings"
 	"time"
 )
@@ -16,6 +17,7 @@ type RevenueExpenseExcelRepository interface {
 	GetLastTransactionDate(ctx context.Context, sheetName string) (time.Time, error)
 	DeleteLastNRows(ctx context.Context, sheetName string, n int) error
 	GetSchema(ctx context.Context) *models.FileMetadata
+	VerifyFileAndSheet(ctx context.Context, filePath string, sheetName string) error
 	Close() error
 	ForceCacheRefresh()
 }
@@ -149,6 +151,40 @@ func (r *revenueExpenseExcelRepository) GetSchema(ctx context.Context) *models.F
 // Close closes the repository and releases any cached resources
 func (r *revenueExpenseExcelRepository) Close() error {
 	return r.BaseExcelRepository.Close()
+}
+
+// VerifyFileAndSheet verifies that the filepath and sheetname exist
+func (r *revenueExpenseExcelRepository) VerifyFileAndSheet(ctx context.Context, filePath string, sheetName string) error {
+	// Check if file exists
+	if _, err := os.Stat(filePath); err != nil {
+		return fmt.Errorf("file does not exist: %w", err)
+	}
+
+	// Initialize with the file to check if it's a valid Excel file
+	if err := r.InitializeWithFile(ctx, filePath); err != nil {
+		return fmt.Errorf("failed to initialize with file: %w", err)
+	}
+
+	// Check if sheet exists by getting the schema and checking if the sheet is in the metadata
+	schema := r.GetSchema(ctx)
+	if schema == nil {
+		return fmt.Errorf("no schema available")
+	}
+
+	// Find the sheet in the metadata
+	var sheetExists bool
+	for _, sheet := range schema.Sheets {
+		if sheet.SheetName == sheetName {
+			sheetExists = true
+			break
+		}
+	}
+
+	if !sheetExists {
+		return fmt.Errorf("sheet %s not found in file", sheetName)
+	}
+
+	return nil
 }
 
 // ForceCacheRefresh forces a cache refresh on the next file access

@@ -182,6 +182,7 @@ func main() {
 	excel.GET("/export-inventory", excelHandler.ExportInventory)
 	excel.GET("/template-products", excelHandler.GetProductTemplate)
 	excel.GET("/template-inventory", excelHandler.GetInventoryTemplate)
+	excel.POST("/verify", excelHandler.VerifyFileAndSheet)
 
 	// Settings routes
 	settings := api.Group("/settings", middleware.AuthMiddleware(firebaseAuth))
