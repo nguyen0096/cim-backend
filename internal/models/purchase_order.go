@@ -60,3 +60,9 @@ func (po *PurchaseOrder) CalculateTotalAmount() float64 {
 	}
 	return total
 }
+
+// UpdatePurchaseOrderItemStatusResponse represents the response for updating purchase order item status
+type UpdatePurchaseOrderItemStatusResponse struct {
+	ItemStatus  PurchaseOrderItemStatus `json:"item_status" example:"delivered"`
+	OrderStatus PurchaseOrderStatus     `json:"order_status" example:"fully_delivered"`
+}

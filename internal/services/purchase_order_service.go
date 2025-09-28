@@ -19,7 +19,7 @@ type PurchaseOrderService interface {
 	GetPurchaseOrdersByStatus(status string) ([]models.PurchaseOrder, error)
 	UpdatePurchaseOrderStatus(ctx context.Context, id uint, status string) error
 	ReceivePurchaseOrder(ctx context.Context, id uint) error
-	UpdatePurchaseOrderItemStatus(ctx context.Context, purchaseOrderID, itemID uint, status models.PurchaseOrderItemStatus) error
+	UpdatePurchaseOrderItemStatus(ctx context.Context, purchaseOrderID, itemID uint, status models.PurchaseOrderItemStatus) (*models.UpdatePurchaseOrderItemStatusResponse, error)
 }
 
 type purchaseOrderService struct {
@@ -133,6 +133,12 @@ func (s *purchaseOrderService) UpdatePurchaseOrderStatus(ctx context.Context, id
 	if err != nil {
 		return fmt.Errorf("failed to get purchase order: %w", err)
 	}
+
+	// If setting status to delivered, check if all other items are also delivered
+	if status == string(models.PurchaseOrderStatusFullyDelivered) && s.purchaseOrderRepo.AnyDeliveringItem(ctx, id) {
+		return fmt.Errorf("cannot set item status to delivered: not all items in the purchase order are delivered")
+	}
+
 	purchaseOrder.Status = models.PurchaseOrderStatus(status)
 	return s.purchaseOrderRepo.Update(ctx, purchaseOrder)
 }
@@ -167,11 +173,42 @@ func (s *purchaseOrderService) ReceivePurchaseOrder(ctx context.Context, id uint
 }
 
 // UpdatePurchaseOrderItemStatus updates the status of a purchase order item
-func (s *purchaseOrderService) UpdatePurchaseOrderItemStatus(ctx context.Context, purchaseOrderID, itemID uint, status models.PurchaseOrderItemStatus) error {
+func (s *purchaseOrderService) UpdatePurchaseOrderItemStatus(ctx context.Context, purchaseOrderID, itemID uint, status models.PurchaseOrderItemStatus) (*models.UpdatePurchaseOrderItemStatusResponse, error) {
 	// Validate status
 	if status != models.PurchaseOrderItemStatusDelivering && status != models.PurchaseOrderItemStatusDelivered {
-		return fmt.Errorf("invalid status: %s", status)
+		return nil, fmt.Errorf("invalid status: %s", status)
 	}
 
-	return s.purchaseOrderRepo.UpdatePurchaseOrderItemStatus(ctx, purchaseOrderID, itemID, status)
+	// Update the item status
+	err := s.purchaseOrderRepo.UpdatePurchaseOrderItemStatus(ctx, purchaseOrderID, itemID, status)
+	if err != nil {
+		return nil, fmt.Errorf("failed to update purchase order item status: %w", err)
+	}
+
+	// Determine the order status based on item status
+	var orderStatus models.PurchaseOrderStatus
+	if status == models.PurchaseOrderItemStatusDelivered {
+		if s.purchaseOrderRepo.AnyDeliveringItem(ctx, purchaseOrderID) {
+			orderStatus = models.PurchaseOrderStatusPartiallyDelivered
+			err = s.purchaseOrderRepo.UpdateStatus(ctx, purchaseOrderID, orderStatus)
+		} else {
+			orderStatus = models.PurchaseOrderStatusFullyDelivered
+			err = s.purchaseOrderRepo.UpdateStatus(ctx, purchaseOrderID, orderStatus)
+		}
+		if err != nil {
+			return nil, fmt.Errorf("failed to update purchase order status: %w", err)
+		}
+	} else {
+		// For delivering status, get current order status
+		purchaseOrder, err := s.purchaseOrderRepo.GetByID(purchaseOrderID)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get purchase order: %w", err)
+		}
+		orderStatus = purchaseOrder.Status
+	}
+
+	return &models.UpdatePurchaseOrderItemStatusResponse{
+		ItemStatus:  status,
+		OrderStatus: orderStatus,
+	}, nil
 }

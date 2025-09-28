@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"import-export-backend/internal/models"
 	"time"
@@ -17,7 +18,9 @@ type PurchaseOrderRepository interface {
 	Delete(id uint) error
 	List(ctx context.Context, params models.PaginationParams) ([]models.PurchaseOrder, int64, error)
 	GetByStatus(status string) ([]models.PurchaseOrder, error)
+	UpdateStatus(ctx context.Context, purchaseOrderID uint, status models.PurchaseOrderStatus) error
 	UpdatePurchaseOrderItemStatus(ctx context.Context, purchaseOrderID, itemID uint, status models.PurchaseOrderItemStatus) error
+	AnyDeliveringItem(ctx context.Context, purchaseOrderID uint) bool
 }
 
 type purchaseOrderRepository struct {
@@ -126,6 +129,10 @@ func (r *purchaseOrderRepository) GetByStatus(status string) ([]models.PurchaseO
 	return purchaseOrders, err
 }
 
+func (r *purchaseOrderRepository) UpdateStatus(ctx context.Context, purchaseOrderID uint, status models.PurchaseOrderStatus) error {
+	return r.db.WithContext(ctx).Model(&models.PurchaseOrder{}).Where("id = ?", purchaseOrderID).Update("status", status).Error
+}
+
 // UpdatePurchaseOrderItemStatus updates the status of a specific purchase order item
 func (r *purchaseOrderRepository) UpdatePurchaseOrderItemStatus(ctx context.Context, purchaseOrderID, itemID uint, status models.PurchaseOrderItemStatus) error {
 	// First verify that the item belongs to the purchase order
@@ -137,4 +144,13 @@ func (r *purchaseOrderRepository) UpdatePurchaseOrderItemStatus(ctx context.Cont
 
 	// Update the status
 	return r.db.WithContext(ctx).Model(&item).Update("status", status).Error
+}
+
+// AnyDeliveringItem checks if all items in a purchase order are delivered
+func (r *purchaseOrderRepository) AnyDeliveringItem(ctx context.Context, purchaseOrderID uint) bool {
+	// Get count of delivered items
+	err := r.db.WithContext(ctx).Model(&models.PurchaseOrderItem{}).
+		Where("purchase_order_id = ? AND status = ?", purchaseOrderID, models.PurchaseOrderItemStatusDelivering).
+		First(&models.PurchaseOrderItem{}).Error
+	return errors.Is(err, gorm.ErrRecordNotFound)
 }

@@ -185,7 +185,7 @@ func (h *PurchaseOrderHandler) GetPurchaseSummary(c echo.Context) error {
 // @Param id path int true "Purchase Order ID"
 // @Param item_id path int true "Purchase Order Item ID"
 // @Param status body object{status=string} true "Status update request"
-// @Success 200 {object} map[string]string "Successfully updated purchase order item status"
+// @Success 200 {object} models.UpdatePurchaseOrderItemStatusResponse "Successfully updated purchase order item status"
 // @Failure 400 {object} map[string]string "Invalid request parameters"
 // @Failure 404 {object} map[string]string "Purchase order or item not found"
 // @Failure 500 {object} map[string]string "Failed to update purchase order item status"
@@ -216,9 +216,10 @@ func (h *PurchaseOrderHandler) UpdatePurchaseOrderItemStatus(c echo.Context) err
 	}
 
 	status := models.PurchaseOrderItemStatus(req.Status)
-	if err := h.purchaseOrderService.UpdatePurchaseOrderItemStatus(c.Request().Context(), purchaseOrderID, itemID, status); err != nil {
+	response, err := h.purchaseOrderService.UpdatePurchaseOrderItemStatus(c.Request().Context(), purchaseOrderID, itemID, status)
+	if err != nil {
 		return pkg.ErrInternal("Failed to update purchase order item status", err)
 	}
 
-	return c.JSON(http.StatusOK, map[string]string{"message": "Purchase order item status updated successfully"})
+	return c.JSON(http.StatusOK, response)
 }
