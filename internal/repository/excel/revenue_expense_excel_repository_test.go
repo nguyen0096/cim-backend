@@ -1,8 +1,11 @@
-package repository
+package excel
 
 import (
 	"context"
 	"fmt"
+	"io"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -26,15 +29,43 @@ func testRevenueExpenseExcelRepository(t *testing.T) {
 	sheetName := "TIỀN MẶT"
 	revenueExpenseExcelRepo := NewRevenueExpenseExcelRepository()
 	numberOfRowsToDelete := 0
+
+	// Create temporary copy of the original file
+	originalFile := "../../../test/data/excel/Thu_chi_original.xlsx"
+	tempFile := filepath.Join(t.TempDir(), "Thu_chi_test.xlsx")
+
+	// Copy original file to temp location
+	src, err := os.Open(originalFile)
+	require.Nil(t, err)
+	defer src.Close()
+
+	dst, err := os.Create(tempFile)
+	require.Nil(t, err)
+	defer dst.Close()
+
+	_, err = io.Copy(dst, src)
+	require.Nil(t, err)
+	dst.Close() // Close before using in test
+
 	t.Cleanup(func() {
 		t.Log("Cleaning up...")
 		err := revenueExpenseExcelRepo.DeleteLastNRows(ctx, sheetName, numberOfRowsToDelete)
 		require.Nil(t, err)
 		t.Log("✅ Rows deleted successfully")
+
+		// Close repository to release file handles
+		revenueExpenseExcelRepo.Close()
+
+		// Delete temporary test file
+		if err := os.Remove(tempFile); err != nil && !os.IsNotExist(err) {
+			t.Logf("Warning: failed to delete temp file %s: %v", tempFile, err)
+		} else {
+			t.Log("✅ Temporary test file deleted successfully")
+		}
 	})
 
-	// Initialize with the Thu chi.xlsx file
-	err := revenueExpenseExcelRepo.InitializeWithFile(ctx, "testdata/Thu chi.xlsx")
+	// Initialize with the temporary file
+	err = revenueExpenseExcelRepo.InitializeWithFile(ctx, tempFile)
 	require.Nil(t, err)
 
 	// Force cache refresh to ensure we read fresh data

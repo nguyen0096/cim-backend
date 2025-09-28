@@ -4,6 +4,7 @@ import (
 	"context"
 	"import-export-backend/internal/models"
 	"import-export-backend/internal/repository"
+	"import-export-backend/internal/repository/excel"
 	"strconv"
 
 	"github.com/xuri/excelize/v2"
@@ -158,14 +159,14 @@ type ExcelService interface {
 type excelService struct {
 	productRepo             repository.ProductRepository
 	inventoryRepo           repository.InventoryRepository
-	revenueExpenseExcelRepo repository.RevenueExpenseExcelRepository
+	revenueExpenseExcelRepo excel.RevenueExpenseExcelRepository
 }
 
 func NewExcelService(productRepo repository.ProductRepository, inventoryRepo repository.InventoryRepository) ExcelService {
 	return &excelService{
 		productRepo:             productRepo,
 		inventoryRepo:           inventoryRepo,
-		revenueExpenseExcelRepo: repository.NewRevenueExpenseExcelRepository(),
+		revenueExpenseExcelRepo: excel.NewRevenueExpenseExcelRepository(),
 	}
 }
 
