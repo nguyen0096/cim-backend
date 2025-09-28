@@ -62,7 +62,7 @@ func (h *SettingsHandler) GetSetting(c echo.Context) error {
 		})
 	}
 
-	return c.JSON(http.StatusOK, setting)
+	return c.JSON(http.StatusOK, setting.Value)
 }
 
 // GetAllSettings retrieves all settings
