@@ -20,15 +20,14 @@ type BaseExcelRepository struct {
 	lastModified time.Time
 	cacheMutex   sync.RWMutex
 
-	// Performance optimization caches
-	rowsCache      [][]string
-	headerRowCache int
-	cacheValid     bool
+	// Performance optimization cache
+	cache *Cache
 }
 
 // InitializeWithFile initializes the repository with an Excel file
 func (r *BaseExcelRepository) InitializeWithFile(ctx context.Context, filePath string, fileType string) error {
 	r.ctx = ctx
+	r.cache = NewCache()
 
 	// Read the Excel file to extract actual metadata
 	file, err := excelize.OpenFile(filePath)
@@ -90,8 +89,8 @@ func (r *BaseExcelRepository) GetFileAndSheetData(sheetName string) (*excelize.F
 
 	// Check if we have cached rows and they're still valid
 	r.cacheMutex.RLock()
-	if r.cacheValid && len(r.rowsCache) > 0 {
-		rows := r.rowsCache
+	if r.cache.valid && len(r.cache.rows) > 0 {
+		rows := r.cache.rows
 		r.cacheMutex.RUnlock()
 		return file, sheetName, rows, nil
 	}
@@ -109,8 +108,8 @@ func (r *BaseExcelRepository) GetFileAndSheetData(sheetName string) (*excelize.F
 
 	// Cache the rows for future use
 	r.cacheMutex.Lock()
-	r.rowsCache = rows
-	r.cacheValid = true
+	r.cache.rows = rows
+	r.cache.valid = true
 	r.cacheMutex.Unlock()
 
 	return file, sheetName, rows, nil
@@ -120,8 +119,8 @@ func (r *BaseExcelRepository) GetFileAndSheetData(sheetName string) (*excelize.F
 func (r *BaseExcelRepository) FindHeaderRow(rows [][]string) int {
 	// Check if we have cached header row
 	r.cacheMutex.RLock()
-	if r.cacheValid && r.headerRowCache >= 0 {
-		headerRow := r.headerRowCache
+	if r.cache.valid && r.cache.headerRow >= 0 {
+		headerRow := r.cache.headerRow
 		r.cacheMutex.RUnlock()
 		return headerRow
 	}
@@ -132,7 +131,7 @@ func (r *BaseExcelRepository) FindHeaderRow(rows [][]string) int {
 
 	// Cache the header row
 	r.cacheMutex.Lock()
-	r.headerRowCache = headerRow
+	r.cache.headerRow = headerRow
 	r.cacheMutex.Unlock()
 
 	return headerRow
@@ -465,9 +464,11 @@ func (r *BaseExcelRepository) invalidateCache() {
 	}
 
 	// Invalidate all data caches
-	r.rowsCache = nil
-	r.headerRowCache = -1
-	r.cacheValid = false
+	if r.cache != nil {
+		r.cache.rows = nil
+		r.cache.headerRow = -1
+		r.cache.valid = false
+	}
 }
 
 // closeCachedFile closes the cached file if it exists

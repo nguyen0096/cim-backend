@@ -30,7 +30,7 @@ func testInventoryTrackerExcelRepository(t *testing.T) {
 	numberOfRowsToDelete := 0
 
 	// Create temporary copy of the original file
-	originalFile := "../../../test/data/excel/Inventory_Tracker_original.xlsx"
+	originalFile := TestInventoryTrackerExcelFile
 	tempFile := filepath.Join(t.TempDir(), "Inventory_Tracker_test.xlsx")
 
 	// Copy original file to temp location
@@ -296,7 +296,7 @@ func TestInventoryTrackerExcelRepository_EdgeCases(t *testing.T) {
 
 	// Initialize with valid file for remaining tests
 	// Create temporary copy of the original file for edge case tests
-	originalFile := "../../../test/data/excel/Inventory_Tracker_original.xlsx"
+	originalFile := TestInventoryTrackerExcelFile
 	tempFile := filepath.Join(t.TempDir(), "Inventory_Tracker_edge_test.xlsx")
 
 	// Copy original file to temp location
@@ -416,7 +416,7 @@ func TestInventoryTrackerExcelRepository_Performance(t *testing.T) {
 	inventoryRepo := NewInventoryTrackerExcelRepository()
 
 	// Create temporary copy of the original file for performance tests
-	originalFile := "../../../test/data/excel/Inventory_Tracker_original.xlsx"
+	originalFile := TestInventoryTrackerExcelFile
 	tempFile := filepath.Join(t.TempDir(), "Inventory_Tracker_perf_test.xlsx")
 
 	// Copy original file to temp location

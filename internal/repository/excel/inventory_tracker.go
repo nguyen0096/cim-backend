@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"import-export-backend/internal/models"
+	"import-export-backend/pkg"
 	"strings"
 	"time"
 )
@@ -55,7 +56,7 @@ func (r *inventoryTrackerExcelRepository) AddInventoryEntry(ctx context.Context,
 	}
 
 	// Prepare date and row information
-	today := GetTodayDate()
+	today := pkg.GetTodayDate()
 	isTodayExists, detectedDateFormat := FindLastTransactionDateInfo(rows, headerRow, today)
 	targetRow := len(rows) + 1
 

@@ -56,6 +56,7 @@ Please review and confirm if the task is complete.
 - If multiple valid solutions exist, ask the user which to use before coding.
 - Notify the user if tests or docs may need updates; ask before making those changes.
 - All service/repository methods must take `ctx context.Context` as the first parameter.
+- SHOULD maintain clean separation of concerns by moving related logics to dedicated file.
 
 ### Documentation
 

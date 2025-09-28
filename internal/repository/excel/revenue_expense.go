@@ -3,10 +3,12 @@ package excel
 import (
 	"context"
 	"fmt"
-	"import-export-backend/internal/models"
 	"os"
 	"strings"
 	"time"
+
+	"import-export-backend/internal/models"
+	"import-export-backend/pkg"
 )
 
 // RevenueExpenseExcelRepository handles data access for revenue/expense Excel operations
@@ -57,7 +59,7 @@ func (r *revenueExpenseExcelRepository) AddExpense(ctx context.Context, sheetNam
 	}
 
 	// Prepare date and row information
-	today := GetTodayDate()
+	today := pkg.GetTodayDate()
 	isTodayExists, detectedDateFormat := FindLastTransactionDateInfo(rows, headerRow, today)
 	targetRow := len(rows) + 1
 
