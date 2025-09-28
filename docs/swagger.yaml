@@ -1,89 +1,264 @@
 basePath: /api/v1
 definitions:
-  models.Product:
+  models.GetSettingsResponse:
+    description: Response containing all application settings
+    properties:
+      data:
+        items:
+          $ref: '#/definitions/models.Settings'
+        type: array
     type: object
-    properties:
-      id:
-        type: string
-        format: uuid
-      name:
-        type: string
-      description:
-        type: string
-      supplier_id:
-        type: string
-        format: uuid
-      supplier:
-        $ref: '#/definitions/models.Supplier'
-      unit_price:
-        type: number
-        format: float
-      unit_type:
-        type: string
-        description: "Unit type for the product (e.g., 'piece', 'kg', 'liter', etc.)"
-      status:
-        type: string
-        enum: ["active", "inactive", "discontinued"]
-      created_at:
-        type: string
-        format: date-time
-      updated_at:
-        type: string
-        format: date-time
-      deleted_at:
-        type: string
-        format: date-time
-      inventory:
-        $ref: '#/definitions/models.Inventory'
-  models.PurchaseOrder:
+  models.Inventory:
     properties:
       created_at:
+        example: "2023-01-01T00:00:00Z"
         type: string
       created_by:
+        example: user@example.com
+        type: string
+      deleted_at:
+        example: "2023-01-01T00:00:00Z"
         type: string
       id:
-        type: string
-      items:
-        items:
-          $ref: '#/definitions/models.PurchaseOrderItem'
-        type: array
-      notes:
-        type: string
-      order_number:
-        type: string
-      status:
-        type: string
-      total_amount:
-        type: number
-      updated_at:
-        type: string
-    type: object
-  models.PurchaseOrderItem:
-    properties:
-      created_at:
-        type: string
-      id:
+        example: 1
+        type: integer
+      location:
         type: string
       product:
         $ref: '#/definitions/models.Product'
       product_id:
+        type: integer
+      quantity:
+        type: integer
+      reorder_level:
+        type: integer
+      updated_at:
+        example: "2023-01-01T00:00:00Z"
         type: string
+    type: object
+  models.PaginationResult-models_PurchaseOrder:
+    properties:
+      data:
+        items:
+          $ref: '#/definitions/models.PurchaseOrder'
+        type: array
+      limit:
+        example: 20
+        type: integer
+      page:
+        example: 1
+        type: integer
+      total:
+        example: 100
+        type: integer
+      totalPages:
+        example: 5
+        type: integer
+    type: object
+  models.Product:
+    description: Product entity with inventory and supplier information
+    properties:
+      created_at:
+        example: "2023-01-01T00:00:00Z"
+        type: string
+      created_by:
+        example: user@example.com
+        type: string
+      deleted_at:
+        example: "2023-01-01T00:00:00Z"
+        type: string
+      description:
+        example: Product description
+        type: string
+      id:
+        example: 1
+        type: integer
+      inventory:
+        $ref: '#/definitions/models.Inventory'
+      name:
+        example: Sample Product
+        type: string
+      status:
+        example: active
+        type: string
+      supplier:
+        $ref: '#/definitions/models.Supplier'
+      supplier_id:
+        example: 1
+        type: integer
+      unit_price:
+        example: 99.99
+        type: number
+      unit_type:
+        example: piece
+        type: string
+      updated_at:
+        example: "2023-01-01T00:00:00Z"
+        type: string
+    type: object
+  models.PurchaseOrder:
+    description: Purchase order entity with items and status tracking
+    properties:
+      created_at:
+        example: "2023-01-01T00:00:00Z"
+        type: string
+      created_by:
+        example: user@example.com
+        type: string
+      deleted_at:
+        example: "2023-01-01T00:00:00Z"
+        type: string
+      id:
+        example: 1
+        type: integer
+      items:
+        items:
+          $ref: '#/definitions/models.PurchaseOrderItem'
+        minItems: 1
+        type: array
+      notes:
+        example: Purchase order notes
+        type: string
+      order_number:
+        example: PO-2023-001
+        type: string
+      status:
+        allOf:
+        - $ref: '#/definitions/models.PurchaseOrderStatus'
+        example: order_placed
+      total_amount:
+        description: Calculated field, not stored in DB
+        example: 999.99
+        type: number
+      updated_at:
+        example: "2023-01-01T00:00:00Z"
+        type: string
+    required:
+    - items
+    type: object
+  models.PurchaseOrderItem:
+    description: Purchase order item with product and quantity information
+    properties:
+      created_at:
+        example: "2023-01-01T00:00:00Z"
+        type: string
+      created_by:
+        example: user@example.com
+        type: string
+      deleted_at:
+        example: "2023-01-01T00:00:00Z"
+        type: string
+      id:
+        example: 1
+        type: integer
+      product:
+        $ref: '#/definitions/models.Product'
+      product_id:
+        example: 1
+        type: integer
       purchase_order:
         $ref: '#/definitions/models.PurchaseOrder'
       purchase_order_id:
-        type: string
+        example: 1
+        type: integer
       quantity:
+        example: 10
+        minimum: 1
         type: integer
       received_quantity:
+        example: 5
         type: integer
       total_price:
-        type: number
-      unit_price:
+        description: Calculated field, not stored in DB
+        example: 999.9
         type: number
       updated_at:
+        example: "2023-01-01T00:00:00Z"
+        type: string
+    required:
+    - product_id
+    - quantity
+    type: object
+  models.PurchaseOrderStatus:
+    enum:
+    - order_placed
+    - partially_delivered
+    - fully_delivered
+    - completed
+    - cancelled
+    type: string
+    x-enum-varnames:
+    - PurchaseOrderStatusOrderPlaced
+    - PurchaseOrderStatusPartiallyDelivered
+    - PurchaseOrderStatusFullyDelivered
+    - PurchaseOrderStatusCompleted
+    - PurchaseOrderStatusCancelled
+  models.SetSettingRequest:
+    description: Request payload for setting a configuration value
+    properties:
+      key:
+        example: app_name
+        type: string
+      value: {}
+    required:
+    - key
+    - value
+    type: object
+  models.SetSettingResponse:
+    description: Response after successfully setting a configuration value
+    properties:
+      message:
+        example: Setting updated successfully
         type: string
     type: object
+  models.Settings:
+    properties:
+      created_at:
+        example: "2023-01-01T00:00:00Z"
+        type: string
+      created_by:
+        example: user@example.com
+        type: string
+      deleted_at:
+        example: "2023-01-01T00:00:00Z"
+        type: string
+      id:
+        example: 1
+        type: integer
+      key:
+        example: app_name
+        type: string
+      updated_at:
+        example: "2023-01-01T00:00:00Z"
+        type: string
+      value:
+        type: object
+    type: object
   models.Supplier:
+    properties:
+      address:
+        type: string
+      contact_email:
+        type: string
+      contact_phone:
+        type: string
+      created_at:
+        example: "2023-01-01T00:00:00Z"
+        type: string
+      created_by:
+        example: user@example.com
+        type: string
+      deleted_at:
+        example: "2023-01-01T00:00:00Z"
+        type: string
+      id:
+        example: 1
+        type: integer
+      name:
+        type: string
+      updated_at:
+        example: "2023-01-01T00:00:00Z"
+        type: string
     type: object
 host: localhost:8080
 info:
@@ -101,6 +276,57 @@ info:
   version: "1.0"
 paths:
   /api/purchase-orders:
+    get:
+      consumes:
+      - application/json
+      description: Retrieve a paginated list of purchase orders with optional search
+        and sorting
+      parameters:
+      - description: 'Page number (default: 1, minimum: 1)'
+        in: query
+        name: page
+        type: integer
+      - description: 'Number of items per page (default: 20, minimum: 1, maximum:
+          100)'
+        in: query
+        name: limit
+        type: integer
+      - description: Search term for order number or notes
+        in: query
+        name: q
+        type: string
+      - description: Sort field (order_number, status, total_amount, created_at, updated_at)
+        in: query
+        name: sort
+        type: string
+      - description: 'Sort direction (asc, desc, default: asc)'
+        in: query
+        name: order
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Successfully retrieved purchase orders
+          schema:
+            $ref: '#/definitions/models.PaginationResult-models_PurchaseOrder'
+        "400":
+          description: Invalid request parameters
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Failed to fetch purchase orders
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: List purchase orders
+      tags:
+      - purchase-orders
     post:
       consumes:
       - application/json
@@ -213,6 +439,133 @@ paths:
       summary: Create a new product
       tags:
       - products
+  /settings:
+    get:
+      consumes:
+      - application/json
+      description: Retrieves all settings in the system
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.GetSettingsResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Get all settings
+      tags:
+      - Settings
+    post:
+      consumes:
+      - application/json
+      description: Creates or updates a setting with the specified key and value
+      parameters:
+      - description: Set setting request
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/models.SetSettingRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.SetSettingResponse'
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Set setting
+      tags:
+      - Settings
+  /settings/{key}:
+    delete:
+      consumes:
+      - application/json
+      description: Deletes a setting by its key
+      parameters:
+      - description: Setting key
+        in: path
+        name: key
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Delete setting
+      tags:
+      - Settings
+    get:
+      consumes:
+      - application/json
+      description: Retrieves a specific setting by its key
+      parameters:
+      - description: Setting key
+        in: path
+        name: key
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.Settings'
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Get setting by key
+      tags:
+      - Settings
 securityDefinitions:
   BearerAuth:
     description: Type "Bearer" followed by a space and JWT token.

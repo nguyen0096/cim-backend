@@ -11,12 +11,13 @@ const (
 )
 
 // PurchaseOrder represents a purchase order
+// @Description Purchase order entity with items and status tracking
 type PurchaseOrder struct {
 	Base
-	OrderNumber string               `json:"order_number" gorm:"unique;not null"`
-	Status      PurchaseOrderStatus  `json:"status" gorm:"default:order_placed;check:status IN ('order_placed', 'partially_delivered', 'fully_delivered', 'completed', 'cancelled')"`
-	TotalAmount float64              `json:"total_amount" gorm:"-"` // Calculated field, not stored in DB
-	Notes       string               `json:"notes"`
+	OrderNumber string               `json:"order_number" gorm:"unique;not null" example:"PO-2023-001"`
+	Status      PurchaseOrderStatus  `json:"status" gorm:"default:order_placed;check:status IN ('order_placed', 'partially_delivered', 'fully_delivered', 'completed', 'cancelled')" example:"order_placed"`
+	TotalAmount float64              `json:"total_amount" gorm:"-" example:"999.99"` // Calculated field, not stored in DB
+	Notes       string               `json:"notes" example:"Purchase order notes"`
 	Items       []*PurchaseOrderItem `json:"items" gorm:"foreignKey:PurchaseOrderID" validate:"required,min=1,dive"`
 }
 

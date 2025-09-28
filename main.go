@@ -69,6 +69,7 @@ func main() {
 	inventoryRepo := repository.NewInventoryRepository(db)
 	purchaseOrderRepo := repository.NewPurchaseOrderRepository(db)
 	orderRepo := repository.NewOrderRepository(db)
+	settingsRepo := repository.NewSettingsRepository(db)
 
 	// Initialize services
 	supplierService := services.NewSupplierService(supplierRepo)
@@ -77,6 +78,7 @@ func main() {
 	purchaseOrderService := services.NewPurchaseOrderService(purchaseOrderRepo, inventoryService)
 	orderService := services.NewOrderService(orderRepo, inventoryService)
 	excelService := services.NewExcelService(productRepo, inventoryRepo)
+	settingsService := services.NewSettingsService(settingsRepo)
 
 	// Initialize handlers
 	userHandler := handlers.NewUserHandler()
@@ -86,6 +88,7 @@ func main() {
 	purchaseOrderHandler := handlers.NewPurchaseOrderHandler(purchaseOrderRepo, purchaseOrderService)
 	orderHandler := handlers.NewOrderHandler(orderService)
 	excelHandler := handlers.NewExcelHandler(excelService)
+	settingsHandler := handlers.NewSettingsHandler(settingsService)
 
 	// Initialize Echo
 	e := echo.New()
@@ -179,6 +182,13 @@ func main() {
 	excel.GET("/export-inventory", excelHandler.ExportInventory)
 	excel.GET("/template-products", excelHandler.GetProductTemplate)
 	excel.GET("/template-inventory", excelHandler.GetInventoryTemplate)
+
+	// Settings routes
+	settings := api.Group("/settings", middleware.AuthMiddleware(firebaseAuth))
+	settings.GET("", settingsHandler.GetAllSettings)
+	settings.GET("/:key", settingsHandler.GetSetting)
+	settings.POST("/:key", settingsHandler.SetSetting)
+	settings.DELETE("/:key", settingsHandler.DeleteSetting)
 
 	// Reports routes
 	reports := api.Group("/reports", middleware.AuthMiddleware(firebaseAuth))

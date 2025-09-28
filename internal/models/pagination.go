@@ -18,12 +18,13 @@ type PaginationParams struct {
 }
 
 // PaginationResult represents paginated response
+// @Description Generic pagination result with data and metadata
 type PaginationResult[T any] struct {
 	Data       []T   `json:"data"`
-	Total      int64 `json:"total"`
-	Page       int   `json:"page"`
-	Limit      int   `json:"limit"`
-	TotalPages int   `json:"totalPages"`
+	Total      int64 `json:"total" example:"100"`
+	Page       int   `json:"page" example:"1"`
+	Limit      int   `json:"limit" example:"20"`
+	TotalPages int   `json:"totalPages" example:"5"`
 }
 
 // NewPaginationResult creates a new pagination result
