@@ -161,6 +161,7 @@ func main() {
 	// purchaseOrders.GET("/:id", purchaseOrderHandler.GetPurchaseOrder)
 	// purchaseOrders.PUT("/:id", purchaseOrderHandler.UpdatePurchaseOrder)
 	purchaseOrders.PUT("/:id/status", purchaseOrderHandler.UpdatePurchaseOrderStatus)
+	purchaseOrders.PUT("/:id/items/:item_id/status", purchaseOrderHandler.UpdatePurchaseOrderItemStatus)
 	// purchaseOrders.DELETE("/:id", purchaseOrderHandler.DeletePurchaseOrder)
 	// purchaseOrders.POST("/:id/receive", purchaseOrderHandler.ReceivePurchaseOrder)
 

@@ -175,3 +175,50 @@ func (h *PurchaseOrderHandler) GetPurchaseSummary(c echo.Context) error {
 	// Implementation for purchase summary report
 	return c.JSON(http.StatusOK, map[string]string{"message": "Purchase summary report"})
 }
+
+// UpdatePurchaseOrderItemStatus godoc
+// @Summary Update purchase order item status
+// @Description Update the status of a specific item in a purchase order
+// @Tags purchase-orders
+// @Accept json
+// @Produce json
+// @Param id path int true "Purchase Order ID"
+// @Param item_id path int true "Purchase Order Item ID"
+// @Param status body object{status=string} true "Status update request"
+// @Success 200 {object} map[string]string "Successfully updated purchase order item status"
+// @Failure 400 {object} map[string]string "Invalid request parameters"
+// @Failure 404 {object} map[string]string "Purchase order or item not found"
+// @Failure 500 {object} map[string]string "Failed to update purchase order item status"
+// @Router /api/purchase-orders/{id}/items/{item_id}/status [put]
+// @Security BearerAuth
+func (h *PurchaseOrderHandler) UpdatePurchaseOrderItemStatus(c echo.Context) error {
+	purchaseOrderID, err := pkg.ExtractIDParam(c)
+	if err != nil {
+		return err
+	}
+
+	itemID, err := pkg.ExtractIDParamFromPath(c, "item_id")
+	if err != nil {
+		return err
+	}
+
+	var req struct {
+		Status string `json:"status" validate:"required,oneof=delivering delivered"`
+	}
+
+	if err := c.Bind(&req); err != nil {
+		return pkg.ErrInvalidRequestBody(err)
+	}
+
+	validate := validator.New()
+	if err := validate.Struct(req); err != nil {
+		return pkg.ErrValidation("validation failed", err)
+	}
+
+	status := models.PurchaseOrderItemStatus(req.Status)
+	if err := h.purchaseOrderService.UpdatePurchaseOrderItemStatus(c.Request().Context(), purchaseOrderID, itemID, status); err != nil {
+		return pkg.ErrInternal("Failed to update purchase order item status", err)
+	}
+
+	return c.JSON(http.StatusOK, map[string]string{"message": "Purchase order item status updated successfully"})
+}

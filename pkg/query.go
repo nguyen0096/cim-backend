@@ -20,3 +20,13 @@ func ExtractIDParam(c echo.Context) (uint, error) {
 	}
 	return uint(idInt), nil
 }
+
+// ExtractIDParamFromPath extracts and converts a specific parameter from the request path to uint
+func ExtractIDParamFromPath(c echo.Context, paramName string) (uint, error) {
+	idStr := c.Param(paramName)
+	idInt, err := strconv.Atoi(idStr)
+	if err != nil {
+		return 0, ErrValidation("Invalid ID format", err)
+	}
+	return uint(idInt), nil
+}

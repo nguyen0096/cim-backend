@@ -19,6 +19,7 @@ type PurchaseOrderService interface {
 	GetPurchaseOrdersByStatus(status string) ([]models.PurchaseOrder, error)
 	UpdatePurchaseOrderStatus(ctx context.Context, id uint, status string) error
 	ReceivePurchaseOrder(ctx context.Context, id uint) error
+	UpdatePurchaseOrderItemStatus(ctx context.Context, purchaseOrderID, itemID uint, status models.PurchaseOrderItemStatus) error
 }
 
 type purchaseOrderService struct {
@@ -163,4 +164,14 @@ func (s *purchaseOrderService) ReceivePurchaseOrder(ctx context.Context, id uint
 	}
 
 	return nil
+}
+
+// UpdatePurchaseOrderItemStatus updates the status of a purchase order item
+func (s *purchaseOrderService) UpdatePurchaseOrderItemStatus(ctx context.Context, purchaseOrderID, itemID uint, status models.PurchaseOrderItemStatus) error {
+	// Validate status
+	if status != models.PurchaseOrderItemStatusDelivering && status != models.PurchaseOrderItemStatusDelivered {
+		return fmt.Errorf("invalid status: %s", status)
+	}
+
+	return s.purchaseOrderRepo.UpdatePurchaseOrderItemStatus(ctx, purchaseOrderID, itemID, status)
 }

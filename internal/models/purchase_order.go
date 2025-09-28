@@ -10,6 +10,13 @@ const (
 	PurchaseOrderStatusCancelled          PurchaseOrderStatus = "cancelled"
 )
 
+type PurchaseOrderItemStatus string
+
+const (
+	PurchaseOrderItemStatusDelivering PurchaseOrderItemStatus = "delivering"
+	PurchaseOrderItemStatusDelivered  PurchaseOrderItemStatus = "delivered"
+)
+
 // PurchaseOrder represents a purchase order
 // @Description Purchase order entity with items and status tracking
 type PurchaseOrder struct {
@@ -24,13 +31,14 @@ type PurchaseOrder struct {
 // PurchaseOrderItem represents an item in a purchase order
 type PurchaseOrderItem struct {
 	Base
-	PurchaseOrderID  *uint          `json:"purchase_order_id"`
-	PurchaseOrder    *PurchaseOrder `json:"purchase_order,omitempty" gorm:"foreignKey:PurchaseOrderID" validate:"-"`
-	ProductID        *uint          `json:"product_id" validate:"required"`
-	Product          *Product       `json:"product,omitempty" gorm:"foreignKey:ProductID" validate:"-"`
-	Quantity         int            `json:"quantity" gorm:"not null" validate:"required,min=1"`
-	TotalPrice       float64        `json:"total_price" gorm:"-"` // Calculated field, not stored in DB
-	ReceivedQuantity int            `json:"received_quantity" gorm:"default:0"`
+	PurchaseOrderID  *uint                   `json:"purchase_order_id"`
+	PurchaseOrder    *PurchaseOrder          `json:"purchase_order,omitempty" gorm:"foreignKey:PurchaseOrderID" validate:"-"`
+	ProductID        *uint                   `json:"product_id" validate:"required"`
+	Product          *Product                `json:"product,omitempty" gorm:"foreignKey:ProductID" validate:"-"`
+	Quantity         int                     `json:"quantity" gorm:"not null" validate:"required,min=1"`
+	TotalPrice       float64                 `json:"total_price" gorm:"-"` // Calculated field, not stored in DB
+	ReceivedQuantity int                     `json:"received_quantity" gorm:"default:0"`
+	Status           PurchaseOrderItemStatus `json:"status" gorm:"default:delivering;check:status IN ('delivering', 'delivered')" example:"delivering"`
 }
 
 // CalculateItemTotalPrice calculates the total price for a purchase order item
