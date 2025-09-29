@@ -47,7 +47,7 @@ func NewPurchaseOrderHandler(
 // @Security BearerAuth
 func (h *PurchaseOrderHandler) ListPurchaseOrders(c echo.Context) error {
 	// Parse query parameters into pagination params
-	var params models.PaginationParams
+	var params models.ListParams
 	if err := c.Bind(&params); err != nil {
 		return pkg.ErrValidation("Invalid query parameters", err)
 	}

@@ -15,7 +15,7 @@ type PurchaseOrderRepository interface {
 	GetByID(id uint) (*models.PurchaseOrder, error)
 	Update(ctx context.Context, purchaseOrder *models.PurchaseOrder) error
 	Delete(id uint) error
-	List(ctx context.Context, params models.PaginationParams) ([]models.PurchaseOrder, int64, error)
+	List(ctx context.Context, params models.ListParams) ([]models.PurchaseOrder, int64, error)
 	GetByStatus(status string) ([]models.PurchaseOrder, error)
 	UpdateStatus(ctx context.Context, purchaseOrderID uint, status models.PurchaseOrderStatus) error
 	UpdatePurchaseOrderItemStatus(ctx context.Context, purchaseOrderID, itemID uint, status models.PurchaseOrderItemStatus) error
@@ -51,7 +51,7 @@ func (r *purchaseOrderRepository) Delete(id uint) error {
 	return r.db.Delete(&models.PurchaseOrder{}, "id = ?", id).Error
 }
 
-func (r *purchaseOrderRepository) List(ctx context.Context, params models.PaginationParams) ([]models.PurchaseOrder, int64, error) {
+func (r *purchaseOrderRepository) List(ctx context.Context, params models.ListParams) ([]models.PurchaseOrder, int64, error) {
 	var purchaseOrders []models.PurchaseOrder
 	var total int64
 

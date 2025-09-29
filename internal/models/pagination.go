@@ -8,13 +8,14 @@ const (
 	DefaultSortOrder = "asc"
 )
 
-// PaginationParams represents pagination and filtering parameters
-type PaginationParams struct {
+// ListParams represents pagination and filtering parameters
+type ListParams struct {
 	Page      int    `json:"page" query:"page"`
 	Limit     int    `json:"limit" query:"limit"`
 	Search    string `json:"q" query:"q"`
 	Sort      string `json:"sort" query:"sort"`
 	Order     string `json:"order" query:"order"`
+	Status    string `json:"status" query:"status"`
 	StartDate string `json:"start_date" query:"start_date" example:"2023-01-01"`
 	EndDate   string `json:"end_date" query:"end_date" example:"2023-12-31"`
 }
@@ -42,7 +43,7 @@ func NewPaginationResult[T any](data []T, total int64, page, limit int) *Paginat
 }
 
 // ValidateAndSetDefaults validates and sets default values for pagination parameters
-func (p *PaginationParams) ValidateAndSetDefaults() {
+func (p *ListParams) ValidateAndSetDefaults() {
 	if p.Page <= 0 {
 		p.Page = DefaultPage
 	}
@@ -58,6 +59,6 @@ func (p *PaginationParams) ValidateAndSetDefaults() {
 }
 
 // GetOffset calculates the offset for database queries
-func (p *PaginationParams) GetOffset() int {
+func (p *ListParams) GetOffset() int {
 	return (p.Page - 1) * p.Limit
 }

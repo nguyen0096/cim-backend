@@ -15,7 +15,7 @@ type PurchaseOrderService interface {
 	GetPurchaseOrderByID(id uint) (*models.PurchaseOrder, error)
 	UpdatePurchaseOrder(ctx context.Context, purchaseOrder *models.PurchaseOrder) error
 	DeletePurchaseOrder(id uint) error
-	ListPurchaseOrders(ctx context.Context, params models.PaginationParams) (*models.PaginationResult[models.PurchaseOrder], error)
+	ListPurchaseOrders(ctx context.Context, params models.ListParams) (*models.PaginationResult[models.PurchaseOrder], error)
 	GetPurchaseOrdersByStatus(status string) ([]models.PurchaseOrder, error)
 	UpdatePurchaseOrderStatus(ctx context.Context, id uint, status string) error
 	ReceivePurchaseOrder(ctx context.Context, id uint) error
@@ -93,7 +93,7 @@ func (s *purchaseOrderService) DeletePurchaseOrder(id uint) error {
 }
 
 // ListPurchaseOrders retrieves purchase orders with search and pagination
-func (s *purchaseOrderService) ListPurchaseOrders(ctx context.Context, params models.PaginationParams) (*models.PaginationResult[models.PurchaseOrder], error) {
+func (s *purchaseOrderService) ListPurchaseOrders(ctx context.Context, params models.ListParams) (*models.PaginationResult[models.PurchaseOrder], error) {
 	// Validate and set defaults for pagination parameters
 	params.ValidateAndSetDefaults()
 
