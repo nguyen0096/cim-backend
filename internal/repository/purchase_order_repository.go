@@ -83,6 +83,11 @@ func (r *purchaseOrderRepository) List(ctx context.Context, params models.ListPa
 		}
 	}
 
+	// Apply status filter
+	if params.Status != "" {
+		baseQuery = baseQuery.Where("status = ?", params.Status)
+	}
+
 	// Build query for data with preloads
 	baseQuery = baseQuery.Preload("Items.Product.Supplier")
 
