@@ -200,6 +200,12 @@ func (s *purchaseOrderService) UpdatePurchaseOrderItemStatus(ctx context.Context
 	// 	}
 	// }
 
+	// Update the purchase order status
+	err = s.purchaseOrderRepo.UpdateStatus(ctx, purchaseOrderID, orderStatus)
+	if err != nil {
+		return nil, fmt.Errorf("failed to update purchase order status: %w", err)
+	}
+
 	return &models.UpdatePurchaseOrderItemStatusResponse{
 		ItemStatus:  status,
 		OrderStatus: orderStatus,
