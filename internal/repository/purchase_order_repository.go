@@ -83,18 +83,18 @@ func (r *purchaseOrderRepository) List(ctx context.Context, params models.Pagina
 		}
 	}
 
+	// Build query for data with preloads
+	baseQuery = baseQuery.Preload("Items.Product.Supplier")
+
+	// Apply same search filter for data
+	if params.Search != "" {
+		baseQuery = baseQuery.Where("order_number ILIKE ? OR notes ILIKE ?", "%"+params.Search+"%", "%"+params.Search+"%")
+	}
+
 	// Get total count first
 	err := baseQuery.Count(&total).Error
 	if err != nil {
 		return nil, 0, err
-	}
-
-	// Build query for data with preloads
-	dataQuery := r.db.WithContext(ctx).Preload("Items.Product.Supplier")
-
-	// Apply same search filter for data
-	if params.Search != "" {
-		dataQuery = dataQuery.Where("order_number ILIKE ? OR notes ILIKE ?", "%"+params.Search+"%", "%"+params.Search+"%")
 	}
 
 	// Apply sorting
@@ -106,15 +106,15 @@ func (r *purchaseOrderRepository) List(ctx context.Context, params models.Pagina
 
 		switch params.Sort {
 		case "order_number", "status", "total_amount", "created_at", "updated_at":
-			dataQuery = dataQuery.Order(params.Sort + " " + orderDirection)
+			baseQuery = baseQuery.Order(params.Sort + " " + orderDirection)
 		default:
-			dataQuery = dataQuery.Order("created_at DESC") // Default sorting
+			baseQuery = baseQuery.Order("created_at DESC") // Default sorting
 		}
 	} else {
-		dataQuery = dataQuery.Order("created_at DESC") // Default sorting
+		baseQuery = baseQuery.Order("created_at DESC") // Default sorting
 	}
 
-	err = dataQuery.Limit(params.Limit).Offset(params.GetOffset()).
+	err = baseQuery.Limit(params.Limit).Offset(params.GetOffset()).
 		Find(&purchaseOrders).Error
 	if err != nil {
 		return nil, 0, fmt.Errorf("failed to fetch purchase orders: %w", err)
