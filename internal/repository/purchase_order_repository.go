@@ -2,7 +2,6 @@ package repository
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"import-export-backend/internal/models"
 	"time"
@@ -152,5 +151,5 @@ func (r *purchaseOrderRepository) AnyDeliveringItem(ctx context.Context, purchas
 	err := r.db.WithContext(ctx).Model(&models.PurchaseOrderItem{}).
 		Where("purchase_order_id = ? AND status = ?", purchaseOrderID, models.PurchaseOrderItemStatusDelivering).
 		First(&models.PurchaseOrderItem{}).Error
-	return errors.Is(err, gorm.ErrRecordNotFound)
+	return err == nil
 }

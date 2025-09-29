@@ -186,26 +186,19 @@ func (s *purchaseOrderService) UpdatePurchaseOrderItemStatus(ctx context.Context
 	}
 
 	// Determine the order status based on item status
-	var orderStatus models.PurchaseOrderStatus
-	if status == models.PurchaseOrderItemStatusDelivered {
-		if s.purchaseOrderRepo.AnyDeliveringItem(ctx, purchaseOrderID) {
-			orderStatus = models.PurchaseOrderStatusPartiallyDelivered
-			err = s.purchaseOrderRepo.UpdateStatus(ctx, purchaseOrderID, orderStatus)
-		} else {
-			orderStatus = models.PurchaseOrderStatusFullyDelivered
-			err = s.purchaseOrderRepo.UpdateStatus(ctx, purchaseOrderID, orderStatus)
-		}
-		if err != nil {
-			return nil, fmt.Errorf("failed to update purchase order status: %w", err)
-		}
-	} else {
-		// For delivering status, get current order status
-		purchaseOrder, err := s.purchaseOrderRepo.GetByID(purchaseOrderID)
-		if err != nil {
-			return nil, fmt.Errorf("failed to get purchase order: %w", err)
-		}
-		orderStatus = purchaseOrder.Status
-	}
+	var orderStatus models.PurchaseOrderStatus = models.PurchaseOrderStatusPartiallyDelivered
+	// if status == models.PurchaseOrderItemStatusDelivered {
+	// 	if s.purchaseOrderRepo.AnyDeliveringItem(ctx, purchaseOrderID) {
+	// 		orderStatus = models.PurchaseOrderStatusPartiallyDelivered
+	// 		err = s.purchaseOrderRepo.UpdateStatus(ctx, purchaseOrderID, orderStatus)
+	// 	} else {
+	// 		orderStatus = models.PurchaseOrderStatusFullyDelivered
+	// 		err = s.purchaseOrderRepo.UpdateStatus(ctx, purchaseOrderID, orderStatus)
+	// 	}
+	// 	if err != nil {
+	// 		return nil, fmt.Errorf("failed to update purchase order status: %w", err)
+	// 	}
+	// }
 
 	return &models.UpdatePurchaseOrderItemStatusResponse{
 		ItemStatus:  status,
