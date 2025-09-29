@@ -13,7 +13,7 @@ import (
 
 // RevenueExpenseExcelRepository handles data access for revenue/expense Excel operations
 type RevenueExpenseExcelRepository interface {
-	InitializeWithFile(ctx context.Context, filePath string) error
+	InitializeWithFile(ctx context.Context, filePath string, sheetNames ...string) error
 	AddExpense(ctx context.Context, sheetName string, expenseData map[string]interface{}) error
 	GetLastExpense(ctx context.Context, sheetName string) (map[string]interface{}, error)
 	GetLastTransactionDate(ctx context.Context, sheetName string) (time.Time, error)
@@ -35,8 +35,9 @@ func NewRevenueExpenseExcelRepository() RevenueExpenseExcelRepository {
 }
 
 // InitializeWithFile initializes the repository with the expense/income Excel file
-func (r *revenueExpenseExcelRepository) InitializeWithFile(ctx context.Context, filePath string) error {
-	return r.BaseExcelRepository.InitializeWithFile(ctx, filePath, models.FileTypeRevenueExpense)
+// If sheetNames are provided, only those sheets will be processed
+func (r *revenueExpenseExcelRepository) InitializeWithFile(ctx context.Context, filePath string, sheetNames ...string) error {
+	return r.BaseExcelRepository.InitializeWithFile(ctx, filePath, models.FileTypeRevenueExpense, sheetNames...)
 }
 
 // AddExpense adds a new expense entry to the Excel file

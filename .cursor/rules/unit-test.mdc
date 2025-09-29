@@ -1,5 +1,6 @@
 ---
 description: Writing unit tests
+globs: *_test.go
 alwaysApply: false
 ---
 

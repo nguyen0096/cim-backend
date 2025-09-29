@@ -25,7 +25,8 @@ type BaseExcelRepository struct {
 }
 
 // InitializeWithFile initializes the repository with an Excel file
-func (r *BaseExcelRepository) InitializeWithFile(ctx context.Context, filePath string, fileType string) error {
+// If sheetNames are provided, only those sheets will be processed
+func (r *BaseExcelRepository) InitializeWithFile(ctx context.Context, filePath string, fileType string, sheetNames ...string) error {
 	r.ctx = ctx
 	r.cache = NewCache()
 
@@ -37,14 +38,58 @@ func (r *BaseExcelRepository) InitializeWithFile(ctx context.Context, filePath s
 	defer file.Close()
 
 	// Get sheet names
-	sheets := file.GetSheetList()
-	if len(sheets) == 0 {
+	allSheets := file.GetSheetList()
+	if len(allSheets) == 0 {
 		return fmt.Errorf("no sheets found in file")
+	}
+
+	// Filter sheets based on provided sheet names (if any)
+	var sheetsToProcess []string
+	if len(sheetNames) > 0 {
+		// Create a map for quick lookup of requested sheets
+		requestedSheets := make(map[string]bool)
+		for _, name := range sheetNames {
+			requestedSheets[name] = true
+		}
+
+		// Only include sheets that exist in the file and are requested
+		for _, sheetName := range allSheets {
+			if requestedSheets[sheetName] {
+				sheetsToProcess = append(sheetsToProcess, sheetName)
+			}
+		}
+
+		// Validate that all requested sheets exist
+		if len(sheetsToProcess) != len(sheetNames) {
+			var missingSheets []string
+			for _, requestedSheet := range sheetNames {
+				found := false
+				for _, existingSheet := range allSheets {
+					if existingSheet == requestedSheet {
+						found = true
+						break
+					}
+				}
+				if !found {
+					missingSheets = append(missingSheets, requestedSheet)
+				}
+			}
+			if len(missingSheets) > 0 {
+				return fmt.Errorf("requested sheets not found in file: %s", strings.Join(missingSheets, ", "))
+			}
+		}
+	} else {
+		// Process all sheets if no specific sheets are requested
+		sheetsToProcess = allSheets
+	}
+
+	if len(sheetsToProcess) == 0 {
+		return fmt.Errorf("no sheets to process")
 	}
 
 	// Process each sheet
 	var sheetMetadataList []models.ExcelSheetMetadata
-	for _, sheetName := range sheets {
+	for _, sheetName := range sheetsToProcess {
 		sheetMetadata, err := r.extractSheetMetadata(file, sheetName)
 		if err != nil {
 			return fmt.Errorf("failed to extract metadata for sheet %s: %w", sheetName, err)

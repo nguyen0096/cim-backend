@@ -11,7 +11,7 @@ import (
 
 // InventoryTrackerExcelRepository handles data access for inventory tracking Excel operations
 type InventoryTrackerExcelRepository interface {
-	InitializeWithFile(ctx context.Context, filePath string) error
+	InitializeWithFile(ctx context.Context, filePath string, sheetNames ...string) error
 	AddInventoryEntry(ctx context.Context, sheetName string, inventoryData map[string]interface{}) error
 	GetLastInventoryEntry(ctx context.Context, sheetName string) (map[string]interface{}, error)
 	GetLastTransactionDate(ctx context.Context, sheetName string) (time.Time, error)
@@ -32,8 +32,9 @@ func NewInventoryTrackerExcelRepository() InventoryTrackerExcelRepository {
 }
 
 // InitializeWithFile initializes the repository with the inventory tracking Excel file
-func (r *inventoryTrackerExcelRepository) InitializeWithFile(ctx context.Context, filePath string) error {
-	return r.BaseExcelRepository.InitializeWithFile(ctx, filePath, models.FileTypeInventoryTracker)
+// If sheetNames are provided, only those sheets will be processed
+func (r *inventoryTrackerExcelRepository) InitializeWithFile(ctx context.Context, filePath string, sheetNames ...string) error {
+	return r.BaseExcelRepository.InitializeWithFile(ctx, filePath, models.FileTypeInventoryTracker, sheetNames...)
 }
 
 // AddInventoryEntry adds a new inventory entry to the Excel file
