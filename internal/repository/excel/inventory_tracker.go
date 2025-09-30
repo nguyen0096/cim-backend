@@ -15,7 +15,6 @@ type InventoryTrackerExcelRepository interface {
 	AddInventoryEntry(ctx context.Context, sheetName string, inventoryData map[string]interface{}) error
 	GetLastInventoryEntry(ctx context.Context, sheetName string) (map[string]interface{}, error)
 	GetLastTransactionDate(ctx context.Context, sheetName string) (time.Time, error)
-	DeleteLastNRows(ctx context.Context, sheetName string, n int) error
 	GetSchema(ctx context.Context) *models.FileMetadata
 	Close() error
 	ForceCacheRefresh()
@@ -136,11 +135,6 @@ func (r *inventoryTrackerExcelRepository) GetLastInventoryEntry(ctx context.Cont
 // GetLastTransactionDate retrieves the date of the most recent transaction from the Excel file
 func (r *inventoryTrackerExcelRepository) GetLastTransactionDate(ctx context.Context, sheetName string) (time.Time, error) {
 	return r.BaseExcelRepository.GetLastTransactionDate(ctx, sheetName)
-}
-
-// DeleteLastNRows removes the last n data rows from the Excel file
-func (r *inventoryTrackerExcelRepository) DeleteLastNRows(ctx context.Context, sheetName string, n int) error {
-	return r.BaseExcelRepository.DeleteLastNRows(ctx, sheetName, n)
 }
 
 // GetSchema returns the Excel file schema

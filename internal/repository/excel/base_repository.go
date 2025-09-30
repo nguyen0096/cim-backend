@@ -267,66 +267,6 @@ func (r *BaseExcelRepository) GetLastTransactionDate(ctx context.Context, sheetN
 	return ParseDateFromRow(lastDateRow)
 }
 
-// DeleteLastNRows removes the last n data rows from the Excel file
-func (r *BaseExcelRepository) DeleteLastNRows(ctx context.Context, sheetName string, n int) error {
-	if r.fileMetadata == nil {
-		return fmt.Errorf("repository not initialized, call InitializeWithFile first")
-	}
-
-	// Get file and sheet data
-	file, _, rows, err := r.GetFileAndSheetData(sheetName)
-	if err != nil {
-		return err
-	}
-
-	// Find header row
-	headerRow := r.FindHeaderRow(rows)
-	if headerRow < 0 || headerRow >= len(rows) {
-		return fmt.Errorf("no header row found")
-	}
-
-	// Find all data rows (rows with actual data after the header)
-	var dataRowIndices []int
-	for i := headerRow + 1; i < len(rows); i++ {
-		if len(rows[i]) == 0 {
-			continue
-		}
-
-		// Check if this row has any non-empty data
-		if HasNonEmptyData(rows[i]) {
-			dataRowIndices = append(dataRowIndices, i)
-		}
-	}
-
-	// Check if we have at least n data rows to delete
-	if len(dataRowIndices) < n {
-		return fmt.Errorf("not enough data rows to delete (found %d, need at least %d)", len(dataRowIndices), n)
-	}
-
-	// Get the last n data row indices (1-based for Excel)
-	lastNRowIndices := dataRowIndices[len(dataRowIndices)-n:]
-
-	// Delete the rows in reverse order to maintain correct indices
-	for i := len(lastNRowIndices) - 1; i >= 0; i-- {
-		rowIndex := lastNRowIndices[i] + 1 // Convert to 1-based index for Excel
-		err := file.RemoveRow(sheetName, rowIndex)
-		if err != nil {
-			return fmt.Errorf("failed to delete row %d: %w", rowIndex, err)
-		}
-	}
-
-	// Save the file
-	err = file.Save()
-	if err != nil {
-		return fmt.Errorf("failed to save file: %w", err)
-	}
-
-	// Invalidate cache after saving to ensure next read gets fresh data
-	r.invalidateCache()
-
-	return nil
-}
-
 // AddTransactionDateRow adds a new row with today's date if needed
 func (r *BaseExcelRepository) AddTransactionDateRow(file *excelize.File, sheetName string, targetRow int, today time.Time, dateFormat string) error {
 	// Find the sheet metadata for the specified sheet

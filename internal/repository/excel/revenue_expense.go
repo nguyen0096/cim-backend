@@ -17,7 +17,6 @@ type RevenueExpenseExcelRepository interface {
 	AddExpense(ctx context.Context, sheetName string, expenseData map[string]interface{}) error
 	GetLastExpense(ctx context.Context, sheetName string) (map[string]interface{}, error)
 	GetLastTransactionDate(ctx context.Context, sheetName string) (time.Time, error)
-	DeleteLastNRows(ctx context.Context, sheetName string, n int) error
 	GetSchema(ctx context.Context) *models.FileMetadata
 	VerifyFileAndSheet(ctx context.Context, filePath string, sheetName string) error
 	Close() error
@@ -139,11 +138,6 @@ func (r *revenueExpenseExcelRepository) GetLastExpense(ctx context.Context, shee
 // GetLastTransactionDate retrieves the date of the most recent transaction from the Excel file
 func (r *revenueExpenseExcelRepository) GetLastTransactionDate(ctx context.Context, sheetName string) (time.Time, error) {
 	return r.BaseExcelRepository.GetLastTransactionDate(ctx, sheetName)
-}
-
-// DeleteLastNRows removes the last n data rows from the Excel file
-func (r *revenueExpenseExcelRepository) DeleteLastNRows(ctx context.Context, sheetName string, n int) error {
-	return r.BaseExcelRepository.DeleteLastNRows(ctx, sheetName, n)
 }
 
 // GetSchema returns the Excel file schema

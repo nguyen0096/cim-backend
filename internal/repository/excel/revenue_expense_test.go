@@ -49,9 +49,6 @@ func testRevenueExpenseExcelRepository(t *testing.T) {
 
 	t.Cleanup(func() {
 		t.Log("Cleaning up...")
-		err := revenueExpenseExcelRepo.DeleteLastNRows(ctx, sheetName, numberOfRowsToDelete)
-		require.Nil(t, err)
-		t.Log("✅ Rows deleted successfully")
 
 		// Close repository to release file handles
 		revenueExpenseExcelRepo.Close()

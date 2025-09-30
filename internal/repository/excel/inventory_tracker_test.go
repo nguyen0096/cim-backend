@@ -48,14 +48,6 @@ func testInventoryTrackerExcelRepository(t *testing.T) {
 
 	t.Cleanup(func() {
 		t.Log("Cleaning up...")
-		// Get schema to find the first sheet name
-		schema := inventoryRepo.GetSchema(ctx)
-		if schema != nil && len(schema.Sheets) > 0 {
-			sheetName := schema.Sheets[0].SheetName
-			err := inventoryRepo.DeleteLastNRows(ctx, sheetName, numberOfRowsToDelete)
-			require.Nil(t, err)
-			t.Log("✅ Rows deleted successfully")
-		}
 
 		// Close repository to release file handles
 		inventoryRepo.Close()
