@@ -6,8 +6,7 @@ import (
 )
 
 type Settings struct {
-	Base
-	Key   string         `json:"key" gorm:"unique;not null" example:"app_name"`
+	Key   string         `json:"key" gorm:"primaryKey" example:"app_name"`
 	Value datatypes.JSON `json:"value" swaggertype:"object"`
 }
 

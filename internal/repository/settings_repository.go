@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"import-export-backend/internal/models"
 
 	"gorm.io/datatypes"
@@ -41,34 +42,25 @@ func (r *settingsRepository) Get(ctx context.Context, key string) (*models.Setti
 	return &setting, nil
 }
 
-// Set creates or updates a setting
+// Set creates or updates a setting using upsert
 func (r *settingsRepository) Set(ctx context.Context, key string, value interface{}) error {
-	setting := &models.Settings{
-		Key: key,
-	}
-
 	// Convert interface{} to datatypes.JSON
 	jsonValue := datatypes.JSON{}
 	if value != nil {
-		if jsonBytes, err := json.Marshal(value); err != nil {
-			return err
-		} else {
-			jsonValue = datatypes.JSON(jsonBytes)
+		jsonBytes, err := json.Marshal(value)
+		if err != nil {
+			return fmt.Errorf("failed to marshal value: %w", err)
 		}
+		jsonValue = datatypes.JSON(jsonBytes)
 	}
 
-	// Try to find existing setting
-	if err := r.db.WithContext(ctx).Where("key = ?", key).First(setting).Error; err != nil {
-		if err == gorm.ErrRecordNotFound {
-			// Create new setting
-			setting.Value = jsonValue
-			return r.db.WithContext(ctx).Create(setting).Error
-		}
-		return err
+	setting := &models.Settings{
+		Key:   key,
+		Value: jsonValue,
 	}
 
-	// Update existing setting
-	return r.db.WithContext(ctx).Model(setting).Update("value", jsonValue).Error
+	// Use GORM's Save method which performs upsert (insert if not exists, update if exists)
+	return r.db.WithContext(ctx).Save(setting).Error
 }
 
 // GetAll retrieves all settings
