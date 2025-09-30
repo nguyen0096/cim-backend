@@ -293,22 +293,13 @@ func (s *purchaseOrderService) UpdatePurchaseOrderStatus(ctx context.Context, id
 	}
 
 	// If setting status to delivered, check if all other items are also delivered
-	if status == string(models.PurchaseOrderStatusFullyDelivered) {
-		s.logger.WithFields(logrus.Fields{
-			"operation":         "UpdatePurchaseOrderStatus",
-			"purchase_order_id": id,
-		}).Info("Checking if all items are delivered before setting status to fully delivered")
+	if (status == string(models.PurchaseOrderStatusFullyDelivered) || status == string(models.PurchaseOrderStatusCompleted)) && s.purchaseOrderRepo.AnyDeliveringItem(ctx, id) {
+		return fmt.Errorf("cannot set item status to %s: not all items in the purchase order are delivered", status)
+	}
 
-		if s.purchaseOrderRepo.AnyDeliveringItem(ctx, id) {
-			s.logger.WithFields(logrus.Fields{
-				"operation":         "UpdatePurchaseOrderStatus",
-				"purchase_order_id": id,
-			}).Warn("Cannot set status to fully delivered: not all items are delivered")
-			return fmt.Errorf("cannot set item status to delivered: not all items in the purchase order are delivered")
-		}
-
+	if status == string(models.PurchaseOrderStatusCompleted) && !s.purchaseOrderRepo.AnyDeliveringItem(ctx, id) {
 		// Start goroutine to handle revenue expense excel file operations
-		go s.handleRevenueExpenseAsync(ctx, purchaseOrder)
+		go s.handleRevenueExpenseAsync(context.Background(), purchaseOrder)
 	}
 
 	purchaseOrder.Status = models.PurchaseOrderStatus(status)
@@ -500,6 +491,7 @@ func (s *purchaseOrderService) handleRevenueExpenseAsync(ctx context.Context, pu
 	s.logger.WithFields(logrus.Fields{
 		"operation":         "handleRevenueExpenseAsync",
 		"purchase_order_id": purchaseOrder.ID,
+		"order_number":      purchaseOrder.OrderNumber,
 	}).Info("Starting async revenue expense processing")
 
 	// Get settings of revenue expense excel file
