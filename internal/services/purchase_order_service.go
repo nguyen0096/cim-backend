@@ -562,6 +562,13 @@ func (s *purchaseOrderService) handleRevenueExpenseAsync(ctx context.Context, pu
 		expensesData[i] = map[string]interface{}{
 			"DIỄN GIẢI": item.Product.Name,
 		}
+
+		switch item.Product.ProductType {
+		case "Cơm", "Ăn nhẹ":
+			expensesData[i]["ĂN NHẸ,CƠM"] = item.TotalPrice
+		default:
+			expensesData[i]["NƯỚC"] = item.TotalPrice
+		}
 	}
 
 	if err := s.excelService.AddExpenses(ctx, sheetName, expensesData); err != nil {

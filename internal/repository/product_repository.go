@@ -80,7 +80,7 @@ func (r *productRepository) GetBySupplier(ctx context.Context, supplierID uint) 
 
 func (r *productRepository) Search(ctx context.Context, query string, sortBy, sortOrder string) ([]models.Product, error) {
 	var products []models.Product
-	dbQuery := r.db.WithContext(ctx).Preload("Supplier").Preload("Inventory").Where("name ILIKE ?", "%"+query+"%")
+	dbQuery := r.db.WithContext(ctx).Preload("Supplier").Preload("Inventory").Where("name ILIKE ? OR product_type ILIKE ?", "%"+query+"%", "%"+query+"%")
 
 	// Apply sorting
 	if sortBy != "" {
@@ -98,7 +98,7 @@ func (r *productRepository) Search(ctx context.Context, query string, sortBy, so
 
 func (r *productRepository) SearchWithPagination(ctx context.Context, query string, limit, offset int, sortBy, sortOrder string) ([]models.Product, error) {
 	var products []models.Product
-	dbQuery := r.db.WithContext(ctx).Preload("Supplier").Preload("Inventory").Where("name ILIKE ?", "%"+query+"%")
+	dbQuery := r.db.WithContext(ctx).Preload("Supplier").Preload("Inventory").Where("name ILIKE ? OR product_type ILIKE ?", "%"+query+"%", "%"+query+"%")
 
 	// Apply sorting
 	if sortBy != "" {
@@ -122,6 +122,6 @@ func (r *productRepository) Count(ctx context.Context) (int64, error) {
 
 func (r *productRepository) CountSearch(ctx context.Context, query string) (int64, error) {
 	var count int64
-	err := r.db.WithContext(ctx).Model(&models.Product{}).Where("name ILIKE ?", "%"+query+"%").Count(&count).Error
+	err := r.db.WithContext(ctx).Model(&models.Product{}).Where("name ILIKE ? OR product_type ILIKE ?", "%"+query+"%", "%"+query+"%").Count(&count).Error
 	return count, err
 }

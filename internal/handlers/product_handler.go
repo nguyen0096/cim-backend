@@ -233,6 +233,7 @@ func (h *ProductHandler) CreateProduct(c echo.Context) error {
 	logger.WithFields(logrus.Fields{
 		"product_name": product.Name,
 		"unit_type":    product.UnitType,
+		"product_type": product.ProductType,
 		"supplier_id":  product.SupplierID,
 	}).Info("Creating new product")
 
@@ -240,6 +241,12 @@ func (h *ProductHandler) CreateProduct(c echo.Context) error {
 	if product.UnitType == "" {
 		logger.Warn("Product creation attempted with empty unit type")
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid unit type. Please use a valid unit type like 'piece', 'kg', 'liter', etc."})
+	}
+
+	// Validate ProductType if provided
+	if product.ProductType == "" {
+		logger.Warn("Product creation attempted with empty product type")
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Product type is required. Please specify a product type like 'electronics', 'clothing', 'food', etc."})
 	}
 
 	if err := h.productService.CreateProduct(c.Request().Context(), &product); err != nil {
@@ -307,11 +314,18 @@ func (h *ProductHandler) UpdateProduct(c echo.Context) error {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid unit type. Please use a valid unit type like 'piece', 'kg', 'liter', etc."})
 	}
 
+	// Validate ProductType if provided
+	if product.ProductType == "" {
+		logger.WithField("product_id", id).Warn("Product update attempted with empty product type")
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Product type is required. Please specify a product type like 'electronics', 'clothing', 'food', etc."})
+	}
+
 	product.ID = id
 	logger.WithFields(logrus.Fields{
 		"product_id":   id,
 		"product_name": product.Name,
 		"unit_type":    product.UnitType,
+		"product_type": product.ProductType,
 	}).Info("Updating product")
 
 	if err := h.productService.UpdateProduct(c.Request().Context(), &product); err != nil {
