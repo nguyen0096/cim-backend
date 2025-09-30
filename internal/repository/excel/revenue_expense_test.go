@@ -18,7 +18,6 @@ func TestRevenueExpenseExcelRepository(t *testing.T) {
 	ctx := context.Background()
 	sheetName := "TIỀN MẶT"
 	revenueExpenseExcelRepo := NewRevenueExpenseExcelRepository()
-	numberOfRowsToDelete := 0
 
 	// Create temporary copy of the original file
 	originalFile := TestRevenueExpenseExcelFile
@@ -112,7 +111,8 @@ func TestRevenueExpenseExcelRepository(t *testing.T) {
 	}
 	// Attempt to add expense using detected columns - test what actually works
 	sampleExpense := map[string]interface{}{
-		"NƯỚC": "15000", // This column is confirmed to work
+		"DIỄN GIẢI": "Test expense",
+		"NƯỚC":      "15000", // This column is confirmed to work
 	}
 
 	// Read last transaction date
@@ -129,7 +129,6 @@ func TestRevenueExpenseExcelRepository(t *testing.T) {
 	err = revenueExpenseExcelRepo.AddExpenses(ctx, sheetName, []map[string]interface{}{sampleExpense})
 	require.Nil(t, err)
 	t.Log("✅ Sample expense added successfully")
-	numberOfRowsToDelete += 2 // Include date row and expense row
 
 	// Try to read last expense
 	t.Log("🔄 Reading last expense...")
@@ -139,7 +138,12 @@ func TestRevenueExpenseExcelRepository(t *testing.T) {
 
 	// Compare last expense with expected expense
 	t.Log("\n🔍 Comparing last expense with expected expense...")
-	compareExpenses(t, sampleExpense, lastExpense)
+	expectedExpense := map[string]interface{}{
+		"DIỄN GIẢI": "Test expense",
+		"NƯỚC":      "15000",
+		"STT":       1,
+	}
+	compareExpenses(t, expectedExpense, lastExpense)
 
 	// Read last transaction date
 	t.Log("🔄 Reading last transaction date...")
@@ -151,7 +155,8 @@ func TestRevenueExpenseExcelRepository(t *testing.T) {
 	require.Equal(t, lastTransactionDate2.Format("2006-01-02"), time.Now().Format("2006-01-02"))
 
 	sampleExpense2 := map[string]interface{}{
-		"NƯỚC": "10000", // This column is confirmed to work
+		"DIỄN GIẢI": "Test expense 2",
+		"NƯỚC":      "10000", // This column is confirmed to work
 	}
 
 	// Add another expense
@@ -159,17 +164,21 @@ func TestRevenueExpenseExcelRepository(t *testing.T) {
 	err = revenueExpenseExcelRepo.AddExpenses(ctx, sheetName, []map[string]interface{}{sampleExpense2})
 	require.Nil(t, err)
 	t.Log("✅ Sample expense added successfully")
-	numberOfRowsToDelete += 1 // Now only include expense row
 
 	// Try to read last expense
 	t.Log("🔄 Reading last expense...")
 	lastExpense2, err := revenueExpenseExcelRepo.GetLastExpense(ctx, sheetName)
 	require.Nil(t, err)
-	t.Logf("✅ Last expense retrieved: %v\n", lastExpense2)
+	t.Logf("✅ Last expense 2 retrieved: %v\n", lastExpense2)
 
 	// Compare last expense with expected expense
 	t.Log("\n🔍 Comparing last expense with expected expense...")
-	compareExpenses(t, sampleExpense2, lastExpense2)
+	expectedExpense2 := map[string]interface{}{
+		"DIỄN GIẢI": "Test expense 2",
+		"NƯỚC":      "10000",
+		"STT":       2,
+	}
+	compareExpenses(t, expectedExpense2, lastExpense2)
 
 	t.Log("✅ Thu chi Excel repository test completed successfully")
 }
