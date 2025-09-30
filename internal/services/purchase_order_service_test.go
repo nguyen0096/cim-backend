@@ -3,9 +3,8 @@ package services
 import (
 	"context"
 	"errors"
+	repositorymocks "import-export-backend/internal/mocks/repositories"
 	"import-export-backend/internal/models"
-	"import-export-backend/internal/repository/repositorymocks"
-	"import-export-backend/internal/services/servicemocks"
 	"regexp"
 	"testing"
 
@@ -17,8 +16,8 @@ import (
 func Test_generatePurchaseOrderNumber(t *testing.T) {
 	// Setup
 	mockRepo := repositorymocks.NewPurchaseOrderRepository(t)
-	mockInventoryService := servicemocks.NewInventoryService(t)
-	service := NewPurchaseOrderService(mockRepo, mockInventoryService).(*purchaseOrderService)
+	// Note: Service mocks are not used in this test as it's not needed for generatePurchaseOrderNumber
+	service := NewPurchaseOrderService(mockRepo, nil, nil, nil, nil, nil).(*purchaseOrderService)
 
 	t.Run("should generate valid purchase order number format", func(t *testing.T) {
 		// Execute
@@ -56,8 +55,8 @@ func TestCreatePurchaseOrder(t *testing.T) {
 	t.Run("should create purchase order with auto-generated order number when empty", func(t *testing.T) {
 		// Setup
 		mockRepo := repositorymocks.NewPurchaseOrderRepository(t)
-		mockInventoryService := servicemocks.NewInventoryService(t)
-		service := NewPurchaseOrderService(mockRepo, mockInventoryService)
+		// Note: Service mocks are not used in these tests as they're not needed for the tested functionality
+		service := NewPurchaseOrderService(mockRepo, nil, nil, nil, nil, nil)
 
 		purchaseOrder := &models.PurchaseOrder{
 			// OrderNumber is empty - should be auto-generated
@@ -100,8 +99,8 @@ func TestCreatePurchaseOrder(t *testing.T) {
 	t.Run("should create purchase order without changing provided order number", func(t *testing.T) {
 		// Setup
 		mockRepo := repositorymocks.NewPurchaseOrderRepository(t)
-		mockInventoryService := servicemocks.NewInventoryService(t)
-		service := NewPurchaseOrderService(mockRepo, mockInventoryService)
+		// Note: Service mocks are not used in these tests as they're not needed for the tested functionality
+		service := NewPurchaseOrderService(mockRepo, nil, nil, nil, nil, nil)
 
 		existingOrderNumber := "CUSTOM-PO-123"
 		purchaseOrder := &models.PurchaseOrder{
@@ -136,8 +135,8 @@ func TestCreatePurchaseOrder(t *testing.T) {
 	t.Run("should return error when repository fails", func(t *testing.T) {
 		// Setup
 		mockRepo := repositorymocks.NewPurchaseOrderRepository(t)
-		mockInventoryService := servicemocks.NewInventoryService(t)
-		service := NewPurchaseOrderService(mockRepo, mockInventoryService)
+		// Note: Service mocks are not used in these tests as they're not needed for the tested functionality
+		service := NewPurchaseOrderService(mockRepo, nil, nil, nil, nil, nil)
 
 		purchaseOrder := &models.PurchaseOrder{
 			Status:      models.PurchaseOrderStatusOrderPlaced,

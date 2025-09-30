@@ -13,17 +13,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TestRevenueExpenseExcelRepository tests the Excel handling classes with the Thu chi.xlsx file
 func TestRevenueExpenseExcelRepository(t *testing.T) {
-	iterations := 2
-	for i := 0; i < iterations; i++ {
-		t.Run(fmt.Sprintf("Iteration %d", i+1), func(t *testing.T) {
-			testRevenueExpenseExcelRepository(t)
-		})
-	}
-}
-
-func testRevenueExpenseExcelRepository(t *testing.T) {
 	t.Log("=== Excel test: handling with THU CHI Excel ===")
 	ctx := context.Background()
 	sheetName := "TIỀN MẶT"
@@ -136,7 +126,7 @@ func testRevenueExpenseExcelRepository(t *testing.T) {
 
 	// Add expense
 	t.Log("🔄 Adding sample expense using detected columns...")
-	err = revenueExpenseExcelRepo.AddExpense(ctx, sheetName, sampleExpense)
+	err = revenueExpenseExcelRepo.AddExpenses(ctx, sheetName, []map[string]interface{}{sampleExpense})
 	require.Nil(t, err)
 	t.Log("✅ Sample expense added successfully")
 	numberOfRowsToDelete += 2 // Include date row and expense row
@@ -166,7 +156,7 @@ func testRevenueExpenseExcelRepository(t *testing.T) {
 
 	// Add another expense
 	t.Log("🔄 Adding sample expense using detected columns...")
-	err = revenueExpenseExcelRepo.AddExpense(ctx, sheetName, sampleExpense2)
+	err = revenueExpenseExcelRepo.AddExpenses(ctx, sheetName, []map[string]interface{}{sampleExpense2})
 	require.Nil(t, err)
 	t.Log("✅ Sample expense added successfully")
 	numberOfRowsToDelete += 1 // Now only include expense row

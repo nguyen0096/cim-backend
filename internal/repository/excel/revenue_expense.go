@@ -14,7 +14,7 @@ import (
 // RevenueExpenseExcelRepository handles data access for revenue/expense Excel operations
 type RevenueExpenseExcelRepository interface {
 	InitializeWithFile(ctx context.Context, filePath string, sheetNames ...string) error
-	AddExpense(ctx context.Context, sheetName string, expenseData map[string]interface{}) error
+	AddExpenses(ctx context.Context, sheetName string, expensesData []map[string]interface{}) error
 	GetLastExpense(ctx context.Context, sheetName string) (map[string]interface{}, error)
 	GetLastTransactionDate(ctx context.Context, sheetName string) (time.Time, error)
 	GetSchema(ctx context.Context) *models.FileMetadata
@@ -39,11 +39,18 @@ func (r *revenueExpenseExcelRepository) InitializeWithFile(ctx context.Context, 
 	return r.BaseExcelRepository.InitializeWithFile(ctx, filePath, models.FileTypeRevenueExpense, sheetNames...)
 }
 
-// AddExpense adds a new expense entry to the Excel file
-func (r *revenueExpenseExcelRepository) AddExpense(ctx context.Context, sheetName string, expenseData map[string]interface{}) error {
-	// Validate expense data
-	if err := ValidateData(expenseData); err != nil {
-		return err
+// AddExpenses adds multiple expense entries to the Excel file
+// This method is efficient as it only opens the file once, adds all expenses, and saves once
+func (r *revenueExpenseExcelRepository) AddExpenses(ctx context.Context, sheetName string, expensesData []map[string]interface{}) error {
+	if len(expensesData) == 0 {
+		return fmt.Errorf("no expenses data provided")
+	}
+
+	// Validate all expense data
+	for i, expenseData := range expensesData {
+		if err := ValidateData(expenseData); err != nil {
+			return fmt.Errorf("invalid expense data at index %d: %w", i, err)
+		}
 	}
 
 	// Get file and sheet data
@@ -71,9 +78,12 @@ func (r *revenueExpenseExcelRepository) AddExpense(ctx context.Context, sheetNam
 		targetRow++
 	}
 
-	// Add expense data row
-	if err := r.AddDataRow(file, sheetName, targetRow, expenseData); err != nil {
-		return fmt.Errorf("failed to add expense data row: %w", err)
+	// Add all expense data rows
+	for i, expenseData := range expensesData {
+		if err := r.AddDataRow(file, sheetName, targetRow, expenseData); err != nil {
+			return fmt.Errorf("failed to add expense data row at index %d: %w", i, err)
+		}
+		targetRow++
 	}
 
 	// Save the file

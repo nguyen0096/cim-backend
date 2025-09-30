@@ -139,6 +139,7 @@ var (
 	}
 )
 
+//go:generate mockery --name=ExcelService --structname=ExcelService --output=../mocks/services --outpkg=servicemocks
 type ExcelService interface {
 	ExportProducts(ctx context.Context) (*excelize.File, error)
 	ExportProductsWithStyle(ctx context.Context, headerStyle, dataStyle *CellStyle) (*excelize.File, error)
@@ -152,7 +153,7 @@ type ExcelService interface {
 	GetInventoryTemplateWithStyle(ctx context.Context, headerStyle, dataStyle *CellStyle) (*excelize.File, error)
 	// Revenue/Expense Excel operations
 	InitializeRevenueExpenseFile(ctx context.Context, filePath string) error
-	AddExpense(ctx context.Context, sheetName string, expenseData map[string]interface{}) error
+	AddExpenses(ctx context.Context, sheetName string, expensesData []map[string]interface{}) error
 	GetRevenueExpenseSchema(ctx context.Context) *models.FileMetadata
 	VerifyFileAndSheet(ctx context.Context, filePath string, sheetName string) error
 }
@@ -524,9 +525,9 @@ func (s *excelService) InitializeRevenueExpenseFile(ctx context.Context, filePat
 	return s.revenueExpenseExcelRepo.InitializeWithFile(ctx, filePath)
 }
 
-// AddExpense adds a new expense entry to the Excel file
-func (s *excelService) AddExpense(ctx context.Context, sheetName string, expenseData map[string]interface{}) error {
-	return s.revenueExpenseExcelRepo.AddExpense(ctx, sheetName, expenseData)
+// AddExpenses adds multiple expense entries to the Excel file
+func (s *excelService) AddExpenses(ctx context.Context, sheetName string, expensesData []map[string]interface{}) error {
+	return s.revenueExpenseExcelRepo.AddExpenses(ctx, sheetName, expensesData)
 }
 
 // GetRevenueExpenseSchema returns the Excel file schema

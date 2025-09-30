@@ -9,7 +9,7 @@ import (
 	"gorm.io/gorm"
 )
 
-//go:generate mockery --name=PurchaseOrderRepository --structname=PurchaseOrderRepository --output=./repositorymocks --outpkg=repositorymocks
+//go:generate mockery --name=PurchaseOrderRepository --structname=PurchaseOrderRepository --output=../mocks/repositories --outpkg=repositorymocks
 type PurchaseOrderRepository interface {
 	Create(ctx context.Context, purchaseOrder *models.PurchaseOrder) error
 	GetByID(id uint) (*models.PurchaseOrder, error)

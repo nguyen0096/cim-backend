@@ -75,10 +75,10 @@ func main() {
 	supplierService := services.NewSupplierService(supplierRepo)
 	productService := services.NewProductService(productRepo, inventoryRepo)
 	inventoryService := services.NewInventoryService(inventoryRepo, productRepo)
-	purchaseOrderService := services.NewPurchaseOrderService(purchaseOrderRepo, inventoryService, db)
-	orderService := services.NewOrderService(orderRepo, inventoryService)
 	excelService := services.NewExcelService(productRepo, inventoryRepo)
 	settingsService := services.NewSettingsService(settingsRepo)
+	purchaseOrderService := services.NewPurchaseOrderService(purchaseOrderRepo, inventoryService, excelService, settingsService, db, logger)
+	orderService := services.NewOrderService(orderRepo, inventoryService)
 
 	// Initialize handlers
 	userHandler := handlers.NewUserHandler()

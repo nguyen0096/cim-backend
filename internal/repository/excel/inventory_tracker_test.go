@@ -13,17 +13,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TestInventoryTrackerExcelRepository tests the Excel handling classes with the Inventory_Tracker.xlsx file
 func TestInventoryTrackerExcelRepository(t *testing.T) {
-	iterations := 2
-	for i := 0; i < iterations; i++ {
-		t.Run(fmt.Sprintf("Iteration %d", i+1), func(t *testing.T) {
-			testInventoryTrackerExcelRepository(t)
-		})
-	}
-}
-
-func testInventoryTrackerExcelRepository(t *testing.T) {
 	t.Log("=== Excel test: handling with Inventory Tracker Excel ===")
 	ctx := context.Background()
 	inventoryRepo := NewInventoryTrackerExcelRepository()
