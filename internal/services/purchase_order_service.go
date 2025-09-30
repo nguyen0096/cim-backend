@@ -7,6 +7,8 @@ import (
 	"import-export-backend/internal/models"
 	"import-export-backend/internal/repository"
 	"time"
+
+	"gorm.io/gorm"
 )
 
 //go:generate mockery --name=PurchaseOrderService --structname=PurchaseOrderService --output=./servicemocks --outpkg=servicemocks
@@ -25,12 +27,14 @@ type PurchaseOrderService interface {
 type purchaseOrderService struct {
 	purchaseOrderRepo repository.PurchaseOrderRepository
 	inventoryService  InventoryService
+	db                *gorm.DB
 }
 
-func NewPurchaseOrderService(purchaseOrderRepo repository.PurchaseOrderRepository, inventoryService InventoryService) PurchaseOrderService {
+func NewPurchaseOrderService(purchaseOrderRepo repository.PurchaseOrderRepository, inventoryService InventoryService, db *gorm.DB) PurchaseOrderService {
 	return &purchaseOrderService{
 		purchaseOrderRepo: purchaseOrderRepo,
 		inventoryService:  inventoryService,
+		db:                db,
 	}
 }
 
@@ -179,35 +183,54 @@ func (s *purchaseOrderService) UpdatePurchaseOrderItemStatus(ctx context.Context
 		return nil, fmt.Errorf("invalid status: %s", status)
 	}
 
-	// Update the item status
-	err := s.purchaseOrderRepo.UpdatePurchaseOrderItemStatus(ctx, purchaseOrderID, itemID, status)
+	var result *models.UpdatePurchaseOrderItemStatusResponse
+
+	// Wrap the operations in a transaction
+	err := s.db.Transaction(func(tx *gorm.DB) error {
+		// Update the item status using the transaction
+		err := tx.WithContext(ctx).Model(&models.PurchaseOrderItem{}).
+			Where("id = ? AND purchase_order_id = ?", itemID, purchaseOrderID).
+			Update("status", status).Error
+		if err != nil {
+			return fmt.Errorf("failed to update purchase order item status: %w", err)
+		}
+
+		// Determine the order status based on item status
+		var orderStatus models.PurchaseOrderStatus = models.PurchaseOrderStatusPartiallyDelivered
+		// if status == models.PurchaseOrderItemStatusDelivered {
+		// 	if s.purchaseOrderRepo.AnyDeliveringItem(ctx, purchaseOrderID) {
+		// 		orderStatus = models.PurchaseOrderStatusPartiallyDelivered
+		// 		err = s.purchaseOrderRepo.UpdateStatus(ctx, purchaseOrderID, orderStatus)
+		// 	} else {
+		// 		orderStatus = models.PurchaseOrderStatusFullyDelivered
+		// 		err = s.purchaseOrderRepo.UpdateStatus(ctx, purchaseOrderID, orderStatus)
+		// 	}
+		// 	if err != nil {
+		// 		return nil, fmt.Errorf("failed to update purchase order status: %w", err)
+		// 	}
+		// }
+
+		// Update the purchase order status using the transaction
+		err = tx.WithContext(ctx).Model(&models.PurchaseOrder{}).
+			Where("id = ?", purchaseOrderID).
+			Update("status", orderStatus).Error
+		if err != nil {
+			return fmt.Errorf("failed to update purchase order status: %w", err)
+		}
+
+		// Set the result
+		result = &models.UpdatePurchaseOrderItemStatusResponse{
+			ItemStatus:  status,
+			OrderStatus: orderStatus,
+		}
+
+		// Return nil to commit the transaction
+		return nil
+	})
+
 	if err != nil {
-		return nil, fmt.Errorf("failed to update purchase order item status: %w", err)
+		return nil, err
 	}
 
-	// Determine the order status based on item status
-	var orderStatus models.PurchaseOrderStatus = models.PurchaseOrderStatusPartiallyDelivered
-	// if status == models.PurchaseOrderItemStatusDelivered {
-	// 	if s.purchaseOrderRepo.AnyDeliveringItem(ctx, purchaseOrderID) {
-	// 		orderStatus = models.PurchaseOrderStatusPartiallyDelivered
-	// 		err = s.purchaseOrderRepo.UpdateStatus(ctx, purchaseOrderID, orderStatus)
-	// 	} else {
-	// 		orderStatus = models.PurchaseOrderStatusFullyDelivered
-	// 		err = s.purchaseOrderRepo.UpdateStatus(ctx, purchaseOrderID, orderStatus)
-	// 	}
-	// 	if err != nil {
-	// 		return nil, fmt.Errorf("failed to update purchase order status: %w", err)
-	// 	}
-	// }
-
-	// Update the purchase order status
-	err = s.purchaseOrderRepo.UpdateStatus(ctx, purchaseOrderID, orderStatus)
-	if err != nil {
-		return nil, fmt.Errorf("failed to update purchase order status: %w", err)
-	}
-
-	return &models.UpdatePurchaseOrderItemStatusResponse{
-		ItemStatus:  status,
-		OrderStatus: orderStatus,
-	}, nil
+	return result, nil
 }
