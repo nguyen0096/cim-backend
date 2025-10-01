@@ -488,6 +488,7 @@ func (s *purchaseOrderService) UpdatePurchaseOrderItemStatus(ctx context.Context
 
 // handleRevenueExpenseAsync handles revenue expense excel file operations asynchronously
 func (s *purchaseOrderService) handleRevenueExpenseAsync(ctx context.Context, purchaseOrder *models.PurchaseOrder) {
+	startTime := time.Now()
 	logger := s.logger.WithFields(logrus.Fields{
 		"operation":         "handleRevenueExpenseAsync",
 		"purchase_order_id": purchaseOrder.ID,
@@ -498,16 +499,22 @@ func (s *purchaseOrderService) handleRevenueExpenseAsync(ctx context.Context, pu
 	// Get and validate settings
 	filePath, sheetName, err := s.getRevenueExpenseSettings(ctx, purchaseOrder.ID)
 	if err != nil {
-		logger.WithError(err).Error("Failed to get revenue expense settings")
+		duration := time.Since(startTime)
+		logger.WithFields(logrus.Fields{
+			"duration_ms": duration.Milliseconds(),
+			"error":       err,
+		}).Error("Failed to get revenue expense settings")
 		return
 	}
 
 	// Initialize excel file
 	if err := s.excelService.InitializeRevenueExpenseFile(ctx, filePath); err != nil {
+		duration := time.Since(startTime)
 		logger.WithFields(logrus.Fields{
-			"file_path":  filePath,
-			"sheet_name": sheetName,
-			"error":      err,
+			"file_path":   filePath,
+			"sheet_name":  sheetName,
+			"duration_ms": duration.Milliseconds(),
+			"error":       err,
 		}).Error("Failed to initialize revenue expense excel file")
 		return
 	}
@@ -515,15 +522,20 @@ func (s *purchaseOrderService) handleRevenueExpenseAsync(ctx context.Context, pu
 	// Create expense data and add to excel
 	expensesData, cellColors := s.createExpenseData(purchaseOrder.Items)
 	if err := s.excelService.AddExpenses(ctx, sheetName, expensesData, cellColors); err != nil {
+		duration := time.Since(startTime)
 		logger.WithFields(logrus.Fields{
-			"file_path":  filePath,
-			"sheet_name": sheetName,
-			"error":      err,
+			"file_path":   filePath,
+			"sheet_name":  sheetName,
+			"duration_ms": duration.Milliseconds(),
+			"error":       err,
 		}).Error("Failed to add expense to revenue expense excel file")
 		return
 	}
 
-	logger.Info("Successfully added expense to revenue expense excel file")
+	duration := time.Since(startTime)
+	logger.WithFields(logrus.Fields{
+		"duration_ms": duration.Milliseconds(),
+	}).Info("Successfully added expense to revenue expense excel file")
 }
 
 // getRevenueExpenseSettings retrieves and validates revenue expense excel settings
