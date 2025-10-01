@@ -126,7 +126,7 @@ func TestRevenueExpenseExcelRepository(t *testing.T) {
 
 	// Add expense
 	t.Log("🔄 Adding sample expense using detected columns...")
-	err = revenueExpenseExcelRepo.AddExpenses(ctx, sheetName, []map[string]interface{}{sampleExpense})
+	err = revenueExpenseExcelRepo.AddExpenses(ctx, sheetName, []map[string]interface{}{sampleExpense}, []string{""})
 	require.Nil(t, err)
 	t.Log("✅ Sample expense added successfully")
 
@@ -161,7 +161,7 @@ func TestRevenueExpenseExcelRepository(t *testing.T) {
 
 	// Add another expense
 	t.Log("🔄 Adding sample expense using detected columns...")
-	err = revenueExpenseExcelRepo.AddExpenses(ctx, sheetName, []map[string]interface{}{sampleExpense2})
+	err = revenueExpenseExcelRepo.AddExpenses(ctx, sheetName, []map[string]interface{}{sampleExpense2}, []string{""})
 	require.Nil(t, err)
 	t.Log("✅ Sample expense added successfully")
 

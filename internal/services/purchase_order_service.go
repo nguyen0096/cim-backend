@@ -556,6 +556,8 @@ func (s *purchaseOrderService) handleRevenueExpenseAsync(ctx context.Context, pu
 		return
 	}
 
+	cellColors := make([]string, len(purchaseOrder.Items))
+
 	// Add expense to revenue expense excel file
 	expensesData := make([]map[string]interface{}, len(purchaseOrder.Items))
 	for i, item := range purchaseOrder.Items {
@@ -564,14 +566,22 @@ func (s *purchaseOrderService) handleRevenueExpenseAsync(ctx context.Context, pu
 		}
 
 		switch item.Product.ProductType {
-		case "Cơm", "Ăn nhẹ":
+		case "Cơm":
 			expensesData[i]["ĂN NHẸ,CƠM"] = item.TotalPrice
+			// Green color
+			cellColors[i] = "17B319"
+		case "Ăn nhẹ":
+			expensesData[i]["ĂN NHẸ,CƠM"] = item.TotalPrice
+			// Blue color
+			cellColors[i] = "27B4F5"
 		default:
 			expensesData[i]["NƯỚC"] = item.TotalPrice
+			// Yellow color
+			cellColors[i] = "F5E727"
 		}
 	}
 
-	if err := s.excelService.AddExpenses(ctx, sheetName, expensesData); err != nil {
+	if err := s.excelService.AddExpenses(ctx, sheetName, expensesData, cellColors); err != nil {
 		s.logger.WithFields(logrus.Fields{
 			"operation":         "handleRevenueExpenseAsync",
 			"purchase_order_id": purchaseOrder.ID,

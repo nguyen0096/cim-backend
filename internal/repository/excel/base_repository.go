@@ -318,6 +318,44 @@ func (r *BaseExcelRepository) AddDataRow(file *excelize.File, sheetName string, 
 	return nil
 }
 
+// AddDataRowWithColor adds data to the specified row with background color
+func (r *BaseExcelRepository) AddDataRowWithColor(file *excelize.File, sheetName string, targetRow int, data map[string]interface{}, cellColor string) error {
+	styleID, err := CreateCellStyle(file, "")
+	if err != nil {
+		return fmt.Errorf("failed to create data style: %w", err)
+	}
+
+	// Find the sheet metadata for the specified sheet
+	sheetMetadata := r.findSheetMetadata(sheetName)
+	if sheetMetadata == nil {
+		return fmt.Errorf("sheet %s not found in metadata", sheetName)
+	}
+
+	for _, column := range sheetMetadata.Headers {
+		cellName, _ := excelize.CoordinatesToCellName(column.ColumnIndex+1, targetRow)
+		file.SetCellStyle(sheetName, cellName, cellName, styleID)
+
+		if value, exists := data[column.ColumnName]; exists {
+			// Convert value to uppercase string
+			valueStr := fmt.Sprintf("%v", value)
+			uppercaseValue := strings.ToUpper(valueStr)
+			file.SetCellValue(sheetName, cellName, uppercaseValue)
+		}
+	}
+
+	if cellColor != "" {
+		colorStyleID, err := CreateCellStyleWithColor(file, "", cellColor)
+		if err != nil {
+			return fmt.Errorf("failed to create color style: %w", err)
+		}
+		firstColumn := sheetMetadata.Headers[0]
+		sttCellName, _ := excelize.CoordinatesToCellName(firstColumn.ColumnIndex+1, targetRow)
+		file.SetCellStyle(sheetName, sttCellName, sttCellName, colorStyleID)
+	}
+
+	return nil
+}
+
 // Close closes the repository and releases any cached resources
 func (r *BaseExcelRepository) Close() error {
 	r.closeCachedFile()

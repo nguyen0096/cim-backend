@@ -15,7 +15,7 @@ import (
 // RevenueExpenseExcelRepository handles data access for revenue/expense Excel operations
 type RevenueExpenseExcelRepository interface {
 	InitializeWithFile(ctx context.Context, filePath string, sheetNames ...string) error
-	AddExpenses(ctx context.Context, sheetName string, expensesData []map[string]interface{}) error
+	AddExpenses(ctx context.Context, sheetName string, expensesData []map[string]interface{}, cellColors []string) error
 	GetLastExpense(ctx context.Context, sheetName string) (map[string]interface{}, error)
 	GetLastTransactionDate(ctx context.Context, sheetName string) (time.Time, error)
 	GetSchema(ctx context.Context) *models.FileMetadata
@@ -42,7 +42,7 @@ func (r *revenueExpenseExcelRepository) InitializeWithFile(ctx context.Context, 
 
 // AddExpenses adds multiple expense entries to the Excel file
 // This method is efficient as it only opens the file once, adds all expenses, and saves once
-func (r *revenueExpenseExcelRepository) AddExpenses(ctx context.Context, sheetName string, expensesData []map[string]interface{}) error {
+func (r *revenueExpenseExcelRepository) AddExpenses(ctx context.Context, sheetName string, expensesData []map[string]interface{}, cellColors []string) error {
 	if len(expensesData) == 0 {
 		return fmt.Errorf("no expenses data provided")
 	}
@@ -97,7 +97,7 @@ func (r *revenueExpenseExcelRepository) AddExpenses(ctx context.Context, sheetNa
 	for i, expenseData := range expensesData {
 		expenseData["STT"] = ordinalNumber
 		ordinalNumber++
-		if err := r.AddDataRow(file, sheetName, targetRow, expenseData); err != nil {
+		if err := r.AddDataRowWithColor(file, sheetName, targetRow, expenseData, cellColors[i]); err != nil {
 			return fmt.Errorf("failed to add expense data row at index %d: %w", i, err)
 		}
 		targetRow++

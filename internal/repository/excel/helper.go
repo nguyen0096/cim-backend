@@ -25,29 +25,54 @@ var CommonDateFormats = []string{
 }
 
 // DefaultCellStyle provides a common Excel cell style configuration
-var DefaultCellStyle = &excelize.Style{
-	Font: &excelize.Font{
-		Family: "Times New Roman",
-		Bold:   true,
-	},
-	Border: []excelize.Border{
-		{Type: "left", Color: "000000", Style: 1},
-		{Type: "top", Color: "000000", Style: 1},
-		{Type: "bottom", Color: "000000", Style: 1},
-		{Type: "right", Color: "000000", Style: 1},
-	},
+func NewDefaultCellStyle() *excelize.Style {
+	return &excelize.Style{
+		Font: &excelize.Font{
+			Family: "Times New Roman",
+			Bold:   true,
+		},
+		Border: []excelize.Border{
+			{Type: "left", Color: "000000", Style: 1},
+			{Type: "top", Color: "000000", Style: 1},
+			{Type: "bottom", Color: "000000", Style: 1},
+			{Type: "right", Color: "000000", Style: 1},
+		},
+	}
+
 }
 
 // CreateCellStyle creates a new Excel cell style with optional date format
 func CreateCellStyle(file *excelize.File, dateFormat string) (int, error) {
-	style := *DefaultCellStyle // Copy the default style
+	style := NewDefaultCellStyle() // Copy the default style
 	if dateFormat != "" {
 		style.CustomNumFmt = &dateFormat
 	}
 
-	styleID, err := file.NewStyle(&style)
+	styleID, err := file.NewStyle(style)
 	if err != nil {
 		return 0, fmt.Errorf("failed to create style: %w", err)
+	}
+	return styleID, nil
+}
+
+// CreateCellStyleWithColor creates a new Excel cell style with optional date format and background color
+func CreateCellStyleWithColor(file *excelize.File, dateFormat string, cellColor string) (int, error) {
+	// Clone the default style to avoid modifying the original style
+	style := NewDefaultCellStyle()
+	if dateFormat != "" {
+		style.CustomNumFmt = &dateFormat
+	}
+	if cellColor != "" {
+		style.Fill = excelize.Fill{
+			Type:    "pattern",
+			Color:   []string{cellColor},
+			Pattern: 1,
+		}
+	}
+
+	styleID, err := file.NewStyle(style)
+	if err != nil {
+		return 0, fmt.Errorf("failed to create style with color: %w", err)
 	}
 	return styleID, nil
 }
