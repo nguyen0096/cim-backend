@@ -77,10 +77,6 @@ func (h *ProductHandler) GetProducts(c echo.Context) error {
 		page = 1
 	}
 
-	if status == "" {
-		status = "active"
-	}
-
 	if sortBy == "" {
 		sortBy = "created_at"
 	}
