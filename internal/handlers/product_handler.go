@@ -1,8 +1,8 @@
 package handlers
 
 import (
-	"context"
 	"import-export-backend/internal/models"
+	"import-export-backend/internal/services"
 	"import-export-backend/pkg"
 	"net/http"
 	"strconv"
@@ -14,25 +14,11 @@ import (
 )
 
 type ProductHandler struct {
-	productService ProductService
+	productService services.ProductService
 	logger         *logrus.Logger
 }
 
-type ProductService interface {
-	CreateProduct(ctx context.Context, product *models.Product) error
-	GetProductByID(ctx context.Context, id uint) (*models.Product, error)
-	UpdateProduct(ctx context.Context, product *models.Product) error
-	DeleteProduct(ctx context.Context, id uint) error
-	RestoreProduct(ctx context.Context, id uint) error
-	ListProducts(ctx context.Context, limit, offset int, sortBy, sortOrder string) ([]models.Product, error)
-	GetProductsBySupplier(ctx context.Context, supplierID uint) ([]models.Product, error)
-	SearchProducts(ctx context.Context, query string, sortBy, sortOrder string) ([]models.Product, error)
-	SearchProductsWithPagination(ctx context.Context, query string, limit, offset int, sortBy, sortOrder string) ([]models.Product, error)
-	CountProducts(ctx context.Context) (int64, error)
-	CountSearchProducts(ctx context.Context, query string) (int64, error)
-}
-
-func NewProductHandler(productService ProductService, logger *logrus.Logger) *ProductHandler {
+func NewProductHandler(productService services.ProductService, logger *logrus.Logger) *ProductHandler {
 	return &ProductHandler{
 		productService: productService,
 		logger:         logger,
@@ -86,6 +72,13 @@ func (h *ProductHandler) GetProducts(c echo.Context) error {
 	}
 	if page == 0 {
 		page = 1
+	}
+
+	if sortBy == "" {
+		sortBy = "created_at"
+	}
+	if sortOrder == "" {
+		sortOrder = "desc"
 	}
 
 	// Calculate offset
@@ -312,12 +305,6 @@ func (h *ProductHandler) UpdateProduct(c echo.Context) error {
 	if product.UnitType == "" {
 		logger.WithField("product_id", id).Warn("Product update attempted with empty unit type")
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid unit type. Please use a valid unit type like 'piece', 'kg', 'liter', etc."})
-	}
-
-	// Validate ProductType if provided
-	if product.ProductType == "" {
-		logger.WithField("product_id", id).Warn("Product update attempted with empty product type")
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Product type is required. Please specify a product type like 'electronics', 'clothing', 'food', etc."})
 	}
 
 	product.ID = id

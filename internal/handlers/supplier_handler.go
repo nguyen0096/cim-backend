@@ -1,9 +1,9 @@
 package handlers
 
 import (
-	"context"
 	"fmt"
 	"import-export-backend/internal/models"
+	"import-export-backend/internal/services"
 	"import-export-backend/pkg"
 	"net/http"
 	"regexp"
@@ -14,23 +14,10 @@ import (
 )
 
 type SupplierHandler struct {
-	supplierService SupplierService
+	supplierService services.SupplierService
 }
 
-type SupplierService interface {
-	CreateSupplier(ctx context.Context, supplier *models.Supplier) error
-	GetSupplierByID(ctx context.Context, id uint) (*models.Supplier, error)
-	UpdateSupplier(ctx context.Context, supplier *models.Supplier) error
-	DeleteSupplier(ctx context.Context, id uint) error
-	RestoreSupplier(ctx context.Context, id uint) error
-	ListSuppliers(ctx context.Context, limit, offset int, sortBy, sortOrder string) ([]models.Supplier, error)
-	SearchSuppliers(ctx context.Context, query string, sortBy, sortOrder string) ([]models.Supplier, error)
-	SearchSuppliersWithPagination(ctx context.Context, query string, limit, offset int, sortBy, sortOrder string) ([]models.Supplier, error)
-	CountSuppliers(ctx context.Context) (int64, error)
-	CountSearchSuppliers(ctx context.Context, query string) (int64, error)
-}
-
-func NewSupplierHandler(supplierService SupplierService) *SupplierHandler {
+func NewSupplierHandler(supplierService services.SupplierService) *SupplierHandler {
 	return &SupplierHandler{
 		supplierService: supplierService,
 	}
@@ -72,6 +59,13 @@ func (h *SupplierHandler) GetSuppliers(c echo.Context) error {
 	}
 	if page == 0 {
 		page = 1
+	}
+
+	if sortBy == "" {
+		sortBy = "created_at"
+	}
+	if sortOrder == "" {
+		sortOrder = "desc"
 	}
 
 	// Calculate offset
