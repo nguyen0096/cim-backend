@@ -244,7 +244,7 @@ func (s *excelService) ExportProducts(ctx context.Context) (*excelize.File, erro
 }
 
 func (s *excelService) ExportProductsWithStyle(ctx context.Context, headerStyle, dataStyle *CellStyle) (*excelize.File, error) {
-	products, err := s.productRepo.List(ctx, 1000, 0, "created_at", "desc") // Get all products
+	products, err := s.productRepo.List(ctx, 1000, 0, "created_at", "desc", "") // Get all products
 	if err != nil {
 		return nil, err
 	}

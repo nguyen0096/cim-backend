@@ -11,14 +11,15 @@ type ProductRepository interface {
 	Create(ctx context.Context, product *models.Product) error
 	GetByID(ctx context.Context, id uint) (*models.Product, error)
 	Update(ctx context.Context, product *models.Product) error
+	UpdateStatus(ctx context.Context, id uint, status string) error
 	Delete(ctx context.Context, id uint) error
 	Restore(ctx context.Context, id uint) error
-	List(ctx context.Context, limit, offset int, sortBy, sortOrder string) ([]models.Product, error)
+	List(ctx context.Context, limit, offset int, sortBy, sortOrder, status string) ([]models.Product, error)
 	GetBySupplier(ctx context.Context, supplierID uint) ([]models.Product, error)
 	Search(ctx context.Context, query string, sortBy, sortOrder string) ([]models.Product, error)
-	SearchWithPagination(ctx context.Context, query string, limit, offset int, sortBy, sortOrder string) ([]models.Product, error)
-	Count(ctx context.Context) (int64, error)
-	CountSearch(ctx context.Context, query string) (int64, error)
+	SearchWithPagination(ctx context.Context, query string, limit, offset int, sortBy, sortOrder, status string) ([]models.Product, error)
+	Count(ctx context.Context, status string) (int64, error)
+	CountSearch(ctx context.Context, query string, status string) (int64, error)
 }
 
 type productRepository struct {
@@ -46,6 +47,11 @@ func (r *productRepository) Update(ctx context.Context, product *models.Product)
 	return r.db.WithContext(ctx).Save(product).Error
 }
 
+// UpdateStatus updates the status of a product
+func (r *productRepository) UpdateStatus(ctx context.Context, id uint, status string) error {
+	return r.db.WithContext(ctx).Model(&models.Product{}).Where("id = ?", id).Update("status", status).Error
+}
+
 func (r *productRepository) Delete(ctx context.Context, id uint) error {
 	return r.db.WithContext(ctx).Delete(&models.Product{}, "id = ?", id).Error
 }
@@ -54,9 +60,14 @@ func (r *productRepository) Restore(ctx context.Context, id uint) error {
 	return r.db.WithContext(ctx).Unscoped().Model(&models.Product{}).Where("id = ?", id).Update("deleted_at", nil).Error
 }
 
-func (r *productRepository) List(ctx context.Context, limit, offset int, sortBy, sortOrder string) ([]models.Product, error) {
+func (r *productRepository) List(ctx context.Context, limit, offset int, sortBy, sortOrder, status string) ([]models.Product, error) {
 	var products []models.Product
 	query := r.db.WithContext(ctx).Preload("Supplier").Preload("Inventory")
+
+	// Apply status filter
+	if status != "" {
+		query = query.Where("status = ?", status)
+	}
 
 	// Apply sorting
 	if sortBy != "" {
@@ -96,9 +107,14 @@ func (r *productRepository) Search(ctx context.Context, query string, sortBy, so
 	return products, err
 }
 
-func (r *productRepository) SearchWithPagination(ctx context.Context, query string, limit, offset int, sortBy, sortOrder string) ([]models.Product, error) {
+func (r *productRepository) SearchWithPagination(ctx context.Context, query string, limit, offset int, sortBy, sortOrder, status string) ([]models.Product, error) {
 	var products []models.Product
 	dbQuery := r.db.WithContext(ctx).Preload("Supplier").Preload("Inventory").Where("name ILIKE ? OR product_type ILIKE ?", "%"+query+"%", "%"+query+"%")
+
+	// Apply status filter
+	if status != "" {
+		dbQuery = dbQuery.Where("status = ?", status)
+	}
 
 	// Apply sorting
 	if sortBy != "" {
@@ -114,14 +130,28 @@ func (r *productRepository) SearchWithPagination(ctx context.Context, query stri
 	return products, err
 }
 
-func (r *productRepository) Count(ctx context.Context) (int64, error) {
+func (r *productRepository) Count(ctx context.Context, status string) (int64, error) {
 	var count int64
-	err := r.db.WithContext(ctx).Model(&models.Product{}).Count(&count).Error
+	query := r.db.WithContext(ctx).Model(&models.Product{})
+
+	// Apply status filter
+	if status != "" {
+		query = query.Where("status = ?", status)
+	}
+
+	err := query.Count(&count).Error
 	return count, err
 }
 
-func (r *productRepository) CountSearch(ctx context.Context, query string) (int64, error) {
+func (r *productRepository) CountSearch(ctx context.Context, query string, status string) (int64, error) {
 	var count int64
-	err := r.db.WithContext(ctx).Model(&models.Product{}).Where("name ILIKE ? OR product_type ILIKE ?", "%"+query+"%", "%"+query+"%").Count(&count).Error
+	dbQuery := r.db.WithContext(ctx).Model(&models.Product{}).Where("name ILIKE ? OR product_type ILIKE ?", "%"+query+"%", "%"+query+"%")
+
+	// Apply status filter
+	if status != "" {
+		dbQuery = dbQuery.Where("status = ?", status)
+	}
+
+	err := dbQuery.Count(&count).Error
 	return count, err
 }

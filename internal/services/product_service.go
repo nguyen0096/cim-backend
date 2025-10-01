@@ -10,14 +10,15 @@ type ProductService interface {
 	CreateProduct(ctx context.Context, product *models.Product) error
 	GetProductByID(ctx context.Context, id uint) (*models.Product, error)
 	UpdateProduct(ctx context.Context, product *models.Product) error
+	UpdateProductStatus(ctx context.Context, id uint, status string) error
 	DeleteProduct(ctx context.Context, id uint) error
 	RestoreProduct(ctx context.Context, id uint) error
-	ListProducts(ctx context.Context, limit, offset int, sortBy, sortOrder string) ([]models.Product, error)
+	ListProducts(ctx context.Context, limit, offset int, sortBy, sortOrder, status string) ([]models.Product, error)
 	GetProductsBySupplier(ctx context.Context, supplierID uint) ([]models.Product, error)
 	SearchProducts(ctx context.Context, query string, sortBy, sortOrder string) ([]models.Product, error)
-	SearchProductsWithPagination(ctx context.Context, query string, limit, offset int, sortBy, sortOrder string) ([]models.Product, error)
-	CountProducts(ctx context.Context) (int64, error)
-	CountSearchProducts(ctx context.Context, query string) (int64, error)
+	SearchProductsWithPagination(ctx context.Context, query string, limit, offset int, sortBy, sortOrder, status string) ([]models.Product, error)
+	CountProducts(ctx context.Context, status string) (int64, error)
+	CountSearchProducts(ctx context.Context, query string, status string) (int64, error)
 }
 
 type productService struct {
@@ -55,6 +56,11 @@ func (s *productService) UpdateProduct(ctx context.Context, product *models.Prod
 	return s.productRepo.Update(ctx, product)
 }
 
+// UpdateProductStatus updates the status of a product
+func (s *productService) UpdateProductStatus(ctx context.Context, id uint, status string) error {
+	return s.productRepo.UpdateStatus(ctx, id, status)
+}
+
 func (s *productService) DeleteProduct(ctx context.Context, id uint) error {
 	return s.productRepo.Delete(ctx, id)
 }
@@ -63,8 +69,8 @@ func (s *productService) RestoreProduct(ctx context.Context, id uint) error {
 	return s.productRepo.Restore(ctx, id)
 }
 
-func (s *productService) ListProducts(ctx context.Context, limit, offset int, sortBy, sortOrder string) ([]models.Product, error) {
-	return s.productRepo.List(ctx, limit, offset, sortBy, sortOrder)
+func (s *productService) ListProducts(ctx context.Context, limit, offset int, sortBy, sortOrder, status string) ([]models.Product, error) {
+	return s.productRepo.List(ctx, limit, offset, sortBy, sortOrder, status)
 }
 
 func (s *productService) GetProductsBySupplier(ctx context.Context, supplierID uint) ([]models.Product, error) {
@@ -75,14 +81,14 @@ func (s *productService) SearchProducts(ctx context.Context, query string, sortB
 	return s.productRepo.Search(ctx, query, sortBy, sortOrder)
 }
 
-func (s *productService) SearchProductsWithPagination(ctx context.Context, query string, limit, offset int, sortBy, sortOrder string) ([]models.Product, error) {
-	return s.productRepo.SearchWithPagination(ctx, query, limit, offset, sortBy, sortOrder)
+func (s *productService) SearchProductsWithPagination(ctx context.Context, query string, limit, offset int, sortBy, sortOrder, status string) ([]models.Product, error) {
+	return s.productRepo.SearchWithPagination(ctx, query, limit, offset, sortBy, sortOrder, status)
 }
 
-func (s *productService) CountProducts(ctx context.Context) (int64, error) {
-	return s.productRepo.Count(ctx)
+func (s *productService) CountProducts(ctx context.Context, status string) (int64, error) {
+	return s.productRepo.Count(ctx, status)
 }
 
-func (s *productService) CountSearchProducts(ctx context.Context, query string) (int64, error) {
-	return s.productRepo.CountSearch(ctx, query)
+func (s *productService) CountSearchProducts(ctx context.Context, query string, status string) (int64, error) {
+	return s.productRepo.CountSearch(ctx, query, status)
 }

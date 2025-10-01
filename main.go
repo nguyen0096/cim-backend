@@ -132,6 +132,7 @@ func main() {
 	products.POST("", productHandler.CreateProduct)
 	products.GET("/:id", productHandler.GetProduct)
 	products.PUT("/:id", productHandler.UpdateProduct)
+	products.PUT("/:id/status", productHandler.UpdateProductStatus)
 	products.DELETE("/:id", productHandler.DeleteProduct)
 	products.POST("/:id/restore", productHandler.RestoreProduct)
 	products.GET("/:id/inventory", productHandler.GetProductInventory)
