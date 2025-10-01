@@ -488,114 +488,105 @@ func (s *purchaseOrderService) UpdatePurchaseOrderItemStatus(ctx context.Context
 
 // handleRevenueExpenseAsync handles revenue expense excel file operations asynchronously
 func (s *purchaseOrderService) handleRevenueExpenseAsync(ctx context.Context, purchaseOrder *models.PurchaseOrder) {
-	s.logger.WithFields(logrus.Fields{
+	logger := s.logger.WithFields(logrus.Fields{
 		"operation":         "handleRevenueExpenseAsync",
 		"purchase_order_id": purchaseOrder.ID,
 		"order_number":      purchaseOrder.OrderNumber,
-	}).Info("Starting async revenue expense processing")
+	})
+	logger.Info("Starting async revenue expense processing")
 
-	// Get settings of revenue expense excel file
-	revenueExpenseExcelSettings, err := s.settingsService.GetSetting(ctx, config.RevenueExpenseExcelSettingsKey)
+	// Get and validate settings
+	filePath, sheetName, err := s.getRevenueExpenseSettings(ctx, purchaseOrder.ID)
 	if err != nil {
-		s.logger.WithFields(logrus.Fields{
-			"operation":         "handleRevenueExpenseAsync",
-			"purchase_order_id": purchaseOrder.ID,
-			"error":             err,
-		}).Error("Failed to get revenue expense excel settings")
+		logger.WithError(err).Error("Failed to get revenue expense settings")
 		return
 	}
 
-	if revenueExpenseExcelSettings == nil {
-		s.logger.WithFields(logrus.Fields{
-			"operation":         "handleRevenueExpenseAsync",
-			"purchase_order_id": purchaseOrder.ID,
-		}).Error("Revenue expense excel settings not configured")
-		return
-	}
-
-	// Parse the settings value to extract file path
-	var settingsValue map[string]interface{}
-	if err := json.Unmarshal([]byte(revenueExpenseExcelSettings.Value), &settingsValue); err != nil {
-		s.logger.WithFields(logrus.Fields{
-			"operation":         "handleRevenueExpenseAsync",
-			"purchase_order_id": purchaseOrder.ID,
-			"error":             err,
-		}).Error("Failed to parse revenue expense excel settings")
-		return
-	}
-
-	filePath, ok := settingsValue["filePath"].(string)
-	if !ok || filePath == "" {
-		s.logger.WithFields(logrus.Fields{
-			"operation":         "handleRevenueExpenseAsync",
-			"purchase_order_id": purchaseOrder.ID,
-			"file_path":         filePath,
-		}).Error("File path not found in revenue expense excel settings")
-		return
-	}
-
-	sheetName, ok := settingsValue["sheetName"].(string)
-	if !ok || sheetName == "" {
-		s.logger.WithFields(logrus.Fields{
-			"operation":         "handleRevenueExpenseAsync",
-			"purchase_order_id": purchaseOrder.ID,
-			"file_path":         filePath,
-			"sheet_name":        sheetName,
-		}).Error("Sheet name not found in revenue expense excel settings")
-		return
-	}
-
+	// Initialize excel file
 	if err := s.excelService.InitializeRevenueExpenseFile(ctx, filePath); err != nil {
-		s.logger.WithFields(logrus.Fields{
-			"operation":         "handleRevenueExpenseAsync",
-			"purchase_order_id": purchaseOrder.ID,
-			"file_path":         filePath,
-			"sheet_name":        sheetName,
-			"error":             err,
+		logger.WithFields(logrus.Fields{
+			"file_path":  filePath,
+			"sheet_name": sheetName,
+			"error":      err,
 		}).Error("Failed to initialize revenue expense excel file")
 		return
 	}
 
-	cellColors := make([]string, len(purchaseOrder.Items))
+	// Create expense data and add to excel
+	expensesData, cellColors := s.createExpenseData(purchaseOrder.Items)
+	if err := s.excelService.AddExpenses(ctx, sheetName, expensesData, cellColors); err != nil {
+		logger.WithFields(logrus.Fields{
+			"file_path":  filePath,
+			"sheet_name": sheetName,
+			"error":      err,
+		}).Error("Failed to add expense to revenue expense excel file")
+		return
+	}
 
-	// Add expense to revenue expense excel file
-	expensesData := make([]map[string]interface{}, len(purchaseOrder.Items))
-	for i, item := range purchaseOrder.Items {
+	logger.Info("Successfully added expense to revenue expense excel file")
+}
+
+// getRevenueExpenseSettings retrieves and validates revenue expense excel settings
+func (s *purchaseOrderService) getRevenueExpenseSettings(ctx context.Context, purchaseOrderID uint) (string, string, error) {
+	settings, err := s.settingsService.GetSetting(ctx, config.RevenueExpenseExcelSettingsKey)
+	if err != nil {
+		return "", "", fmt.Errorf("failed to get revenue expense excel settings: %w", err)
+	}
+
+	if settings == nil {
+		return "", "", fmt.Errorf("revenue expense excel settings not configured")
+	}
+
+	var settingsValue map[string]interface{}
+	if err := json.Unmarshal([]byte(settings.Value), &settingsValue); err != nil {
+		return "", "", fmt.Errorf("failed to parse revenue expense excel settings: %w", err)
+	}
+
+	filePath, ok := settingsValue["filePath"].(string)
+	if !ok || filePath == "" {
+		return "", "", fmt.Errorf("file path not found in revenue expense excel settings")
+	}
+
+	sheetName, ok := settingsValue["sheetName"].(string)
+	if !ok || sheetName == "" {
+		return "", "", fmt.Errorf("sheet name not found in revenue expense excel settings")
+	}
+
+	return filePath, sheetName, nil
+}
+
+// createExpenseData creates expense data and cell colors from purchase order items
+func (s *purchaseOrderService) createExpenseData(items []*models.PurchaseOrderItem) ([]map[string]interface{}, []string) {
+	expensesData := make([]map[string]interface{}, len(items))
+	cellColors := make([]string, len(items))
+
+	for i, item := range items {
 		expensesData[i] = map[string]interface{}{
 			"DIỄN GIẢI": item.Product.Name,
 		}
 
 		itemTotalPrice := item.CalculateTotalPrice()
-
-		switch item.Product.ProductType {
-		case "Cơm":
-			expensesData[i]["ĂN NHẸ,CƠM"] = itemTotalPrice
-			// Green color
-			cellColors[i] = "17B319"
-		case "Ăn nhẹ":
-			expensesData[i]["ĂN NHẸ,CƠM"] = itemTotalPrice
-			// Blue color
-			cellColors[i] = "27B4F5"
-		default:
-			expensesData[i]["NƯỚC"] = itemTotalPrice
-			// Yellow color
-			cellColors[i] = "F5E727"
-		}
+		header, color := s.getHeaderAndColorFromProductType(item.Product.ProductType)
+		expensesData[i][header] = itemTotalPrice
+		cellColors[i] = color
 	}
 
-	if err := s.excelService.AddExpenses(ctx, sheetName, expensesData, cellColors); err != nil {
-		s.logger.WithFields(logrus.Fields{
-			"operation":         "handleRevenueExpenseAsync",
-			"purchase_order_id": purchaseOrder.ID,
-			"file_path":         filePath,
-			"sheet_name":        sheetName,
-			"error":             err,
-		}).Error("Failed to add expense to revenue expense excel file")
-		return
+	return expensesData, cellColors
+}
+
+// mapProductTypeToExpense maps product type to expense category and color
+func (s *purchaseOrderService) getHeaderAndColorFromProductType(productType string) (header string, color string) {
+	switch productType {
+	case "Cơm":
+		header = "ĂN NHẸ,CƠM"
+		color = "17B319" // Green color
+	case "Ăn nhẹ":
+		header = "ĂN NHẸ,CƠM"
+		color = "27B4F5" // Blue color
+	default:
+		header = "NƯỚC"
+		color = "F5E727" // Yellow color
 	}
 
-	s.logger.WithFields(logrus.Fields{
-		"operation":         "handleRevenueExpenseAsync",
-		"purchase_order_id": purchaseOrder.ID,
-	}).Info("Successfully added expense to revenue expense excel file")
+	return
 }
