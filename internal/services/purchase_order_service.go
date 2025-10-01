@@ -565,17 +565,19 @@ func (s *purchaseOrderService) handleRevenueExpenseAsync(ctx context.Context, pu
 			"DIỄN GIẢI": item.Product.Name,
 		}
 
+		itemTotalPrice := item.CalculateTotalPrice()
+
 		switch item.Product.ProductType {
 		case "Cơm":
-			expensesData[i]["ĂN NHẸ,CƠM"] = item.TotalPrice
+			expensesData[i]["ĂN NHẸ,CƠM"] = itemTotalPrice
 			// Green color
 			cellColors[i] = "17B319"
 		case "Ăn nhẹ":
-			expensesData[i]["ĂN NHẸ,CƠM"] = item.TotalPrice
+			expensesData[i]["ĂN NHẸ,CƠM"] = itemTotalPrice
 			// Blue color
 			cellColors[i] = "27B4F5"
 		default:
-			expensesData[i]["NƯỚC"] = item.TotalPrice
+			expensesData[i]["NƯỚC"] = itemTotalPrice
 			// Yellow color
 			cellColors[i] = "F5E727"
 		}
