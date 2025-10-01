@@ -152,6 +152,7 @@ func main() {
 	suppliers.POST("", supplierHandler.CreateSupplier)
 	suppliers.GET("/:id", supplierHandler.GetSupplier)
 	suppliers.PUT("/:id", supplierHandler.UpdateSupplier)
+	suppliers.PUT("/:id/status", supplierHandler.UpdateSupplierStatus)
 	suppliers.DELETE("/:id", supplierHandler.DeleteSupplier)
 	suppliers.POST("/:id/restore", supplierHandler.RestoreSupplier)
 

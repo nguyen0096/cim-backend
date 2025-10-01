@@ -52,6 +52,7 @@ func (h *SupplierHandler) GetSuppliers(c echo.Context) error {
 	page, _ := strconv.Atoi(c.QueryParam("page"))
 	sortBy := c.QueryParam("sort")
 	sortOrder := c.QueryParam("order")
+	status := c.QueryParam("status")
 
 	// Set defaults
 	if limit == 0 {
@@ -72,12 +73,12 @@ func (h *SupplierHandler) GetSuppliers(c echo.Context) error {
 	offset := (page - 1) * limit
 
 	// Get suppliers and total count
-	suppliers, err := h.supplierService.ListSuppliers(c.Request().Context(), limit, offset, sortBy, sortOrder)
+	suppliers, err := h.supplierService.ListSuppliers(c.Request().Context(), limit, offset, sortBy, sortOrder, status)
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to fetch suppliers"})
 	}
 
-	total, err := h.supplierService.CountSuppliers(c.Request().Context())
+	total, err := h.supplierService.CountSuppliers(c.Request().Context(), status)
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to count suppliers"})
 	}
@@ -108,6 +109,7 @@ func (h *SupplierHandler) SearchSuppliers(c echo.Context) error {
 	page, _ := strconv.Atoi(c.QueryParam("page"))
 	sortBy := c.QueryParam("sort")
 	sortOrder := c.QueryParam("order")
+	status := c.QueryParam("status")
 
 	// Set defaults
 	if limit == 0 {
@@ -121,12 +123,12 @@ func (h *SupplierHandler) SearchSuppliers(c echo.Context) error {
 	offset := (page - 1) * limit
 
 	// Get suppliers and total count
-	suppliers, err := h.supplierService.SearchSuppliersWithPagination(c.Request().Context(), query, limit, offset, sortBy, sortOrder)
+	suppliers, err := h.supplierService.SearchSuppliersWithPagination(c.Request().Context(), query, limit, offset, sortBy, sortOrder, status)
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to search suppliers"})
 	}
 
-	total, err := h.supplierService.CountSearchSuppliers(c.Request().Context(), query)
+	total, err := h.supplierService.CountSearchSuppliers(c.Request().Context(), query, status)
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to count search results"})
 	}
@@ -220,6 +222,40 @@ func (h *SupplierHandler) UpdateSupplier(c echo.Context) error {
 	}
 
 	return c.JSON(http.StatusOK, supplier)
+}
+
+// UpdateSupplierStatus godoc
+// @Summary Update supplier status
+// @Description Update the status of a supplier (active, inactive)
+// @Tags suppliers
+// @Accept json
+// @Produce json
+// @Param id path int true "Supplier ID"
+// @Param status body map[string]string true "Status update request"
+// @Success 200 {object} map[string]interface{} "Supplier status updated successfully"
+// @Failure 400 {object} map[string]interface{} "Bad request"
+// @Failure 404 {object} map[string]interface{} "Supplier not found"
+// @Failure 500 {object} map[string]interface{} "Internal server error"
+// @Security BearerAuth
+// @Router /suppliers/{id}/status [put]
+func (h *SupplierHandler) UpdateSupplierStatus(c echo.Context) error {
+	id, err := pkg.ExtractIDParam(c)
+	if err != nil {
+		return err
+	}
+
+	var request struct {
+		Status string `json:"status" validate:"required,oneof=active inactive"`
+	}
+	if err := c.Bind(&request); err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid request body"})
+	}
+
+	if err := h.supplierService.UpdateSupplierStatus(c.Request().Context(), id, request.Status); err != nil {
+		return fmt.Errorf("failed to update supplier status: %w", err)
+	}
+
+	return c.JSON(http.StatusOK, map[string]string{"message": "Supplier status updated successfully"})
 }
 
 func (h *SupplierHandler) DeleteSupplier(c echo.Context) error {

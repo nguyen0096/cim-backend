@@ -6,4 +6,5 @@ type Supplier struct {
 	ContactEmail string `json:"contact_email"`
 	ContactPhone string `json:"contact_phone"`
 	Address      string `json:"address"`
+	Status       string `json:"status" gorm:"default:active;check:status IN ('active', 'inactive')"`
 }
