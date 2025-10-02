@@ -8,6 +8,7 @@ alwaysApply: true
 
 - **NEVER change existing rules**: Never add, edit, or delete existing rules.
 - **Scope control**: ONLY implement what the user explicitly asked. If related changes are needed, pause and ask the user before proceeding.
+- **NEVER CHANGE EXISTING CODE IF IT'S NOT RELATED**
 - **Task completion**: A task is not “done” until the user explicitly confirms. Always ask: “Please review the changes and confirm if the task is complete.”
 
 ### Task Summary Rule
