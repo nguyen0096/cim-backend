@@ -7,23 +7,30 @@ import (
 	"sync"
 	"time"
 
+	"github.com/go-playground/validator/v10"
 	"github.com/xuri/excelize/v2"
 )
 
 // FileConfig contains the configuration of Excel file.
 type FileConfig struct {
-	FilePath string
-	Sheets   []SheetConfig
+	FilePath     string        `validate:"required"`
+	SheetConfigs []SheetConfig `json:"sheets" validate:"required,min=1,dive"`
+
+	// IndexColumns are names of columns that will be indexed for lookup.
+	IndexColumns []string `json:"index_columns" validate:"-"`
 }
+
+type SheetInternalID string
 
 // SheetConfig contains the configuration for a sheet, used as anchor to let
 // repository how to parse the sheet.
 type SheetConfig struct {
-	SheetNamePattern SheetNamePattern
-	SheetNameParams  map[string]string
-	HeaderStartRow   int
-	HeaderStartCol   int
-	HeaderHeight     int
+	InternalID     SheetInternalID   `json:"internal_id" validate:"required"`
+	NamePattern    SheetNamePattern  `json:"name_pattern" validate:"required"`
+	NameParams     map[string]string `json:"name_params" validate:"-"`
+	HeaderStartRow int               `json:"header_start_row" validate:"required,min=1"`
+	HeaderStartCol int               `json:"header_start_col" validate:"required,min=1"`
+	HeaderHeight   int               `json:"header_height" validate:"required,min=1"`
 }
 
 func (sc *SheetConfig) SetSheetNameTimeParams(t time.Time) {
@@ -36,11 +43,11 @@ func (sc *SheetConfig) SetSheetNameTimeParams(t time.Time) {
 		"{YY}":   t.Format("06"),
 	}
 
-	if sc.SheetNameParams == nil {
-		sc.SheetNameParams = make(map[string]string)
+	if sc.NameParams == nil {
+		sc.NameParams = make(map[string]string)
 	}
 	for k, v := range timeParams {
-		sc.SheetNameParams[k] = v
+		sc.NameParams[k] = v
 	}
 }
 
@@ -60,9 +67,9 @@ type Sheet struct {
 	SheetName string
 	Index     int
 
-	// Header metadata
-
-	HeaderTrees     []HeaderNode
+	// HeaderRoot is the root node of the header tree. (Sheet metadata)
+	HeaderRoot *HeaderNode
+	// MergeCellLookup is a map of cell coordinates to the merge cell range. (Sheet metadata)
 	MergeCellLookup map[int]map[int]string
 }
 
@@ -72,12 +79,32 @@ type HeaderNode struct {
 	Value           string
 	// IsEmpty represents if the node and all its children are empty
 	IsEmpty    bool
-	SubHeaders []HeaderNode
+	SubHeaders []*HeaderNode
+	Lookup     map[string]*HeaderNode
+}
+
+func (hn *HeaderNode) SetLookup(value string, node *HeaderNode) error {
+	if hn.Lookup == nil {
+		hn.Lookup = make(map[string]*HeaderNode)
+	}
+	if _, ok := hn.Lookup[value]; ok {
+		return fmt.Errorf("lookup value already exists")
+	}
+	hn.Lookup[value] = node
+	return nil
 }
 
 type Cell struct {
 	Row int
 	Col int
+}
+
+func (c Cell) String() string {
+	cellName, err := excelize.CoordinatesToCellName(c.Col, c.Row)
+	if err != nil {
+		return fmt.Sprintf("Cell{Row: %d, Col: %d}", c.Row, c.Col)
+	}
+	return cellName
 }
 
 func NewCellFromName(name string) (Cell, error) {
@@ -96,13 +123,47 @@ type File struct {
 	sync.RWMutex
 	FileConfig
 	Excel  *excelize.File
-	sheets []*Sheet
+	Sheets map[SheetInternalID]*Sheet
 }
 
+// trimFileConfigValues cleans the FileConfig by trimming the strings
+func trimFileConfigValues(config FileConfig) FileConfig {
+	config.FilePath = strings.TrimSpace(config.FilePath)
+
+	for i := range config.SheetConfigs {
+		config.SheetConfigs[i].NamePattern = SheetNamePattern(strings.TrimSpace(string(config.SheetConfigs[i].NamePattern)))
+		config.SheetConfigs[i].InternalID = SheetInternalID(strings.TrimSpace(string(config.SheetConfigs[i].InternalID)))
+		if config.SheetConfigs[i].NameParams != nil {
+			for key, value := range config.SheetConfigs[i].NameParams {
+				config.SheetConfigs[i].NameParams[key] = strings.TrimSpace(value)
+			}
+		}
+	}
+
+	// Trim IndexColumns if they exist
+	for i := range config.IndexColumns {
+		config.IndexColumns[i] = strings.TrimSpace(config.IndexColumns[i])
+	}
+
+	return config
+}
+
+// validateFileConfig validates the FileConfig structure
+func validateFileConfig(config FileConfig) error {
+	validate := validator.New()
+	if err := validate.Struct(config); err != nil {
+		return fmt.Errorf("failed to validate file config: %w", err)
+	}
+	return nil
+}
+
+// NewFile creates a new File instance with validated configuration
 func NewFile(config FileConfig) (*File, error) {
-	return &File{
-		FileConfig: config,
-	}, nil
+	config = trimFileConfigValues(config)
+	if err := validateFileConfig(config); err != nil {
+		return nil, fmt.Errorf("invalid file config: %w", err)
+	}
+	return &File{FileConfig: config}, nil
 }
 
 func (f *File) Close() error {
@@ -116,6 +177,33 @@ func (f *File) Close() error {
 	err := f.Excel.Close()
 	f.Excel = nil
 	return err
+}
+
+func (f *File) GetColByExactHeaders(sheetInternalID string, headers []string) (int, error) {
+	if f.Sheets == nil {
+		return -1, fmt.Errorf("sheets not found")
+	}
+	sheet, ok := f.Sheets[SheetInternalID(sheetInternalID)]
+	if !ok {
+		return -1, fmt.Errorf("sheet internal id [%s] not found", sheetInternalID)
+	}
+
+	headerNode := sheet.HeaderRoot
+	for _, header := range headers {
+		if headerNode.Lookup == nil {
+			return -1, fmt.Errorf("header lookup not found")
+		}
+		node, ok := headerNode.Lookup[header]
+		if !ok {
+			return -1, fmt.Errorf("header [%s] not found", header)
+		}
+		headerNode = node
+	}
+
+	if headerNode.TopLeftCell.Col != headerNode.BottomRightCell.Col {
+		return -1, fmt.Errorf("header node is not a single column")
+	}
+	return headerNode.TopLeftCell.Col, nil
 }
 
 // Load reads an Excel file and creates a in-memory excelize.File instance.
@@ -150,8 +238,8 @@ func (f *File) Load() (err error) {
 }
 
 func (f *File) parseSheets() error {
-	for _, sheetCfg := range f.Sheets {
-		targetSheet := sheetCfg.SheetNamePattern.Parse(sheetCfg.SheetNameParams)
+	for _, sheetCfg := range f.SheetConfigs {
+		targetSheet := sheetCfg.NamePattern.Parse(sheetCfg.NameParams)
 		idx, err := f.Excel.GetSheetIndex(targetSheet)
 		if err != nil {
 			continue
@@ -167,10 +255,10 @@ func (f *File) parseSheets() error {
 			return fmt.Errorf("failed to parse header: %w", err)
 		}
 
-		if f.sheets == nil {
-			f.sheets = make([]*Sheet, 0, len(f.Sheets))
+		if f.Sheets == nil {
+			f.Sheets = make(map[SheetInternalID]*Sheet)
 		}
-		f.sheets = append(f.sheets, s)
+		f.Sheets[sheetCfg.InternalID] = s
 	}
 	return nil
 }
@@ -231,7 +319,7 @@ func (s *Sheet) parseHeader() error {
 		return fmt.Errorf("failed to get merged cells: %w", err)
 	}
 	s.MergeCellLookup = buildMergeCellLookup(mergeCells)
-	s.HeaderTrees, err = s.parseHeaderRow()
+	s.HeaderRoot, err = s.parseHeaderRow()
 	if err != nil {
 		return fmt.Errorf("failed to parse header row: %w", err)
 	}
@@ -239,22 +327,36 @@ func (s *Sheet) parseHeader() error {
 }
 
 // parseHeaderRow recursively parses a header row and its children
-func (s *Sheet) parseHeaderRow() ([]HeaderNode, error) {
+func (s *Sheet) parseHeaderRow() (*HeaderNode, error) {
 	if s.HeaderStartCol == 0 || s.HeaderStartRow == 0 || s.HeaderHeight == 0 {
 		return nil, fmt.Errorf("header start col, row or height is not set")
 	}
 
-	var foundEmptyTree bool
+	rootNode := &HeaderNode{
+		SubHeaders: []*HeaderNode{},
+	}
+
 	currentCol := s.HeaderStartCol
-	for !foundEmptyTree {
+	for {
 		node, err := s.recursivelyParseNode(1, Cell{Row: s.HeaderStartRow, Col: currentCol})
 		if err != nil {
 			return nil, fmt.Errorf("failed to parse node: %w", err)
 		}
-		foundEmptyTree = node.IsEmpty
 		currentCol += node.BottomRightCell.Col - node.TopLeftCell.Col + 1
+
+		if node.IsEmpty {
+			// stop the loop when we found an empty header tree
+			break
+		}
+
+		// capture new node and set lookup
+		rootNode.SubHeaders = append(rootNode.SubHeaders, node)
+		if err := rootNode.SetLookup(node.Value, node); err != nil {
+			return nil, fmt.Errorf("failed to set lookup value [%s] cell [%s] - [%s]",
+				node.Value, node.TopLeftCell.String(), node.BottomRightCell.String())
+		}
 	}
-	return s.HeaderTrees, nil
+	return rootNode, nil
 }
 
 // recursively parse a node and its children.
@@ -287,10 +389,12 @@ func (s *Sheet) recursivelyParseNode(currentDepth int, topLeftCell Cell) (*Heade
 		return nil, fmt.Errorf("header of column %d is out of bounds", topLeftCell.Col)
 	}
 
+	// get header text from cell value and trim space
 	cellValue, err := s.File.Excel.GetCellValue(s.SheetName, cellName)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get cell value: %w", err)
 	}
+	cellValue = strings.TrimSpace(cellValue)
 
 	if currentDepth == s.HeaderHeight {
 		// header is the lowest level, return the node
@@ -298,7 +402,7 @@ func (s *Sheet) recursivelyParseNode(currentDepth int, topLeftCell Cell) (*Heade
 			Value:           cellValue,
 			TopLeftCell:     topLeftCell,
 			BottomRightCell: bottomRightCell,
-			SubHeaders:      []HeaderNode{},
+			SubHeaders:      []*HeaderNode{},
 			IsEmpty:         cellValue == "",
 		}, nil
 	}
@@ -307,7 +411,7 @@ func (s *Sheet) recursivelyParseNode(currentDepth int, topLeftCell Cell) (*Heade
 		Value:           cellValue,
 		TopLeftCell:     topLeftCell,
 		BottomRightCell: bottomRightCell,
-		SubHeaders:      []HeaderNode{},
+		SubHeaders:      []*HeaderNode{},
 		IsEmpty:         cellValue == "",
 	}
 
@@ -321,7 +425,11 @@ func (s *Sheet) recursivelyParseNode(currentDepth int, topLeftCell Cell) (*Heade
 		}
 		// update parent node
 		node.IsEmpty = node.IsEmpty && child.IsEmpty
-		node.SubHeaders = append(node.SubHeaders, *child)
+		node.SubHeaders = append(node.SubHeaders, child)
+		if err := node.SetLookup(child.Value, child); err != nil {
+			return nil, fmt.Errorf("failed to set lookup value [%s] cell [%s] - [%s]",
+				child.Value, node.TopLeftCell.String(), node.BottomRightCell.String())
+		}
 
 		// move to next column
 		currentCol += child.BottomRightCell.Col - child.TopLeftCell.Col + 1

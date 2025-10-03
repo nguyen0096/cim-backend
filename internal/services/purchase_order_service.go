@@ -14,7 +14,7 @@ import (
 	"gorm.io/gorm"
 )
 
-//go:generate mockery --name=PurchaseOrderService --structname=PurchaseOrderService --output=../mocks/services --outpkg=servicemocks
+//go:generate mockery --name=PurchaseOrderService --structname=PurchaseOrderService --output=../mocks/servicemocks --outpkg=servicemocks
 type PurchaseOrderService interface {
 	CreatePurchaseOrder(ctx context.Context, purchaseOrder *models.PurchaseOrder) error
 	GetPurchaseOrderByID(id uint) (*models.PurchaseOrder, error)

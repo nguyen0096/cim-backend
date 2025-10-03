@@ -69,10 +69,6 @@ prod-setup:
 docs:
 	swag init -g main.go
 
-# Generate JWT token for testing
-generate-token:
-	go run cmd/generate-token/main.go
-
 # Test API with sample data
 test-api:
 	./test-api.sh
@@ -99,7 +95,6 @@ help:
 	@echo "  dev-setup      - Setup development environment"
 	@echo "  prod-setup     - Setup production environment"
 	@echo "  docs           - Generate API documentation"
-	@echo "  generate-token - Generate JWT token for testing"
 	@echo "  test-api       - Test API with sample data"
 	@echo "  seed-db        - Seed database with mock data"
 

@@ -165,7 +165,7 @@ func TestSheetNamePattern_Parse(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			sheetConfig := SheetConfig{}
 			sheetConfig.SetSheetNameTimeParams(tt.date)
-			result := tt.pattern.Parse(sheetConfig.SheetNameParams)
+			result := tt.pattern.Parse(sheetConfig.NameParams)
 			if result != tt.expected {
 				t.Errorf("Parse() = %v, want %v", result, tt.expected)
 			}
@@ -210,7 +210,7 @@ func TestSheetNamePattern_Parse_EdgeCases(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			sheetConfig := SheetConfig{}
 			sheetConfig.SetSheetNameTimeParams(tt.date)
-			result := tt.pattern.Parse(sheetConfig.SheetNameParams)
+			result := tt.pattern.Parse(sheetConfig.NameParams)
 			if result != tt.expected {
 				t.Errorf("Parse() = %v, want %v", result, tt.expected)
 			}
@@ -220,16 +220,17 @@ func TestSheetNamePattern_Parse_EdgeCases(t *testing.T) {
 
 func TestFile_Load(t *testing.T) {
 	xntSheet := SheetConfig{
-		SheetNamePattern: "THANG {MM}",
-		HeaderStartRow:   3,
-		HeaderStartCol:   1,
-		HeaderHeight:     3,
+		InternalID:     "xnt_sheet",
+		NamePattern:    "THANG {MM}",
+		HeaderStartRow: 3,
+		HeaderStartCol: 1,
+		HeaderHeight:   3,
 	}
 	xntSheet.SetSheetNameTimeParams(time.Date(2023, 12, 1, 0, 0, 0, 0, time.UTC))
 
 	fc := FileConfig{
-		FilePath: TestInventoryTrackerExcelFile,
-		Sheets:   []SheetConfig{xntSheet},
+		FilePath:     TestInventoryTrackerExcelFile,
+		SheetConfigs: []SheetConfig{xntSheet},
 	}
 
 	f, err := NewFile(fc)
@@ -386,4 +387,443 @@ func TestSpatialIndex_Concept(t *testing.T) {
 			t.Errorf("Expected row %d to NOT exist in sparse index", row)
 		}
 	}
+}
+
+func TestTrimFileConfigValues(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    FileConfig
+		expected FileConfig
+	}{
+		{
+			name: "should trim whitespace from all string fields",
+			input: FileConfig{
+				FilePath: "  /path/to/file.xlsx  ",
+				SheetConfigs: []SheetConfig{
+					{
+						InternalID:  "  sheet1  ",
+						NamePattern: "  THANG {MM}  ",
+						NameParams: map[string]string{
+							"  key1  ": "  value1  ",
+							"key2":     "value2",
+						},
+						HeaderStartRow: 1,
+						HeaderStartCol: 1,
+						HeaderHeight:   2,
+					},
+				},
+				IndexColumns: []string{"  col1  ", "col2", "  col3  "},
+			},
+			expected: FileConfig{
+				FilePath: "/path/to/file.xlsx",
+				SheetConfigs: []SheetConfig{
+					{
+						InternalID:  "sheet1",
+						NamePattern: "THANG {MM}",
+						NameParams: map[string]string{
+							"  key1  ": "value1",
+							"key2":     "value2",
+						},
+						HeaderStartRow: 1,
+						HeaderStartCol: 1,
+						HeaderHeight:   2,
+					},
+				},
+				IndexColumns: []string{"col1", "col2", "col3"},
+			},
+		},
+		{
+			name: "should handle empty strings",
+			input: FileConfig{
+				FilePath: "",
+				SheetConfigs: []SheetConfig{
+					{
+						InternalID:     "",
+						NamePattern:    "",
+						NameParams:     map[string]string{},
+						HeaderStartRow: 1,
+						HeaderStartCol: 1,
+						HeaderHeight:   1,
+					},
+				},
+				IndexColumns: []string{},
+			},
+			expected: FileConfig{
+				FilePath: "",
+				SheetConfigs: []SheetConfig{
+					{
+						InternalID:     "",
+						NamePattern:    "",
+						NameParams:     map[string]string{},
+						HeaderStartRow: 1,
+						HeaderStartCol: 1,
+						HeaderHeight:   1,
+					},
+				},
+				IndexColumns: []string{},
+			},
+		},
+		{
+			name: "should handle nil maps",
+			input: FileConfig{
+				FilePath: "file.xlsx",
+				SheetConfigs: []SheetConfig{
+					{
+						InternalID:     "sheet1",
+						NamePattern:    "SHEET_{MM}",
+						NameParams:     nil,
+						HeaderStartRow: 2,
+						HeaderStartCol: 3,
+						HeaderHeight:   4,
+					},
+				},
+				IndexColumns: nil,
+			},
+			expected: FileConfig{
+				FilePath: "file.xlsx",
+				SheetConfigs: []SheetConfig{
+					{
+						InternalID:     "sheet1",
+						NamePattern:    "SHEET_{MM}",
+						NameParams:     nil,
+						HeaderStartRow: 2,
+						HeaderStartCol: 3,
+						HeaderHeight:   4,
+					},
+				},
+				IndexColumns: nil,
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := trimFileConfigValues(tt.input)
+			assert.Equal(t, tt.expected, result)
+		})
+	}
+}
+
+func TestValidateFileConfig(t *testing.T) {
+	tests := []struct {
+		name        string
+		config      FileConfig
+		expectError bool
+		errorMsg    string
+	}{
+		{
+			name: "should pass validation with valid config",
+			config: FileConfig{
+				FilePath: "test.xlsx",
+				SheetConfigs: []SheetConfig{
+					{
+						InternalID:  "sheet1",
+						NamePattern: "SHEET_{MM}",
+						NameParams: map[string]string{
+							"{MM}": "01",
+						},
+						HeaderStartRow: 1,
+						HeaderStartCol: 1,
+						HeaderHeight:   2,
+					},
+				},
+				IndexColumns: []string{"col1", "col2"},
+			},
+			expectError: false,
+		},
+		{
+			name: "should fail validation when FilePath is empty",
+			config: FileConfig{
+				FilePath: "",
+				SheetConfigs: []SheetConfig{
+					{
+						InternalID:     "sheet1",
+						NamePattern:    "SHEET_{MM}",
+						HeaderStartRow: 1,
+						HeaderStartCol: 1,
+						HeaderHeight:   2,
+					},
+				},
+			},
+			expectError: true,
+			errorMsg:    "failed to validate file config",
+		},
+		{
+			name: "should fail validation when SheetConfigs is empty",
+			config: FileConfig{
+				FilePath:     "test.xlsx",
+				SheetConfigs: []SheetConfig{},
+			},
+			expectError: true,
+			errorMsg:    "failed to validate file config",
+		},
+		{
+			name: "should fail validation when InternalID is empty",
+			config: FileConfig{
+				FilePath: "test.xlsx",
+				SheetConfigs: []SheetConfig{
+					{
+						InternalID:     "",
+						NamePattern:    "SHEET_{MM}",
+						HeaderStartRow: 1,
+						HeaderStartCol: 1,
+						HeaderHeight:   2,
+					},
+				},
+			},
+			expectError: true,
+			errorMsg:    "failed to validate file config",
+		},
+		{
+			name: "should fail validation when NamePattern is empty",
+			config: FileConfig{
+				FilePath: "test.xlsx",
+				SheetConfigs: []SheetConfig{
+					{
+						InternalID:     "sheet1",
+						NamePattern:    "",
+						HeaderStartRow: 1,
+						HeaderStartCol: 1,
+						HeaderHeight:   2,
+					},
+				},
+			},
+			expectError: true,
+			errorMsg:    "failed to validate file config",
+		},
+		{
+			name: "should fail validation when HeaderStartRow is zero",
+			config: FileConfig{
+				FilePath: "test.xlsx",
+				SheetConfigs: []SheetConfig{
+					{
+						InternalID:     "sheet1",
+						NamePattern:    "SHEET_{MM}",
+						HeaderStartRow: 0,
+						HeaderStartCol: 1,
+						HeaderHeight:   2,
+					},
+				},
+			},
+			expectError: true,
+			errorMsg:    "failed to validate file config",
+		},
+		{
+			name: "should fail validation when HeaderStartCol is zero",
+			config: FileConfig{
+				FilePath: "test.xlsx",
+				SheetConfigs: []SheetConfig{
+					{
+						InternalID:     "sheet1",
+						NamePattern:    "SHEET_{MM}",
+						HeaderStartRow: 1,
+						HeaderStartCol: 0,
+						HeaderHeight:   2,
+					},
+				},
+			},
+			expectError: true,
+			errorMsg:    "failed to validate file config",
+		},
+		{
+			name: "should fail validation when HeaderHeight is zero",
+			config: FileConfig{
+				FilePath: "test.xlsx",
+				SheetConfigs: []SheetConfig{
+					{
+						InternalID:     "sheet1",
+						NamePattern:    "SHEET_{MM}",
+						HeaderStartRow: 1,
+						HeaderStartCol: 1,
+						HeaderHeight:   0,
+					},
+				},
+			},
+			expectError: true,
+			errorMsg:    "failed to validate file config",
+		},
+		{
+			name: "should fail validation when HeaderStartRow is negative",
+			config: FileConfig{
+				FilePath: "test.xlsx",
+				SheetConfigs: []SheetConfig{
+					{
+						InternalID:     "sheet1",
+						NamePattern:    "SHEET_{MM}",
+						HeaderStartRow: -1,
+						HeaderStartCol: 1,
+						HeaderHeight:   2,
+					},
+				},
+			},
+			expectError: true,
+			errorMsg:    "failed to validate file config",
+		},
+		{
+			name: "should pass validation with multiple sheets",
+			config: FileConfig{
+				FilePath: "test.xlsx",
+				SheetConfigs: []SheetConfig{
+					{
+						InternalID:     "sheet1",
+						NamePattern:    "SHEET_{MM}",
+						HeaderStartRow: 1,
+						HeaderStartCol: 1,
+						HeaderHeight:   2,
+					},
+					{
+						InternalID:     "sheet2",
+						NamePattern:    "DATA_{YYYY}",
+						HeaderStartRow: 2,
+						HeaderStartCol: 3,
+						HeaderHeight:   1,
+					},
+				},
+			},
+			expectError: false,
+		},
+		{
+			name: "should pass validation with empty IndexColumns",
+			config: FileConfig{
+				FilePath: "test.xlsx",
+				SheetConfigs: []SheetConfig{
+					{
+						InternalID:     "sheet1",
+						NamePattern:    "SHEET_{MM}",
+						HeaderStartRow: 1,
+						HeaderStartCol: 1,
+						HeaderHeight:   2,
+					},
+				},
+				IndexColumns: []string{},
+			},
+			expectError: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := validateFileConfig(tt.config)
+
+			if tt.expectError {
+				assert.Error(t, err)
+				if tt.errorMsg != "" {
+					assert.Contains(t, err.Error(), tt.errorMsg)
+				}
+			} else {
+				assert.NoError(t, err)
+			}
+		})
+	}
+}
+
+func TestNewFile(t *testing.T) {
+	tests := []struct {
+		name        string
+		config      FileConfig
+		expectError bool
+		errorMsg    string
+	}{
+		{
+			name: "should create file successfully with valid config",
+			config: FileConfig{
+				FilePath: "test.xlsx",
+				SheetConfigs: []SheetConfig{
+					{
+						InternalID:     "sheet1",
+						NamePattern:    "SHEET_{MM}",
+						HeaderStartRow: 1,
+						HeaderStartCol: 1,
+						HeaderHeight:   2,
+					},
+				},
+			},
+			expectError: false,
+		},
+		{
+			name: "should trim values and create file successfully",
+			config: FileConfig{
+				FilePath: "  test.xlsx  ",
+				SheetConfigs: []SheetConfig{
+					{
+						InternalID:     "  sheet1  ",
+						NamePattern:    "  SHEET_{MM}  ",
+						HeaderStartRow: 1,
+						HeaderStartCol: 1,
+						HeaderHeight:   2,
+					},
+				},
+			},
+			expectError: false,
+		},
+		{
+			name: "should fail with invalid config",
+			config: FileConfig{
+				FilePath: "",
+				SheetConfigs: []SheetConfig{
+					{
+						InternalID:     "sheet1",
+						NamePattern:    "SHEET_{MM}",
+						HeaderStartRow: 1,
+						HeaderStartCol: 1,
+						HeaderHeight:   2,
+					},
+				},
+			},
+			expectError: true,
+			errorMsg:    "invalid file config",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			file, err := NewFile(tt.config)
+
+			if tt.expectError {
+				assert.Error(t, err)
+				assert.Nil(t, file)
+				if tt.errorMsg != "" {
+					assert.Contains(t, err.Error(), tt.errorMsg)
+				}
+			} else {
+				assert.NoError(t, err)
+				assert.NotNil(t, file)
+				// For the trimming test, we expect the trimmed values
+				if tt.name == "should trim values and create file successfully" {
+					assert.Equal(t, "test.xlsx", file.FilePath)
+					assert.Equal(t, "sheet1", file.SheetConfigs[0].InternalID)
+					assert.Equal(t, "SHEET_{MM}", string(file.SheetConfigs[0].NamePattern))
+				} else {
+					assert.Equal(t, tt.config.FilePath, file.FilePath)
+					assert.Equal(t, tt.config.SheetConfigs, file.SheetConfigs)
+				}
+			}
+		})
+	}
+}
+
+func TestFile_GetColByExactHeaders(t *testing.T) {
+	xntSheet := SheetConfig{
+		InternalID:     "current_month_inventory_change",
+		NamePattern:    "THANG {MM}",
+		HeaderStartRow: 3,
+		HeaderStartCol: 1,
+		HeaderHeight:   3,
+	}
+	xntSheet.SetSheetNameTimeParams(time.Date(2023, 12, 1, 0, 0, 0, 0, time.UTC))
+
+	fc := FileConfig{
+		FilePath:     TestInventoryTrackerExcelFile,
+		SheetConfigs: []SheetConfig{xntSheet},
+	}
+
+	f, err := NewFile(fc)
+	require.Nil(t, err)
+
+	err = f.Load()
+	require.Nil(t, err)
+
+	col, err := f.GetColByExactHeaders(string(xntSheet.InternalID), []string{"DiẾN GiẢI", ""})
+	require.Nil(t, err)
+	assert.Equal(t, 2, col)
 }

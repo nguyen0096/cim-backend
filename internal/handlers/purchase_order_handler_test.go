@@ -6,8 +6,8 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"import-export-backend/internal/handlers/servicemocks"
 	"import-export-backend/internal/middleware"
+	"import-export-backend/internal/mocks/servicemocks"
 	"import-export-backend/internal/models"
 	"import-export-backend/internal/repository/repositorymocks"
 	"import-export-backend/pkg"

@@ -31,30 +31,6 @@ func (b *Base) BeforeCreate(tx *gorm.DB) error {
 	return nil
 }
 
-// Inventory represents inventory for a product
-type Inventory struct {
-	Base
-	ProductID    uint     `json:"product_id" gorm:"unique;not null"`
-	Product      *Product `json:"product,omitempty" gorm:"foreignKey:ProductID" validate:"-"`
-	Quantity     int      `json:"quantity" gorm:"default:0"`
-	ReorderLevel int      `json:"reorder_level" gorm:"default:0"`
-	Location     string   `json:"location"`
-}
-
-// InventoryTransaction represents an inventory transaction
-type InventoryTransaction struct {
-	ID              uint      `json:"id" gorm:"primaryKey;autoIncrement"`
-	ProductID       uint      `json:"product_id"`
-	Product         Product   `json:"product" gorm:"foreignKey:ProductID"`
-	TransactionType string    `json:"transaction_type" gorm:"not null;check:transaction_type IN ('purchase', 'sale', 'adjustment', 'return')"`
-	Quantity        int       `json:"quantity" gorm:"not null"`
-	ReferenceID     uint      `json:"reference_id"`
-	ReferenceType   string    `json:"reference_type"`
-	Notes           string    `json:"notes"`
-	CreatedBy       string    `json:"created_by"`
-	CreatedAt       time.Time `json:"created_at"`
-}
-
 // Order represents a customer order
 type Order struct {
 	ID            uint        `json:"id" gorm:"primaryKey;autoIncrement"`

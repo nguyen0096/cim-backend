@@ -139,7 +139,7 @@ var (
 	}
 )
 
-//go:generate mockery --name=ExcelService --structname=ExcelService --output=../mocks/services --outpkg=servicemocks
+//go:generate mockery --name=ExcelService --structname=ExcelService --output=../mocks/servicemocks --outpkg=servicemocks
 type ExcelService interface {
 	ExportProducts(ctx context.Context) (*excelize.File, error)
 	ExportProductsWithStyle(ctx context.Context, headerStyle, dataStyle *CellStyle) (*excelize.File, error)
