@@ -29,11 +29,9 @@ func Migrate(db *gorm.DB) error {
 		&models.Supplier{},
 		&models.Product{},
 		&models.Inventory{},
+		&models.InventoryItem{},
 		&models.PurchaseOrder{},
 		&models.PurchaseOrderItem{},
-		&models.InventoryTransaction{},
-		&models.Order{},
-		&models.OrderItem{},
 		&models.Settings{},
 	)
 }

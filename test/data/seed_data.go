@@ -187,19 +187,76 @@ var InventoryConfigs = []InventoryData{
 func Inventory(productIDs []uint) []models.Inventory {
 	now := time.Now()
 
-	inventory := make([]models.Inventory, len(InventoryConfigs))
-	for i, config := range InventoryConfigs {
-		inventory[i] = models.Inventory{
+	// Create inventory locations
+	inventories := []models.Inventory{
+		{
 			Base: models.Base{
 				CreatedAt: now,
 				UpdatedAt: now,
 			},
-			ProductID:    config.ProductID,
-			Quantity:     config.Quantity,
-			ReorderLevel: config.ReorderLevel,
-			Location:     config.Location,
+			Name:        "Main Warehouse A",
+			Description: "Primary storage facility for electronics and office supplies",
+			Location:    "123 Industrial Blvd, San Francisco, CA 94107",
+			Status:      models.InventoryStatusActive,
+		},
+		{
+			Base: models.Base{
+				CreatedAt: now,
+				UpdatedAt: now,
+			},
+			Name:        "Secondary Warehouse B",
+			Description: "Secondary storage facility for bulk items",
+			Location:    "456 Storage Way, Oakland, CA 94607",
+			Status:      models.InventoryStatusActive,
+		},
+		{
+			Base: models.Base{
+				CreatedAt: now,
+				UpdatedAt: now,
+			},
+			Name:        "Distribution Center C",
+			Description: "Distribution center for fast-moving items",
+			Location:    "789 Logistics Ave, San Jose, CA 95110",
+			Status:      models.InventoryStatusActive,
+		},
+	}
+
+	return inventories
+}
+
+// InventoryItems contains all test inventory item data
+func InventoryItems(productIDs []uint) []models.InventoryItem {
+	now := time.Now()
+
+	items := make([]models.InventoryItem, len(InventoryConfigs))
+	for i, config := range InventoryConfigs {
+		// Map product to inventory based on location
+		var inventoryID uint
+		switch config.Location {
+		case "Warehouse A":
+			inventoryID = 1
+		case "Warehouse B":
+			inventoryID = 2
+		case "Warehouse C":
+			inventoryID = 3
+		default:
+			inventoryID = 1 // Default to first inventory
+		}
+
+		items[i] = models.InventoryItem{
+			Base: models.Base{
+				CreatedAt: now,
+				UpdatedAt: now,
+			},
+			InventoryID:   inventoryID,
+			ProductID:     config.ProductID,
+			Quantity:      config.Quantity,
+			ReorderLevel:  config.ReorderLevel,
+			MaxStockLevel: config.Quantity * 3, // Set max stock to 3x current quantity
+			Status:        models.InventoryItemStatusActive,
+			AverageCost:   100.0, // Default average cost
 		}
 	}
 
-	return inventory
+	return items
 }
