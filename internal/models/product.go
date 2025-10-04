@@ -11,5 +11,5 @@ type Product struct {
 	UnitType       string           `json:"unit_type" gorm:"type:varchar(20)"`
 	ProductType    string           `json:"product_type" gorm:"type:varchar(20)"`
 	Status         string           `json:"status" gorm:"default:active;check:status IN ('active', 'inactive')"`
-	InventoryItem  *InventoryItem   `json:"inventory_item,omitempty" gorm:"foreignKey:ProductID" validate:"-"`
+	InventoryItems []*InventoryItem `json:"inventory_items,omitempty" gorm:"foreignKey:ProductID" validate:"-"`
 }

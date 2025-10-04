@@ -67,26 +67,26 @@ func main() {
 	supplierRepo := repository.NewSupplierRepository(db)
 	productRepo := repository.NewProductRepository(db)
 	inventoryRepo := repository.NewInventoryRepository(db)
+	inventoryItemRepo := repository.NewInventoryItemRepository(db)
 	purchaseOrderRepo := repository.NewPurchaseOrderRepository(db)
-	orderRepo := repository.NewOrderRepository(db)
 	settingsRepo := repository.NewSettingsRepository(db)
 
 	// Initialize services
 	supplierService := services.NewSupplierService(supplierRepo)
-	productService := services.NewProductService(productRepo, inventoryRepo)
+	productService := services.NewProductService(productRepo)
 	inventoryService := services.NewInventoryService(inventoryRepo, productRepo)
+	inventoryItemService := services.NewInventoryItemService(inventoryItemRepo, inventoryRepo, productRepo)
 	excelService := services.NewExcelService(productRepo, inventoryRepo)
 	settingsService := services.NewSettingsService(settingsRepo)
 	purchaseOrderService := services.NewPurchaseOrderService(purchaseOrderRepo, inventoryService, excelService, settingsService, db, logger)
-	orderService := services.NewOrderService(orderRepo, inventoryService)
 
 	// Initialize handlers
 	userHandler := handlers.NewUserHandler()
 	supplierHandler := handlers.NewSupplierHandler(supplierService)
 	productHandler := handlers.NewProductHandler(productService, logger)
 	inventoryHandler := handlers.NewInventoryHandler(inventoryService)
+	inventoryItemHandler := handlers.NewInventoryItemHandler(inventoryItemService)
 	purchaseOrderHandler := handlers.NewPurchaseOrderHandler(purchaseOrderRepo, purchaseOrderService)
-	orderHandler := handlers.NewOrderHandler(orderService)
 	excelHandler := handlers.NewExcelHandler(excelService)
 	settingsHandler := handlers.NewSettingsHandler(settingsService)
 
@@ -138,12 +138,24 @@ func main() {
 	products.GET("/:id/inventory", productHandler.GetProductInventory)
 
 	// Inventory routes
-	inventory := api.Group("/inventory", middleware.AuthMiddleware(firebaseAuth))
-	inventory.GET("", inventoryHandler.GetInventory)
-	inventory.PUT("/:id", inventoryHandler.UpdateInventory)
-	inventory.POST("/adjust", inventoryHandler.AdjustInventory)
-	inventory.GET("/transactions", inventoryHandler.GetTransactions)
-	inventory.GET("/low-stock", inventoryHandler.GetLowStock)
+	inventories := api.Group("/inventories", middleware.AuthMiddleware(firebaseAuth))
+	inventories.GET("", inventoryHandler.ListInventory)
+	inventories.POST("", inventoryHandler.CreateInventory)
+	inventories.GET("/:id", inventoryHandler.GetInventory)
+	inventories.PUT("/:id", inventoryHandler.UpdateInventory)
+	inventories.DELETE("/:id", inventoryHandler.DeleteInventory)
+	inventories.GET("/:id/items", inventoryItemHandler.GetInventoryItemsByInventoryID)
+
+	// Inventory Item routes
+	inventoryItems := api.Group("/inventory-items", middleware.AuthMiddleware(firebaseAuth))
+	inventoryItems.GET("", inventoryItemHandler.ListInventoryItems)
+	inventoryItems.POST("", inventoryItemHandler.CreateInventoryItem)
+	inventoryItems.GET("/:id", inventoryItemHandler.GetInventoryItem)
+	inventoryItems.PUT("/:id", inventoryItemHandler.UpdateInventoryItem)
+	inventoryItems.DELETE("/:id", inventoryItemHandler.DeleteInventoryItem)
+	inventoryItems.GET("/product/:product_id", inventoryItemHandler.GetInventoryItemByProductID)
+	inventoryItems.GET("/low-stock", inventoryItemHandler.GetLowStockItems)
+	inventoryItems.PUT("/:id/adjust", inventoryItemHandler.AdjustInventoryItemQuantity)
 
 	// Supplier routes
 	suppliers := api.Group("/suppliers", middleware.AuthMiddleware(firebaseAuth))
@@ -167,22 +179,10 @@ func main() {
 	// purchaseOrders.DELETE("/:id", purchaseOrderHandler.DeletePurchaseOrder)
 	// purchaseOrders.POST("/:id/receive", purchaseOrderHandler.ReceivePurchaseOrder)
 
-	// Order routes
-	orders := api.Group("/orders", middleware.AuthMiddleware(firebaseAuth))
-	orders.GET("", orderHandler.GetOrders)
-	orders.POST("", orderHandler.CreateOrder)
-	orders.GET("/:id", orderHandler.GetOrder)
-	orders.PUT("/:id", orderHandler.UpdateOrder)
-	orders.PUT("/:id/status", orderHandler.UpdateOrderStatus)
-	orders.DELETE("/:id", orderHandler.DeleteOrder)
-	orders.POST("/:id/complete", orderHandler.CompleteOrder)
-
 	// Excel routes
 	excel := api.Group("/excel", middleware.AuthMiddleware(firebaseAuth))
 	excel.POST("/import-products", excelHandler.ImportProducts)
-	excel.GET("/export-products", excelHandler.ExportProducts)
 	excel.POST("/import-inventory", excelHandler.ImportInventory)
-	excel.GET("/export-inventory", excelHandler.ExportInventory)
 	excel.GET("/template-products", excelHandler.GetProductTemplate)
 	excel.GET("/template-inventory", excelHandler.GetInventoryTemplate)
 	excel.POST("/verify", excelHandler.VerifyFileAndSheet)
@@ -197,9 +197,8 @@ func main() {
 	// Reports routes
 	reports := api.Group("/reports", middleware.AuthMiddleware(firebaseAuth))
 	reports.GET("/inventory-summary", inventoryHandler.GetInventorySummary)
-	reports.GET("/low-stock", inventoryHandler.GetLowStock)
+	reports.GET("/low-stock", inventoryItemHandler.GetLowStockItems)
 	reports.GET("/purchase-summary", purchaseOrderHandler.GetPurchaseSummary)
-	reports.GET("/order-summary", orderHandler.GetOrderSummary)
 
 	// Start server
 	logger.Infof("Server starting on %s:%s", cfg.Server.Host, cfg.Server.Port)

@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"fmt"
 	"import-export-backend/internal/models"
 
 	"gorm.io/gorm"
@@ -10,15 +11,11 @@ import (
 type InventoryRepository interface {
 	Create(ctx context.Context, inventory *models.Inventory) error
 	GetByID(ctx context.Context, id uint) (*models.Inventory, error)
-	GetByProductID(ctx context.Context, productID uint) (*models.Inventory, error)
 	Update(ctx context.Context, inventory *models.Inventory) error
 	Delete(ctx context.Context, id uint) error
 	List(ctx context.Context, limit, offset int) ([]models.Inventory, error)
-	GetLowStock(ctx context.Context) ([]models.Inventory, error)
-	GetTransactions(ctx context.Context, productID uint, limit, offset int) ([]models.InventoryTransaction, error)
-	CreateTransaction(ctx context.Context, transaction *models.InventoryTransaction) error
-	Count(ctx context.Context) (int64, error)
-	CountTransactions(ctx context.Context, productID uint) (int64, error)
+	AddInventory(ctx context.Context, productID uint, quantity int, referenceID uint, referenceType string) error
+	RemoveInventory(ctx context.Context, productID uint, quantity int, referenceID uint, referenceType string) error
 }
 
 type inventoryRepository struct {
@@ -35,16 +32,7 @@ func (r *inventoryRepository) Create(ctx context.Context, inventory *models.Inve
 
 func (r *inventoryRepository) GetByID(ctx context.Context, id uint) (*models.Inventory, error) {
 	var inventory models.Inventory
-	err := r.db.WithContext(ctx).Preload("Product").First(&inventory, "id = ?", id).Error
-	if err != nil {
-		return nil, err
-	}
-	return &inventory, nil
-}
-
-func (r *inventoryRepository) GetByProductID(ctx context.Context, productID uint) (*models.Inventory, error) {
-	var inventory models.Inventory
-	err := r.db.WithContext(ctx).Preload("Product").First(&inventory, "product_id = ?", productID).Error
+	err := r.db.WithContext(ctx).Preload("Items").Preload("Items.Product").First(&inventory, "id = ?", id).Error
 	if err != nil {
 		return nil, err
 	}
@@ -61,42 +49,39 @@ func (r *inventoryRepository) Delete(ctx context.Context, id uint) error {
 
 func (r *inventoryRepository) List(ctx context.Context, limit, offset int) ([]models.Inventory, error) {
 	var inventories []models.Inventory
-	err := r.db.WithContext(ctx).Preload("Product").Limit(limit).Offset(offset).Find(&inventories).Error
+	err := r.db.WithContext(ctx).Preload("Items").Preload("Items.Product").Limit(limit).Offset(offset).Find(&inventories).Error
 	return inventories, err
 }
 
-func (r *inventoryRepository) GetLowStock(ctx context.Context) ([]models.Inventory, error) {
-	var inventories []models.Inventory
-	err := r.db.WithContext(ctx).Preload("Product").Where("quantity <= reorder_level").Find(&inventories).Error
-	return inventories, err
-}
-
-func (r *inventoryRepository) GetTransactions(ctx context.Context, productID uint, limit, offset int) ([]models.InventoryTransaction, error) {
-	var transactions []models.InventoryTransaction
-	query := r.db.WithContext(ctx).Preload("Product")
-	if productID != 0 {
-		query = query.Where("product_id = ?", productID)
+func (r *inventoryRepository) AddInventory(ctx context.Context, productID uint, quantity int, referenceID uint, referenceType string) error {
+	// Find the inventory item for this product
+	var inventoryItem models.InventoryItem
+	err := r.db.WithContext(ctx).Where("product_id = ?", productID).First(&inventoryItem).Error
+	if err != nil {
+		return err
 	}
-	err := query.Limit(limit).Offset(offset).Order("created_at DESC").Find(&transactions).Error
-	return transactions, err
+
+	// Update the quantity
+	inventoryItem.Quantity += quantity
+
+	return r.db.WithContext(ctx).Save(&inventoryItem).Error
 }
 
-func (r *inventoryRepository) CreateTransaction(ctx context.Context, transaction *models.InventoryTransaction) error {
-	return r.db.WithContext(ctx).Create(transaction).Error
-}
-
-func (r *inventoryRepository) Count(ctx context.Context) (int64, error) {
-	var count int64
-	err := r.db.WithContext(ctx).Model(&models.Inventory{}).Count(&count).Error
-	return count, err
-}
-
-func (r *inventoryRepository) CountTransactions(ctx context.Context, productID uint) (int64, error) {
-	var count int64
-	query := r.db.WithContext(ctx).Model(&models.InventoryTransaction{})
-	if productID != 0 {
-		query = query.Where("product_id = ?", productID)
+func (r *inventoryRepository) RemoveInventory(ctx context.Context, productID uint, quantity int, referenceID uint, referenceType string) error {
+	// Find the inventory item for this product
+	var inventoryItem models.InventoryItem
+	err := r.db.WithContext(ctx).Where("product_id = ?", productID).First(&inventoryItem).Error
+	if err != nil {
+		return err
 	}
-	err := query.Count(&count).Error
-	return count, err
+
+	// Check if there's enough inventory
+	if inventoryItem.Quantity < quantity {
+		return fmt.Errorf("insufficient inventory: available %d, requested %d", inventoryItem.Quantity, quantity)
+	}
+
+	// Update the quantity
+	inventoryItem.Quantity -= quantity
+
+	return r.db.WithContext(ctx).Save(&inventoryItem).Error
 }
