@@ -26,17 +26,26 @@ func NewInventoryItemHandler(inventoryItemService services.InventoryItemService)
 // @Tags inventory-items
 // @Accept json
 // @Produce json
+// @Param id path int true "Inventory ID"
 // @Param inventoryItem body models.InventoryItem true "Inventory item data"
 // @Success 201 {object} models.InventoryItem
 // @Failure 400 {object} map[string]string
 // @Failure 500 {object} map[string]string
 // @Security BearerAuth
-// @Router /inventory-items [post]
+// @Router /inventories/{id}/inventory-items [post]
 func (h *InventoryItemHandler) CreateInventoryItem(c echo.Context) error {
+	inventoryID, err := pkg.ExtractIDParam(c)
+	if err != nil {
+		return err
+	}
+
 	var item models.InventoryItem
 	if err := c.Bind(&item); err != nil {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid request body"})
 	}
+
+	// Set the inventory ID from the URL parameter
+	item.InventoryID = inventoryID
 
 	if err := h.inventoryItemService.CreateInventoryItem(c.Request().Context(), &item); err != nil {
 		if appErr, ok := err.(*pkg.AppError); ok {
@@ -54,20 +63,22 @@ func (h *InventoryItemHandler) CreateInventoryItem(c echo.Context) error {
 // @Tags inventory-items
 // @Accept json
 // @Produce json
-// @Param id path int true "Inventory item ID"
+// @Param id path int true "Inventory ID"
+// @Param item_id path int true "Inventory item ID"
 // @Success 200 {object} models.InventoryItem
 // @Failure 400 {object} map[string]string
 // @Failure 404 {object} map[string]string
 // @Failure 500 {object} map[string]string
 // @Security BearerAuth
-// @Router /inventory-items/{id} [get]
+// @Router /inventories/{id}/inventory-items/{item_id} [get]
 func (h *InventoryItemHandler) GetInventoryItem(c echo.Context) error {
-	id, err := pkg.ExtractIDParam(c)
+	itemIDStr := c.Param("item_id")
+	itemID, err := strconv.ParseUint(itemIDStr, 10, 32)
 	if err != nil {
-		return err
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid item ID"})
 	}
 
-	item, err := h.inventoryItemService.GetInventoryItemByID(c.Request().Context(), id)
+	item, err := h.inventoryItemService.GetInventoryItemByID(c.Request().Context(), uint(itemID))
 	if err != nil {
 		if appErr, ok := err.(*pkg.AppError); ok {
 			return c.JSON(appErr.HTTPStatus(), map[string]string{"error": appErr.Error()})
@@ -84,18 +95,25 @@ func (h *InventoryItemHandler) GetInventoryItem(c echo.Context) error {
 // @Tags inventory-items
 // @Accept json
 // @Produce json
-// @Param id path int true "Inventory item ID"
+// @Param id path int true "Inventory ID"
+// @Param item_id path int true "Inventory item ID"
 // @Param inventoryItem body models.InventoryItem true "Inventory item data"
 // @Success 200 {object} models.InventoryItem
 // @Failure 400 {object} map[string]string
 // @Failure 404 {object} map[string]string
 // @Failure 500 {object} map[string]string
 // @Security BearerAuth
-// @Router /inventory-items/{id} [put]
+// @Router /inventories/{id}/inventory-items/{item_id} [put]
 func (h *InventoryItemHandler) UpdateInventoryItem(c echo.Context) error {
-	id, err := pkg.ExtractIDParam(c)
+	inventoryID, err := pkg.ExtractIDParam(c)
 	if err != nil {
 		return err
+	}
+
+	itemIDStr := c.Param("item_id")
+	itemID, err := strconv.ParseUint(itemIDStr, 10, 32)
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid item ID"})
 	}
 
 	var item models.InventoryItem
@@ -103,7 +121,10 @@ func (h *InventoryItemHandler) UpdateInventoryItem(c echo.Context) error {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid request body"})
 	}
 
-	item.ID = id
+	// Set IDs from URL parameters
+	item.ID = uint(itemID)
+	item.InventoryID = inventoryID
+
 	if err := h.inventoryItemService.UpdateInventoryItem(c.Request().Context(), &item); err != nil {
 		if appErr, ok := err.(*pkg.AppError); ok {
 			return c.JSON(appErr.HTTPStatus(), map[string]string{"error": appErr.Error()})
@@ -120,20 +141,22 @@ func (h *InventoryItemHandler) UpdateInventoryItem(c echo.Context) error {
 // @Tags inventory-items
 // @Accept json
 // @Produce json
-// @Param id path int true "Inventory item ID"
+// @Param id path int true "Inventory ID"
+// @Param item_id path int true "Inventory item ID"
 // @Success 204
 // @Failure 400 {object} map[string]string
 // @Failure 404 {object} map[string]string
 // @Failure 500 {object} map[string]string
 // @Security BearerAuth
-// @Router /inventory-items/{id} [delete]
+// @Router /inventories/{id}/inventory-items/{item_id} [delete]
 func (h *InventoryItemHandler) DeleteInventoryItem(c echo.Context) error {
-	id, err := pkg.ExtractIDParam(c)
+	itemIDStr := c.Param("item_id")
+	itemID, err := strconv.ParseUint(itemIDStr, 10, 32)
 	if err != nil {
-		return err
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid item ID"})
 	}
 
-	if err := h.inventoryItemService.DeleteInventoryItem(c.Request().Context(), id); err != nil {
+	if err := h.inventoryItemService.DeleteInventoryItem(c.Request().Context(), uint(itemID)); err != nil {
 		if appErr, ok := err.(*pkg.AppError); ok {
 			return c.JSON(appErr.HTTPStatus(), map[string]string{"error": appErr.Error()})
 		}
@@ -203,7 +226,7 @@ func (h *InventoryItemHandler) ListInventoryItems(c echo.Context) error {
 // @Tags inventory-items
 // @Accept json
 // @Produce json
-// @Param inventory_id path int true "Inventory ID"
+// @Param id path int true "Inventory ID"
 // @Param page query int false "Page number" default(1)
 // @Param limit query int false "Items per page" default(20)
 // @Success 200 {object} map[string]interface{}
@@ -211,7 +234,7 @@ func (h *InventoryItemHandler) ListInventoryItems(c echo.Context) error {
 // @Failure 404 {object} map[string]string
 // @Failure 500 {object} map[string]string
 // @Security BearerAuth
-// @Router /inventories/{inventory_id}/items [get]
+// @Router /inventories/{id}/inventory-items [get]
 func (h *InventoryItemHandler) GetInventoryItemsByInventoryID(c echo.Context) error {
 	inventoryID, err := pkg.ExtractIDParam(c)
 	if err != nil {
@@ -352,18 +375,20 @@ func (h *InventoryItemHandler) GetLowStockItems(c echo.Context) error {
 // @Tags inventory-items
 // @Accept json
 // @Produce json
-// @Param id path int true "Inventory item ID"
+// @Param id path int true "Inventory ID"
+// @Param item_id path int true "Inventory item ID"
 // @Param adjustment body map[string]interface{} true "Adjustment data"
 // @Success 200 {object} models.InventoryItem
 // @Failure 400 {object} map[string]string
 // @Failure 404 {object} map[string]string
 // @Failure 500 {object} map[string]string
 // @Security BearerAuth
-// @Router /inventory-items/{id}/adjust [put]
+// @Router /inventories/{id}/inventory-items/{item_id}/adjust [put]
 func (h *InventoryItemHandler) AdjustInventoryItemQuantity(c echo.Context) error {
-	id, err := pkg.ExtractIDParam(c)
+	itemIDStr := c.Param("item_id")
+	itemID, err := strconv.ParseUint(itemIDStr, 10, 32)
 	if err != nil {
-		return err
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid item ID"})
 	}
 
 	var req struct {
@@ -375,7 +400,7 @@ func (h *InventoryItemHandler) AdjustInventoryItemQuantity(c echo.Context) error
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid request body"})
 	}
 
-	if err := h.inventoryItemService.AdjustInventoryItemQuantity(c.Request().Context(), id, req.Quantity, req.Notes); err != nil {
+	if err := h.inventoryItemService.AdjustInventoryItemQuantity(c.Request().Context(), uint(itemID), req.Quantity, req.Notes); err != nil {
 		if appErr, ok := err.(*pkg.AppError); ok {
 			return c.JSON(appErr.HTTPStatus(), map[string]string{"error": appErr.Error()})
 		}
@@ -383,7 +408,7 @@ func (h *InventoryItemHandler) AdjustInventoryItemQuantity(c echo.Context) error
 	}
 
 	// Get the updated item
-	item, err := h.inventoryItemService.GetInventoryItemByID(c.Request().Context(), id)
+	item, err := h.inventoryItemService.GetInventoryItemByID(c.Request().Context(), uint(itemID))
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to get updated inventory item"})
 	}

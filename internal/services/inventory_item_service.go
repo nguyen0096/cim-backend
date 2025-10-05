@@ -117,6 +117,7 @@ func (s *inventoryItemService) UpdateInventoryItem(ctx context.Context, item *mo
 		if err == nil && duplicateItem != nil && duplicateItem.ID != item.ID && duplicateItem.InventoryID == item.InventoryID {
 			return pkg.NewAppError(pkg.ErrorCodeValidation, "inventory item already exists for this product in this inventory", nil)
 		}
+
 	}
 
 	return s.inventoryItemRepo.Update(ctx, item)

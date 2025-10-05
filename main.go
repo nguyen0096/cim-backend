@@ -144,18 +144,20 @@ func main() {
 	inventories.GET("/:id", inventoryHandler.GetInventory)
 	inventories.PUT("/:id", inventoryHandler.UpdateInventory)
 	inventories.DELETE("/:id", inventoryHandler.DeleteInventory)
-	inventories.GET("/:id/items", inventoryItemHandler.GetInventoryItemsByInventoryID)
 
-	// Inventory Item routes
+	// Nested inventory items routes
+	inventories.GET("/:id/inventory-items", inventoryItemHandler.GetInventoryItemsByInventoryID)
+	inventories.POST("/:id/inventory-items", inventoryItemHandler.CreateInventoryItem)
+	inventories.GET("/:id/inventory-items/:item_id", inventoryItemHandler.GetInventoryItem)
+	inventories.PUT("/:id/inventory-items/:item_id", inventoryItemHandler.UpdateInventoryItem)
+	inventories.DELETE("/:id/inventory-items/:item_id", inventoryItemHandler.DeleteInventoryItem)
+	inventories.PUT("/:id/inventory-items/:item_id/adjust", inventoryItemHandler.AdjustInventoryItemQuantity)
+
+	// Standalone inventory item routes (for backward compatibility and specific use cases)
 	inventoryItems := api.Group("/inventory-items", middleware.AuthMiddleware(firebaseAuth))
 	inventoryItems.GET("", inventoryItemHandler.ListInventoryItems)
-	inventoryItems.POST("", inventoryItemHandler.CreateInventoryItem)
-	inventoryItems.GET("/:id", inventoryItemHandler.GetInventoryItem)
-	inventoryItems.PUT("/:id", inventoryItemHandler.UpdateInventoryItem)
-	inventoryItems.DELETE("/:id", inventoryItemHandler.DeleteInventoryItem)
 	inventoryItems.GET("/product/:product_id", inventoryItemHandler.GetInventoryItemByProductID)
 	inventoryItems.GET("/low-stock", inventoryItemHandler.GetLowStockItems)
-	inventoryItems.PUT("/:id/adjust", inventoryItemHandler.AdjustInventoryItemQuantity)
 
 	// Supplier routes
 	suppliers := api.Group("/suppliers", middleware.AuthMiddleware(firebaseAuth))

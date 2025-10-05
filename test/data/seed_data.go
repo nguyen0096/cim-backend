@@ -57,6 +57,8 @@ func Products(supplierIDs []uint) []models.Product {
 			Description: "Professional laptop with M3 chip, 32GB RAM, 1TB SSD",
 			SupplierID:  supplierIDs[0], // Tech Electronics
 			UnitPrice:   2999.99,
+			UnitType:    "piece",
+			ProductType: "laptop",
 			Status:      "active",
 		},
 		{
@@ -68,6 +70,8 @@ func Products(supplierIDs []uint) []models.Product {
 			Description: "27-inch 4K UHD gaming monitor with 144Hz refresh rate",
 			SupplierID:  supplierIDs[0], // Tech Electronics
 			UnitPrice:   599.99,
+			UnitType:    "piece",
+			ProductType: "monitor",
 			Status:      "active",
 		},
 		{
@@ -79,6 +83,8 @@ func Products(supplierIDs []uint) []models.Product {
 			Description: "Wireless mechanical keyboard with RGB backlight and hot-swappable switches",
 			SupplierID:  supplierIDs[0], // Tech Electronics
 			UnitPrice:   89.99,
+			UnitType:    "piece",
+			ProductType: "keyboard",
 			Status:      "active",
 		},
 		{
@@ -90,6 +96,8 @@ func Products(supplierIDs []uint) []models.Product {
 			Description: "Advanced wireless mouse with precision scrolling and customizable buttons",
 			SupplierID:  supplierIDs[0], // Tech Electronics
 			UnitPrice:   99.99,
+			UnitType:    "piece",
+			ProductType: "mouse",
 			Status:      "active",
 		},
 		{
@@ -101,6 +109,8 @@ func Products(supplierIDs []uint) []models.Product {
 			Description: "Ergonomic office chair with lumbar support and breathable mesh",
 			SupplierID:  supplierIDs[1], // Office Supply
 			UnitPrice:   1395.00,
+			UnitType:    "piece",
+			ProductType: "chair",
 			Status:      "active",
 		},
 		{
@@ -112,6 +122,8 @@ func Products(supplierIDs []uint) []models.Product {
 			Description: "Height-adjustable standing desk with bamboo top and memory settings",
 			SupplierID:  supplierIDs[1], // Office Supply
 			UnitPrice:   799.00,
+			UnitType:    "box",
+			ProductType: "desk",
 			Status:      "active",
 		},
 		{
@@ -123,6 +135,8 @@ func Products(supplierIDs []uint) []models.Product {
 			Description: "18-port Thunderbolt 4 hub with 98W charging and 40Gbps data transfer",
 			SupplierID:  supplierIDs[2], // Global Parts
 			UnitPrice:   399.95,
+			UnitType:    "piece",
+			ProductType: "hub",
 			Status:      "active",
 		},
 		{
@@ -134,6 +148,8 @@ func Products(supplierIDs []uint) []models.Product {
 			Description: "Ultra HD 4K webcam with HDR and Windows Hello support",
 			SupplierID:  supplierIDs[2], // Global Parts
 			UnitPrice:   199.99,
+			UnitType:    "piece",
+			ProductType: "headphones",
 			Status:      "active",
 		},
 		{
@@ -145,6 +161,8 @@ func Products(supplierIDs []uint) []models.Product {
 			Description: "Industry-leading noise cancelling wireless headphones with 30-hour battery",
 			SupplierID:  supplierIDs[0], // Tech Electronics
 			UnitPrice:   399.99,
+			UnitType:    "piece",
+			ProductType: "headphones",
 			Status:      "active",
 		},
 		{
@@ -156,6 +174,8 @@ func Products(supplierIDs []uint) []models.Product {
 			Description: "12.9-inch iPad Pro with M2 chip, 256GB storage, and Liquid Retina XDR display",
 			SupplierID:  supplierIDs[0], // Tech Electronics
 			UnitPrice:   1099.99,
+			UnitType:    "device",
+			ProductType: "tablet",
 			Status:      "active",
 		},
 	}
@@ -254,7 +274,6 @@ func InventoryItems(productIDs []uint) []models.InventoryItem {
 			ReorderLevel:  config.ReorderLevel,
 			MaxStockLevel: config.Quantity * 3, // Set max stock to 3x current quantity
 			Status:        models.InventoryItemStatusActive,
-			AverageCost:   100.0, // Default average cost
 		}
 	}
 
