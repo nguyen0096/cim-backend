@@ -1,6 +1,7 @@
 package excel
 
 import (
+	"context"
 	"fmt"
 	"import-export-backend/internal/models"
 	"time"
@@ -16,7 +17,7 @@ func InventoryDefaultFileConfig() FileConfig {
 }
 
 type InventoryRepository interface {
-	UpsertInventoryChangeByDate(p *models.Product, quantity int, date time.Time) error
+	// UpsertInventoryChangeByDate(p *models.Product, quantity int, date time.Time) error
 	// InitializeWithFile(ctx context.Context, filePath string, sheetNames ...string) error
 	// AddInventoryEntry(ctx context.Context, sheetName string, inventoryData map[string]interface{}) error
 	// GetLastInventoryEntry(ctx context.Context, sheetName string) (map[string]interface{}, error)
@@ -35,12 +36,15 @@ func NewInventoryRepository(config FileConfig) (InventoryRepository, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to create inventory repository: %w", err)
 	}
-
 	return &inventoryRepository{
 		file: file,
 	}, nil
 }
 
-func (r *inventoryRepository) UpsertInventoryChangeByDate(p *models.Product, quantity int, date time.Time) error {
+func (r *inventoryRepository) UpsertInventoryChangeByDate(ctx context.Context, p *models.Product, quantity int, date time.Time) error {
+	return nil
+}
+
+func (r *inventoryRepository) PopulateProductIDColumn(ctx context.Context) error {
 	return nil
 }

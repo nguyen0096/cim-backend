@@ -11,13 +11,27 @@ import (
 	"github.com/xuri/excelize/v2"
 )
 
+const (
+	MetadataHeaderPrefix    = "__"
+	EndFileDividerCellColor = "7F8080"
+)
+
 // FileConfig contains the configuration of Excel file.
 type FileConfig struct {
 	FilePath     string        `validate:"required"`
 	SheetConfigs []SheetConfig `json:"sheets" validate:"required,min=1,dive"`
+}
 
-	// IndexColumns are names of columns that will be indexed for lookup.
-	IndexColumns []string `json:"index_columns" validate:"-"`
+type MultiLevelHeader []string
+
+type MultiLeverHeaderStr string
+
+func (mh MultiLevelHeader) String() MultiLeverHeaderStr {
+	return MultiLeverHeaderStr(strings.Join(mh, "."))
+}
+
+func (mh MultiLeverHeaderStr) MultiLevelHeader() MultiLevelHeader {
+	return MultiLevelHeader(strings.Split(string(mh), "."))
 }
 
 type SheetInternalID string
@@ -31,6 +45,9 @@ type SheetConfig struct {
 	HeaderStartRow int               `json:"header_start_row" validate:"required,min=1"`
 	HeaderStartCol int               `json:"header_start_col" validate:"required,min=1"`
 	HeaderHeight   int               `json:"header_height" validate:"required,min=1"`
+	DataStartRow   int               `json:"data_start_row" validate:"-"`
+	// IndexColumnNames are names of columns that will be indexed for lookup.
+	IndexColumnNames []MultiLevelHeader `json:"index_columns" validate:"-"`
 }
 
 func (sc *SheetConfig) SetSheetNameTimeParams(t time.Time) {
@@ -71,6 +88,9 @@ type Sheet struct {
 	HeaderRoot *HeaderNode
 	// MergeCellLookup is a map of cell coordinates to the merge cell range. (Sheet metadata)
 	MergeCellLookup map[int]map[int]string
+
+	// ColumnIndices is a map of column number to column index map. (Runtime data)
+	ColumnIndices map[int]map[string]int
 }
 
 type HeaderNode struct {
@@ -130,21 +150,25 @@ type File struct {
 func trimFileConfigValues(config FileConfig) FileConfig {
 	config.FilePath = strings.TrimSpace(config.FilePath)
 
-	for i := range config.SheetConfigs {
-		config.SheetConfigs[i].NamePattern = SheetNamePattern(strings.TrimSpace(string(config.SheetConfigs[i].NamePattern)))
-		config.SheetConfigs[i].InternalID = SheetInternalID(strings.TrimSpace(string(config.SheetConfigs[i].InternalID)))
-		if config.SheetConfigs[i].NameParams != nil {
-			for key, value := range config.SheetConfigs[i].NameParams {
-				config.SheetConfigs[i].NameParams[key] = strings.TrimSpace(value)
+	// Trim NamePattern, InternalID, NameParams, IndexColumns if they exist
+	for i, sheetConfig := range config.SheetConfigs {
+		sheetConfig.NamePattern = SheetNamePattern(strings.TrimSpace(string(sheetConfig.NamePattern)))
+		sheetConfig.InternalID = SheetInternalID(strings.TrimSpace(string(sheetConfig.InternalID)))
+		if sheetConfig.NameParams != nil {
+			for key, value := range sheetConfig.NameParams {
+				sheetConfig.NameParams[key] = strings.TrimSpace(value)
 			}
 		}
-	}
 
-	// Trim IndexColumns if they exist
-	for i := range config.IndexColumns {
-		config.IndexColumns[i] = strings.TrimSpace(config.IndexColumns[i])
-	}
+		for i, column := range sheetConfig.IndexColumnNames {
+			for j, columnName := range column {
+				column[j] = strings.TrimSpace(columnName)
+			}
+			sheetConfig.IndexColumnNames[i] = column
+		}
 
+		config.SheetConfigs[i] = sheetConfig
+	}
 	return config
 }
 
@@ -163,7 +187,85 @@ func NewFile(config FileConfig) (*File, error) {
 	if err := validateFileConfig(config); err != nil {
 		return nil, fmt.Errorf("invalid file config: %w", err)
 	}
+
+	// set default data start row to header start row + header height if not set
+	for i, sheetConfig := range config.SheetConfigs {
+		if sheetConfig.DataStartRow == 0 {
+			sheetConfig.DataStartRow = sheetConfig.HeaderStartRow + sheetConfig.HeaderHeight
+			config.SheetConfigs[i] = sheetConfig
+		}
+	}
+
 	return &File{FileConfig: config}, nil
+}
+
+func (f *File) UpsertRow(
+	sheetInternalID SheetInternalID,
+	indexColHeaderStr MultiLeverHeaderStr,
+	indexValue string,
+	rowData map[MultiLeverHeaderStr]interface{},
+) error {
+	f.Lock()
+	defer f.Unlock()
+
+	if f.Sheets == nil {
+		return fmt.Errorf("sheets not found")
+	}
+	sheet, ok := f.Sheets[sheetInternalID]
+	if !ok {
+		return fmt.Errorf("sheet internal id [%s] not found", sheetInternalID)
+	}
+
+	row, ok, err := f.findRowByIndex(sheet.InternalID, indexColHeaderStr.MultiLevelHeader(), indexValue)
+	if err != nil {
+		return fmt.Errorf("failed to find row by index: %w", err)
+	}
+
+	if ok {
+		// update the row
+		for header, value := range rowData {
+			col, err := sheet.File.GetColByExactHeaders(sheet.InternalID, header.MultiLevelHeader())
+			if err != nil {
+				return fmt.Errorf("failed to get column index: %w", err)
+			}
+			cell := Cell{Row: row, Col: col}
+			if err := sheet.File.Excel.SetCellValue(sheet.SheetName, cell.String(), value); err != nil {
+				return fmt.Errorf("failed to set cell value: %w", err)
+			}
+		}
+	}
+
+	err = f.Excel.Save()
+	if err != nil {
+		return fmt.Errorf("failed to save excel file: %w", err)
+	}
+	return nil
+}
+
+func (f *File) findRowByIndex(
+	sheetInternalID SheetInternalID,
+	indexColHeader MultiLevelHeader,
+	indexValue string,
+) (int, bool, error) {
+	if f.Sheets == nil {
+		return -1, false, fmt.Errorf("sheets not found")
+	}
+	sheet, ok := f.Sheets[sheetInternalID]
+	if !ok {
+		return -1, false, fmt.Errorf("sheet internal id [%s] not found", sheetInternalID)
+	}
+
+	indexCol, err := sheet.File.GetColByExactHeaders(sheet.InternalID, indexColHeader)
+	if err != nil {
+		return -1, false, fmt.Errorf("failed to get column index: %w", err)
+	}
+
+	index, ok := sheet.ColumnIndices[indexCol]
+	if !ok {
+		return -1, false, fmt.Errorf("index column doesn't have index %d", indexCol)
+	}
+	row, ok := index[indexValue]
+	return row, ok, nil
 }
 
 func (f *File) Close() error {
@@ -179,7 +281,7 @@ func (f *File) Close() error {
 	return err
 }
 
-func (f *File) GetColByExactHeaders(sheetInternalID string, headers []string) (int, error) {
+func (f *File) GetColByExactHeaders(sheetInternalID SheetInternalID, headers []string) (int, error) {
 	if f.Sheets == nil {
 		return -1, fmt.Errorf("sheets not found")
 	}
@@ -189,6 +291,12 @@ func (f *File) GetColByExactHeaders(sheetInternalID string, headers []string) (i
 	}
 
 	headerNode := sheet.HeaderRoot
+
+	// if defined header doens't have enough levels, fill up the the low levels with empty string
+	for i := len(headers); i < sheet.HeaderHeight; i++ {
+		headers = append(headers, "")
+	}
+
 	for _, header := range headers {
 		if headerNode.Lookup == nil {
 			return -1, fmt.Errorf("header lookup not found")
@@ -254,11 +362,17 @@ func (f *File) parseSheets() error {
 		if err := s.parseHeader(); err != nil {
 			return fmt.Errorf("failed to parse header: %w", err)
 		}
-
+		// store parsed sheet by internal ID
 		if f.Sheets == nil {
 			f.Sheets = make(map[SheetInternalID]*Sheet)
 		}
 		f.Sheets[sheetCfg.InternalID] = s
+
+		// build runtime data
+		s.ColumnIndices = make(map[int]map[string]int)
+		if err := s.buildColumnIndices(); err != nil {
+			return fmt.Errorf("failed to build column indices: %w", err)
+		}
 	}
 	return nil
 }
@@ -438,6 +552,51 @@ func (s *Sheet) recursivelyParseNode(currentDepth int, topLeftCell Cell) (*Heade
 	return node, nil
 }
 
+// buildColumnIndices builds the column indices for the sheet.
+func (s *Sheet) buildColumnIndices() error {
+	for _, mlHeader := range s.IndexColumnNames {
+		col, err := s.File.GetColByExactHeaders(s.InternalID, mlHeader)
+		if err != nil {
+			return fmt.Errorf("failed to get column index: %w", err)
+		}
+
+		bottomRow, err := s.getBottomRow(col)
+		if err != nil {
+			return fmt.Errorf("failed to get bottom row: %w", err)
+		}
+
+		indexMap := make(map[string]int)
+		// read cell value from DataStartRow to either divider cell or end of sheet
+		for row := s.DataStartRow; row <= bottomRow; row++ {
+			cellName, err := excelize.CoordinatesToCellName(col, row)
+			if err != nil {
+				return fmt.Errorf("failed to convert coordinates to cell name")
+			}
+			cellValue, err := s.File.Excel.GetCellValue(s.SheetName, cellName)
+			if err != nil {
+				return fmt.Errorf("failed to get cell value: %w", err)
+			}
+			cellValue = strings.TrimSpace(cellValue)
+			indexMap[cellValue] = row
+		}
+
+		if s.ColumnIndices == nil {
+			s.ColumnIndices = make(map[int]map[string]int)
+		}
+		s.ColumnIndices[col] = indexMap
+	}
+	return nil
+}
+
+// getBottomRow gets the bottom row of a sheet.
+func (s *Sheet) getBottomRow(column int) (int, error) {
+	rows, err := s.File.Excel.GetRows(s.SheetName)
+	if err != nil {
+		return 0, fmt.Errorf("failed to get Excel rows: %w", err)
+	}
+	return len(rows), nil
+}
+
 func getTLBRCells(rangeStr string) (Cell, Cell, error) {
 	parts := strings.Split(rangeStr, ":")
 	if len(parts) != 2 {
@@ -453,3 +612,23 @@ func getTLBRCells(rangeStr string) (Cell, Cell, error) {
 	}
 	return Cell{tlr, tlc}, Cell{brr, brc}, nil
 }
+
+// isDividerCell checks if a cell is a divider cell.
+// Currently, it checks if the cell has red background color.
+// @TODO In the future, this function should support multiple strategies for divider cell detection.
+// For example: consecutive empty cells, cells with specific patterns, etc.
+// func (s *Sheet) isDividerCell(cell Cell, color string) bool {
+// 	cellStyleIdx, err := s.File.Excel.GetCellStyle(s.SheetName, cell.String())
+// 	if err != nil {
+// 		return false
+// 	}
+// 	cellStyle, err := s.File.Excel.GetStyle(cellStyleIdx)
+// 	if err != nil {
+// 		return false
+// 	}
+
+// 	if len(cellStyle.Fill.Color) == 0 {
+// 		return false
+// 	}
+// 	return cellStyle.Fill.Color[0] == color
+// }

@@ -1,6 +1,7 @@
 package excel
 
 import (
+	"fmt"
 	"testing"
 	"time"
 
@@ -218,13 +219,16 @@ func TestSheetNamePattern_Parse_EdgeCases(t *testing.T) {
 	}
 }
 
-func TestFile_Load(t *testing.T) {
+func getTestFileConfig() FileConfig {
 	xntSheet := SheetConfig{
 		InternalID:     "xnt_sheet",
 		NamePattern:    "THANG {MM}",
 		HeaderStartRow: 3,
 		HeaderStartCol: 1,
 		HeaderHeight:   3,
+		IndexColumnNames: []MultiLevelHeader{
+			{fmt.Sprintf("%s%s", MetadataHeaderPrefix, "product_id")},
+		},
 	}
 	xntSheet.SetSheetNameTimeParams(time.Date(2023, 12, 1, 0, 0, 0, 0, time.UTC))
 
@@ -232,16 +236,18 @@ func TestFile_Load(t *testing.T) {
 		FilePath:     TestInventoryTrackerExcelFile,
 		SheetConfigs: []SheetConfig{xntSheet},
 	}
+	return fc
+}
 
-	f, err := NewFile(fc)
+func TestFile_Load(t *testing.T) {
+	f, err := NewFile(getTestFileConfig())
 	require.Nil(t, err)
 
 	err = f.Load()
+	t.Logf("err: %v", err)
 	require.Nil(t, err)
 
-	testHeader, err := f.Excel.GetCellValue("THANG 12", "B4")
-	require.Nil(t, err)
-	require.Equal(t, "DiẾN GiẢI", testHeader)
+	assertColumnIndices(t, f)
 }
 
 // TestSpatialIndex_Standalone demonstrates the spatial index concept
@@ -407,12 +413,12 @@ func TestTrimFileConfigValues(t *testing.T) {
 							"  key1  ": "  value1  ",
 							"key2":     "value2",
 						},
-						HeaderStartRow: 1,
-						HeaderStartCol: 1,
-						HeaderHeight:   2,
+						HeaderStartRow:   1,
+						HeaderStartCol:   1,
+						HeaderHeight:     2,
+						IndexColumnNames: []MultiLevelHeader{{"  col1  "}, {"col2"}, {"  col3  "}},
 					},
 				},
-				IndexColumns: []string{"  col1  ", "col2", "  col3  "},
 			},
 			expected: FileConfig{
 				FilePath: "/path/to/file.xlsx",
@@ -424,12 +430,12 @@ func TestTrimFileConfigValues(t *testing.T) {
 							"  key1  ": "value1",
 							"key2":     "value2",
 						},
-						HeaderStartRow: 1,
-						HeaderStartCol: 1,
-						HeaderHeight:   2,
+						HeaderStartRow:   1,
+						HeaderStartCol:   1,
+						HeaderHeight:     2,
+						IndexColumnNames: []MultiLevelHeader{{"col1"}, {"col2"}, {"col3"}},
 					},
 				},
-				IndexColumns: []string{"col1", "col2", "col3"},
 			},
 		},
 		{
@@ -438,29 +444,29 @@ func TestTrimFileConfigValues(t *testing.T) {
 				FilePath: "",
 				SheetConfigs: []SheetConfig{
 					{
-						InternalID:     "",
-						NamePattern:    "",
-						NameParams:     map[string]string{},
-						HeaderStartRow: 1,
-						HeaderStartCol: 1,
-						HeaderHeight:   1,
+						InternalID:       "",
+						NamePattern:      "",
+						NameParams:       map[string]string{},
+						HeaderStartRow:   1,
+						HeaderStartCol:   1,
+						HeaderHeight:     1,
+						IndexColumnNames: []MultiLevelHeader{},
 					},
 				},
-				IndexColumns: []string{},
 			},
 			expected: FileConfig{
 				FilePath: "",
 				SheetConfigs: []SheetConfig{
 					{
-						InternalID:     "",
-						NamePattern:    "",
-						NameParams:     map[string]string{},
-						HeaderStartRow: 1,
-						HeaderStartCol: 1,
-						HeaderHeight:   1,
+						InternalID:       "",
+						NamePattern:      "",
+						NameParams:       map[string]string{},
+						HeaderStartRow:   1,
+						HeaderStartCol:   1,
+						HeaderHeight:     1,
+						IndexColumnNames: []MultiLevelHeader{},
 					},
 				},
-				IndexColumns: []string{},
 			},
 		},
 		{
@@ -469,29 +475,29 @@ func TestTrimFileConfigValues(t *testing.T) {
 				FilePath: "file.xlsx",
 				SheetConfigs: []SheetConfig{
 					{
-						InternalID:     "sheet1",
-						NamePattern:    "SHEET_{MM}",
-						NameParams:     nil,
-						HeaderStartRow: 2,
-						HeaderStartCol: 3,
-						HeaderHeight:   4,
+						InternalID:       "sheet1",
+						NamePattern:      "SHEET_{MM}",
+						NameParams:       nil,
+						HeaderStartRow:   2,
+						HeaderStartCol:   3,
+						HeaderHeight:     4,
+						IndexColumnNames: nil,
 					},
 				},
-				IndexColumns: nil,
 			},
 			expected: FileConfig{
 				FilePath: "file.xlsx",
 				SheetConfigs: []SheetConfig{
 					{
-						InternalID:     "sheet1",
-						NamePattern:    "SHEET_{MM}",
-						NameParams:     nil,
-						HeaderStartRow: 2,
-						HeaderStartCol: 3,
-						HeaderHeight:   4,
+						InternalID:       "sheet1",
+						NamePattern:      "SHEET_{MM}",
+						NameParams:       nil,
+						HeaderStartRow:   2,
+						HeaderStartCol:   3,
+						HeaderHeight:     4,
+						IndexColumnNames: nil,
 					},
 				},
-				IndexColumns: nil,
 			},
 		},
 	}
@@ -522,12 +528,12 @@ func TestValidateFileConfig(t *testing.T) {
 						NameParams: map[string]string{
 							"{MM}": "01",
 						},
-						HeaderStartRow: 1,
-						HeaderStartCol: 1,
-						HeaderHeight:   2,
+						HeaderStartRow:   1,
+						HeaderStartCol:   1,
+						HeaderHeight:     2,
+						IndexColumnNames: []MultiLevelHeader{{"col1"}, {"col2"}},
 					},
 				},
-				IndexColumns: []string{"col1", "col2"},
 			},
 			expectError: false,
 		},
@@ -683,19 +689,19 @@ func TestValidateFileConfig(t *testing.T) {
 			expectError: false,
 		},
 		{
-			name: "should pass validation with empty IndexColumns",
+			name: "should pass validation with empty IndexColumnNames",
 			config: FileConfig{
 				FilePath: "test.xlsx",
 				SheetConfigs: []SheetConfig{
 					{
-						InternalID:     "sheet1",
-						NamePattern:    "SHEET_{MM}",
-						HeaderStartRow: 1,
-						HeaderStartCol: 1,
-						HeaderHeight:   2,
+						InternalID:       "sheet1",
+						NamePattern:      "SHEET_{MM}",
+						HeaderStartRow:   1,
+						HeaderStartCol:   1,
+						HeaderHeight:     2,
+						IndexColumnNames: []MultiLevelHeader{},
 					},
 				},
-				IndexColumns: []string{},
 			},
 			expectError: false,
 		},
@@ -823,7 +829,124 @@ func TestFile_GetColByExactHeaders(t *testing.T) {
 	err = f.Load()
 	require.Nil(t, err)
 
-	col, err := f.GetColByExactHeaders(string(xntSheet.InternalID), []string{"DiẾN GiẢI", ""})
+	col, err := f.GetColByExactHeaders(xntSheet.InternalID, []string{"DiẾN GiẢI", ""})
 	require.Nil(t, err)
 	assert.Equal(t, 2, col)
+}
+
+// func TestSheet_isDividerCell(t *testing.T) {
+// 	// Setup: Create a sheet configuration for the test
+// 	xntSheet := SheetConfig{
+// 		InternalID:     "xnt_sheet",
+// 		NamePattern:    "THANG {MM}",
+// 		HeaderStartRow: 3,
+// 		HeaderStartCol: 1,
+// 		HeaderHeight:   3,
+// 	}
+// 	xntSheet.SetSheetNameTimeParams(time.Date(2023, 12, 1, 0, 0, 0, 0, time.UTC))
+
+// 	fc := FileConfig{
+// 		FilePath:     TestInventoryTrackerExcelFile,
+// 		SheetConfigs: []SheetConfig{xntSheet},
+// 	}
+
+// 	f, err := NewFile(fc)
+// 	require.Nil(t, err)
+
+// 	err = f.Load()
+// 	require.Nil(t, err)
+
+// 	// Get the sheet for testing
+// 	sheet, ok := f.Sheets[xntSheet.InternalID]
+// 	require.True(t, ok, "Sheet should exist")
+
+// 	t.Run("should return true when cell has red background color", func(t *testing.T) {
+// 		// Test the specific cell mentioned by user: col 3, row 767
+// 		dividerCell := Cell{Row: 767, Col: 3}
+
+// 		// Use a defer recover to handle potential panics from the function
+// 		defer func() {
+// 			if r := recover(); r != nil {
+// 				t.Logf("Function panicked with: %v", r)
+// 				// The function might panic if the color array is empty
+// 				// This is expected behavior that needs to be fixed in the function
+// 				t.Skip("Function panicked - this indicates a bug in isDividerCell that needs to be fixed")
+// 			}
+// 		}()
+
+// 		result := sheet.isDividerCell(dividerCell, EndFileDividerCellColor)
+// 		assert.True(t, result, "Cell with red background should be identified as divider cell")
+// 	})
+
+// 	t.Run("should return false when cell does not have red background color", func(t *testing.T) {
+// 		// Test a regular cell that should not have red background
+// 		regularCell := Cell{Row: 4, Col: 2} // A regular data cell
+// 		result := sheet.isDividerCell(regularCell, EndFileDividerCellColor)
+// 		assert.False(t, result, "Cell without red background should not be identified as divider cell")
+// 	})
+
+// 	t.Run("should return false when cell style cannot be retrieved", func(t *testing.T) {
+// 		// Test with an invalid cell that might cause style retrieval to fail
+// 		invalidCell := Cell{Row: 99999, Col: 99999} // Very large row/col that likely doesn't exist
+// 		result := sheet.isDividerCell(invalidCell, EndFileDividerCellColor)
+// 		assert.False(t, result, "Invalid cell should return false when style cannot be retrieved")
+// 	})
+
+// 	t.Run("should return false when cell style exists but has different color", func(t *testing.T) {
+// 		// Test with a cell that has a style but not red background
+// 		// We'll test a few different cells to ensure they don't have red background
+// 		testCells := []Cell{
+// 			{Row: 1, Col: 1},  // Top-left cell
+// 			{Row: 5, Col: 1},  // A data cell
+// 			{Row: 10, Col: 5}, // Another data cell
+// 		}
+
+// 		for _, cell := range testCells {
+// 			result := sheet.isDividerCell(cell, EndFileDividerCellColor)
+// 			assert.False(t, result, "Cell at %s should not be identified as divider cell", cell.String())
+// 		}
+// 	})
+
+// 	t.Run("should handle edge cases gracefully", func(t *testing.T) {
+// 		// Test edge cases
+// 		edgeCases := []Cell{
+// 			{Row: 0, Col: 0},   // Invalid coordinates
+// 			{Row: -1, Col: -1}, // Negative coordinates
+// 			{Row: 1, Col: 0},   // Zero column
+// 			{Row: 0, Col: 1},   // Zero row
+// 		}
+
+// 		for _, cell := range edgeCases {
+// 			result := sheet.isDividerCell(cell, EndFileDividerCellColor)
+// 			assert.False(t, result, "Edge case cell at %s should return false", cell.String())
+// 		}
+// 	})
+// }
+
+func assertColumnIndices(t *testing.T, f *File) {
+	sheet, ok := f.Sheets[SheetInternalID(getTestFileConfig().SheetConfigs[0].InternalID)]
+	require.True(t, ok, "should found sheet")
+
+	require.Containsf(t, sheet.ColumnIndices, 1, "should contain product_id column at col 1")
+	assert.Containsf(t, sheet.ColumnIndices[1], "test-product-id-1", "should contain product_id value test-product-id-1")
+}
+
+func TestFile_UpsertRow(t *testing.T) {
+	f, err := NewFile(getTestFileConfig())
+	require.Nil(t, err)
+
+	err = f.Load()
+	t.Logf("err: %v", err)
+	require.Nil(t, err)
+
+	// update row with index column: __product_id = test-product-id-1
+	// change SL of Ngày 6 to 11
+	err = f.UpsertRow(
+		getTestFileConfig().SheetConfigs[0].InternalID,
+		"__product_id",
+		"test-product-id-3",
+		map[MultiLeverHeaderStr]interface{}{
+			"Ngày.6.SL": 11,
+		})
+	require.Nil(t, err)
 }
