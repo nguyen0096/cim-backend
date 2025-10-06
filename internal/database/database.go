@@ -26,6 +26,7 @@ func Initialize(cfg config.DatabaseConfig) (*gorm.DB, error) {
 
 func Migrate(db *gorm.DB) error {
 	return db.AutoMigrate(
+		&models.User{},
 		&models.Supplier{},
 		&models.Product{},
 		&models.Inventory{},

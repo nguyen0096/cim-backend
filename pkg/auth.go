@@ -7,6 +7,7 @@ import (
 
 const AuthContextKeyUserID = "user_id"
 const AuthContextKeyUserEmail = "user_email"
+const AuthContextKeyUserName = "user_name"
 
 // GetUserEmailFromContext gets the user email from the context
 func GetUserEmailFromContext(ctx context.Context) (string, error) {

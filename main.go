@@ -63,7 +63,19 @@ func main() {
 		log.Fatal("Failed to run migrations:", err)
 	}
 
+	// Initialize Casbin service for authorization
+	casbinService, err := auth.NewCasbinService(db)
+	if err != nil {
+		log.Fatal("Failed to initialize Casbin service:", err)
+	}
+
+	// Initialize default RBAC policies
+	if err := casbinService.InitializeDefaultPolicies(); err != nil {
+		log.Fatal("Failed to initialize default policies:", err)
+	}
+
 	// Initialize repositories
+	userRepo := repository.NewUserRepository(db)
 	supplierRepo := repository.NewSupplierRepository(db)
 	productRepo := repository.NewProductRepository(db)
 	inventoryRepo := repository.NewInventoryRepository(db)
@@ -72,6 +84,7 @@ func main() {
 	settingsRepo := repository.NewSettingsRepository(db)
 
 	// Initialize services
+	userService := services.NewUserService(userRepo, casbinService)
 	supplierService := services.NewSupplierService(supplierRepo)
 	productService := services.NewProductService(productRepo)
 	inventoryService := services.NewInventoryService(inventoryRepo, productRepo)
@@ -81,7 +94,7 @@ func main() {
 	purchaseOrderService := services.NewPurchaseOrderService(purchaseOrderRepo, inventoryService, excelService, settingsService, db, logger)
 
 	// Initialize handlers
-	userHandler := handlers.NewUserHandler()
+	userHandler := handlers.NewUserHandler(userService, firebaseAuth)
 	supplierHandler := handlers.NewSupplierHandler(supplierService)
 	productHandler := handlers.NewProductHandler(productService, logger)
 	inventoryHandler := handlers.NewInventoryHandler(inventoryService)
@@ -125,8 +138,15 @@ func main() {
 	authGroup.POST("/verify-token", userHandler.VerifyToken)
 	authGroup.GET("/profile", userHandler.GetProfile, middleware.AuthMiddleware(firebaseAuth))
 
+	// User management routes (admin only)
+	users := api.Group("/users", middleware.AuthMiddleware(firebaseAuth), middleware.AuthorizationMiddleware(casbinService, userRepo))
+	users.GET("", userHandler.ListUsers)
+	users.GET("/role/:role", userHandler.GetUsersByRole)
+	users.PUT("/:uid/role", userHandler.UpdateUserRole)
+	users.DELETE("/:id", userHandler.DeleteUser)
+
 	// Product routes
-	products := api.Group("/products", middleware.AuthMiddleware(firebaseAuth))
+	products := api.Group("/products", middleware.AuthMiddleware(firebaseAuth), middleware.AuthorizationMiddleware(casbinService, userRepo))
 	products.GET("", productHandler.GetProducts)
 	products.GET("/search", productHandler.SearchProducts)
 	products.POST("", productHandler.CreateProduct)
@@ -138,7 +158,7 @@ func main() {
 	products.GET("/:id/inventory", productHandler.GetProductInventory)
 
 	// Inventory routes
-	inventories := api.Group("/inventories", middleware.AuthMiddleware(firebaseAuth))
+	inventories := api.Group("/inventories", middleware.AuthMiddleware(firebaseAuth), middleware.AuthorizationMiddleware(casbinService, userRepo))
 	inventories.GET("", inventoryHandler.ListInventory)
 	inventories.POST("", inventoryHandler.CreateInventory)
 	inventories.GET("/:id", inventoryHandler.GetInventory)
@@ -154,13 +174,13 @@ func main() {
 	inventories.PUT("/:id/inventory-items/:item_id/adjust", inventoryItemHandler.AdjustInventoryItemQuantity)
 
 	// Standalone inventory item routes (for backward compatibility and specific use cases)
-	inventoryItems := api.Group("/inventory-items", middleware.AuthMiddleware(firebaseAuth))
+	inventoryItems := api.Group("/inventory-items", middleware.AuthMiddleware(firebaseAuth), middleware.AuthorizationMiddleware(casbinService, userRepo))
 	inventoryItems.GET("", inventoryItemHandler.ListInventoryItems)
 	inventoryItems.GET("/product/:product_id", inventoryItemHandler.GetInventoryItemByProductID)
 	inventoryItems.GET("/low-stock", inventoryItemHandler.GetLowStockItems)
 
 	// Supplier routes
-	suppliers := api.Group("/suppliers", middleware.AuthMiddleware(firebaseAuth))
+	suppliers := api.Group("/suppliers", middleware.AuthMiddleware(firebaseAuth), middleware.AuthorizationMiddleware(casbinService, userRepo))
 	suppliers.GET("", supplierHandler.GetSuppliers)
 	suppliers.GET("/search", supplierHandler.SearchSuppliers)
 	suppliers.POST("", supplierHandler.CreateSupplier)
@@ -171,7 +191,7 @@ func main() {
 	suppliers.POST("/:id/restore", supplierHandler.RestoreSupplier)
 
 	// Purchase Order routes
-	purchaseOrders := api.Group("/purchase-orders", middleware.AuthMiddleware(firebaseAuth))
+	purchaseOrders := api.Group("/purchase-orders", middleware.AuthMiddleware(firebaseAuth), middleware.AuthorizationMiddleware(casbinService, userRepo))
 	purchaseOrders.GET("", purchaseOrderHandler.ListPurchaseOrders)
 	purchaseOrders.POST("", purchaseOrderHandler.CreatePurchaseOrder)
 	// purchaseOrders.GET("/:id", purchaseOrderHandler.GetPurchaseOrder)
@@ -182,7 +202,7 @@ func main() {
 	// purchaseOrders.POST("/:id/receive", purchaseOrderHandler.ReceivePurchaseOrder)
 
 	// Excel routes
-	excel := api.Group("/excel", middleware.AuthMiddleware(firebaseAuth))
+	excel := api.Group("/excel", middleware.AuthMiddleware(firebaseAuth), middleware.AuthorizationMiddleware(casbinService, userRepo))
 	excel.POST("/import-products", excelHandler.ImportProducts)
 	excel.POST("/import-inventory", excelHandler.ImportInventory)
 	excel.GET("/template-products", excelHandler.GetProductTemplate)
@@ -190,14 +210,14 @@ func main() {
 	excel.POST("/verify", excelHandler.VerifyFileAndSheet)
 
 	// Settings routes
-	settings := api.Group("/settings", middleware.AuthMiddleware(firebaseAuth))
+	settings := api.Group("/settings", middleware.AuthMiddleware(firebaseAuth), middleware.AuthorizationMiddleware(casbinService, userRepo))
 	settings.GET("", settingsHandler.GetAllSettings)
 	settings.GET("/:key", settingsHandler.GetSetting)
 	settings.POST("/:key", settingsHandler.SetSetting)
 	settings.DELETE("/:key", settingsHandler.DeleteSetting)
 
 	// Reports routes
-	reports := api.Group("/reports", middleware.AuthMiddleware(firebaseAuth))
+	reports := api.Group("/reports", middleware.AuthMiddleware(firebaseAuth), middleware.AuthorizationMiddleware(casbinService, userRepo))
 	reports.GET("/inventory-summary", inventoryHandler.GetInventorySummary)
 	reports.GET("/low-stock", inventoryItemHandler.GetLowStockItems)
 	reports.GET("/purchase-summary", purchaseOrderHandler.GetPurchaseSummary)

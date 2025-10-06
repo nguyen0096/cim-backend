@@ -46,6 +46,7 @@ func rollbackMigrations() error {
 		&models.Product{},
 		&models.Supplier{},
 		&models.Settings{},
+		&models.User{},
 	}
 
 	for _, table := range tables {
