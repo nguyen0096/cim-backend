@@ -22,30 +22,17 @@ type ProductService interface {
 }
 
 type productService struct {
-	productRepo   repository.ProductRepository
-	inventoryRepo repository.InventoryRepository
+	productRepo repository.ProductRepository
 }
 
-func NewProductService(productRepo repository.ProductRepository, inventoryRepo repository.InventoryRepository) ProductService {
+func NewProductService(productRepo repository.ProductRepository) ProductService {
 	return &productService{
-		productRepo:   productRepo,
-		inventoryRepo: inventoryRepo,
+		productRepo: productRepo,
 	}
 }
 
 func (s *productService) CreateProduct(ctx context.Context, product *models.Product) error {
-	err := s.productRepo.Create(ctx, product)
-	if err != nil {
-		return err
-	}
-
-	// Create inventory record for the product
-	inventory := &models.Inventory{
-		ProductID:    product.ID,
-		Quantity:     0,
-		ReorderLevel: 0,
-	}
-	return s.inventoryRepo.Create(ctx, inventory)
+	return s.productRepo.Create(ctx, product)
 }
 
 func (s *productService) GetProductByID(ctx context.Context, id uint) (*models.Product, error) {

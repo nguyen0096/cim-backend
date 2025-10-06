@@ -5,7 +5,6 @@ import (
 	"import-export-backend/internal/models"
 	"import-export-backend/internal/repository"
 	"import-export-backend/internal/repository/excel"
-	"strconv"
 
 	"github.com/xuri/excelize/v2"
 )
@@ -141,10 +140,6 @@ var (
 
 //go:generate mockery --name=ExcelService --structname=ExcelService --output=../mocks/servicemocks --outpkg=servicemocks
 type ExcelService interface {
-	ExportProducts(ctx context.Context) (*excelize.File, error)
-	ExportProductsWithStyle(ctx context.Context, headerStyle, dataStyle *CellStyle) (*excelize.File, error)
-	ExportInventory(ctx context.Context) (*excelize.File, error)
-	ExportInventoryWithStyle(ctx context.Context, headerStyle, dataStyle *CellStyle) (*excelize.File, error)
 	ImportProducts(ctx context.Context, file *excelize.File) error
 	ImportInventory(ctx context.Context, file *excelize.File) error
 	GetProductTemplate(ctx context.Context) (*excelize.File, error)
@@ -236,163 +231,6 @@ func (s *excelService) setCellValueWithStyle(file *excelize.File, sheetName, cel
 		return err
 	}
 	return file.SetCellStyle(sheetName, cell, cell, styleID)
-}
-
-func (s *excelService) ExportProducts(ctx context.Context) (*excelize.File, error) {
-	// Use default styling
-	return s.ExportProductsWithStyle(ctx, &DefaultHeaderStyle, &DefaultDataStyle)
-}
-
-func (s *excelService) ExportProductsWithStyle(ctx context.Context, headerStyle, dataStyle *CellStyle) (*excelize.File, error) {
-	products, err := s.productRepo.List(ctx, 1000, 0, "created_at", "desc", "") // Get all products
-	if err != nil {
-		return nil, err
-	}
-
-	file := excelize.NewFile()
-	sheetName := "Products"
-	file.NewSheet(sheetName)
-
-	// Create styles
-	headerStyleID, err := s.createCellStyle(file, *headerStyle)
-	if err != nil {
-		return nil, err
-	}
-
-	dataStyleID, err := s.createCellStyle(file, *dataStyle)
-	if err != nil {
-		return nil, err
-	}
-
-	// Headers with styling
-	headers := []string{"ID", "Name", "Supplier", "Unit Price", "Status", "Stock Quantity", "Reorder Level", "Location", "Last Updated"}
-	for i, header := range headers {
-		cell := string(rune('A'+i)) + "1"
-		if err := s.setCellValueWithStyle(file, sheetName, cell, header, headerStyleID); err != nil {
-			return nil, err
-		}
-	}
-
-	// Data with styling
-	for i, product := range products {
-		row := i + 2
-		rowStr := strconv.Itoa(row)
-
-		if err := s.setCellValueWithStyle(file, sheetName, "A"+rowStr, strconv.Itoa(int(product.ID)), dataStyleID); err != nil {
-			return nil, err
-		}
-		if err := s.setCellValueWithStyle(file, sheetName, "B"+rowStr, product.Name, dataStyleID); err != nil {
-			return nil, err
-		}
-		if err := s.setCellValueWithStyle(file, sheetName, "C"+rowStr, product.Supplier.Name, dataStyleID); err != nil {
-			return nil, err
-		}
-		if err := s.setCellValueWithStyle(file, sheetName, "D"+rowStr, product.UnitPrice, dataStyleID); err != nil {
-			return nil, err
-		}
-		if err := s.setCellValueWithStyle(file, sheetName, "E"+rowStr, product.Status, dataStyleID); err != nil {
-			return nil, err
-		}
-
-		if product.Inventory != nil {
-			if err := s.setCellValueWithStyle(file, sheetName, "F"+rowStr, product.Inventory.Quantity, dataStyleID); err != nil {
-				return nil, err
-			}
-			if err := s.setCellValueWithStyle(file, sheetName, "G"+rowStr, product.Inventory.ReorderLevel, dataStyleID); err != nil {
-				return nil, err
-			}
-			if err := s.setCellValueWithStyle(file, sheetName, "H"+rowStr, product.Inventory.Location, dataStyleID); err != nil {
-				return nil, err
-			}
-		}
-	}
-
-	// Auto-fit columns
-	for i := range headers {
-		col := string(rune('A' + i))
-		if err := file.SetColWidth(sheetName, col, col, 15); err != nil {
-			return nil, err
-		}
-	}
-
-	return file, nil
-}
-
-func (s *excelService) ExportInventory(ctx context.Context) (*excelize.File, error) {
-	// Use default styling
-	return s.ExportInventoryWithStyle(ctx, &DefaultHeaderStyle, &DefaultDataStyle)
-}
-
-func (s *excelService) ExportInventoryWithStyle(ctx context.Context, headerStyle, dataStyle *CellStyle) (*excelize.File, error) {
-	inventory, err := s.inventoryRepo.List(ctx, 1000, 0) // Get all inventory
-	if err != nil {
-		return nil, err
-	}
-
-	file := excelize.NewFile()
-	sheetName := "Inventory"
-	file.NewSheet(sheetName)
-
-	// Create styles
-	headerStyleID, err := s.createCellStyle(file, *headerStyle)
-	if err != nil {
-		return nil, err
-	}
-
-	dataStyleID, err := s.createCellStyle(file, *dataStyle)
-	if err != nil {
-		return nil, err
-	}
-
-	// Headers with styling
-	headers := []string{"Product ID", "Product Name", "Current Stock", "Reorder Level", "Location", "Last Transaction", "Transaction Type", "Quantity Changed", "Date"}
-	for i, header := range headers {
-		cell := string(rune('A'+i)) + "1"
-		if err := s.setCellValueWithStyle(file, sheetName, cell, header, headerStyleID); err != nil {
-			return nil, err
-		}
-	}
-
-	// Data with styling
-	for i, inv := range inventory {
-		row := i + 2
-		rowStr := strconv.Itoa(row)
-
-		if err := s.setCellValueWithStyle(file, sheetName, "A"+rowStr, strconv.Itoa(int(inv.ProductID)), dataStyleID); err != nil {
-			return nil, err
-		}
-		if err := s.setCellValueWithStyle(file, sheetName, "B"+rowStr, inv.Product.Name, dataStyleID); err != nil {
-			return nil, err
-		}
-		if err := s.setCellValueWithStyle(file, sheetName, "C"+rowStr, inv.Quantity, dataStyleID); err != nil {
-			return nil, err
-		}
-		if err := s.setCellValueWithStyle(file, sheetName, "D"+rowStr, inv.ReorderLevel, dataStyleID); err != nil {
-			return nil, err
-		}
-		if err := s.setCellValueWithStyle(file, sheetName, "E"+rowStr, inv.Location, dataStyleID); err != nil {
-			return nil, err
-		}
-		if err := s.setCellValueWithStyle(file, sheetName, "F"+rowStr, "N/A", dataStyleID); err != nil { // Last transaction - would need to query transactions
-			return nil, err
-		}
-		if err := s.setCellValueWithStyle(file, sheetName, "G"+rowStr, "N/A", dataStyleID); err != nil { // Transaction type
-			return nil, err
-		}
-		if err := s.setCellValueWithStyle(file, sheetName, "H"+rowStr, "N/A", dataStyleID); err != nil { // Quantity changed
-			return nil, err
-		}
-	}
-
-	// Auto-fit columns
-	for i := range headers {
-		col := string(rune('A' + i))
-		if err := file.SetColWidth(sheetName, col, col, 15); err != nil {
-			return nil, err
-		}
-	}
-
-	return file, nil
 }
 
 func (s *excelService) ImportProducts(ctx context.Context, file *excelize.File) error {

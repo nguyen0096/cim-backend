@@ -12,9 +12,10 @@ import (
 
 // SeedData contains all the mock data with references
 type SeedData struct {
-	Suppliers []models.Supplier
-	Products  []models.Product
-	Inventory []models.Inventory
+	Suppliers      []models.Supplier
+	Products       []models.Product
+	Inventories    []models.Inventory
+	InventoryItems []models.InventoryItem
 }
 
 // seedDatabase populates the database with mock data
@@ -62,11 +63,21 @@ func seedDatabase() error {
 		productIDs = append(productIDs, product.ID)
 	}
 
-	// 3. Inventory
-	for _, inventory := range seedData.Inventory {
+	// 3. Inventories
+	var inventoryIDs []uint
+	for _, inventory := range seedData.Inventories {
 		if err := tx.Create(&inventory).Error; err != nil {
 			tx.Rollback()
 			return fmt.Errorf("failed to create inventory: %w", err)
+		}
+		inventoryIDs = append(inventoryIDs, inventory.ID)
+	}
+
+	// 4. Inventory Items
+	for _, item := range seedData.InventoryItems {
+		if err := tx.Create(&item).Error; err != nil {
+			tx.Rollback()
+			return fmt.Errorf("failed to create inventory item: %w", err)
 		}
 	}
 
@@ -95,8 +106,9 @@ func generateSeedData() SeedData {
 	}
 
 	return SeedData{
-		Suppliers: suppliers,
-		Products:  products,
-		Inventory: data.Inventory(productIDs),
+		Suppliers:      suppliers,
+		Products:       products,
+		Inventories:    data.Inventory(productIDs),
+		InventoryItems: data.InventoryItems(productIDs),
 	}
 }

@@ -18,42 +18,6 @@ func NewExcelHandler(excelService services.ExcelService) *ExcelHandler {
 	}
 }
 
-func (h *ExcelHandler) ExportProducts(c echo.Context) error {
-	file, err := h.excelService.ExportProducts(c.Request().Context())
-	if err != nil {
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to export products"})
-	}
-
-	c.Response().Header().Set("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-	c.Response().Header().Set("Content-Disposition", "attachment; filename=products.xlsx")
-
-	// Convert excelize.File to bytes
-	buffer, err := file.WriteToBuffer()
-	if err != nil {
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to generate Excel file"})
-	}
-
-	return c.Blob(http.StatusOK, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", buffer.Bytes())
-}
-
-func (h *ExcelHandler) ExportInventory(c echo.Context) error {
-	file, err := h.excelService.ExportInventory(c.Request().Context())
-	if err != nil {
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to export inventory"})
-	}
-
-	c.Response().Header().Set("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-	c.Response().Header().Set("Content-Disposition", "attachment; filename=inventory.xlsx")
-
-	// Convert excelize.File to bytes
-	buffer, err := file.WriteToBuffer()
-	if err != nil {
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to generate Excel file"})
-	}
-
-	return c.Blob(http.StatusOK, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", buffer.Bytes())
-}
-
 func (h *ExcelHandler) ImportProducts(c echo.Context) error {
 	file, err := c.FormFile("file")
 	if err != nil {

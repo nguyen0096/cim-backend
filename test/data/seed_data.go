@@ -57,6 +57,8 @@ func Products(supplierIDs []uint) []models.Product {
 			Description: "Professional laptop with M3 chip, 32GB RAM, 1TB SSD",
 			SupplierID:  supplierIDs[0], // Tech Electronics
 			UnitPrice:   2999.99,
+			UnitType:    "piece",
+			ProductType: "laptop",
 			Status:      "active",
 		},
 		{
@@ -68,6 +70,8 @@ func Products(supplierIDs []uint) []models.Product {
 			Description: "27-inch 4K UHD gaming monitor with 144Hz refresh rate",
 			SupplierID:  supplierIDs[0], // Tech Electronics
 			UnitPrice:   599.99,
+			UnitType:    "piece",
+			ProductType: "monitor",
 			Status:      "active",
 		},
 		{
@@ -79,6 +83,8 @@ func Products(supplierIDs []uint) []models.Product {
 			Description: "Wireless mechanical keyboard with RGB backlight and hot-swappable switches",
 			SupplierID:  supplierIDs[0], // Tech Electronics
 			UnitPrice:   89.99,
+			UnitType:    "piece",
+			ProductType: "keyboard",
 			Status:      "active",
 		},
 		{
@@ -90,6 +96,8 @@ func Products(supplierIDs []uint) []models.Product {
 			Description: "Advanced wireless mouse with precision scrolling and customizable buttons",
 			SupplierID:  supplierIDs[0], // Tech Electronics
 			UnitPrice:   99.99,
+			UnitType:    "piece",
+			ProductType: "mouse",
 			Status:      "active",
 		},
 		{
@@ -101,6 +109,8 @@ func Products(supplierIDs []uint) []models.Product {
 			Description: "Ergonomic office chair with lumbar support and breathable mesh",
 			SupplierID:  supplierIDs[1], // Office Supply
 			UnitPrice:   1395.00,
+			UnitType:    "piece",
+			ProductType: "chair",
 			Status:      "active",
 		},
 		{
@@ -112,6 +122,8 @@ func Products(supplierIDs []uint) []models.Product {
 			Description: "Height-adjustable standing desk with bamboo top and memory settings",
 			SupplierID:  supplierIDs[1], // Office Supply
 			UnitPrice:   799.00,
+			UnitType:    "box",
+			ProductType: "desk",
 			Status:      "active",
 		},
 		{
@@ -123,6 +135,8 @@ func Products(supplierIDs []uint) []models.Product {
 			Description: "18-port Thunderbolt 4 hub with 98W charging and 40Gbps data transfer",
 			SupplierID:  supplierIDs[2], // Global Parts
 			UnitPrice:   399.95,
+			UnitType:    "piece",
+			ProductType: "hub",
 			Status:      "active",
 		},
 		{
@@ -134,6 +148,8 @@ func Products(supplierIDs []uint) []models.Product {
 			Description: "Ultra HD 4K webcam with HDR and Windows Hello support",
 			SupplierID:  supplierIDs[2], // Global Parts
 			UnitPrice:   199.99,
+			UnitType:    "piece",
+			ProductType: "headphones",
 			Status:      "active",
 		},
 		{
@@ -145,6 +161,8 @@ func Products(supplierIDs []uint) []models.Product {
 			Description: "Industry-leading noise cancelling wireless headphones with 30-hour battery",
 			SupplierID:  supplierIDs[0], // Tech Electronics
 			UnitPrice:   399.99,
+			UnitType:    "piece",
+			ProductType: "headphones",
 			Status:      "active",
 		},
 		{
@@ -156,6 +174,8 @@ func Products(supplierIDs []uint) []models.Product {
 			Description: "12.9-inch iPad Pro with M2 chip, 256GB storage, and Liquid Retina XDR display",
 			SupplierID:  supplierIDs[0], // Tech Electronics
 			UnitPrice:   1099.99,
+			UnitType:    "device",
+			ProductType: "tablet",
 			Status:      "active",
 		},
 	}
@@ -187,19 +207,75 @@ var InventoryConfigs = []InventoryData{
 func Inventory(productIDs []uint) []models.Inventory {
 	now := time.Now()
 
-	inventory := make([]models.Inventory, len(InventoryConfigs))
-	for i, config := range InventoryConfigs {
-		inventory[i] = models.Inventory{
+	// Create inventory locations
+	inventories := []models.Inventory{
+		{
 			Base: models.Base{
 				CreatedAt: now,
 				UpdatedAt: now,
 			},
-			ProductID:    config.ProductID,
-			Quantity:     config.Quantity,
-			ReorderLevel: config.ReorderLevel,
-			Location:     config.Location,
+			Name:        "Main Warehouse A",
+			Description: "Primary storage facility for electronics and office supplies",
+			Location:    "123 Industrial Blvd, San Francisco, CA 94107",
+			Status:      models.InventoryStatusActive,
+		},
+		{
+			Base: models.Base{
+				CreatedAt: now,
+				UpdatedAt: now,
+			},
+			Name:        "Secondary Warehouse B",
+			Description: "Secondary storage facility for bulk items",
+			Location:    "456 Storage Way, Oakland, CA 94607",
+			Status:      models.InventoryStatusActive,
+		},
+		{
+			Base: models.Base{
+				CreatedAt: now,
+				UpdatedAt: now,
+			},
+			Name:        "Distribution Center C",
+			Description: "Distribution center for fast-moving items",
+			Location:    "789 Logistics Ave, San Jose, CA 95110",
+			Status:      models.InventoryStatusActive,
+		},
+	}
+
+	return inventories
+}
+
+// InventoryItems contains all test inventory item data
+func InventoryItems(productIDs []uint) []models.InventoryItem {
+	now := time.Now()
+
+	items := make([]models.InventoryItem, len(InventoryConfigs))
+	for i, config := range InventoryConfigs {
+		// Map product to inventory based on location
+		var inventoryID uint
+		switch config.Location {
+		case "Warehouse A":
+			inventoryID = 1
+		case "Warehouse B":
+			inventoryID = 2
+		case "Warehouse C":
+			inventoryID = 3
+		default:
+			inventoryID = 1 // Default to first inventory
+		}
+
+		items[i] = models.InventoryItem{
+			Base: models.Base{
+				CreatedAt: now,
+				UpdatedAt: now,
+			},
+			InventoryID:   inventoryID,
+			ProductID:     config.ProductID,
+			Quantity:      config.Quantity,
+			ReorderLevel:  config.ReorderLevel,
+			MaxStockLevel: config.Quantity * 3, // Set max stock to 3x current quantity
+			Status:        models.InventoryItemStatusActive,
 		}
 	}
 
-	return inventory
+	return items
 }

@@ -43,33 +43,15 @@ func AuthMiddleware(firebaseAuth *auth.FirebaseAuthService) echo.MiddlewareFunc 
 			if email, ok := token.Claims["email"].(string); ok {
 				reqCtx = pkg.WithUserEmail(reqCtx, email)
 			}
-			c.SetRequest(c.Request().WithContext(reqCtx))
-
-			// Check for custom claims (role)
-			if role, ok := token.Claims["role"].(string); ok {
-				c.Set("user_role", role)
-			} else {
-				c.Set("user_role", "user") // default role
-			}
 
 			// Set additional Firebase claims
 			if name, ok := token.Claims["name"].(string); ok {
 				c.Set("user_name", name)
+				reqCtx = context.WithValue(reqCtx, pkg.AuthContextKeyUserName, name)
 			}
 
-			return next(c)
-		}
-	}
-}
+			c.SetRequest(c.Request().WithContext(reqCtx))
 
-// AdminOnlyMiddleware restricts access to admin users only
-func AdminOnlyMiddleware() echo.MiddlewareFunc {
-	return func(next echo.HandlerFunc) echo.HandlerFunc {
-		return func(c echo.Context) error {
-			role := c.Get("user_role")
-			if role != "admin" {
-				return c.JSON(http.StatusForbidden, map[string]string{"error": "Admin access required"})
-			}
 			return next(c)
 		}
 	}
