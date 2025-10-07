@@ -15,6 +15,10 @@ type InventoryItem struct {
 	Inventory     *Inventory          `json:"inventory,omitempty" gorm:"foreignKey:InventoryID" validate:"-"`
 	ProductID     uint                `json:"product_id" gorm:"index:idx_inventory_items_unique,unique;not null"`
 	Product       *Product            `json:"product,omitempty" gorm:"foreignKey:ProductID" validate:"-"`
+	SupplierID    uint                `json:"supplier_id"`
+	Supplier      *Supplier           `json:"supplier,omitempty" gorm:"foreignKey:SupplierID" validate:"-"`
+	UnitPrice     float64             `json:"unit_price" gorm:"type:decimal(13,2)"`
+	UnitType      string              `json:"unit_type" gorm:"type:varchar(20)"`
 	Quantity      int                 `json:"quantity" gorm:"default:0"`
 	ReorderLevel  int                 `json:"reorder_level" gorm:"default:0"`
 	MaxStockLevel int                 `json:"max_stock_level" gorm:"default:0"`
@@ -29,4 +33,9 @@ func (ii *InventoryItem) IsLowStock() bool {
 // IsOverstocked checks if inventory item exceeds max stock level
 func (ii *InventoryItem) IsOverstocked() bool {
 	return ii.MaxStockLevel > 0 && ii.Quantity > ii.MaxStockLevel
+}
+
+// CalculateTotalValue calculates the total value of this inventory item
+func (ii *InventoryItem) CalculateTotalValue() float64 {
+	return float64(ii.Quantity) * ii.UnitPrice
 }

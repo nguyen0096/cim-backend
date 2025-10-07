@@ -24,7 +24,7 @@ func AuthorizationMiddleware(casbinService *auth.CasbinService, userRepo *reposi
 			}
 
 			// Check if user role already exists in context (skip database query if available)
-			userRole, exists := c.Get("user_role").(string)
+			userRole, exists := c.Get(pkg.AuthContextKeyUserRole).(string)
 			if !exists || userRole == "" {
 				// Fetch user role from database using Firebase UID
 				user, err := userRepo.GetByUID(c.Request().Context(), userID)
@@ -67,7 +67,16 @@ func AuthorizationMiddleware(casbinService *auth.CasbinService, userRepo *reposi
 			}
 
 			// Set user role in context for handlers that might need it
-			c.Set("user_role", userRole)
+			c.Set(pkg.AuthContextKeyUserRole, userRole)
+
+			// Get and set user permissions in context
+			permissions, err := getUserPermissions(casbinService, userRole)
+			if err != nil {
+				fmt.Printf("Error getting user permissions: %v\n", err)
+				// Continue anyway, permissions are optional for handlers
+			} else {
+				c.Set(pkg.AuthContextKeyUserPermissions, permissions)
+			}
 
 			// Authorization successful, continue to handler
 			return next(c)
@@ -151,6 +160,34 @@ func pathToResource(path string) string {
 	default:
 		return resource
 	}
+}
+
+// getUserPermissions retrieves all permissions for a given role
+func getUserPermissions(casbinService *auth.CasbinService, userRole string) ([]pkg.UserPermission, error) {
+	// Get all policies for the role from Casbin
+	enforcer := casbinService.GetEnforcer()
+	if enforcer == nil {
+		return nil, fmt.Errorf("casbin enforcer not available")
+	}
+
+	// Get all policies where the subject is the user role
+	policies, err := enforcer.GetFilteredPolicy(0, userRole)
+	if err != nil {
+		return nil, fmt.Errorf("error getting filtered policies: %w", err)
+	}
+
+	permissions := make([]pkg.UserPermission, 0, len(policies))
+	for _, policy := range policies {
+		if len(policy) >= 3 {
+			// policy format: [role, resource, action]
+			permissions = append(permissions, pkg.UserPermission{
+				Resource: policy[1],
+				Action:   policy[2],
+			})
+		}
+	}
+
+	return permissions, nil
 }
 
 // RequirePermission is a helper function to check permissions in handlers

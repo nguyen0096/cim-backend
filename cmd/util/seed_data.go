@@ -8,6 +8,7 @@ import (
 	"import-export-backend/internal/models"
 	"import-export-backend/pkg"
 	"import-export-backend/test/data"
+	"time"
 )
 
 // SeedData contains all the mock data with references
@@ -63,6 +64,20 @@ func seedDatabase() error {
 		productIDs = append(productIDs, product.ID)
 	}
 
+	// 2.5. Create product-supplier relationships
+	for i, productID := range productIDs {
+		// Assign suppliers to products based on product index
+		supplierIndex := i % len(supplierIDs) // Cycle through suppliers
+		supplierID := supplierIDs[supplierIndex]
+
+		// Create many-to-many relationship (junction table only has foreign keys)
+		if err := tx.Exec("INSERT INTO product_suppliers (product_id, supplier_id) VALUES (?, ?)",
+			productID, supplierID).Error; err != nil {
+			tx.Rollback()
+			return fmt.Errorf("failed to create product-supplier relationship: %w", err)
+		}
+	}
+
 	// 3. Inventories
 	var inventoryIDs []uint
 	for _, inventory := range seedData.Inventories {
@@ -73,8 +88,9 @@ func seedDatabase() error {
 		inventoryIDs = append(inventoryIDs, inventory.ID)
 	}
 
-	// 4. Inventory Items
-	for _, item := range seedData.InventoryItems {
+	// 4. Inventory Items - generate with actual IDs
+	inventoryItems := generateInventoryItems(productIDs, inventoryIDs, supplierIDs)
+	for _, item := range inventoryItems {
 		if err := tx.Create(&item).Error; err != nil {
 			tx.Rollback()
 			return fmt.Errorf("failed to create inventory item: %w", err)
@@ -89,26 +105,76 @@ func seedDatabase() error {
 	return nil
 }
 
+// generateInventoryItems creates inventory items with actual database IDs
+func generateInventoryItems(productIDs, inventoryIDs, supplierIDs []uint) []models.InventoryItem {
+	now := time.Now()
+
+	// Inventory configurations with pricing data
+	configs := []struct {
+		ProductIndex  int
+		SupplierIndex int
+		UnitPrice     float64
+		UnitType      string
+		Quantity      int
+		ReorderLevel  int
+		Location      string
+	}{
+		{0, 0, 2999.99, "piece", 15, 5, "Warehouse A"},
+		{1, 0, 599.99, "piece", 30, 10, "Warehouse B"},
+		{2, 0, 89.99, "piece", 45, 15, "Warehouse C"},
+		{3, 0, 99.99, "piece", 25, 8, "Warehouse A"},
+		{4, 1, 1395.00, "piece", 8, 3, "Warehouse B"},
+		{5, 1, 799.00, "box", 12, 5, "Warehouse C"},
+		{6, 2, 399.95, "piece", 20, 8, "Warehouse A"},
+		{7, 2, 199.99, "piece", 35, 12, "Warehouse B"},
+		{8, 0, 399.99, "piece", 18, 6, "Warehouse C"},
+		{9, 0, 1099.99, "device", 22, 8, "Warehouse A"},
+	}
+
+	items := make([]models.InventoryItem, len(configs))
+	for i, config := range configs {
+		// Map location to inventory ID
+		var inventoryID uint
+		switch config.Location {
+		case "Warehouse A":
+			inventoryID = inventoryIDs[0]
+		case "Warehouse B":
+			inventoryID = inventoryIDs[1]
+		case "Warehouse C":
+			inventoryID = inventoryIDs[2]
+		default:
+			inventoryID = inventoryIDs[0]
+		}
+
+		items[i] = models.InventoryItem{
+			Base: models.Base{
+				CreatedAt: now,
+				UpdatedAt: now,
+			},
+			InventoryID:   inventoryID,
+			ProductID:     productIDs[config.ProductIndex],
+			SupplierID:    supplierIDs[config.SupplierIndex],
+			UnitPrice:     config.UnitPrice,
+			UnitType:      config.UnitType,
+			Quantity:      config.Quantity,
+			ReorderLevel:  config.ReorderLevel,
+			MaxStockLevel: config.Quantity * 3,
+			Status:        models.InventoryItemStatusActive,
+		}
+	}
+
+	return items
+}
+
 // generateSeedData creates the mock data using the centralized test data
 func generateSeedData() SeedData {
 	suppliers := data.Suppliers()
-	// Generate supplier IDs (they will be auto-generated, but we need them for products)
-	supplierIDs := make([]uint, len(suppliers))
-	for i := range suppliers {
-		supplierIDs[i] = uint(i + 1) // Assuming suppliers will get IDs 1, 2, 3...
-	}
-
-	products := data.Products(supplierIDs)
-	// Generate product IDs (they will be auto-generated, but we need them for inventory)
-	productIDs := make([]uint, len(products))
-	for i := range products {
-		productIDs[i] = uint(i + 1) // Assuming products will get IDs 1, 2, 3...
-	}
+	products := data.Products(nil) // supplierIDs parameter is no longer needed
 
 	return SeedData{
 		Suppliers:      suppliers,
 		Products:       products,
-		Inventories:    data.Inventory(productIDs),
-		InventoryItems: data.InventoryItems(productIDs),
+		Inventories:    data.Inventory(nil),      // productIDs parameter is no longer needed
+		InventoryItems: data.InventoryItems(nil), // productIDs parameter is no longer needed
 	}
 }

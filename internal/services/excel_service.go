@@ -267,7 +267,7 @@ func (s *excelService) GetProductTemplateWithStyle(ctx context.Context, headerSt
 	}
 
 	// Headers with styling
-	headers := []string{"Name", "Supplier ID", "Unit Price", "Status", "Description"}
+	headers := []string{"Name", "Product Type", "Status", "Description"}
 	for i, header := range headers {
 		cell := string(rune('A'+i)) + "1"
 		if err := s.setCellValueWithStyle(file, sheetName, cell, header, headerStyleID); err != nil {

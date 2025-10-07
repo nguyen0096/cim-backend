@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"import-export-backend/internal/models"
+	"import-export-backend/pkg"
 	"time"
 
 	"gorm.io/gorm"
@@ -88,12 +89,16 @@ func (r *purchaseOrderRepository) List(ctx context.Context, params models.ListPa
 		baseQuery = baseQuery.Where("status = ?", params.Status)
 	}
 
-	// Build query for data with preloads
-	baseQuery = baseQuery.Preload("Items.Product.Supplier")
-
 	// Apply same search filter for data
 	if params.Search != "" {
 		baseQuery = baseQuery.Where("order_number ILIKE ? OR notes ILIKE ?", "%"+params.Search+"%", "%"+params.Search+"%")
+	}
+
+	if ctx.Value(pkg.AuthContextKeyUserRole) == string(models.RoleStaff) {
+		baseQuery = baseQuery.Omit("Items.UnitPrice")
+	} else {
+		// Build query for data with preloads
+		baseQuery = baseQuery.Preload("Items.Product")
 	}
 
 	// Get total count first

@@ -55,9 +55,6 @@ func Products(supplierIDs []uint) []models.Product {
 			},
 			Name:        "MacBook Pro 16-inch M3",
 			Description: "Professional laptop with M3 chip, 32GB RAM, 1TB SSD",
-			SupplierID:  supplierIDs[0], // Tech Electronics
-			UnitPrice:   2999.99,
-			UnitType:    "piece",
 			ProductType: "laptop",
 			Status:      "active",
 		},
@@ -68,9 +65,6 @@ func Products(supplierIDs []uint) []models.Product {
 			},
 			Name:        "LG UltraGear 27\" 4K Gaming Monitor",
 			Description: "27-inch 4K UHD gaming monitor with 144Hz refresh rate",
-			SupplierID:  supplierIDs[0], // Tech Electronics
-			UnitPrice:   599.99,
-			UnitType:    "piece",
 			ProductType: "monitor",
 			Status:      "active",
 		},
@@ -81,9 +75,6 @@ func Products(supplierIDs []uint) []models.Product {
 			},
 			Name:        "Keychron K8 Mechanical Keyboard",
 			Description: "Wireless mechanical keyboard with RGB backlight and hot-swappable switches",
-			SupplierID:  supplierIDs[0], // Tech Electronics
-			UnitPrice:   89.99,
-			UnitType:    "piece",
 			ProductType: "keyboard",
 			Status:      "active",
 		},
@@ -94,9 +85,6 @@ func Products(supplierIDs []uint) []models.Product {
 			},
 			Name:        "Logitech MX Master 3S",
 			Description: "Advanced wireless mouse with precision scrolling and customizable buttons",
-			SupplierID:  supplierIDs[0], // Tech Electronics
-			UnitPrice:   99.99,
-			UnitType:    "piece",
 			ProductType: "mouse",
 			Status:      "active",
 		},
@@ -107,9 +95,6 @@ func Products(supplierIDs []uint) []models.Product {
 			},
 			Name:        "Herman Miller Aeron Chair",
 			Description: "Ergonomic office chair with lumbar support and breathable mesh",
-			SupplierID:  supplierIDs[1], // Office Supply
-			UnitPrice:   1395.00,
-			UnitType:    "piece",
 			ProductType: "chair",
 			Status:      "active",
 		},
@@ -120,9 +105,6 @@ func Products(supplierIDs []uint) []models.Product {
 			},
 			Name:        "UPLIFT Standing Desk 60x30",
 			Description: "Height-adjustable standing desk with bamboo top and memory settings",
-			SupplierID:  supplierIDs[1], // Office Supply
-			UnitPrice:   799.00,
-			UnitType:    "box",
 			ProductType: "desk",
 			Status:      "active",
 		},
@@ -133,9 +115,6 @@ func Products(supplierIDs []uint) []models.Product {
 			},
 			Name:        "CalDigit TS4 Thunderbolt 4 Hub",
 			Description: "18-port Thunderbolt 4 hub with 98W charging and 40Gbps data transfer",
-			SupplierID:  supplierIDs[2], // Global Parts
-			UnitPrice:   399.95,
-			UnitType:    "piece",
 			ProductType: "hub",
 			Status:      "active",
 		},
@@ -146,9 +125,6 @@ func Products(supplierIDs []uint) []models.Product {
 			},
 			Name:        "Logitech Brio 4K Webcam",
 			Description: "Ultra HD 4K webcam with HDR and Windows Hello support",
-			SupplierID:  supplierIDs[2], // Global Parts
-			UnitPrice:   199.99,
-			UnitType:    "piece",
 			ProductType: "headphones",
 			Status:      "active",
 		},
@@ -159,9 +135,6 @@ func Products(supplierIDs []uint) []models.Product {
 			},
 			Name:        "Sony WH-1000XM5 Headphones",
 			Description: "Industry-leading noise cancelling wireless headphones with 30-hour battery",
-			SupplierID:  supplierIDs[0], // Tech Electronics
-			UnitPrice:   399.99,
-			UnitType:    "piece",
 			ProductType: "headphones",
 			Status:      "active",
 		},
@@ -172,9 +145,6 @@ func Products(supplierIDs []uint) []models.Product {
 			},
 			Name:        "iPad Pro 12.9\" M2",
 			Description: "12.9-inch iPad Pro with M2 chip, 256GB storage, and Liquid Retina XDR display",
-			SupplierID:  supplierIDs[0], // Tech Electronics
-			UnitPrice:   1099.99,
-			UnitType:    "device",
 			ProductType: "tablet",
 			Status:      "active",
 		},
@@ -184,6 +154,9 @@ func Products(supplierIDs []uint) []models.Product {
 // InventoryData represents inventory configuration for a product
 type InventoryData struct {
 	ProductID    uint
+	SupplierID   uint
+	UnitPrice    float64
+	UnitType     string
 	Quantity     int
 	ReorderLevel int
 	Location     string
@@ -191,16 +164,16 @@ type InventoryData struct {
 
 // InventoryConfigs contains inventory configuration for all products
 var InventoryConfigs = []InventoryData{
-	{1, 15, 5, "Warehouse A"},
-	{2, 30, 10, "Warehouse B"},
-	{3, 45, 15, "Warehouse C"},
-	{4, 25, 8, "Warehouse A"},
-	{5, 8, 3, "Warehouse B"},
-	{6, 12, 5, "Warehouse C"},
-	{7, 20, 8, "Warehouse A"},
-	{8, 35, 12, "Warehouse B"},
-	{9, 18, 6, "Warehouse C"},
-	{10, 22, 8, "Warehouse A"},
+	{1, 1, 2999.99, "piece", 15, 5, "Warehouse A"},
+	{2, 1, 599.99, "piece", 30, 10, "Warehouse B"},
+	{3, 1, 89.99, "piece", 45, 15, "Warehouse C"},
+	{4, 1, 99.99, "piece", 25, 8, "Warehouse A"},
+	{5, 2, 1395.00, "piece", 8, 3, "Warehouse B"},
+	{6, 2, 799.00, "box", 12, 5, "Warehouse C"},
+	{7, 3, 399.95, "piece", 20, 8, "Warehouse A"},
+	{8, 3, 199.99, "piece", 35, 12, "Warehouse B"},
+	{9, 1, 399.99, "piece", 18, 6, "Warehouse C"},
+	{10, 1, 1099.99, "device", 22, 8, "Warehouse A"},
 }
 
 // Inventory contains all test inventory data
@@ -270,6 +243,9 @@ func InventoryItems(productIDs []uint) []models.InventoryItem {
 			},
 			InventoryID:   inventoryID,
 			ProductID:     config.ProductID,
+			SupplierID:    config.SupplierID,
+			UnitPrice:     config.UnitPrice,
+			UnitType:      config.UnitType,
 			Quantity:      config.Quantity,
 			ReorderLevel:  config.ReorderLevel,
 			MaxStockLevel: config.Quantity * 3, // Set max stock to 3x current quantity

@@ -35,7 +35,7 @@ func (r *supplierRepository) Create(ctx context.Context, supplier *models.Suppli
 
 func (r *supplierRepository) GetByID(ctx context.Context, id uint) (*models.Supplier, error) {
 	var supplier models.Supplier
-	err := r.db.WithContext(ctx).First(&supplier, "id = ?", id).Error
+	err := r.db.WithContext(ctx).Preload("Products").First(&supplier, "id = ?", id).Error
 	if err != nil {
 		return nil, err
 	}
@@ -61,7 +61,7 @@ func (r *supplierRepository) Restore(ctx context.Context, id uint) error {
 
 func (r *supplierRepository) List(ctx context.Context, limit, offset int, sortBy, sortOrder, status string) ([]models.Supplier, error) {
 	var suppliers []models.Supplier
-	query := r.db.WithContext(ctx)
+	query := r.db.WithContext(ctx).Preload("Products")
 
 	// Apply status filter
 	if status != "" {
@@ -83,7 +83,7 @@ func (r *supplierRepository) List(ctx context.Context, limit, offset int, sortBy
 
 func (r *supplierRepository) Search(ctx context.Context, query string, sortBy, sortOrder string) ([]models.Supplier, error) {
 	var suppliers []models.Supplier
-	dbQuery := r.db.WithContext(ctx).Where("name ILIKE ? OR contact_phone ILIKE ? OR contact_email ILIKE ?",
+	dbQuery := r.db.WithContext(ctx).Preload("Products").Where("name ILIKE ? OR contact_phone ILIKE ? OR contact_email ILIKE ?",
 		"%"+query+"%", "%"+query+"%", "%"+query+"%")
 
 	// Apply sorting
@@ -102,7 +102,7 @@ func (r *supplierRepository) Search(ctx context.Context, query string, sortBy, s
 
 func (r *supplierRepository) SearchWithPagination(ctx context.Context, query string, limit, offset int, sortBy, sortOrder, status string) ([]models.Supplier, error) {
 	var suppliers []models.Supplier
-	dbQuery := r.db.WithContext(ctx).Where("name ILIKE ? OR contact_phone ILIKE ? OR contact_email ILIKE ?",
+	dbQuery := r.db.WithContext(ctx).Preload("Products").Where("name ILIKE ? OR contact_phone ILIKE ? OR contact_email ILIKE ?",
 		"%"+query+"%", "%"+query+"%", "%"+query+"%")
 
 	// Apply status filter

@@ -133,20 +133,24 @@ func main() {
 	// API routes
 	api := e.Group("/api/v1")
 
+	api.Use(middleware.AuthMiddleware(firebaseAuth))
+	api.Use(middleware.AuthorizationMiddleware(casbinService, userRepo))
+
 	// Authentication routes
 	authGroup := api.Group("/auth")
 	authGroup.POST("/verify-token", userHandler.VerifyToken)
-	authGroup.GET("/profile", userHandler.GetProfile, middleware.AuthMiddleware(firebaseAuth))
+	authGroup.GET("/profile", userHandler.GetProfile)
 
 	// User management routes (admin only)
-	users := api.Group("/users", middleware.AuthMiddleware(firebaseAuth), middleware.AuthorizationMiddleware(casbinService, userRepo))
+	users := api.Group("/users")
 	users.GET("", userHandler.ListUsers)
 	users.GET("/role/:role", userHandler.GetUsersByRole)
 	users.PUT("/:uid/role", userHandler.UpdateUserRole)
 	users.DELETE("/:id", userHandler.DeleteUser)
 
 	// Product routes
-	products := api.Group("/products", middleware.AuthMiddleware(firebaseAuth), middleware.AuthorizationMiddleware(casbinService, userRepo))
+	products := api.Group("/products")
+
 	products.GET("", productHandler.GetProducts)
 	products.GET("/search", productHandler.SearchProducts)
 	products.POST("", productHandler.CreateProduct)
@@ -158,7 +162,7 @@ func main() {
 	products.GET("/:id/inventory", productHandler.GetProductInventory)
 
 	// Inventory routes
-	inventories := api.Group("/inventories", middleware.AuthMiddleware(firebaseAuth), middleware.AuthorizationMiddleware(casbinService, userRepo))
+	inventories := api.Group("/inventories")
 	inventories.GET("", inventoryHandler.ListInventory)
 	inventories.POST("", inventoryHandler.CreateInventory)
 	inventories.GET("/:id", inventoryHandler.GetInventory)
@@ -174,13 +178,13 @@ func main() {
 	inventories.PUT("/:id/inventory-items/:item_id/adjust", inventoryItemHandler.AdjustInventoryItemQuantity)
 
 	// Standalone inventory item routes (for backward compatibility and specific use cases)
-	inventoryItems := api.Group("/inventory-items", middleware.AuthMiddleware(firebaseAuth), middleware.AuthorizationMiddleware(casbinService, userRepo))
+	inventoryItems := api.Group("/inventory-items")
 	inventoryItems.GET("", inventoryItemHandler.ListInventoryItems)
 	inventoryItems.GET("/product/:product_id", inventoryItemHandler.GetInventoryItemByProductID)
 	inventoryItems.GET("/low-stock", inventoryItemHandler.GetLowStockItems)
 
 	// Supplier routes
-	suppliers := api.Group("/suppliers", middleware.AuthMiddleware(firebaseAuth), middleware.AuthorizationMiddleware(casbinService, userRepo))
+	suppliers := api.Group("/suppliers")
 	suppliers.GET("", supplierHandler.GetSuppliers)
 	suppliers.GET("/search", supplierHandler.SearchSuppliers)
 	suppliers.POST("", supplierHandler.CreateSupplier)
@@ -191,7 +195,7 @@ func main() {
 	suppliers.POST("/:id/restore", supplierHandler.RestoreSupplier)
 
 	// Purchase Order routes
-	purchaseOrders := api.Group("/purchase-orders", middleware.AuthMiddleware(firebaseAuth), middleware.AuthorizationMiddleware(casbinService, userRepo))
+	purchaseOrders := api.Group("/purchase-orders")
 	purchaseOrders.GET("", purchaseOrderHandler.ListPurchaseOrders)
 	purchaseOrders.POST("", purchaseOrderHandler.CreatePurchaseOrder)
 	// purchaseOrders.GET("/:id", purchaseOrderHandler.GetPurchaseOrder)
@@ -202,7 +206,7 @@ func main() {
 	// purchaseOrders.POST("/:id/receive", purchaseOrderHandler.ReceivePurchaseOrder)
 
 	// Excel routes
-	excel := api.Group("/excel", middleware.AuthMiddleware(firebaseAuth), middleware.AuthorizationMiddleware(casbinService, userRepo))
+	excel := api.Group("/excel")
 	excel.POST("/import-products", excelHandler.ImportProducts)
 	excel.POST("/import-inventory", excelHandler.ImportInventory)
 	excel.GET("/template-products", excelHandler.GetProductTemplate)
@@ -210,14 +214,14 @@ func main() {
 	excel.POST("/verify", excelHandler.VerifyFileAndSheet)
 
 	// Settings routes
-	settings := api.Group("/settings", middleware.AuthMiddleware(firebaseAuth), middleware.AuthorizationMiddleware(casbinService, userRepo))
+	settings := api.Group("/settings")
 	settings.GET("", settingsHandler.GetAllSettings)
 	settings.GET("/:key", settingsHandler.GetSetting)
 	settings.POST("/:key", settingsHandler.SetSetting)
 	settings.DELETE("/:key", settingsHandler.DeleteSetting)
 
 	// Reports routes
-	reports := api.Group("/reports", middleware.AuthMiddleware(firebaseAuth), middleware.AuthorizationMiddleware(casbinService, userRepo))
+	reports := api.Group("/reports")
 	reports.GET("/inventory-summary", inventoryHandler.GetInventorySummary)
 	reports.GET("/low-stock", inventoryItemHandler.GetLowStockItems)
 	reports.GET("/purchase-summary", purchaseOrderHandler.GetPurchaseSummary)

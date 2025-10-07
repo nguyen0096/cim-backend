@@ -247,16 +247,8 @@ func (h *ProductHandler) CreateProduct(c echo.Context) error {
 
 	logger.WithFields(logrus.Fields{
 		"product_name": product.Name,
-		"unit_type":    product.UnitType,
 		"product_type": product.ProductType,
-		"supplier_id":  product.SupplierID,
 	}).Info("Creating new product")
-
-	// Validate UnitType if provided
-	if product.UnitType == "" {
-		logger.Warn("Product creation attempted with empty unit type")
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid unit type. Please use a valid unit type like 'piece', 'kg', 'liter', etc."})
-	}
 
 	// Validate ProductType if provided
 	if product.ProductType == "" {
@@ -306,7 +298,6 @@ func (h *ProductHandler) GetProduct(c echo.Context) error {
 
 	return c.JSON(http.StatusOK, product)
 }
-
 func (h *ProductHandler) UpdateProduct(c echo.Context) error {
 	startTime := time.Now()
 	logger := h.getRequestLogger(c, "UpdateProduct")
@@ -317,24 +308,41 @@ func (h *ProductHandler) UpdateProduct(c echo.Context) error {
 		return err
 	}
 
-	var product models.Product
-	if err := c.Bind(&product); err != nil {
+	var request struct {
+		Name        string   `json:"name"`
+		Description string   `json:"description"`
+		ProductType string   `json:"product_type"`
+		Status      string   `json:"status"`
+		SupplierIDs []uint  `json:"supplier_ids"`
+	}
+
+	if err := c.Bind(&request); err != nil {
 		logger.WithError(err).WithField("product_id", id).Error("Failed to bind request body")
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid request body"})
 	}
 
-	// Validate UnitType if provided
-	if product.UnitType == "" {
-		logger.WithField("product_id", id).Warn("Product update attempted with empty unit type")
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid unit type. Please use a valid unit type like 'piece', 'kg', 'liter', etc."})
+	product := models.Product{
+		Base: models.Base{ID: id},
+		Name: request.Name,
+		Description: request.Description,
+		ProductType: request.ProductType,
+		Status: request.Status,
 	}
 
-	product.ID = id
+	// Add suppliers if IDs provided
+	if len(request.SupplierIDs) > 0 {
+		suppliers := make([]*models.Supplier, len(request.SupplierIDs))
+		for i, sid := range request.SupplierIDs {
+			suppliers[i] = &models.Supplier{Base: models.Base{ID: sid}}
+		}
+		product.Suppliers = suppliers
+	}
+
 	logger.WithFields(logrus.Fields{
-		"product_id":   id,
-		"product_name": product.Name,
-		"unit_type":    product.UnitType,
-		"product_type": product.ProductType,
+		"product_id":    id,
+		"product_name":  product.Name,
+		"product_type":  product.ProductType,
+		"supplier_ids":  request.SupplierIDs,
 	}).Info("Updating product")
 
 	if err := h.productService.UpdateProduct(c.Request().Context(), &product); err != nil {

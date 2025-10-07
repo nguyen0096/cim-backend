@@ -27,8 +27,8 @@ func (i *Inventory) GetTotalItems() int {
 func (i *Inventory) GetTotalValue() float64 {
 	var total float64
 	for _, item := range i.Items {
-		if item != nil && item.Product != nil {
-			total += float64(item.Quantity) * item.Product.UnitPrice
+		if item != nil {
+			total += item.CalculateTotalValue()
 		}
 	}
 	return total

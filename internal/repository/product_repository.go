@@ -36,7 +36,7 @@ func (r *productRepository) Create(ctx context.Context, product *models.Product)
 
 func (r *productRepository) GetByID(ctx context.Context, id uint) (*models.Product, error) {
 	var product models.Product
-	err := r.db.WithContext(ctx).Preload("Supplier").Preload("InventoryItems").First(&product, "id = ?", id).Error
+	err := r.db.WithContext(ctx).Preload("Suppliers").Preload("InventoryItems").First(&product, "id = ?", id).Error
 	if err != nil {
 		return nil, err
 	}
@@ -62,7 +62,7 @@ func (r *productRepository) Restore(ctx context.Context, id uint) error {
 
 func (r *productRepository) List(ctx context.Context, limit, offset int, sortBy, sortOrder, status string) ([]models.Product, error) {
 	var products []models.Product
-	query := r.db.WithContext(ctx).Preload("Supplier").Preload("InventoryItems")
+	query := r.db.WithContext(ctx).Preload("Suppliers").Preload("InventoryItems")
 
 	// Apply status filter
 	if status != "" {
@@ -85,13 +85,16 @@ func (r *productRepository) List(ctx context.Context, limit, offset int, sortBy,
 
 func (r *productRepository) GetBySupplier(ctx context.Context, supplierID uint) ([]models.Product, error) {
 	var products []models.Product
-	err := r.db.WithContext(ctx).Preload("Supplier").Preload("InventoryItems").Where("supplier_id = ?", supplierID).Find(&products).Error
+	err := r.db.WithContext(ctx).Preload("Suppliers").Preload("InventoryItems").
+		Joins("JOIN product_suppliers ON products.id = product_suppliers.product_id").
+		Where("product_suppliers.supplier_id = ?", supplierID).
+		Find(&products).Error
 	return products, err
 }
 
 func (r *productRepository) Search(ctx context.Context, query string, sortBy, sortOrder string) ([]models.Product, error) {
 	var products []models.Product
-	dbQuery := r.db.WithContext(ctx).Preload("Supplier").Preload("InventoryItems").Where("name ILIKE ? OR product_type ILIKE ?", "%"+query+"%", "%"+query+"%")
+	dbQuery := r.db.WithContext(ctx).Preload("Suppliers").Preload("InventoryItems").Where("name ILIKE ? OR product_type ILIKE ?", "%"+query+"%", "%"+query+"%")
 
 	// Apply sorting
 	if sortBy != "" {
@@ -109,7 +112,7 @@ func (r *productRepository) Search(ctx context.Context, query string, sortBy, so
 
 func (r *productRepository) SearchWithPagination(ctx context.Context, query string, limit, offset int, sortBy, sortOrder, status string) ([]models.Product, error) {
 	var products []models.Product
-	dbQuery := r.db.WithContext(ctx).Preload("Supplier").Preload("InventoryItems").Where("name ILIKE ? OR product_type ILIKE ?", "%"+query+"%", "%"+query+"%")
+	dbQuery := r.db.WithContext(ctx).Preload("Suppliers").Preload("InventoryItems").Where("name ILIKE ? OR product_type ILIKE ?", "%"+query+"%", "%"+query+"%")
 
 	// Apply status filter
 	if status != "" {

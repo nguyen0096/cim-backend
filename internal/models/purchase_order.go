@@ -35,6 +35,7 @@ type PurchaseOrderItem struct {
 	PurchaseOrder    *PurchaseOrder          `json:"purchase_order,omitempty" gorm:"foreignKey:PurchaseOrderID" validate:"-"`
 	ProductID        *uint                   `json:"product_id" validate:"required"`
 	Product          *Product                `json:"product,omitempty" gorm:"foreignKey:ProductID" validate:"-"`
+	UnitPrice        float64                 `json:"unit_price" gorm:"type:decimal(13,2)" validate:"required,min=0"`
 	Quantity         int                     `json:"quantity" gorm:"not null" validate:"required,min=1"`
 	TotalPrice       float64                 `json:"total_price" gorm:"-"` // Calculated field, not stored in DB
 	ReceivedQuantity int                     `json:"received_quantity" gorm:"default:0"`
@@ -43,10 +44,7 @@ type PurchaseOrderItem struct {
 
 // CalculateItemTotalPrice calculates the total price for a purchase order item
 func (poi *PurchaseOrderItem) CalculateTotalPrice() float64 {
-	if poi.Product != nil {
-		return float64(poi.Quantity) * poi.Product.UnitPrice
-	}
-	return 0
+	return float64(poi.Quantity) * poi.UnitPrice
 }
 
 // CalculateTotalAmount calculates the total amount of a purchase order based on its items
