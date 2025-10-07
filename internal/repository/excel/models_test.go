@@ -226,6 +226,7 @@ func getTestFileConfig() FileConfig {
 		HeaderStartRow: 3,
 		HeaderStartCol: 1,
 		HeaderHeight:   3,
+		FooterHeight:   3,
 		IndexColumnNames: []MultiLevelHeader{
 			{fmt.Sprintf("%s%s", MetadataHeaderPrefix, "product_id")},
 		},
@@ -829,7 +830,7 @@ func TestFile_GetColByExactHeaders(t *testing.T) {
 	err = f.Load()
 	require.Nil(t, err)
 
-	col, err := f.GetColByExactHeaders(xntSheet.InternalID, []string{"DiẾN GiẢI", ""})
+	col, err := f.Sheets[xntSheet.InternalID].GetColByExactHeaders(xntSheet.InternalID, []string{"DiẾN GiẢI", ""})
 	require.Nil(t, err)
 	assert.Equal(t, 2, col)
 }
@@ -947,6 +948,17 @@ func TestFile_UpsertRow(t *testing.T) {
 		"test-product-id-3",
 		map[MultiLeverHeaderStr]interface{}{
 			"Ngày.6.SL": 11,
+		})
+	require.Nil(t, err)
+
+	// update row with index column: __product_id = insert-product-id
+	// change SL of Ngày 6 to 11
+	err = f.UpsertRow(
+		getTestFileConfig().SheetConfigs[0].InternalID,
+		"__product_id",
+		"insert-product-id",
+		map[MultiLeverHeaderStr]interface{}{
+			"Ngày.4.SL": 1,
 		})
 	require.Nil(t, err)
 }
