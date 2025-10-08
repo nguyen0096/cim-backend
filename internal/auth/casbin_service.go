@@ -141,6 +141,7 @@ func (c *CasbinService) InitializeDefaultPolicies() error {
 		{"admin", "settings", "update"},
 		{"admin", "settings", "delete"},
 		{"admin", "prices", "view"},
+		{"admin", "users", "view"},
 
 		// Accountant policies
 		{"accountant", "products", "view"},
@@ -152,15 +153,14 @@ func (c *CasbinService) InitializeDefaultPolicies() error {
 		{"accountant", "purchase_orders", "delete"},
 		{"accountant", "excel", "view"},
 		{"accountant", "settings", "view"},
+		{"accountant", "settings", "create"},
+		{"accountant", "settings", "update"},
 		{"accountant", "prices", "view"},
+		{"accountant", "users", "view"},
 
 		// Staff policies
-		{"staff", "products", "view"},
-		{"staff", "suppliers", "view"},
-		{"staff", "inventories", "view"},
 		{"staff", "purchase_orders", "view"},
-		{"staff", "excel", "view"},
-		{"staff", "settings", "view"},
+		{"staff", "users", "view"},
 	}
 
 	// Add policies to Casbin
@@ -178,6 +178,45 @@ func (c *CasbinService) InitializeDefaultPolicies() error {
 	}
 
 	return nil
+}
+
+// GetUserPermissions returns all permissions for a user based on their roles
+func (c *CasbinService) GetUserPermissions(user string) ([]string, error) {
+	// Get all roles for the user
+	roles, err := c.GetRolesForUser(user)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get user roles: %w", err)
+	}
+
+	// Get all policies from the enforcer
+	policies, _ := c.enforcer.GetPolicy()
+
+	// Extract unique permissions for the user's roles
+	permissionSet := make(map[string]bool)
+	for _, policy := range policies {
+		if len(policy) >= 3 {
+			role := policy[0]
+			object := policy[1]
+			action := policy[2]
+
+			// Check if the user has this role
+			for _, userRole := range roles {
+				if role == userRole {
+					// Format permission as "object:action"
+					permission := fmt.Sprintf("%s:%s", object, action)
+					permissionSet[permission] = true
+				}
+			}
+		}
+	}
+
+	// Convert set to slice
+	permissions := make([]string, 0, len(permissionSet))
+	for permission := range permissionSet {
+		permissions = append(permissions, permission)
+	}
+
+	return permissions, nil
 }
 
 // GetEnforcer returns the Casbin enforcer (for testing purposes)

@@ -197,6 +197,39 @@ func (h *UserHandler) GetUsersByRole(c echo.Context) error {
 	})
 }
 
+// GetUserPermissions retrieves all permissions for the current user based on their roles
+// @Summary Get current user permissions
+// @Description Get all permissions for the current authenticated user based on their roles in Casbin
+// @Tags users
+// @Accept json
+// @Produce json
+// @Success 200 {object} map[string]interface{} "User permissions"
+// @Failure 400 {object} map[string]string "Bad request"
+// @Failure 404 {object} map[string]string "User not found"
+// @Failure 500 {object} map[string]string "Internal server error"
+// @Security BearerAuth
+// @Router /users/permissions [get]
+func (h *UserHandler) GetUserPermissions(c echo.Context) error {
+	userID, _ := c.Get(pkg.AuthContextKeyUserID).(string)
+	if userID == "" {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid user ID"})
+	}
+
+	ctx := context.Background()
+	permissions, err := h.userService.GetUserPermissions(ctx, userID)
+	if err != nil {
+		if appErr, ok := err.(*pkg.AppError); ok {
+			return c.JSON(appErr.HTTPStatus(), map[string]string{"error": appErr.Message})
+		}
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to get user permissions"})
+	}
+
+	return c.JSON(http.StatusOK, map[string]interface{}{
+		"user_id":     userID,
+		"permissions": permissions,
+	})
+}
+
 // DeleteUser soft deletes a user (admin only)
 func (h *UserHandler) DeleteUser(c echo.Context) error {
 	userID := c.Param("id")

@@ -145,6 +145,7 @@ func main() {
 	users := api.Group("/users")
 	users.GET("", userHandler.ListUsers)
 	users.GET("/role/:role", userHandler.GetUsersByRole)
+	users.GET("/permissions", userHandler.GetUserPermissions)
 	users.PUT("/:uid/role", userHandler.UpdateUserRole)
 	users.DELETE("/:id", userHandler.DeleteUser)
 

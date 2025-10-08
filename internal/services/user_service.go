@@ -129,6 +129,26 @@ func (s *UserService) GetUsersByRole(ctx context.Context, role string) ([]*model
 	return users, nil
 }
 
+// GetUserPermissions retrieves all permissions for a user based on their roles
+func (s *UserService) GetUserPermissions(ctx context.Context, userUID string) ([]string, error) {
+	// Verify user exists
+	user, err := s.userRepo.GetByUID(ctx, userUID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get user: %w", err)
+	}
+	if user == nil {
+		return nil, pkg.NewAppError(pkg.ErrorCodeNotFound, "User not found", nil)
+	}
+
+	// Get permissions from Casbin
+	permissions, err := s.casbinService.GetUserPermissions(userUID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get user permissions: %w", err)
+	}
+
+	return permissions, nil
+}
+
 // DeleteUser soft deletes a user (admin only)
 func (s *UserService) DeleteUser(ctx context.Context, userID string) error {
 	// Remove all roles from Casbin first

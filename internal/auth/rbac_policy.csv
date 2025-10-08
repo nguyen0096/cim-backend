@@ -23,6 +23,7 @@ p, admin, settings, create
 p, admin, settings, update
 p, admin, settings, delete
 p, admin, prices, view
+p, admin, users, view
 
 p, accountant, products, view
 p, accountant, suppliers, view
@@ -33,11 +34,10 @@ p, accountant, purchase_orders, update
 p, accountant, purchase_orders, delete
 p, accountant, excel, view
 p, accountant, settings, view
+p, accountant, settings, create
+p, accountant, settings, update
 p, accountant, prices, view
+p, accountant, users, view
 
-p, staff, products, view
-p, staff, suppliers, view
-p, staff, inventories, view
 p, staff, purchase_orders, view
-p, staff, excel, view
-p, staff, settings, view
+p, staff, users, view
