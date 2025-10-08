@@ -149,7 +149,7 @@ func (h *PurchaseOrderHandler) UpdatePurchaseOrderStatus(c echo.Context) error {
 		permissions, _ := c.Get(pkg.AuthContextKeyUserPermissions).([]string)
 		hasCompletePermission := false
 		for _, perm := range permissions {
-			if perm == "purchase_orders:complete" {
+			if perm == "purchase-orders:complete" {
 				hasCompletePermission = true
 				break
 			}

@@ -129,17 +129,17 @@ func TestDenyRules(t *testing.T) {
 	}
 
 	// Add test policies for accountant (allow complete)
-	_, err = enforcer.AddPolicy("accountant", "purchase_orders", "view", "allow")
+	_, err = enforcer.AddPolicy("accountant", "purchase-orders", "view", "allow")
 	require.NoError(t, err)
-	_, err = enforcer.AddPolicy("accountant", "purchase_orders", "update", "allow")
+	_, err = enforcer.AddPolicy("accountant", "purchase-orders", "update", "allow")
 	require.NoError(t, err)
-	_, err = enforcer.AddPolicy("accountant", "purchase_orders", "complete", "allow")
+	_, err = enforcer.AddPolicy("accountant", "purchase-orders", "complete", "allow")
 	require.NoError(t, err)
 
 	// Add test policies for staff (deny complete)
-	_, err = enforcer.AddPolicy("staff", "purchase_orders", "view", "allow")
+	_, err = enforcer.AddPolicy("staff", "purchase-orders", "view", "allow")
 	require.NoError(t, err)
-	_, err = enforcer.AddPolicy("staff", "purchase_orders", "complete", "deny")
+	_, err = enforcer.AddPolicy("staff", "purchase-orders", "complete", "deny")
 	require.NoError(t, err)
 
 	// Add role assignments
@@ -149,25 +149,25 @@ func TestDenyRules(t *testing.T) {
 	require.NoError(t, err)
 
 	t.Run("should allow accountant to complete purchase orders", func(t *testing.T) {
-		allowed, err := service.Enforce("accountant1", "purchase_orders", "complete")
+		allowed, err := service.Enforce("accountant1", "purchase-orders", "complete")
 		require.NoError(t, err)
 		assert.True(t, allowed, "Accountant should be able to complete purchase orders")
 	})
 
 	t.Run("should allow accountant to view purchase orders", func(t *testing.T) {
-		allowed, err := service.Enforce("accountant1", "purchase_orders", "view")
+		allowed, err := service.Enforce("accountant1", "purchase-orders", "view")
 		require.NoError(t, err)
 		assert.True(t, allowed, "Accountant should be able to view purchase orders")
 	})
 
 	t.Run("should deny staff from completing purchase orders", func(t *testing.T) {
-		allowed, err := service.Enforce("staff1", "purchase_orders", "complete")
+		allowed, err := service.Enforce("staff1", "purchase-orders", "complete")
 		require.NoError(t, err)
 		assert.False(t, allowed, "Staff should NOT be able to complete purchase orders (explicit deny)")
 	})
 
 	t.Run("should allow staff to view purchase orders", func(t *testing.T) {
-		allowed, err := service.Enforce("staff1", "purchase_orders", "view")
+		allowed, err := service.Enforce("staff1", "purchase-orders", "view")
 		require.NoError(t, err)
 		assert.True(t, allowed, "Staff should be able to view purchase orders")
 	})

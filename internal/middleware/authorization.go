@@ -137,26 +137,11 @@ func pathToResource(path string) string {
 	// Handle special cases for nested routes
 	resource := segments[0]
 
-	// Handle specific resource mappings
-	switch resource {
-	case "products":
-		return "products"
-	case "suppliers":
-		return "suppliers"
-	case "inventories", "inventory-items":
-		return "inventories"
-	case "purchase-orders":
-		return "purchase_orders"
-	case "excel":
-		return "excel"
-	case "settings":
-		return "settings"
-	case "reports":
-		// Reports are read-only, map to prices for pricing reports
-		if len(segments) > 1 && segments[1] == "purchase-summary" {
-			return "prices"
-		}
-		return "prices"
+	switch {
+	case resource == "purchase-orders" && len(segments) >= 3:
+		return "purchase-order-items"
+	case resource == "inventories" && len(segments) >= 3:
+		return "inventory-items"
 	default:
 		return resource
 	}
