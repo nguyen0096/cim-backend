@@ -1,43 +1,44 @@
-p, admin, products, view
-p, admin, products, create
-p, admin, products, update
-p, admin, products, delete
-p, admin, suppliers, view
-p, admin, suppliers, create
-p, admin, suppliers, update
-p, admin, suppliers, delete
-p, admin, inventories, view
-p, admin, inventories, create
-p, admin, inventories, update
-p, admin, inventories, delete
-p, admin, purchase_orders, view
-p, admin, purchase_orders, create
-p, admin, purchase_orders, update
-p, admin, purchase_orders, delete
-p, admin, excel, view
-p, admin, excel, create
-p, admin, excel, update
-p, admin, excel, delete
-p, admin, settings, view
-p, admin, settings, create
-p, admin, settings, update
-p, admin, settings, delete
-p, admin, prices, view
-p, admin, users, view
+p, admin, products, view, allow
+p, admin, products, create, allow
+p, admin, products, update, allow
+p, admin, products, delete, allow
+p, admin, suppliers, view, allow
+p, admin, suppliers, create, allow
+p, admin, suppliers, update, allow
+p, admin, suppliers, delete, allow
+p, admin, inventories, view, allow
+p, admin, inventories, create, allow
+p, admin, inventories, update, allow
+p, admin, inventories, delete, allow
+p, admin, purchase_orders, view, allow
+p, admin, purchase_orders, create, allow
+p, admin, purchase_orders, update, allow
+p, admin, purchase_orders, delete, allow
+p, admin, excel, view, allow
+p, admin, excel, create, allow
+p, admin, excel, update, allow
+p, admin, excel, delete, allow
+p, admin, settings, view, allow
+p, admin, settings, create, allow
+p, admin, settings, update, allow
+p, admin, settings, delete, allow
+p, admin, prices, view, allow
+p, admin, users, view, allow
 
-p, accountant, products, view
-p, accountant, suppliers, view
-p, accountant, inventories, view
-p, accountant, purchase_orders, view
-p, accountant, purchase_orders, create
-p, accountant, purchase_orders, update
-p, accountant, purchase_orders, delete
-p, accountant, excel, view
-p, accountant, settings, view
-p, accountant, settings, create
-p, accountant, settings, update
-p, accountant, prices, view
-p, accountant, users, view
+p, accountant, products, view, allow
+p, accountant, suppliers, view, allow
+p, accountant, inventories, view, allow
+p, accountant, purchase_orders, view, allow
+p, accountant, purchase_orders, create, allow
+p, accountant, purchase_orders, update, allow
+p, accountant, purchase_orders, delete, allow
+p, accountant, excel, view, allow
+p, accountant, settings, view, allow
+p, accountant, settings, create, allow
+p, accountant, settings, update, allow
+p, accountant, prices, view, allow
+p, accountant, users, view, allow
 
-p, staff, purchase_orders, view
-p, staff, users, view
+p, staff, purchase_orders, view, allow
+p, staff, purchase_orders, complete, deny
+p, staff, users, view, allow

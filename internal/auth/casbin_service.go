@@ -113,59 +113,61 @@ func (c *CasbinService) RemovePolicy(subject, object, action string) error {
 
 // InitializeDefaultPolicies initializes the default RBAC policies
 func (c *CasbinService) InitializeDefaultPolicies() error {
-	// Define default policies
+	// Define default policies with effects (allow/deny)
 	policies := [][]string{
 		// Admin policies
-		{"admin", "products", "view"},
-		{"admin", "products", "create"},
-		{"admin", "products", "update"},
-		{"admin", "products", "delete"},
-		{"admin", "suppliers", "view"},
-		{"admin", "suppliers", "create"},
-		{"admin", "suppliers", "update"},
-		{"admin", "suppliers", "delete"},
-		{"admin", "inventories", "view"},
-		{"admin", "inventories", "create"},
-		{"admin", "inventories", "update"},
-		{"admin", "inventories", "delete"},
-		{"admin", "purchase_orders", "view"},
-		{"admin", "purchase_orders", "create"},
-		{"admin", "purchase_orders", "update"},
-		{"admin", "purchase_orders", "delete"},
-		{"admin", "excel", "view"},
-		{"admin", "excel", "create"},
-		{"admin", "excel", "update"},
-		{"admin", "excel", "delete"},
-		{"admin", "settings", "view"},
-		{"admin", "settings", "create"},
-		{"admin", "settings", "update"},
-		{"admin", "settings", "delete"},
-		{"admin", "prices", "view"},
-		{"admin", "users", "view"},
+		{"admin", "products", "view", "allow"},
+		{"admin", "products", "create", "allow"},
+		{"admin", "products", "update", "allow"},
+		{"admin", "products", "delete", "allow"},
+		{"admin", "suppliers", "view", "allow"},
+		{"admin", "suppliers", "create", "allow"},
+		{"admin", "suppliers", "update", "allow"},
+		{"admin", "suppliers", "delete", "allow"},
+		{"admin", "inventories", "view", "allow"},
+		{"admin", "inventories", "create", "allow"},
+		{"admin", "inventories", "update", "allow"},
+		{"admin", "inventories", "delete", "allow"},
+		{"admin", "purchase_orders", "view", "allow"},
+		{"admin", "purchase_orders", "create", "allow"},
+		{"admin", "purchase_orders", "update", "allow"},
+		{"admin", "purchase_orders", "delete", "allow"},
+		{"admin", "excel", "view", "allow"},
+		{"admin", "excel", "create", "allow"},
+		{"admin", "excel", "update", "allow"},
+		{"admin", "excel", "delete", "allow"},
+		{"admin", "settings", "view", "allow"},
+		{"admin", "settings", "create", "allow"},
+		{"admin", "settings", "update", "allow"},
+		{"admin", "settings", "delete", "allow"},
+		{"admin", "prices", "view", "allow"},
+		{"admin", "users", "view", "allow"},
 
 		// Accountant policies
-		{"accountant", "products", "view"},
-		{"accountant", "suppliers", "view"},
-		{"accountant", "inventories", "view"},
-		{"accountant", "purchase_orders", "view"},
-		{"accountant", "purchase_orders", "create"},
-		{"accountant", "purchase_orders", "update"},
-		{"accountant", "purchase_orders", "delete"},
-		{"accountant", "excel", "view"},
-		{"accountant", "settings", "view"},
-		{"accountant", "settings", "create"},
-		{"accountant", "settings", "update"},
-		{"accountant", "prices", "view"},
-		{"accountant", "users", "view"},
+		{"accountant", "products", "view", "allow"},
+		{"accountant", "suppliers", "view", "allow"},
+		{"accountant", "inventories", "view", "allow"},
+		{"accountant", "purchase_orders", "view", "allow"},
+		{"accountant", "purchase_orders", "create", "allow"},
+		{"accountant", "purchase_orders", "update", "allow"},
+		{"accountant", "purchase_orders", "delete", "allow"},
+		{"accountant", "purchase_orders", "complete", "allow"},
+		{"accountant", "excel", "view", "allow"},
+		{"accountant", "settings", "view", "allow"},
+		{"accountant", "settings", "create", "allow"},
+		{"accountant", "settings", "update", "allow"},
+		{"accountant", "prices", "view", "allow"},
+		{"accountant", "users", "view", "allow"},
 
 		// Staff policies
-		{"staff", "purchase_orders", "view"},
-		{"staff", "users", "view"},
+		{"staff", "purchase_orders", "view", "allow"},
+		{"staff", "purchase_orders", "complete", "deny"}, // Explicitly deny complete action
+		{"staff", "users", "view", "allow"},
 	}
 
 	// Add policies to Casbin
 	for _, policy := range policies {
-		_, err := c.enforcer.AddPolicy(policy[0], policy[1], policy[2])
+		_, err := c.enforcer.AddPolicy(policy[0], policy[1], policy[2], policy[3])
 		if err != nil {
 			return fmt.Errorf("failed to add policy %v: %w", policy, err)
 		}
@@ -180,7 +182,7 @@ func (c *CasbinService) InitializeDefaultPolicies() error {
 	return nil
 }
 
-// GetUserPermissions returns all permissions for a user based on their roles
+// GetUserPermissions returns all allowed permissions for a user based on their roles, excluding denied permissions
 func (c *CasbinService) GetUserPermissions(user string) ([]string, error) {
 	// Get all roles for the user
 	roles, err := c.GetRolesForUser(user)
@@ -191,29 +193,40 @@ func (c *CasbinService) GetUserPermissions(user string) ([]string, error) {
 	// Get all policies from the enforcer
 	policies, _ := c.enforcer.GetPolicy()
 
-	// Extract unique permissions for the user's roles
-	permissionSet := make(map[string]bool)
+	// Track allowed and denied permissions separately
+	allowedPermissions := make(map[string]bool)
+	deniedPermissions := make(map[string]bool)
+
 	for _, policy := range policies {
-		if len(policy) >= 3 {
+		if len(policy) >= 4 { // Now includes effect (allow/deny)
 			role := policy[0]
 			object := policy[1]
 			action := policy[2]
+			effect := policy[3]
 
 			// Check if the user has this role
 			for _, userRole := range roles {
 				if role == userRole {
 					// Format permission as "object:action"
 					permission := fmt.Sprintf("%s:%s", object, action)
-					permissionSet[permission] = true
+
+					if effect == "allow" {
+						allowedPermissions[permission] = true
+					} else if effect == "deny" {
+						deniedPermissions[permission] = true
+					}
 				}
 			}
 		}
 	}
 
-	// Convert set to slice
-	permissions := make([]string, 0, len(permissionSet))
-	for permission := range permissionSet {
-		permissions = append(permissions, permission)
+	// Convert to slice, excluding denied permissions
+	permissions := make([]string, 0, len(allowedPermissions))
+	for permission := range allowedPermissions {
+		// Only include if not explicitly denied
+		if !deniedPermissions[permission] {
+			permissions = append(permissions, permission)
+		}
 	}
 
 	return permissions, nil

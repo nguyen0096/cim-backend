@@ -17,6 +17,7 @@ type SeedData struct {
 	Products       []models.Product
 	Inventories    []models.Inventory
 	InventoryItems []models.InventoryItem
+	PurchaseOrders []models.PurchaseOrder
 }
 
 // seedDatabase populates the database with mock data
@@ -97,6 +98,15 @@ func seedDatabase() error {
 		}
 	}
 
+	// 5. Purchase Orders - generate with actual product IDs
+	purchaseOrders := generatePurchaseOrders(productIDs)
+	for _, po := range purchaseOrders {
+		if err := tx.Create(&po).Error; err != nil {
+			tx.Rollback()
+			return fmt.Errorf("failed to create purchase order: %w", err)
+		}
+	}
+
 	// Commit transaction
 	if err := tx.Commit().Error; err != nil {
 		return fmt.Errorf("failed to commit transaction: %w", err)
@@ -166,6 +176,212 @@ func generateInventoryItems(productIDs, inventoryIDs, supplierIDs []uint) []mode
 	return items
 }
 
+// generatePurchaseOrders creates purchase orders with actual database IDs
+func generatePurchaseOrders(productIDs []uint) []models.PurchaseOrder {
+	now := time.Now()
+
+	return []models.PurchaseOrder{
+		{
+			Base: models.Base{
+				CreatedAt: now.AddDate(0, 0, -30), // 30 days ago
+				UpdatedAt: now.AddDate(0, 0, -30),
+			},
+			OrderNumber: "PO-2024-001",
+			Status:      models.PurchaseOrderStatusCompleted,
+			Notes:       "Q1 electronics restock order",
+			Items: []*models.PurchaseOrderItem{
+				{
+					Base: models.Base{
+						CreatedAt: now.AddDate(0, 0, -30),
+						UpdatedAt: now.AddDate(0, 0, -30),
+					},
+					ProductID:        &productIDs[0], // MacBook Pro
+					UnitPrice:        2999.99,
+					Quantity:         5,
+					ReceivedQuantity: 5,
+					Status:           models.PurchaseOrderItemStatusDelivered,
+				},
+				{
+					Base: models.Base{
+						CreatedAt: now.AddDate(0, 0, -30),
+						UpdatedAt: now.AddDate(0, 0, -30),
+					},
+					ProductID:        &productIDs[1], // LG Monitor
+					UnitPrice:        599.99,
+					Quantity:         10,
+					ReceivedQuantity: 10,
+					Status:           models.PurchaseOrderItemStatusDelivered,
+				},
+			},
+		},
+		{
+			Base: models.Base{
+				CreatedAt: now.AddDate(0, 0, -15), // 15 days ago
+				UpdatedAt: now.AddDate(0, 0, -5),
+			},
+			OrderNumber: "PO-2024-002",
+			Status:      models.PurchaseOrderStatusPartiallyDelivered,
+			Notes:       "Office furniture and accessories order",
+			Items: []*models.PurchaseOrderItem{
+				{
+					Base: models.Base{
+						CreatedAt: now.AddDate(0, 0, -15),
+						UpdatedAt: now.AddDate(0, 0, -5),
+					},
+					ProductID:        &productIDs[4], // Herman Miller Chair
+					UnitPrice:        1395.00,
+					Quantity:         3,
+					ReceivedQuantity: 2,
+					Status:           models.PurchaseOrderItemStatusDelivering,
+				},
+				{
+					Base: models.Base{
+						CreatedAt: now.AddDate(0, 0, -15),
+						UpdatedAt: now.AddDate(0, 0, -5),
+					},
+					ProductID:        &productIDs[5], // UPLIFT Desk
+					UnitPrice:        799.00,
+					Quantity:         2,
+					ReceivedQuantity: 2,
+					Status:           models.PurchaseOrderItemStatusDelivered,
+				},
+			},
+		},
+		{
+			Base: models.Base{
+				CreatedAt: now.AddDate(0, 0, -7), // 7 days ago
+				UpdatedAt: now.AddDate(0, 0, -7),
+			},
+			OrderNumber: "PO-2024-003",
+			Status:      models.PurchaseOrderStatusOrderPlaced,
+			Notes:       "Peripheral devices for new office setup",
+			Items: []*models.PurchaseOrderItem{
+				{
+					Base: models.Base{
+						CreatedAt: now.AddDate(0, 0, -7),
+						UpdatedAt: now.AddDate(0, 0, -7),
+					},
+					ProductID:        &productIDs[2], // Keychron Keyboard
+					UnitPrice:        89.99,
+					Quantity:         20,
+					ReceivedQuantity: 0,
+					Status:           models.PurchaseOrderItemStatusDelivering,
+				},
+				{
+					Base: models.Base{
+						CreatedAt: now.AddDate(0, 0, -7),
+						UpdatedAt: now.AddDate(0, 0, -7),
+					},
+					ProductID:        &productIDs[3], // Logitech Mouse
+					UnitPrice:        99.99,
+					Quantity:         15,
+					ReceivedQuantity: 0,
+					Status:           models.PurchaseOrderItemStatusDelivering,
+				},
+				{
+					Base: models.Base{
+						CreatedAt: now.AddDate(0, 0, -7),
+						UpdatedAt: now.AddDate(0, 0, -7),
+					},
+					ProductID:        &productIDs[8], // Sony Headphones
+					UnitPrice:        399.99,
+					Quantity:         8,
+					ReceivedQuantity: 0,
+					Status:           models.PurchaseOrderItemStatusDelivering,
+				},
+			},
+		},
+		{
+			Base: models.Base{
+				CreatedAt: now.AddDate(0, 0, -3), // 3 days ago
+				UpdatedAt: now.AddDate(0, 0, -1),
+			},
+			OrderNumber: "PO-2024-004",
+			Status:      models.PurchaseOrderStatusFullyDelivered,
+			Notes:       "Tech accessories for conference rooms",
+			Items: []*models.PurchaseOrderItem{
+				{
+					Base: models.Base{
+						CreatedAt: now.AddDate(0, 0, -3),
+						UpdatedAt: now.AddDate(0, 0, -1),
+					},
+					ProductID:        &productIDs[6], // CalDigit Hub
+					UnitPrice:        399.95,
+					Quantity:         4,
+					ReceivedQuantity: 4,
+					Status:           models.PurchaseOrderItemStatusDelivered,
+				},
+				{
+					Base: models.Base{
+						CreatedAt: now.AddDate(0, 0, -3),
+						UpdatedAt: now.AddDate(0, 0, -1),
+					},
+					ProductID:        &productIDs[7], // Logitech Webcam
+					UnitPrice:        199.99,
+					Quantity:         6,
+					ReceivedQuantity: 6,
+					Status:           models.PurchaseOrderItemStatusDelivered,
+				},
+			},
+		},
+		{
+			Base: models.Base{
+				CreatedAt: now.AddDate(0, 0, -1), // 1 day ago
+				UpdatedAt: now.AddDate(0, 0, -1),
+			},
+			OrderNumber: "PO-2024-005",
+			Status:      models.PurchaseOrderStatusCancelled,
+			Notes:       "Cancelled due to budget constraints",
+			Items: []*models.PurchaseOrderItem{
+				{
+					Base: models.Base{
+						CreatedAt: now.AddDate(0, 0, -1),
+						UpdatedAt: now.AddDate(0, 0, -1),
+					},
+					ProductID:        &productIDs[9], // iPad Pro
+					UnitPrice:        1099.99,
+					Quantity:         2,
+					ReceivedQuantity: 0,
+					Status:           models.PurchaseOrderItemStatusDelivering,
+				},
+			},
+		},
+		{
+			Base: models.Base{
+				CreatedAt: now, // Today
+				UpdatedAt: now,
+			},
+			OrderNumber: "PO-2024-006",
+			Status:      models.PurchaseOrderStatusOrderPlaced,
+			Notes:       "Emergency restock for high-demand items",
+			Items: []*models.PurchaseOrderItem{
+				{
+					Base: models.Base{
+						CreatedAt: now,
+						UpdatedAt: now,
+					},
+					ProductID:        &productIDs[0], // MacBook Pro
+					UnitPrice:        2999.99,
+					Quantity:         2,
+					ReceivedQuantity: 0,
+					Status:           models.PurchaseOrderItemStatusDelivering,
+				},
+				{
+					Base: models.Base{
+						CreatedAt: now,
+						UpdatedAt: now,
+					},
+					ProductID:        &productIDs[1], // LG Monitor
+					UnitPrice:        599.99,
+					Quantity:         5,
+					ReceivedQuantity: 0,
+					Status:           models.PurchaseOrderItemStatusDelivering,
+				},
+			},
+		},
+	}
+}
+
 // generateSeedData creates the mock data using the centralized test data
 func generateSeedData() SeedData {
 	suppliers := data.Suppliers()
@@ -176,5 +392,6 @@ func generateSeedData() SeedData {
 		Products:       products,
 		Inventories:    data.Inventory(nil),      // productIDs parameter is no longer needed
 		InventoryItems: data.InventoryItems(nil), // productIDs parameter is no longer needed
+		PurchaseOrders: []models.PurchaseOrder{}, // Will be generated with actual IDs in seedDatabase
 	}
 }

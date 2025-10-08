@@ -138,6 +138,30 @@ func (h *PurchaseOrderHandler) UpdatePurchaseOrderStatus(c echo.Context) error {
 		return pkg.ErrInvalidRequestBody(err)
 	}
 
+	// Additional permission check for "complete" action
+	if req.Status == string(models.PurchaseOrderStatusCompleted) {
+		// Get user role from context (set by authorization middleware)
+		userRole, _ := c.Get(pkg.AuthContextKeyUserRole).(string)
+
+		// Check if user has "complete" permission
+		// This check is in addition to the general "update" permission from the middleware
+		// Staff users are explicitly denied the "complete" action
+		permissions, _ := c.Get(pkg.AuthContextKeyUserPermissions).([]string)
+		hasCompletePermission := false
+		for _, perm := range permissions {
+			if perm == "purchase_orders:complete" {
+				hasCompletePermission = true
+				break
+			}
+		}
+
+		if !hasCompletePermission {
+			return c.JSON(http.StatusForbidden, map[string]string{
+				"error": fmt.Sprintf("Access denied: %s role cannot complete purchase orders", userRole),
+			})
+		}
+	}
+
 	if err := h.purchaseOrderService.UpdatePurchaseOrderStatus(c.Request().Context(), id, req.Status); err != nil {
 		return fmt.Errorf("failed to update purchase order status: %w", err)
 	}
