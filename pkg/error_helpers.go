@@ -36,3 +36,8 @@ func ErrValidation(message string, cause error) *AppError {
 func ErrDuplicate(message string, cause error) *AppError {
 	return NewAppError(ErrorCodeDuplicate, message, cause)
 }
+
+// ErrPurchaseOrderNoItems creates an error for purchase order no items
+func ErrPurchaseOrderNoItems() *AppError {
+	return NewAppError(ErrorCodePurchaseOrderNoItems, "Purchase order has no items", nil)
+}

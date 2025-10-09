@@ -1,5 +1,7 @@
 package models
 
+import "import-export-backend/pkg"
+
 type PurchaseOrderStatus string
 
 const (
@@ -57,6 +59,38 @@ func (po *PurchaseOrder) CalculateTotalAmount() float64 {
 		}
 	}
 	return total
+}
+
+// UpdateStatus iterates over the items and updates the status of the purchase order.
+// If all items are delivered, the status of the purchase order is updated to fully delivered.
+// If some items are delivered, the status of the purchase order is updated to partially delivered.
+// If no items are delivered, the status of the purchase order is updated to order placed.
+func (po *PurchaseOrder) UpdateStatus() error {
+	if len(po.Items) == 0 {
+		return pkg.ErrPurchaseOrderNoItems()
+	}
+
+	var hasUndeliveredItem = false
+	var hasDeliveredItem = false
+	for _, item := range po.Items {
+		if item != nil {
+			if item.Status == PurchaseOrderItemStatusDelivered {
+				hasDeliveredItem = true
+			} else {
+				hasUndeliveredItem = true
+			}
+		}
+	}
+
+	if hasUndeliveredItem && hasDeliveredItem {
+		po.Status = PurchaseOrderStatusPartiallyDelivered
+	} else if hasDeliveredItem {
+		po.Status = PurchaseOrderStatusFullyDelivered
+	} else {
+		po.Status = PurchaseOrderStatusOrderPlaced
+	}
+
+	return nil
 }
 
 // UpdatePurchaseOrderItemStatusResponse represents the response for updating purchase order item status

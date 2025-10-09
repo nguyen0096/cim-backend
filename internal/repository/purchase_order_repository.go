@@ -13,7 +13,6 @@ import (
 //go:generate mockery --name=PurchaseOrderRepository --structname=PurchaseOrderRepository --output=../mocks/repositorymocks --outpkg=repositorymocks
 type PurchaseOrderRepository interface {
 	Create(ctx context.Context, purchaseOrder *models.PurchaseOrder) error
-	GetByID(id uint) (*models.PurchaseOrder, error)
 	Update(ctx context.Context, purchaseOrder *models.PurchaseOrder) error
 	Delete(id uint) error
 	List(ctx context.Context, params models.ListParams) ([]models.PurchaseOrder, int64, error)
@@ -21,6 +20,10 @@ type PurchaseOrderRepository interface {
 	UpdateStatus(ctx context.Context, purchaseOrderID uint, status models.PurchaseOrderStatus) error
 	UpdatePurchaseOrderItemStatus(ctx context.Context, purchaseOrderID, itemID uint, status models.PurchaseOrderItemStatus) error
 	AnyDeliveringItem(ctx context.Context, purchaseOrderID uint) bool
+
+	// v1
+	GetByID(id uint) (*models.PurchaseOrder, error)
+	PersistDeliveryUpdate(ctx context.Context, po *models.PurchaseOrder, transactions []*models.InventoryTransaction) error
 }
 
 type purchaseOrderRepository struct {
@@ -166,4 +169,16 @@ func (r *purchaseOrderRepository) AnyDeliveringItem(ctx context.Context, purchas
 		Where("purchase_order_id = ? AND status = ?", purchaseOrderID, models.PurchaseOrderItemStatusDelivering).
 		First(&models.PurchaseOrderItem{}).Error
 	return err == nil
+}
+
+func (r *purchaseOrderRepository) PersistDeliveryUpdate(ctx context.Context, po *models.PurchaseOrder, transactions []*models.InventoryTransaction) error {
+	return r.db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.WithContext(ctx).Model(&po).Update("status", models.PurchaseOrderStatusFullyDelivered).Error; err != nil {
+			return fmt.Errorf("failed to update purchase order status: %w", err)
+		}
+		if err := tx.WithContext(ctx).Create(transactions).Error; err != nil {
+			return fmt.Errorf("failed to create inventory transactions: %w", err)
+		}
+		return nil
+	})
 }

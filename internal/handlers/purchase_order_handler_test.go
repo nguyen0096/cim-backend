@@ -7,9 +7,9 @@ import (
 	"testing"
 
 	"import-export-backend/internal/middleware"
+	"import-export-backend/internal/mocks/repositorymocks"
 	"import-export-backend/internal/mocks/servicemocks"
 	"import-export-backend/internal/models"
-	"import-export-backend/internal/repository/repositorymocks"
 	"import-export-backend/pkg"
 
 	"github.com/labstack/echo/v4"

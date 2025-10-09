@@ -33,14 +33,3 @@ func (i *Inventory) GetTotalValue() float64 {
 	}
 	return total
 }
-
-// GetLowStockItems returns items that are below reorder level
-func (i *Inventory) GetLowStockItems() []*InventoryItem {
-	var lowStockItems []*InventoryItem
-	for _, item := range i.Items {
-		if item != nil && item.Quantity <= item.ReorderLevel {
-			lowStockItems = append(lowStockItems, item)
-		}
-	}
-	return lowStockItems
-}

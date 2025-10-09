@@ -3,7 +3,7 @@ package services
 import (
 	"context"
 	"errors"
-	repositorymocks "import-export-backend/internal/mocks/repositories"
+	"import-export-backend/internal/mocks/repositorymocks"
 	"import-export-backend/internal/models"
 	"regexp"
 	"testing"

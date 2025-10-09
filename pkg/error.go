@@ -16,6 +16,9 @@ const (
 	ErrorCodeForbidden          ErrorCode = 4 // forbidden
 	ErrorCodeValidation         ErrorCode = 5 // validation
 	ErrorCodeDuplicate          ErrorCode = 6 // duplicate
+
+	// Purchase Order Error Codes
+	ErrorCodePurchaseOrderNoItems ErrorCode = 7 // purchase-order-no-items
 )
 
 // AppError represents an application error with code, cause, and display message

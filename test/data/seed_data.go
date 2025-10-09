@@ -241,15 +241,13 @@ func InventoryItems(productIDs []uint) []models.InventoryItem {
 				CreatedAt: now,
 				UpdatedAt: now,
 			},
-			InventoryID:   inventoryID,
-			ProductID:     config.ProductID,
-			SupplierID:    config.SupplierID,
-			UnitPrice:     config.UnitPrice,
-			UnitType:      config.UnitType,
-			Quantity:      config.Quantity,
-			ReorderLevel:  config.ReorderLevel,
-			MaxStockLevel: config.Quantity * 3, // Set max stock to 3x current quantity
-			Status:        models.InventoryItemStatusActive,
+			InventoryID: inventoryID,
+			ProductID:   config.ProductID,
+			SupplierID:  config.SupplierID,
+			UnitPrice:   config.UnitPrice,
+			UnitType:    config.UnitType,
+			Quantity:    config.Quantity,
+			Status:      models.InventoryItemStatusActive,
 		}
 	}
 

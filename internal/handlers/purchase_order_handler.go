@@ -5,6 +5,7 @@ import (
 	"import-export-backend/internal/models"
 	"import-export-backend/internal/repository"
 	"import-export-backend/internal/services"
+	"import-export-backend/internal/services/dto"
 	"import-export-backend/pkg"
 	"net/http"
 
@@ -232,4 +233,36 @@ func (h *PurchaseOrderHandler) UpdatePurchaseOrderItemStatus(c echo.Context) err
 	}
 
 	return c.JSON(http.StatusOK, response)
+}
+
+// UpdatePurchaseOrderDeliveryStatus godoc
+// @Summary Update purchase order delivery status
+// @Description Update the delivery status of purchase order items by recording received quantities
+// @Tags purchase-orders
+// @Accept json
+// @Produce json
+// @Param request body dto.UpdatePurchaseOrderDeliveryStatusRequest true "Delivery status update request"
+// @Success 204 "Successfully updated purchase order delivery status"
+// @Failure 400 {object} map[string]string "Invalid request body or validation failed"
+// @Failure 404 {object} map[string]string "Purchase order not found"
+// @Failure 500 {object} map[string]string "Failed to update purchase order delivery status"
+// @Router /api/purchase-orders/delivery-status [put]
+// @Security BearerAuth
+func (h *PurchaseOrderHandler) UpdatePurchaseOrderDeliveryStatus(c echo.Context) error {
+	var req dto.UpdatePurchaseOrderDeliveryStatusRequest
+	if err := c.Bind(&req); err != nil {
+		return pkg.ErrInvalidRequestBody(err)
+	}
+
+	validate := validator.New()
+	if err := validate.Struct(req); err != nil {
+		return pkg.ErrValidation("validation failed", err)
+	}
+
+	err := h.purchaseOrderService.UpdatePurchaseOrderDeliveryStatus(c.Request().Context(), req)
+	if err != nil {
+		return pkg.ErrInternal("Failed to update purchase order item status", err)
+	}
+
+	return c.JSON(http.StatusNoContent, nil)
 }

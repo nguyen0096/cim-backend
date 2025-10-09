@@ -8,6 +8,7 @@ import (
 	"import-export-backend/internal/config"
 	"import-export-backend/internal/models"
 	"import-export-backend/internal/repository"
+	"import-export-backend/internal/services/dto"
 	"time"
 
 	"github.com/sirupsen/logrus"
@@ -25,6 +26,9 @@ type PurchaseOrderService interface {
 	UpdatePurchaseOrderStatus(ctx context.Context, id uint, status string) error
 	ReceivePurchaseOrder(ctx context.Context, id uint) error
 	UpdatePurchaseOrderItemStatus(ctx context.Context, purchaseOrderID, itemID uint, status models.PurchaseOrderItemStatus) (*models.UpdatePurchaseOrderItemStatusResponse, error)
+
+	// V1
+	UpdatePurchaseOrderDeliveryStatus(ctx context.Context, req dto.UpdatePurchaseOrderDeliveryStatusRequest) error
 }
 
 type purchaseOrderService struct {
@@ -601,4 +605,96 @@ func (s *purchaseOrderService) getHeaderAndColorFromProductType(productType stri
 	}
 
 	return
+}
+
+func (s *purchaseOrderService) UpdatePurchaseOrderDeliveryStatus(
+	ctx context.Context,
+	req dto.UpdatePurchaseOrderDeliveryStatusRequest,
+) error {
+	s.logger.WithFields(logrus.Fields{
+		"operation":         "UpdatePurchaseOrderDeliveryStatus",
+		"purchase_order_id": req.PurchaseOrderID,
+		"items":             req.Items,
+	}).Info("Updating purchase order delivery status")
+
+	po, err := s.purchaseOrderRepo.GetByID(req.PurchaseOrderID)
+	if err != nil {
+		return fmt.Errorf("failed to get purchase order: %w", err)
+	}
+
+	// Update items and generate transactions
+	transactions, err := s.updatePOItemsAndGenerateTxns(ctx, po, req)
+	if err != nil {
+		return fmt.Errorf("failed to update items and generate transactions: %w", err)
+	}
+
+	if err := po.UpdateStatus(); err != nil {
+		return fmt.Errorf("failed to update purchase order status: %w", err)
+	}
+
+	if err := s.purchaseOrderRepo.PersistDeliveryUpdate(ctx, po, transactions); err != nil {
+		return fmt.Errorf("failed to persist delivery update: %w", err)
+	}
+
+	s.logger.WithFields(logrus.Fields{
+		"operation":          "UpdatePurchaseOrderDeliveryStatus",
+		"purchase_order_id":  req.PurchaseOrderID,
+		"transactions_count": len(transactions),
+	}).Info("Successfully updated purchase order delivery status")
+	return nil
+}
+
+// updateItemsAndGenerateTxns updates PurchaseOrder items based on delivery status update request
+// and generates according inventory transactions in memory.
+func (s *purchaseOrderService) updatePOItemsAndGenerateTxns(
+	ctx context.Context, po *models.PurchaseOrder,
+	req dto.UpdatePurchaseOrderDeliveryStatusRequest,
+) ([]*models.InventoryTransaction, error) {
+	// Create a map for quick lookup of items by ID
+	itemMap := make(map[uint]*models.PurchaseOrderItem)
+	for _, item := range po.Items {
+		if item != nil {
+			itemMap[item.ID] = item
+		}
+	}
+
+	var transactions []*models.InventoryTransaction
+
+	// Process each item in the request
+	for _, reqItem := range req.Items {
+		poItem, exists := itemMap[reqItem.ID]
+		if !exists {
+			return nil, fmt.Errorf("purchase order item with ID %d not found", reqItem.ID)
+		}
+
+		// Validate received quantity
+		if reqItem.ReceivedQuantity <= 0 {
+			return nil, fmt.Errorf("received quantity must be greater than 0 for item ID %d", reqItem.ID)
+		}
+
+		// Check if received quantity exceeds remaining quantity
+		remainingQuantity := poItem.Quantity - poItem.ReceivedQuantity
+		if reqItem.ReceivedQuantity > remainingQuantity {
+			return nil, fmt.Errorf("received quantity %d exceeds remaining quantity %d for item ID %d",
+				reqItem.ReceivedQuantity, remainingQuantity, reqItem.ID)
+		}
+
+		// Update the received quantity in memory
+		poItem.ReceivedQuantity += reqItem.ReceivedQuantity
+
+		// Update item status if fully received
+		if poItem.ReceivedQuantity >= poItem.Quantity {
+			poItem.Status = models.PurchaseOrderItemStatusDelivered
+		}
+
+		// Create inventory transaction in memory
+		transaction := &models.InventoryTransaction{
+			InventoryItemID: *poItem.ProductID,
+			TransactionType: "purchase",
+			Quantity:        reqItem.ReceivedQuantity,
+		}
+		transactions = append(transactions, transaction)
+	}
+
+	return transactions, nil
 }
