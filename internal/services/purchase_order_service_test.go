@@ -66,6 +66,7 @@ func TestCreatePurchaseOrder(t *testing.T) {
 			Items: []*models.PurchaseOrderItem{
 				{
 					ProductID:  &[]uint{1}[0],
+					SupplierID: &[]uint{1}[0],
 					Quantity:   5,
 					TotalPrice: 502.50,
 				},
@@ -111,6 +112,7 @@ func TestCreatePurchaseOrder(t *testing.T) {
 			Items: []*models.PurchaseOrderItem{
 				{
 					ProductID:  &[]uint{1}[0],
+					SupplierID: &[]uint{1}[0],
 					Quantity:   5,
 					TotalPrice: 502.50,
 				},
@@ -144,6 +146,7 @@ func TestCreatePurchaseOrder(t *testing.T) {
 			Items: []*models.PurchaseOrderItem{
 				{
 					ProductID:  &[]uint{1}[0],
+					SupplierID: &[]uint{1}[0],
 					Quantity:   5,
 					TotalPrice: 502.50,
 				},

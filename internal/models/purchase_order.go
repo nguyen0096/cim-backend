@@ -17,6 +17,7 @@ type PurchaseOrderItemStatus string
 const (
 	PurchaseOrderItemStatusDelivering PurchaseOrderItemStatus = "delivering"
 	PurchaseOrderItemStatusDelivered  PurchaseOrderItemStatus = "delivered"
+	PurchaseOrderItemStatusCancelled  PurchaseOrderItemStatus = "cancelled"
 )
 
 // PurchaseOrder represents a purchase order
@@ -34,14 +35,16 @@ type PurchaseOrder struct {
 type PurchaseOrderItem struct {
 	Base
 	PurchaseOrderID  *uint                   `json:"purchase_order_id"`
-	PurchaseOrder    *PurchaseOrder          `json:"purchase_order,omitempty" gorm:"foreignKey:PurchaseOrderID" validate:"-"`
+	PurchaseOrder    *PurchaseOrder          `json:"purchase_order,omitempty" gorm:"foreignKey:PurchaseOrderID"`
 	ProductID        *uint                   `json:"product_id" validate:"required"`
-	Product          *Product                `json:"product,omitempty" gorm:"foreignKey:ProductID" validate:"-"`
-	UnitPrice        float64                 `json:"unit_price" gorm:"type:decimal(13,2)" validate:"required,min=0"`
+	Product          *Product                `json:"product,omitempty" gorm:"foreignKey:ProductID"`
+	SupplierID       *uint                   `json:"supplier_id" validate:"required"`
+	Supplier         *Supplier               `json:"supplier,omitempty" gorm:"foreignKey:SupplierID"`
+	UnitPrice        float64                 `json:"unit_price" gorm:"type:decimal(13,2)" validate:"min=0"`
 	Quantity         int                     `json:"quantity" gorm:"not null" validate:"required,min=1"`
 	TotalPrice       float64                 `json:"total_price" gorm:"-"` // Calculated field, not stored in DB
 	ReceivedQuantity int                     `json:"received_quantity" gorm:"default:0"`
-	Status           PurchaseOrderItemStatus `json:"status" gorm:"default:delivering;check:status IN ('delivering', 'delivered')" example:"delivering"`
+	Status           PurchaseOrderItemStatus `json:"status" gorm:"default:delivering;check:status IN ('delivering', 'delivered', 'cancelled')" example:"delivering"`
 }
 
 // CalculateItemTotalPrice calculates the total price for a purchase order item
@@ -95,6 +98,7 @@ func (po *PurchaseOrder) UpdateStatus() error {
 
 // UpdatePurchaseOrderItemStatusResponse represents the response for updating purchase order item status
 type UpdatePurchaseOrderItemStatusResponse struct {
-	ItemStatus  PurchaseOrderItemStatus `json:"item_status" example:"delivered"`
-	OrderStatus PurchaseOrderStatus     `json:"order_status" example:"fully_delivered"`
+	ItemStatus       PurchaseOrderItemStatus `json:"item_status" example:"delivered"`
+	OrderStatus      PurchaseOrderStatus     `json:"order_status" example:"fully_delivered"`
+	ReceivedQuantity int                     `json:"received_quantity" example:"5"`
 }

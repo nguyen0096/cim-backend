@@ -240,11 +240,11 @@ func (h *ProductHandler) CreateProduct(c echo.Context) error {
 	logger := h.getRequestLogger(c, "CreateProduct")
 
 	var request struct {
-		Name        string  `json:"name"`
-		Description string  `json:"description"`
-		ProductType string  `json:"product_type"`
-		Status      string  `json:"status"`
-		SupplierIDs []uint  `json:"supplier_ids"`
+		Name        string `json:"name"`
+		Description string `json:"description"`
+		ProductType string `json:"product_type"`
+		Status      string `json:"status"`
+		SupplierIDs []uint `json:"supplier_ids"`
 	}
 
 	if err := c.Bind(&request); err != nil {
@@ -334,11 +334,11 @@ func (h *ProductHandler) UpdateProduct(c echo.Context) error {
 	}
 
 	var request struct {
-		Name        string   `json:"name"`
-		Description string   `json:"description"`
-		ProductType string   `json:"product_type"`
-		Status      string   `json:"status"`
-		SupplierIDs []uint  `json:"supplier_ids"`
+		Name        string `json:"name"`
+		Description string `json:"description"`
+		ProductType string `json:"product_type"`
+		Status      string `json:"status"`
+		SupplierIDs []uint `json:"supplier_ids"`
 	}
 
 	if err := c.Bind(&request); err != nil {
@@ -347,11 +347,11 @@ func (h *ProductHandler) UpdateProduct(c echo.Context) error {
 	}
 
 	product := models.Product{
-		Base: models.Base{ID: id},
-		Name: request.Name,
+		Base:        models.Base{ID: id},
+		Name:        request.Name,
 		Description: request.Description,
 		ProductType: request.ProductType,
-		Status: request.Status,
+		Status:      request.Status,
 	}
 
 	// Add suppliers if IDs provided
@@ -364,10 +364,10 @@ func (h *ProductHandler) UpdateProduct(c echo.Context) error {
 	}
 
 	logger.WithFields(logrus.Fields{
-		"product_id":    id,
-		"product_name":  product.Name,
-		"product_type":  product.ProductType,
-		"supplier_ids":  request.SupplierIDs,
+		"product_id":   id,
+		"product_name": product.Name,
+		"product_type": product.ProductType,
+		"supplier_ids": request.SupplierIDs,
 	}).Info("Updating product")
 
 	if err := h.productService.UpdateProduct(c.Request().Context(), &product); err != nil {

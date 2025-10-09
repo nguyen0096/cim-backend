@@ -94,7 +94,7 @@ func main() {
 	productHandler := handlers.NewProductHandler(productService, logger)
 	inventoryHandler := handlers.NewInventoryHandler(inventoryService)
 	inventoryItemHandler := handlers.NewInventoryItemHandler(inventoryItemService)
-	purchaseOrderHandler := handlers.NewPurchaseOrderHandler(purchaseOrderRepo, purchaseOrderService)
+	purchaseOrderHandler := handlers.NewPurchaseOrderHandler(purchaseOrderRepo, purchaseOrderService, logger)
 	excelHandler := handlers.NewExcelHandler(excelService)
 	settingsHandler := handlers.NewSettingsHandler(settingsService)
 

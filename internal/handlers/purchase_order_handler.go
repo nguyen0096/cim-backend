@@ -10,22 +10,41 @@ import (
 	"net/http"
 
 	"github.com/go-playground/validator/v10"
+	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
+	"github.com/sirupsen/logrus"
 )
 
 type PurchaseOrderHandler struct {
 	purchaseOrderRepository repository.PurchaseOrderRepository
 	purchaseOrderService    services.PurchaseOrderService
+	logger                  *logrus.Logger
 }
 
 func NewPurchaseOrderHandler(
 	purchaseOrderRepo repository.PurchaseOrderRepository,
 	purchaseOrderService services.PurchaseOrderService,
+	logger *logrus.Logger,
 ) *PurchaseOrderHandler {
 	return &PurchaseOrderHandler{
 		purchaseOrderRepository: purchaseOrderRepo,
 		purchaseOrderService:    purchaseOrderService,
+		logger:                  logger,
 	}
+}
+
+func (h *PurchaseOrderHandler) getRequestLogger(c echo.Context, operation string) *logrus.Entry {
+	correlationID := c.Request().Header.Get("X-Correlation-ID")
+	if correlationID == "" {
+		correlationID = uuid.New().String()
+	}
+
+	return h.logger.WithFields(logrus.Fields{
+		"operation":      operation,
+		"method":         c.Request().Method,
+		"path":           c.Request().URL.Path,
+		"correlation_id": correlationID,
+	})
 }
 
 // ListPurchaseOrders godoc
@@ -75,6 +94,7 @@ func (h *PurchaseOrderHandler) ListPurchaseOrders(c echo.Context) error {
 // @Router /api/purchase-orders [post]
 // @Security BearerAuth
 func (h *PurchaseOrderHandler) CreatePurchaseOrder(c echo.Context) error {
+	logger := h.getRequestLogger(c, "CreatePurchaseOrder")
 	var purchaseOrder models.PurchaseOrder
 	if err := c.Bind(&purchaseOrder); err != nil {
 		return pkg.ErrInvalidRequestBody(err)
@@ -82,6 +102,7 @@ func (h *PurchaseOrderHandler) CreatePurchaseOrder(c echo.Context) error {
 
 	validate := validator.New()
 	if err := validate.Struct(purchaseOrder); err != nil {
+		logger.WithError(err).Error("Validation failed")
 		return pkg.ErrValidation("validation failed", err)
 	}
 
@@ -189,13 +210,13 @@ func (h *PurchaseOrderHandler) GetPurchaseSummary(c echo.Context) error {
 
 // UpdatePurchaseOrderItemStatus godoc
 // @Summary Update purchase order item status
-// @Description Update the status of a specific item in a purchase order
+// @Description Update the status and received quantity of a specific item in a purchase order
 // @Tags purchase-orders
 // @Accept json
 // @Produce json
 // @Param id path int true "Purchase Order ID"
 // @Param item_id path int true "Purchase Order Item ID"
-// @Param status body object{status=string} true "Status update request"
+// @Param status body object{status=string,received_quantity=int} true "Status and received quantity update request"
 // @Success 200 {object} models.UpdatePurchaseOrderItemStatusResponse "Successfully updated purchase order item status"
 // @Failure 400 {object} map[string]string "Invalid request parameters"
 // @Failure 404 {object} map[string]string "Purchase order or item not found"
@@ -214,7 +235,8 @@ func (h *PurchaseOrderHandler) UpdatePurchaseOrderItemStatus(c echo.Context) err
 	}
 
 	var req struct {
-		Status string `json:"status" validate:"required,oneof=delivering delivered"`
+		Status           string `json:"status" validate:"required,oneof=delivering delivered"`
+		ReceivedQuantity int    `json:"received_quantity" validate:"omitempty,min=0"`
 	}
 
 	if err := c.Bind(&req); err != nil {
@@ -227,7 +249,7 @@ func (h *PurchaseOrderHandler) UpdatePurchaseOrderItemStatus(c echo.Context) err
 	}
 
 	status := models.PurchaseOrderItemStatus(req.Status)
-	response, err := h.purchaseOrderService.UpdatePurchaseOrderItemStatus(c.Request().Context(), purchaseOrderID, itemID, status)
+	response, err := h.purchaseOrderService.UpdatePurchaseOrderItemStatus(c.Request().Context(), purchaseOrderID, itemID, status, req.ReceivedQuantity)
 	if err != nil {
 		return pkg.ErrInternal("Failed to update purchase order item status", err)
 	}

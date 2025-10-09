@@ -13,6 +13,7 @@ import (
 	"import-export-backend/pkg"
 
 	"github.com/labstack/echo/v4"
+	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
@@ -29,7 +30,8 @@ func TestCreatePurchaseOrder(t *testing.T) {
 	setupTest := func(t *testing.T) *testSetup {
 		mockRepo := repositorymocks.NewPurchaseOrderRepository(t)
 		mockService := servicemocks.NewPurchaseOrderService(t)
-		handler := NewPurchaseOrderHandler(mockRepo, mockService)
+		logger := logrus.New()
+		handler := NewPurchaseOrderHandler(mockRepo, mockService, logger)
 		e := echo.New()
 
 		// Set up the custom error handler to properly handle validation errors
@@ -54,11 +56,13 @@ func TestCreatePurchaseOrder(t *testing.T) {
 			Items: []*models.PurchaseOrderItem{
 				{
 					ProductID:  pkg.Ptr(uint(1)),
+					SupplierID: pkg.Ptr(uint(1)),
 					Quantity:   5,
 					TotalPrice: 502.50,
 				},
 				{
 					ProductID:  pkg.Ptr(uint(1)),
+					SupplierID: pkg.Ptr(uint(1)),
 					Quantity:   10,
 					TotalPrice: 2502.50,
 				},
@@ -99,6 +103,7 @@ func TestCreatePurchaseOrder(t *testing.T) {
 			Items: []*models.PurchaseOrderItem{
 				{
 					ProductID:  pkg.Ptr(uint(1)),
+					SupplierID: pkg.Ptr(uint(1)),
 					Quantity:   5,
 					TotalPrice: 502.50,
 				},
@@ -137,6 +142,7 @@ func TestCreatePurchaseOrder(t *testing.T) {
 			Items: []*models.PurchaseOrderItem{
 				{
 					ProductID:  pkg.Ptr(uint(1)),
+					SupplierID: pkg.Ptr(uint(1)),
 					Quantity:   5,
 					TotalPrice: 502.50,
 				},
@@ -298,6 +304,7 @@ func TestCreatePurchaseOrder(t *testing.T) {
 				{
 					// ProductID is nil - should fail validation (required)
 					ProductID:  nil,
+					SupplierID: pkg.Ptr(uint(1)),
 					Quantity:   5,
 					TotalPrice: 502.50,
 				},
@@ -332,6 +339,7 @@ func TestCreatePurchaseOrder(t *testing.T) {
 			Items: []*models.PurchaseOrderItem{
 				{
 					ProductID:  pkg.Ptr(uint(1)),
+					SupplierID: pkg.Ptr(uint(1)),
 					Quantity:   0, // Zero quantity - should fail validation (min=1)
 					TotalPrice: 502.50,
 				},
@@ -366,6 +374,7 @@ func TestCreatePurchaseOrder(t *testing.T) {
 			Items: []*models.PurchaseOrderItem{
 				{
 					ProductID:  pkg.Ptr(uint(1)),
+					SupplierID: pkg.Ptr(uint(1)),
 					Quantity:   -5, // Negative quantity - should fail validation (min=1)
 					TotalPrice: 502.50,
 				},
