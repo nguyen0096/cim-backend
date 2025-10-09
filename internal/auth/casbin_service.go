@@ -31,6 +31,10 @@ func NewCasbinService(db *gorm.DB) (*CasbinService, error) {
 		return nil, fmt.Errorf("failed to initialize casbin enforcer: %w", err)
 	}
 
+	if err := enforcer.LoadPolicy(); err != nil {
+		return nil, fmt.Errorf("failed to load casbin policy: %w", err)
+	}
+
 	if os.Getenv("RBAC_ADAPTER") == "sql" {
 		adapter, err := gormadapter.NewAdapterByDB(db)
 		if err != nil {
@@ -38,10 +42,9 @@ func NewCasbinService(db *gorm.DB) (*CasbinService, error) {
 		}
 
 		enforcer.SetAdapter(adapter)
-	}
-
-	if err := enforcer.LoadPolicy(); err != nil {
-		return nil, fmt.Errorf("failed to load casbin policy: %w", err)
+		if err := enforcer.SavePolicy(); err != nil {
+			return nil, fmt.Errorf("failed to save casbin policy: %w", err)
+		}
 	}
 
 	return &CasbinService{
