@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"context"
 	"fmt"
 	"import-export-backend/internal/auth"
 	"import-export-backend/internal/repository"
@@ -66,8 +67,8 @@ func AuthorizationMiddleware(casbinService *auth.CasbinService, userRepo *reposi
 				})
 			}
 
-			// Set user role in context for handlers that might need it
-			c.Set(pkg.AuthContextKeyUserRole, userRole)
+			reqCtx := c.Request().Context()
+			reqCtx = context.WithValue(reqCtx, pkg.AuthContextKeyUserRole, userRole)
 
 			// Get and set user permissions in context
 			permissions, err := getUserPermissions(casbinService, userRole)
@@ -75,8 +76,10 @@ func AuthorizationMiddleware(casbinService *auth.CasbinService, userRepo *reposi
 				fmt.Printf("Error getting user permissions: %v\n", err)
 				// Continue anyway, permissions are optional for handlers
 			} else {
-				c.Set(pkg.AuthContextKeyUserPermissions, permissions)
+				reqCtx = context.WithValue(reqCtx, pkg.AuthContextKeyUserPermissions, permissions)
 			}
+
+			c.SetRequest(c.Request().WithContext(reqCtx))
 
 			// Authorization successful, continue to handler
 			return next(c)
@@ -148,7 +151,7 @@ func pathToResource(path string) string {
 }
 
 // getUserPermissions retrieves all permissions for a given role
-func getUserPermissions(casbinService *auth.CasbinService, userRole string) ([]pkg.UserPermission, error) {
+func getUserPermissions(casbinService *auth.CasbinService, userRole string) (map[pkg.UserPermission]struct{}, error) {
 	// Get all policies for the role from Casbin
 	enforcer := casbinService.GetEnforcer()
 	if enforcer == nil {
@@ -161,14 +164,14 @@ func getUserPermissions(casbinService *auth.CasbinService, userRole string) ([]p
 		return nil, fmt.Errorf("error getting filtered policies: %w", err)
 	}
 
-	permissions := make([]pkg.UserPermission, 0, len(policies))
+	permissions := make(map[pkg.UserPermission]struct{})
 	for _, policy := range policies {
 		if len(policy) >= 3 {
 			// policy format: [role, resource, action]
-			permissions = append(permissions, pkg.UserPermission{
+			permissions[pkg.UserPermission{
 				Resource: policy[1],
 				Action:   policy[2],
-			})
+			}] = struct{}{}
 		}
 	}
 

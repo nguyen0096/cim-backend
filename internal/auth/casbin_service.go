@@ -149,7 +149,11 @@ func (c *CasbinService) InitializeDefaultPolicies() error {
 
 		// Accountant policies
 		{"accountant", "products", "view", "allow"},
+		{"accountant", "products", "create", "allow"},
+		{"accountant", "products", "update", "allow"},
 		{"accountant", "suppliers", "view", "allow"},
+		{"accountant", "suppliers", "create", "allow"},
+		{"accountant", "suppliers", "update", "allow"},
 		{"accountant", "inventories", "view", "allow"},
 		{"accountant", "purchase-orders", "view", "allow"},
 		{"accountant", "purchase-orders", "create", "allow"},

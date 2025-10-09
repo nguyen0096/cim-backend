@@ -59,24 +59,15 @@ type UserPermission struct {
 
 // HasPermission checks if user has a specific permission (uses context permissions)
 func HasPermission(ctx context.Context, resource, action string) bool {
-	permissions, ok := ctx.Value(AuthContextKeyUserPermissions).([]UserPermission)
+	permissions, ok := ctx.Value(AuthContextKeyUserPermissions).(map[UserPermission]struct{})
 	if !ok {
 		return false
 	}
 
-	for _, perm := range permissions {
-		if perm.Resource == resource && perm.Action == action {
-			return true
-		}
+	expectedPermission := UserPermission{
+		Resource: resource,
+		Action:   action,
 	}
-	return false
-}
-
-// GetUserPermissions returns all user permissions from context
-func GetUserPermissions(ctx context.Context) []UserPermission {
-	permissions, ok := ctx.Value(AuthContextKeyUserPermissions).([]UserPermission)
-	if !ok {
-		return []UserPermission{}
-	}
-	return permissions
+	_, exists := permissions[expectedPermission]
+	return exists
 }

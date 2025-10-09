@@ -30,7 +30,11 @@ p, admin, prices, view, allow
 p, admin, users, view, allow
 
 p, accountant, products, view, allow
+p, accountant, products, create, allow
+p, accountant, products, update, allow
 p, accountant, suppliers, view, allow
+p, accountant, suppliers, create, allow
+p, accountant, suppliers, update, allow
 p, accountant, inventories, view, allow
 p, accountant, purchase-orders, view, allow
 p, accountant, purchase-orders, create, allow
@@ -40,7 +44,6 @@ p, accountant, purchase-order-items, view, allow
 p, accountant, purchase-order-items, create, allow
 p, accountant, purchase-order-items, update, allow
 p, accountant, purchase-order-items, delete, allow
-p, accountant, purchase-orders, complete, allow
 p, accountant, excel, view, allow
 p, accountant, settings, view, allow
 p, accountant, settings, create, allow
@@ -49,7 +52,7 @@ p, accountant, prices, view, allow
 p, accountant, users, view, allow
 
 p, staff, purchase-orders, view, allow
-p, staff, purchase-orders, complete, deny
+p, staff, purchase-orders, confirm, allow
 p, staff, purchase-order-items, view, allow
 p, staff, purchase-order-items, create, allow
 p, staff, purchase-order-items, update, allow
