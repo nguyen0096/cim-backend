@@ -94,7 +94,6 @@ func init() {
 
 	rootCmd.AddCommand(authCmd)
 	rootCmd.AddCommand(seedCmd)
-	rootCmd.AddCommand(seedUsersCmd)
 	rootCmd.AddCommand(migrateCmd)
 }
 
