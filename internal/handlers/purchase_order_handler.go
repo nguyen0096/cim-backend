@@ -141,7 +141,7 @@ func (h *PurchaseOrderHandler) UpdatePurchaseOrderStatus(c echo.Context) error {
 	if req.Status == string(models.PurchaseOrderStatusFullyDelivered) || req.Status == string(models.PurchaseOrderStatusPartiallyDelivered) {
 		userRole, _ := c.Get(pkg.AuthContextKeyUserRole).(string)
 
-		if !pkg.HasPermission(c.Request().Context(), "purchase-orders", "confirm") {
+		if !pkg.HasPermission(c.Request().Context(), "purchase-orders", "confirm") && !pkg.HasPermission(c.Request().Context(), "purchase-orders", "update") {
 			return c.JSON(http.StatusForbidden, map[string]string{
 				"error": fmt.Sprintf("Access denied: %s role cannot confirm purchase orders", userRole),
 			})

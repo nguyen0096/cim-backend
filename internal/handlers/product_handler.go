@@ -239,25 +239,49 @@ func (h *ProductHandler) CreateProduct(c echo.Context) error {
 	startTime := time.Now()
 	logger := h.getRequestLogger(c, "CreateProduct")
 
-	var product models.Product
-	if err := c.Bind(&product); err != nil {
+	var request struct {
+		Name        string  `json:"name"`
+		Description string  `json:"description"`
+		ProductType string  `json:"product_type"`
+		Status      string  `json:"status"`
+		SupplierIDs []uint  `json:"supplier_ids"`
+	}
+
+	if err := c.Bind(&request); err != nil {
 		logger.WithError(err).Error("Failed to bind request body")
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid request body", "details": err.Error()})
 	}
 
 	logger.WithFields(logrus.Fields{
-		"product_name": product.Name,
-		"product_type": product.ProductType,
+		"product_name": request.Name,
+		"product_type": request.ProductType,
+		"supplier_ids": request.SupplierIDs,
 	}).Info("Creating new product")
 
 	// Validate ProductType if provided
-	if product.ProductType == "" {
+	if request.ProductType == "" {
 		logger.Warn("Product creation attempted with empty product type")
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Product type is required. Please specify a product type like 'electronics', 'clothing', 'food', etc."})
 	}
 
+	product := models.Product{
+		Name:        request.Name,
+		Description: request.Description,
+		ProductType: request.ProductType,
+		Status:      request.Status,
+	}
+
+	// Add suppliers if IDs provided
+	if len(request.SupplierIDs) > 0 {
+		suppliers := make([]*models.Supplier, len(request.SupplierIDs))
+		for i, sid := range request.SupplierIDs {
+			suppliers[i] = &models.Supplier{Base: models.Base{ID: sid}}
+		}
+		product.Suppliers = suppliers
+	}
+
 	if err := h.productService.CreateProduct(c.Request().Context(), &product); err != nil {
-		logger.WithError(err).WithField("product_name", product.Name).Error("Failed to create product in service")
+		logger.WithError(err).WithField("product_name", request.Name).Error("Failed to create product in service")
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to create product"})
 	}
 
@@ -298,6 +322,7 @@ func (h *ProductHandler) GetProduct(c echo.Context) error {
 
 	return c.JSON(http.StatusOK, product)
 }
+
 func (h *ProductHandler) UpdateProduct(c echo.Context) error {
 	startTime := time.Now()
 	logger := h.getRequestLogger(c, "UpdateProduct")
