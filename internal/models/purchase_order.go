@@ -95,10 +95,3 @@ func (po *PurchaseOrder) UpdateStatus() error {
 
 	return nil
 }
-
-// UpdatePurchaseOrderItemStatusResponse represents the response for updating purchase order item status
-type UpdatePurchaseOrderItemStatusResponse struct {
-	ItemStatus       PurchaseOrderItemStatus `json:"item_status" example:"delivered"`
-	OrderStatus      PurchaseOrderStatus     `json:"order_status" example:"fully_delivered"`
-	ReceivedQuantity int                     `json:"received_quantity" example:"5"`
-}

@@ -194,8 +194,7 @@ func main() {
 	purchaseOrders := api.Group("/purchase-orders")
 	purchaseOrders.GET("", purchaseOrderHandler.ListPurchaseOrders)
 	purchaseOrders.POST("", purchaseOrderHandler.CreatePurchaseOrder)
-	purchaseOrders.PUT("/:id/status", purchaseOrderHandler.UpdatePurchaseOrderStatus)                    // deprecated
-	purchaseOrders.PUT("/:id/items/:item_id/status", purchaseOrderHandler.UpdatePurchaseOrderItemStatus) // deprecated
+	purchaseOrders.PUT("/:id/status", purchaseOrderHandler.UpdatePurchaseOrderStatus) // deprecated
 	purchaseOrders.PUT("/:id/delivery", purchaseOrderHandler.UpdatePurchaseOrderDeliveryStatus)
 
 	// Excel routes

@@ -18,7 +18,6 @@ type PurchaseOrderRepository interface {
 	List(ctx context.Context, params models.ListParams) ([]models.PurchaseOrder, int64, error)
 	GetByStatus(status string) ([]models.PurchaseOrder, error)
 	UpdateStatus(ctx context.Context, purchaseOrderID uint, status models.PurchaseOrderStatus) error
-	UpdatePurchaseOrderItemStatus(ctx context.Context, purchaseOrderID, itemID uint, status models.PurchaseOrderItemStatus) error
 	AnyDeliveringItem(ctx context.Context, purchaseOrderID uint) bool
 
 	// v1
@@ -147,19 +146,6 @@ func (r *purchaseOrderRepository) GetByStatus(status string) ([]models.PurchaseO
 
 func (r *purchaseOrderRepository) UpdateStatus(ctx context.Context, purchaseOrderID uint, status models.PurchaseOrderStatus) error {
 	return r.db.WithContext(ctx).Model(&models.PurchaseOrder{}).Where("id = ?", purchaseOrderID).Update("status", status).Error
-}
-
-// UpdatePurchaseOrderItemStatus updates the status of a specific purchase order item
-func (r *purchaseOrderRepository) UpdatePurchaseOrderItemStatus(ctx context.Context, purchaseOrderID, itemID uint, status models.PurchaseOrderItemStatus) error {
-	// First verify that the item belongs to the purchase order
-	var item models.PurchaseOrderItem
-	err := r.db.WithContext(ctx).Where("id = ? AND purchase_order_id = ?", itemID, purchaseOrderID).First(&item).Error
-	if err != nil {
-		return fmt.Errorf("failed to find purchase order item: %w", err)
-	}
-
-	// Update the status
-	return r.db.WithContext(ctx).Model(&item).Update("status", status).Error
 }
 
 // AnyDeliveringItem checks if all items in a purchase order are delivered

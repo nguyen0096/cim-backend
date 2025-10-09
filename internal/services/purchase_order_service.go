@@ -8,7 +8,6 @@ import (
 	"import-export-backend/internal/config"
 	"import-export-backend/internal/models"
 	"import-export-backend/internal/repository"
-	"import-export-backend/pkg"
 	"import-export-backend/internal/services/dto"
 	"time"
 
@@ -26,7 +25,6 @@ type PurchaseOrderService interface {
 	GetPurchaseOrdersByStatus(status string) ([]models.PurchaseOrder, error)
 	UpdatePurchaseOrderStatus(ctx context.Context, id uint, status string) error
 	ReceivePurchaseOrder(ctx context.Context, id uint) error
-	UpdatePurchaseOrderItemStatus(ctx context.Context, purchaseOrderID, itemID uint, status models.PurchaseOrderItemStatus, receivedQuantity int) (*models.UpdatePurchaseOrderItemStatusResponse, error)
 
 	// V1
 	UpdatePurchaseOrderDeliveryStatus(ctx context.Context, req dto.UpdatePurchaseOrderDeliveryStatusRequest) error
@@ -391,147 +389,6 @@ func (s *purchaseOrderService) ReceivePurchaseOrder(ctx context.Context, id uint
 	}).Info("Successfully received purchase order and added inventory")
 
 	return nil
-}
-
-// UpdatePurchaseOrderItemStatus updates the status and received quantity of a purchase order item
-func (s *purchaseOrderService) UpdatePurchaseOrderItemStatus(ctx context.Context, purchaseOrderID, itemID uint, status models.PurchaseOrderItemStatus, receivedQuantity int) (*models.UpdatePurchaseOrderItemStatusResponse, error) {
-	s.logger.WithFields(logrus.Fields{
-		"operation":         "UpdatePurchaseOrderItemStatus",
-		"purchase_order_id": purchaseOrderID,
-		"item_id":           itemID,
-		"new_status":        status,
-		"received_quantity": receivedQuantity,
-	}).Info("Updating purchase order item status")
-
-	var result *models.UpdatePurchaseOrderItemStatusResponse
-
-	// Wrap the operations in a transaction
-	err := s.db.Transaction(func(tx *gorm.DB) error {
-		// Fetch the current item to get current received_quantity and quantity
-		var currentItem models.PurchaseOrderItem
-		err := tx.WithContext(ctx).Where("id = ? AND purchase_order_id = ?", itemID, purchaseOrderID).First(&currentItem).Error
-		if err != nil {
-			s.logger.WithFields(logrus.Fields{
-				"operation":         "UpdatePurchaseOrderItemStatus",
-				"purchase_order_id": purchaseOrderID,
-				"item_id":           itemID,
-				"error":             err,
-			}).Error("Failed to fetch purchase order item in transaction")
-			return fmt.Errorf("failed to fetch purchase order item: %w", err)
-		}
-
-		// Calculate accumulated received_quantity
-		accumulatedReceivedQuantity := currentItem.ReceivedQuantity
-		if receivedQuantity != 0 {
-			accumulatedReceivedQuantity += receivedQuantity
-		}
-
-		// Validate that accumulated received_quantity doesn't exceed quantity
-		if accumulatedReceivedQuantity > currentItem.Quantity {
-			s.logger.WithFields(logrus.Fields{
-				"operation":                     "UpdatePurchaseOrderItemStatus",
-				"purchase_order_id":             purchaseOrderID,
-				"item_id":                       itemID,
-				"quantity":                      currentItem.Quantity,
-				"current_received_quantity":     currentItem.ReceivedQuantity,
-				"incoming_received_quantity":    receivedQuantity,
-				"accumulated_received_quantity": accumulatedReceivedQuantity,
-			}).Error("Accumulated received quantity exceeds total quantity")
-			return pkg.NewAppError(pkg.ErrorCodeValidation, fmt.Sprintf("accumulated received quantity (%d) exceeds total quantity (%d)", accumulatedReceivedQuantity, currentItem.Quantity), nil)
-		}
-
-		if accumulatedReceivedQuantity == currentItem.Quantity {
-			status = models.PurchaseOrderItemStatusDelivered
-		}
-
-		// Prepare update fields
-		updates := map[string]interface{}{
-			"status": status,
-		}
-
-		// Add accumulated received_quantity to updates if changed
-		if receivedQuantity != 0 {
-			updates["received_quantity"] = accumulatedReceivedQuantity
-		}
-
-		// Update the item status and received quantity using the transaction
-		err = tx.WithContext(ctx).Model(&models.PurchaseOrderItem{}).
-			Where("id = ? AND purchase_order_id = ?", itemID, purchaseOrderID).
-			Updates(updates).Error
-		if err != nil {
-			s.logger.WithFields(logrus.Fields{
-				"operation":         "UpdatePurchaseOrderItemStatus",
-				"purchase_order_id": purchaseOrderID,
-				"item_id":           itemID,
-				"error":             err,
-			}).Error("Failed to update purchase order item status in transaction")
-			return fmt.Errorf("failed to update purchase order item status: %w", err)
-		}
-
-		// Determine the order status based on item status
-		var orderStatus models.PurchaseOrderStatus = models.PurchaseOrderStatusPartiallyDelivered
-		if status == models.PurchaseOrderItemStatusDelivered {
-			if s.purchaseOrderRepo.AnyDeliveringItem(ctx, purchaseOrderID) {
-				orderStatus = models.PurchaseOrderStatusPartiallyDelivered
-				err = s.purchaseOrderRepo.UpdateStatus(ctx, purchaseOrderID, orderStatus)
-			} else {
-				orderStatus = models.PurchaseOrderStatusFullyDelivered
-				err = s.purchaseOrderRepo.UpdateStatus(ctx, purchaseOrderID, orderStatus)
-			}
-			if err != nil {
-				return fmt.Errorf("failed to update purchase order status: %w", err)
-			}
-		}
-
-		// Update the purchase order status using the transaction
-		err = tx.WithContext(ctx).Model(&models.PurchaseOrder{}).
-			Where("id = ?", purchaseOrderID).
-			Update("status", orderStatus).Error
-		if err != nil {
-			s.logger.WithFields(logrus.Fields{
-				"operation":         "UpdatePurchaseOrderItemStatus",
-				"purchase_order_id": purchaseOrderID,
-				"order_status":      orderStatus,
-				"error":             err,
-			}).Error("Failed to update purchase order status in transaction")
-			return fmt.Errorf("failed to update purchase order status: %w", err)
-		}
-
-		// Set the result with accumulated received quantity
-		finalReceivedQuantity := currentItem.ReceivedQuantity
-		if receivedQuantity != 0 {
-			finalReceivedQuantity = accumulatedReceivedQuantity
-		}
-		result = &models.UpdatePurchaseOrderItemStatusResponse{
-			ItemStatus:       status,
-			OrderStatus:      orderStatus,
-			ReceivedQuantity: finalReceivedQuantity,
-		}
-
-		// Return nil to commit the transaction
-		return nil
-	})
-
-	if err != nil {
-		s.logger.WithFields(logrus.Fields{
-			"operation":         "UpdatePurchaseOrderItemStatus",
-			"purchase_order_id": purchaseOrderID,
-			"item_id":           itemID,
-			"error":             err,
-		}).Error("Transaction failed for purchase order item status update")
-		return nil, err
-	}
-
-	s.logger.WithFields(logrus.Fields{
-		"operation":         "UpdatePurchaseOrderItemStatus",
-		"purchase_order_id": purchaseOrderID,
-		"item_id":           itemID,
-		"item_status":       result.ItemStatus,
-		"order_status":      result.OrderStatus,
-		"received_quantity": receivedQuantity,
-	}).Info("Successfully updated purchase order item status")
-
-	return result, nil
 }
 
 // handleRevenueExpenseAsync handles revenue expense excel file operations asynchronously
