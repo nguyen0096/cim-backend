@@ -2,10 +2,13 @@ package auth
 
 import (
 	"fmt"
+	"os"
 	"path/filepath"
 
 	"github.com/casbin/casbin/v2"
 	gormadapter "github.com/casbin/gorm-adapter/v3"
+
+	fileadapter "github.com/casbin/casbin/v2/persist/file-adapter"
 
 	"gorm.io/gorm"
 )
@@ -20,31 +23,25 @@ func NewCasbinService(db *gorm.DB) (*CasbinService, error) {
 	// Get the path to the model file
 	modelPath := filepath.Join("internal", "auth", "rbac_model.conf")
 	localPolicyPath := filepath.Join("internal", "auth", "rbac_policy.csv")
+	fileAdapter := fileadapter.NewAdapter(localPolicyPath)
 
 	// Initialize Casbin enforcer
-	enforcer, err := casbin.NewEnforcer(modelPath, localPolicyPath)
+	enforcer, err := casbin.NewEnforcer(modelPath, fileAdapter)
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize casbin enforcer: %w", err)
 	}
 
-	// Load policy from database
-	err = enforcer.LoadPolicy()
-	if err != nil {
+	if os.Getenv("RBAC_ADAPTER") == "sql" {
+		adapter, err := gormadapter.NewAdapterByDB(db)
+		if err != nil {
+			return nil, fmt.Errorf("failed to initialize casbin adapter: %w", err)
+		}
+
+		enforcer.SetAdapter(adapter)
+	}
+
+	if err := enforcer.LoadPolicy(); err != nil {
 		return nil, fmt.Errorf("failed to load casbin policy: %w", err)
-	}
-
-	// Initialize GORM adapter for Casbin
-	dbAdapter, err := gormadapter.NewAdapterByDB(db)
-	if err != nil {
-		return nil, fmt.Errorf("failed to initialize casbin adapter: %w", err)
-	}
-
-	enforcer.SetAdapter(dbAdapter)
-
-	// Save policies to database
-	err = enforcer.SavePolicy()
-	if err != nil {
-		return nil, fmt.Errorf("failed to save casbin policy: %w", err)
 	}
 
 	return &CasbinService{
