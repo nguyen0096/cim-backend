@@ -10,6 +10,10 @@ p, admin, inventories, view, allow
 p, admin, inventories, create, allow
 p, admin, inventories, update, allow
 p, admin, inventories, delete, allow
+p, admin, inventory-items, view, allow
+p, admin, inventory-items, create, allow
+p, admin, inventory-items, update, allow
+p, admin, inventory-items, delete, allow
 p, admin, purchase-orders, view, allow
 p, admin, purchase-orders, create, allow
 p, admin, purchase-orders, update, allow
@@ -36,6 +40,7 @@ p, accountant, suppliers, view, allow
 p, accountant, suppliers, create, allow
 p, accountant, suppliers, update, allow
 p, accountant, inventories, view, allow
+p, accountant, inventory-items, view, allow
 p, accountant, purchase-orders, view, allow
 p, accountant, purchase-orders, create, allow
 p, accountant, purchase-orders, update, allow

@@ -6,6 +6,7 @@ import (
 
 	"github.com/casbin/casbin/v2"
 	gormadapter "github.com/casbin/gorm-adapter/v3"
+
 	"gorm.io/gorm"
 )
 
@@ -16,17 +17,12 @@ type CasbinService struct {
 
 // NewCasbinService creates a new Casbin service with PostgreSQL adapter
 func NewCasbinService(db *gorm.DB) (*CasbinService, error) {
-	// Initialize GORM adapter for Casbin
-	adapter, err := gormadapter.NewAdapterByDB(db)
-	if err != nil {
-		return nil, fmt.Errorf("failed to initialize casbin adapter: %w", err)
-	}
-
 	// Get the path to the model file
 	modelPath := filepath.Join("internal", "auth", "rbac_model.conf")
+	localPolicyPath := filepath.Join("internal", "auth", "rbac_policy.csv")
 
 	// Initialize Casbin enforcer
-	enforcer, err := casbin.NewEnforcer(modelPath, adapter)
+	enforcer, err := casbin.NewEnforcer(modelPath, localPolicyPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize casbin enforcer: %w", err)
 	}
@@ -35,6 +31,20 @@ func NewCasbinService(db *gorm.DB) (*CasbinService, error) {
 	err = enforcer.LoadPolicy()
 	if err != nil {
 		return nil, fmt.Errorf("failed to load casbin policy: %w", err)
+	}
+
+	// Initialize GORM adapter for Casbin
+	dbAdapter, err := gormadapter.NewAdapterByDB(db)
+	if err != nil {
+		return nil, fmt.Errorf("failed to initialize casbin adapter: %w", err)
+	}
+
+	enforcer.SetAdapter(dbAdapter)
+
+	// Save policies to database
+	err = enforcer.SavePolicy()
+	if err != nil {
+		return nil, fmt.Errorf("failed to save casbin policy: %w", err)
 	}
 
 	return &CasbinService{
@@ -108,93 +118,6 @@ func (c *CasbinService) RemovePolicy(subject, object, action string) error {
 	if !removed {
 		return fmt.Errorf("policy does not exist")
 	}
-	return nil
-}
-
-// InitializeDefaultPolicies initializes the default RBAC policies
-func (c *CasbinService) InitializeDefaultPolicies() error {
-	// Define default policies with effects (allow/deny)
-	policies := [][]string{
-		// Admin policies
-		{"admin", "products", "view", "allow"},
-		{"admin", "products", "create", "allow"},
-		{"admin", "products", "update", "allow"},
-		{"admin", "products", "delete", "allow"},
-		{"admin", "suppliers", "view", "allow"},
-		{"admin", "suppliers", "create", "allow"},
-		{"admin", "suppliers", "update", "allow"},
-		{"admin", "suppliers", "delete", "allow"},
-		{"admin", "inventories", "view", "allow"},
-		{"admin", "inventories", "create", "allow"},
-		{"admin", "inventories", "update", "allow"},
-		{"admin", "inventories", "delete", "allow"},
-		{"admin", "purchase-orders", "view", "allow"},
-		{"admin", "purchase-orders", "create", "allow"},
-		{"admin", "purchase-orders", "update", "allow"},
-		{"admin", "purchase-orders", "delete", "allow"},
-		{"admin", "purchase-order-items", "view", "allow"},
-		{"admin", "purchase-order-items", "create", "allow"},
-		{"admin", "purchase-order-items", "update", "allow"},
-		{"admin", "purchase-order-items", "delete", "allow"},
-		{"admin", "excel", "view", "allow"},
-		{"admin", "excel", "create", "allow"},
-		{"admin", "excel", "update", "allow"},
-		{"admin", "excel", "delete", "allow"},
-		{"admin", "settings", "view", "allow"},
-		{"admin", "settings", "create", "allow"},
-		{"admin", "settings", "update", "allow"},
-		{"admin", "settings", "delete", "allow"},
-		{"admin", "prices", "view", "allow"},
-		{"admin", "users", "view", "allow"},
-
-		// Accountant policies
-		{"accountant", "products", "view", "allow"},
-		{"accountant", "products", "create", "allow"},
-		{"accountant", "products", "update", "allow"},
-		{"accountant", "suppliers", "view", "allow"},
-		{"accountant", "suppliers", "create", "allow"},
-		{"accountant", "suppliers", "update", "allow"},
-		{"accountant", "inventories", "view", "allow"},
-		{"accountant", "purchase-orders", "view", "allow"},
-		{"accountant", "purchase-orders", "create", "allow"},
-		{"accountant", "purchase-orders", "update", "allow"},
-		{"accountant", "purchase-orders", "delete", "allow"},
-		{"accountant", "purchase-order-items", "view", "allow"},
-		{"accountant", "purchase-order-items", "create", "allow"},
-		{"accountant", "purchase-order-items", "update", "allow"},
-		{"accountant", "purchase-order-items", "delete", "allow"},
-		{"accountant", "purchase-orders", "complete", "allow"},
-		{"accountant", "excel", "view", "allow"},
-		{"accountant", "settings", "view", "allow"},
-		{"accountant", "settings", "create", "allow"},
-		{"accountant", "settings", "update", "allow"},
-		{"accountant", "prices", "view", "allow"},
-		{"accountant", "users", "view", "allow"},
-
-		// Staff policies
-		{"staff", "purchase-orders", "view", "allow"},
-		{"staff", "purchase-orders", "complete", "deny"}, // Explicitly deny complete action
-		{"staff", "purchase-order-items", "view", "allow"},
-		{"staff", "purchase-order-items", "create", "allow"},
-		{"staff", "purchase-order-items", "update", "allow"},
-		{"staff", "purchase-order-items", "delete", "allow"},
-		{"staff", "users", "view", "allow"},
-	}
-
-	// Add policies to Casbin
-	for _, policy := range policies {
-		_, err := c.enforcer.AddPolicy(policy[0], policy[1], policy[2], policy[3])
-		if err != nil {
-			return fmt.Errorf("failed to add policy %v: %w", policy, err)
-		}
-	}
-
-	// Save policies to database
-	err := c.enforcer.SavePolicy()
-	if err != nil {
-		return fmt.Errorf("failed to save policies: %w", err)
-	}
-
 	return nil
 }
 

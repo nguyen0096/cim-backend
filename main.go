@@ -69,11 +69,6 @@ func main() {
 		log.Fatal("Failed to initialize Casbin service:", err)
 	}
 
-	// Initialize default RBAC policies
-	if err := casbinService.InitializeDefaultPolicies(); err != nil {
-		log.Fatal("Failed to initialize default policies:", err)
-	}
-
 	// Initialize repositories
 	userRepo := repository.NewUserRepository(db)
 	supplierRepo := repository.NewSupplierRepository(db)
