@@ -82,7 +82,7 @@ func main() {
 	userService := services.NewUserService(userRepo, casbinService)
 	supplierService := services.NewSupplierService(supplierRepo)
 	productService := services.NewProductService(productRepo)
-	inventoryService := services.NewInventoryService(inventoryRepo, productRepo)
+	inventoryService := services.NewInventoryService(inventoryRepo, inventoryItemRepo, productRepo)
 	inventoryItemService := services.NewInventoryItemService(inventoryItemRepo, inventoryRepo, productRepo)
 	excelService := services.NewExcelService(productRepo, inventoryRepo)
 	settingsService := services.NewSettingsService(settingsRepo)
@@ -164,6 +164,8 @@ func main() {
 	inventories.GET("/:id", inventoryHandler.GetInventory)
 	inventories.PUT("/:id", inventoryHandler.UpdateInventory)
 	inventories.DELETE("/:id", inventoryHandler.DeleteInventory)
+	inventories.PUT("/:id/dispose", inventoryHandler.DisposeInventoryItems)
+	inventories.PUT("/:id/confirm", inventoryHandler.DisposeInventoryItems)
 
 	// Nested inventory items routes
 	inventories.GET("/:id/inventory-items", inventoryItemHandler.GetInventoryItemsByInventoryID)

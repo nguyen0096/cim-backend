@@ -22,14 +22,3 @@ type Inventory struct {
 func (i *Inventory) GetTotalItems() int {
 	return len(i.Items)
 }
-
-// GetTotalValue calculates the total value of all items in this inventory
-func (i *Inventory) GetTotalValue() float64 {
-	var total float64
-	for _, item := range i.Items {
-		if item != nil {
-			total += item.CalculateTotalValue()
-		}
-	}
-	return total
-}

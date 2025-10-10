@@ -1,10 +1,16 @@
 package pkg
 
+import "fmt"
+
 // Common error helper functions for creating AppErrors
 
 // ErrInvalidRequestBody creates an error for invalid request body
 func ErrInvalidRequestBody(cause error) *AppError {
-	return NewAppError(ErrorCodeInvalidRequestBody, "Invalid request body", cause)
+	return NewAppError(
+		ErrorCodeInvalidRequestBody,
+		fmt.Sprintf("Invalid request body: %s", cause),
+		cause,
+	)
 }
 
 // ErrInternal creates an error for internal server errors
@@ -29,7 +35,11 @@ func ErrForbidden(message string, cause error) *AppError {
 
 // ErrValidation creates an error for validation failures
 func ErrValidation(message string, cause error) *AppError {
-	return NewAppError(ErrorCodeValidation, message, cause)
+	return NewAppError(
+		ErrorCodeValidation,
+		fmt.Sprintf("Validation failed: %s", cause),
+		cause,
+	)
 }
 
 // ErrDuplicate creates an error for duplicate resources

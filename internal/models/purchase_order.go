@@ -47,23 +47,6 @@ type PurchaseOrderItem struct {
 	Status           PurchaseOrderItemStatus `json:"status" gorm:"default:delivering;check:status IN ('delivering', 'delivered', 'cancelled')" example:"delivering"`
 }
 
-// CalculateItemTotalPrice calculates the total price for a purchase order item
-func (poi *PurchaseOrderItem) CalculateTotalPrice() float64 {
-	return float64(poi.Quantity) * poi.UnitPrice
-}
-
-// CalculateTotalAmount calculates the total amount of a purchase order based on its items
-func (po *PurchaseOrder) CalculateTotalAmount() float64 {
-	var total float64
-	for _, item := range po.Items {
-		if item != nil {
-			item.TotalPrice = item.CalculateTotalPrice()
-			total += item.TotalPrice
-		}
-	}
-	return total
-}
-
 // UpdateStatus iterates over the items and updates the status of the purchase order.
 // If all items are delivered, the status of the purchase order is updated to fully delivered.
 // If some items are delivered, the status of the purchase order is updated to partially delivered.

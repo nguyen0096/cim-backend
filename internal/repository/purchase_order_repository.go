@@ -152,18 +152,21 @@ func (r *purchaseOrderRepository) UpdateStatus(ctx context.Context, purchaseOrde
 func (r *purchaseOrderRepository) AnyDeliveringItem(ctx context.Context, purchaseOrderID uint) bool {
 	// Get count of delivered items
 	err := r.db.WithContext(ctx).Model(&models.PurchaseOrderItem{}).
-		Where("purchase_order_id = ? AND status = ?", purchaseOrderID, models.PurchaseOrderItemStatusDelivering).
+		Where("purchase_order_id = ? AND status != ?", purchaseOrderID, models.PurchaseOrderItemStatusDelivered).
 		First(&models.PurchaseOrderItem{}).Error
 	return err == nil
 }
 
 func (r *purchaseOrderRepository) PersistDeliveryUpdate(ctx context.Context, po *models.PurchaseOrder, transactions []*models.InventoryTransaction) error {
-	return r.db.Transaction(func(tx *gorm.DB) error {
-		if err := tx.WithContext(ctx).Model(&po).Update("status", models.PurchaseOrderStatusFullyDelivered).Error; err != nil {
+	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := tx.Model(&po).Update("status", po.Status).Error; err != nil {
 			return fmt.Errorf("failed to update purchase order status: %w", err)
 		}
-		if err := tx.WithContext(ctx).Create(transactions).Error; err != nil {
+		if err := tx.Create(transactions).Error; err != nil {
 			return fmt.Errorf("failed to create inventory transactions: %w", err)
+		}
+		if err := tx.Save(po.Items).Error; err != nil {
+			return fmt.Errorf("failed to update purchase order items: %w", err)
 		}
 		return nil
 	})

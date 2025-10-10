@@ -120,7 +120,7 @@ func (s *inventoryItemService) UpdateInventoryItem(ctx context.Context, item *mo
 
 	}
 
-	return s.inventoryItemRepo.Update(ctx, item)
+	return s.inventoryItemRepo.Update(ctx, []*models.InventoryItem{item}, nil)
 }
 
 func (s *inventoryItemService) DeleteInventoryItem(ctx context.Context, id uint) error {
@@ -198,7 +198,7 @@ func (s *inventoryItemService) AdjustInventoryItemQuantity(ctx context.Context, 
 	// Update the quantity
 	item.Quantity += quantity
 
-	return s.inventoryItemRepo.Update(ctx, item)
+	return s.inventoryItemRepo.Update(ctx, []*models.InventoryItem{item}, nil)
 }
 
 func (s *inventoryItemService) CountInventoryItems(ctx context.Context) (int64, error) {

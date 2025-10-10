@@ -1,5 +1,27 @@
 basePath: /api/v1
 definitions:
+  dto.UpdatePurchaseOrderDeliveryStatusRequest:
+    properties:
+      items:
+        items:
+          properties:
+            id:
+              type: integer
+            received_quantity:
+              minimum: 1
+              type: integer
+          required:
+          - id
+          - received_quantity
+          type: object
+        minItems: 1
+        type: array
+      purchase_order_id:
+        type: integer
+    required:
+    - items
+    - purchase_order_id
+    type: object
   models.GetSettingsResponse:
     description: Response containing all application settings
     properties:
@@ -9,176 +31,21 @@ definitions:
         type: array
     type: object
   models.Inventory:
-    properties:
-      created_at:
-        example: "2023-01-01T00:00:00Z"
-        type: string
-      created_by:
-        example: user@example.com
-        type: string
-      deleted_at:
-        example: "2023-01-01T00:00:00Z"
-        type: string
-      id:
-        example: 1
-        type: integer
-      location:
-        type: string
-      product:
-        $ref: '#/definitions/models.Product'
-      product_id:
-        type: integer
-      quantity:
-        type: integer
-      reorder_level:
-        type: integer
-      updated_at:
-        example: "2023-01-01T00:00:00Z"
-        type: string
     type: object
-  models.PaginationResult-models_PurchaseOrder:
-    properties:
-      data:
-        items:
-          $ref: '#/definitions/models.PurchaseOrder'
-        type: array
-      limit:
-        example: 20
-        type: integer
-      page:
-        example: 1
-        type: integer
-      total:
-        example: 100
-        type: integer
-      totalPages:
-        example: 5
-        type: integer
+  models.InventoryItem:
     type: object
   models.Product:
-    description: Product entity with inventory and supplier information
-    properties:
-      created_at:
-        example: "2023-01-01T00:00:00Z"
-        type: string
-      created_by:
-        example: user@example.com
-        type: string
-      deleted_at:
-        example: "2023-01-01T00:00:00Z"
-        type: string
-      description:
-        example: Product description
-        type: string
-      id:
-        example: 1
-        type: integer
-      inventory:
-        $ref: '#/definitions/models.Inventory'
-      name:
-        example: Sample Product
-        type: string
-      status:
-        example: active
-        type: string
-      supplier:
-        $ref: '#/definitions/models.Supplier'
-      supplier_id:
-        example: 1
-        type: integer
-      unit_price:
-        example: 99.99
-        type: number
-      unit_type:
-        example: piece
-        type: string
-      updated_at:
-        example: "2023-01-01T00:00:00Z"
-        type: string
     type: object
   models.PurchaseOrder:
-    description: Purchase order entity with items and status tracking
-    properties:
-      created_at:
-        example: "2023-01-01T00:00:00Z"
-        type: string
-      created_by:
-        example: user@example.com
-        type: string
-      deleted_at:
-        example: "2023-01-01T00:00:00Z"
-        type: string
-      id:
-        example: 1
-        type: integer
-      items:
-        items:
-          $ref: '#/definitions/models.PurchaseOrderItem'
-        minItems: 1
-        type: array
-      notes:
-        example: Purchase order notes
-        type: string
-      order_number:
-        example: PO-2023-001
-        type: string
-      status:
-        allOf:
-        - $ref: '#/definitions/models.PurchaseOrderStatus'
-        example: order_placed
-      total_amount:
-        description: Calculated field, not stored in DB
-        example: 999.99
-        type: number
-      updated_at:
-        example: "2023-01-01T00:00:00Z"
-        type: string
-    required:
-    - items
     type: object
-  models.PurchaseOrderItem:
-    description: Purchase order item with product and quantity information
-    properties:
-      created_at:
-        example: "2023-01-01T00:00:00Z"
-        type: string
-      created_by:
-        example: user@example.com
-        type: string
-      deleted_at:
-        example: "2023-01-01T00:00:00Z"
-        type: string
-      id:
-        example: 1
-        type: integer
-      product:
-        $ref: '#/definitions/models.Product'
-      product_id:
-        example: 1
-        type: integer
-      purchase_order:
-        $ref: '#/definitions/models.PurchaseOrder'
-      purchase_order_id:
-        example: 1
-        type: integer
-      quantity:
-        example: 10
-        minimum: 1
-        type: integer
-      received_quantity:
-        example: 5
-        type: integer
-      total_price:
-        description: Calculated field, not stored in DB
-        example: 999.9
-        type: number
-      updated_at:
-        example: "2023-01-01T00:00:00Z"
-        type: string
-    required:
-    - product_id
-    - quantity
-    type: object
+  models.PurchaseOrderItemStatus:
+    enum:
+    - delivering
+    - delivered
+    type: string
+    x-enum-varnames:
+    - PurchaseOrderItemStatusDelivering
+    - PurchaseOrderItemStatusDelivered
   models.PurchaseOrderStatus:
     enum:
     - order_placed
@@ -193,17 +60,6 @@ definitions:
     - PurchaseOrderStatusFullyDelivered
     - PurchaseOrderStatusCompleted
     - PurchaseOrderStatusCancelled
-  models.SetSettingRequest:
-    description: Request payload for setting a configuration value
-    properties:
-      key:
-        example: app_name
-        type: string
-      value: {}
-    required:
-    - key
-    - value
-    type: object
   models.SetSettingResponse:
     description: Response after successfully setting a configuration value
     properties:
@@ -213,52 +69,22 @@ definitions:
     type: object
   models.Settings:
     properties:
-      created_at:
-        example: "2023-01-01T00:00:00Z"
-        type: string
-      created_by:
-        example: user@example.com
-        type: string
-      deleted_at:
-        example: "2023-01-01T00:00:00Z"
-        type: string
-      id:
-        example: 1
-        type: integer
       key:
         example: app_name
-        type: string
-      updated_at:
-        example: "2023-01-01T00:00:00Z"
         type: string
       value:
         type: object
     type: object
-  models.Supplier:
+  models.UpdatePurchaseOrderItemStatusResponse:
     properties:
-      address:
-        type: string
-      contact_email:
-        type: string
-      contact_phone:
-        type: string
-      created_at:
-        example: "2023-01-01T00:00:00Z"
-        type: string
-      created_by:
-        example: user@example.com
-        type: string
-      deleted_at:
-        example: "2023-01-01T00:00:00Z"
-        type: string
-      id:
-        example: 1
-        type: integer
-      name:
-        type: string
-      updated_at:
-        example: "2023-01-01T00:00:00Z"
-        type: string
+      item_status:
+        allOf:
+        - $ref: '#/definitions/models.PurchaseOrderItemStatus'
+        example: delivered
+      order_status:
+        allOf:
+        - $ref: '#/definitions/models.PurchaseOrderStatus'
+        example: fully_delivered
     type: object
 host: localhost:8080
 info:
@@ -279,8 +105,8 @@ paths:
     get:
       consumes:
       - application/json
-      description: Retrieve a paginated list of purchase orders with optional search
-        and sorting
+      description: Retrieve a paginated list of purchase orders with optional search,
+        sorting, and date range filtering
       parameters:
       - description: 'Page number (default: 1, minimum: 1)'
         in: query
@@ -303,13 +129,22 @@ paths:
         in: query
         name: order
         type: string
+      - description: 'Start date for filtering (format: YYYY-MM-DD)'
+        in: query
+        name: start_date
+        type: string
+      - description: 'End date for filtering (format: YYYY-MM-DD)'
+        in: query
+        name: end_date
+        type: string
       produces:
       - application/json
       responses:
         "200":
           description: Successfully retrieved purchase orders
           schema:
-            $ref: '#/definitions/models.PaginationResult-models_PurchaseOrder'
+            additionalProperties: true
+            type: object
         "400":
           description: Invalid request parameters
           schema:
@@ -327,6 +162,7 @@ paths:
       summary: List purchase orders
       tags:
       - purchase-orders
+      'x-codegen-max-depth:': 2
     post:
       consumes:
       - application/json
@@ -362,6 +198,736 @@ paths:
       summary: Create a new purchase order
       tags:
       - purchase-orders
+  /api/purchase-orders/{id}/items/{item_id}/status:
+    put:
+      consumes:
+      - application/json
+      description: Update the status of a specific item in a purchase order
+      parameters:
+      - description: Purchase Order ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: Purchase Order Item ID
+        in: path
+        name: item_id
+        required: true
+        type: integer
+      - description: Status update request
+        in: body
+        name: status
+        required: true
+        schema:
+          properties:
+            status:
+              type: string
+          type: object
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Successfully updated purchase order item status
+          schema:
+            $ref: '#/definitions/models.UpdatePurchaseOrderItemStatusResponse'
+        "400":
+          description: Invalid request parameters
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Purchase order or item not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Failed to update purchase order item status
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Update purchase order item status
+      tags:
+      - purchase-orders
+  /api/purchase-orders/delivery-status:
+    put:
+      consumes:
+      - application/json
+      description: Update the delivery status of purchase order items by recording
+        received quantities
+      parameters:
+      - description: Delivery status update request
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.UpdatePurchaseOrderDeliveryStatusRequest'
+      produces:
+      - application/json
+      responses:
+        "204":
+          description: Successfully updated purchase order delivery status
+        "400":
+          description: Invalid request body or validation failed
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Purchase order not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Failed to update purchase order delivery status
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Update purchase order delivery status
+      tags:
+      - purchase-orders
+  /excel/verify:
+    post:
+      consumes:
+      - application/json
+      description: Verifies that the specified filepath and sheetname exist and are
+        valid
+      parameters:
+      - description: File verification request
+        in: body
+        name: request
+        required: true
+        schema:
+          type: object
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Verification successful
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: Invalid request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: File or sheet not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Verify Excel file and sheet
+      tags:
+      - excel
+  /inventories:
+    get:
+      consumes:
+      - application/json
+      description: List all inventories with pagination
+      parameters:
+      - default: 1
+        description: Page number
+        in: query
+        name: page
+        type: integer
+      - default: 20
+        description: Items per page
+        in: query
+        name: limit
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: List inventories
+      tags:
+      - inventories
+    post:
+      consumes:
+      - application/json
+      description: Create a new inventory
+      parameters:
+      - description: Inventory data
+        in: body
+        name: inventory
+        required: true
+        schema:
+          $ref: '#/definitions/models.Inventory'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/models.Inventory'
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Create inventory
+      tags:
+      - inventories
+  /inventories/{id}:
+    delete:
+      consumes:
+      - application/json
+      description: Delete an inventory
+      parameters:
+      - description: Inventory ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "204":
+          description: No Content
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Delete inventory
+      tags:
+      - inventories
+    get:
+      consumes:
+      - application/json
+      description: Get an inventory by ID
+      parameters:
+      - description: Inventory ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.Inventory'
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Get inventory
+      tags:
+      - inventories
+    put:
+      consumes:
+      - application/json
+      description: Update an inventory
+      parameters:
+      - description: Inventory ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: Inventory data
+        in: body
+        name: inventory
+        required: true
+        schema:
+          $ref: '#/definitions/models.Inventory'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.Inventory'
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Update inventory
+      tags:
+      - inventories
+  /inventories/{id}/inventory-items:
+    get:
+      consumes:
+      - application/json
+      description: List inventory items for a specific inventory with pagination
+      parameters:
+      - description: Inventory ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - default: 1
+        description: Page number
+        in: query
+        name: page
+        type: integer
+      - default: 20
+        description: Items per page
+        in: query
+        name: limit
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Get inventory items by inventory ID
+      tags:
+      - inventory-items
+    post:
+      consumes:
+      - application/json
+      description: Create a new inventory item
+      parameters:
+      - description: Inventory ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: Inventory item data
+        in: body
+        name: inventoryItem
+        required: true
+        schema:
+          $ref: '#/definitions/models.InventoryItem'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/models.InventoryItem'
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Create inventory item
+      tags:
+      - inventory-items
+  /inventories/{id}/inventory-items/{item_id}:
+    delete:
+      consumes:
+      - application/json
+      description: Delete an inventory item
+      parameters:
+      - description: Inventory ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: Inventory item ID
+        in: path
+        name: item_id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "204":
+          description: No Content
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Delete inventory item
+      tags:
+      - inventory-items
+    get:
+      consumes:
+      - application/json
+      description: Get an inventory item by ID
+      parameters:
+      - description: Inventory ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: Inventory item ID
+        in: path
+        name: item_id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.InventoryItem'
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Get inventory item
+      tags:
+      - inventory-items
+    put:
+      consumes:
+      - application/json
+      description: Update an inventory item
+      parameters:
+      - description: Inventory ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: Inventory item ID
+        in: path
+        name: item_id
+        required: true
+        type: integer
+      - description: Inventory item data
+        in: body
+        name: inventoryItem
+        required: true
+        schema:
+          $ref: '#/definitions/models.InventoryItem'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.InventoryItem'
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Update inventory item
+      tags:
+      - inventory-items
+  /inventories/{id}/inventory-items/{item_id}/adjust:
+    put:
+      consumes:
+      - application/json
+      description: Adjust the quantity of an inventory item
+      parameters:
+      - description: Inventory ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: Inventory item ID
+        in: path
+        name: item_id
+        required: true
+        type: integer
+      - description: Adjustment data
+        in: body
+        name: adjustment
+        required: true
+        schema:
+          additionalProperties: true
+          type: object
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.InventoryItem'
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Adjust inventory item quantity
+      tags:
+      - inventory-items
+  /inventory-items:
+    get:
+      consumes:
+      - application/json
+      description: List all inventory items with pagination
+      parameters:
+      - default: 1
+        description: Page number
+        in: query
+        name: page
+        type: integer
+      - default: 20
+        description: Items per page
+        in: query
+        name: limit
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: List inventory items
+      tags:
+      - inventory-items
+  /inventory-items/low-stock:
+    get:
+      consumes:
+      - application/json
+      description: List inventory items that are below reorder level
+      parameters:
+      - default: 1
+        description: Page number
+        in: query
+        name: page
+        type: integer
+      - default: 20
+        description: Items per page
+        in: query
+        name: limit
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Get low stock items
+      tags:
+      - inventory-items
+  /inventory-items/product/{product_id}:
+    get:
+      consumes:
+      - application/json
+      description: Get an inventory item by product ID
+      parameters:
+      - description: Product ID
+        in: path
+        name: product_id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.InventoryItem'
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Get inventory item by product ID
+      tags:
+      - inventory-items
   /products:
     get:
       consumes:
@@ -387,6 +953,11 @@ paths:
         description: Sort order (asc/desc)
         in: query
         name: order
+        type: string
+      - default: '"active"'
+        description: Filter by status (active/inactive)
+        in: query
+        name: status
         type: string
       produces:
       - application/json
@@ -439,6 +1010,112 @@ paths:
       summary: Create a new product
       tags:
       - products
+  /products/{id}/status:
+    put:
+      consumes:
+      - application/json
+      description: Update the status of a product (active, inactive)
+      parameters:
+      - description: Product ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: Status update request
+        in: body
+        name: status
+        required: true
+        schema:
+          additionalProperties:
+            type: string
+          type: object
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Product status updated successfully
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Bad request
+          schema:
+            additionalProperties: true
+            type: object
+        "404":
+          description: Product not found
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Update product status
+      tags:
+      - products
+  /products/search:
+    get:
+      consumes:
+      - application/json
+      description: Search products with pagination and sorting
+      parameters:
+      - description: Search query
+        in: query
+        name: q
+        required: true
+        type: string
+      - default: 20
+        description: Number of items per page
+        in: query
+        name: limit
+        type: integer
+      - default: 1
+        description: Page number
+        in: query
+        name: page
+        type: integer
+      - default: '"created_at"'
+        description: Sort field
+        in: query
+        name: sort
+        type: string
+      - default: '"desc"'
+        description: Sort order (asc/desc)
+        in: query
+        name: order
+        type: string
+      - default: '"active"'
+        description: Filter by status (active/inactive)
+        in: query
+        name: status
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Search results with pagination info
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Bad request
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Search products
+      tags:
+      - products
   /settings:
     get:
       consumes:
@@ -458,39 +1135,6 @@ paths:
               type: string
             type: object
       summary: Get all settings
-      tags:
-      - Settings
-    post:
-      consumes:
-      - application/json
-      description: Creates or updates a setting with the specified key and value
-      parameters:
-      - description: Set setting request
-        in: body
-        name: request
-        required: true
-        schema:
-          $ref: '#/definitions/models.SetSettingRequest'
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/models.SetSettingResponse'
-        "400":
-          description: Bad Request
-          schema:
-            additionalProperties:
-              type: string
-            type: object
-        "500":
-          description: Internal Server Error
-          schema:
-            additionalProperties:
-              type: string
-            type: object
-      summary: Set setting
       tags:
       - Settings
   /settings/{key}:
@@ -566,6 +1210,129 @@ paths:
       summary: Get setting by key
       tags:
       - Settings
+    post:
+      consumes:
+      - application/json
+      description: Creates or updates a setting with the specified key and value
+      parameters:
+      - description: Setting key
+        in: path
+        name: key
+        required: true
+        type: string
+      - description: Set setting value request
+        in: body
+        name: request
+        required: true
+        schema:
+          additionalProperties: true
+          type: object
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.SetSettingResponse'
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Set setting
+      tags:
+      - Settings
+  /suppliers/{id}/status:
+    put:
+      consumes:
+      - application/json
+      description: Update the status of a supplier (active, inactive)
+      parameters:
+      - description: Supplier ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: Status update request
+        in: body
+        name: status
+        required: true
+        schema:
+          additionalProperties:
+            type: string
+          type: object
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Supplier status updated successfully
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Bad request
+          schema:
+            additionalProperties: true
+            type: object
+        "404":
+          description: Supplier not found
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Update supplier status
+      tags:
+      - suppliers
+  /users/permissions:
+    get:
+      consumes:
+      - application/json
+      description: Get all permissions for the current authenticated user based on
+        their roles in Casbin
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: User permissions
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Bad request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: User not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Get current user permissions
+      tags:
+      - users
 securityDefinitions:
   BearerAuth:
     description: Type "Bearer" followed by a space and JWT token.

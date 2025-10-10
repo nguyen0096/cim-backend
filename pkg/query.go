@@ -30,3 +30,9 @@ func ExtractIDParamFromPath(c echo.Context, paramName string) (uint, error) {
 	}
 	return uint(idInt), nil
 }
+
+// BindableJoinClause returns a join clause that can be parsed by GORM to bind to models.
+func BindableJoinClause() string {
+	return ""
+
+}

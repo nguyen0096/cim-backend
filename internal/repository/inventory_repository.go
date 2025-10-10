@@ -10,12 +10,15 @@ import (
 
 type InventoryRepository interface {
 	Create(ctx context.Context, inventory *models.Inventory) error
-	GetByID(ctx context.Context, id uint) (*models.Inventory, error)
 	Update(ctx context.Context, inventory *models.Inventory) error
 	Delete(ctx context.Context, id uint) error
 	List(ctx context.Context, limit, offset int) ([]models.Inventory, error)
 	AddInventory(ctx context.Context, productID uint, quantity int, referenceID uint, referenceType string) error
 	RemoveInventory(ctx context.Context, productID uint, quantity int, referenceID uint, referenceType string) error
+
+	// v1
+	GetByID(ctx context.Context, id uint) (*models.Inventory, error)
+	GetTransactionsByInventoryItemIDs(ctx context.Context, inventoryItemIDs []uint) ([]models.InventoryTransaction, error)
 }
 
 type inventoryRepository struct {
@@ -84,4 +87,10 @@ func (r *inventoryRepository) RemoveInventory(ctx context.Context, productID uin
 	inventoryItem.Quantity -= quantity
 
 	return r.db.WithContext(ctx).Save(&inventoryItem).Error
+}
+
+func (r *inventoryRepository) GetTransactionsByInventoryItemIDs(ctx context.Context, inventoryItemIDs []uint) ([]models.InventoryTransaction, error) {
+	var transactions []models.InventoryTransaction
+	err := r.db.WithContext(ctx).Where("inventory_item_id IN ?", inventoryItemIDs).Find(&transactions).Error
+	return transactions, err
 }

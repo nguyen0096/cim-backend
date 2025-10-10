@@ -35,19 +35,6 @@ lint:
 fmt:
 	go fmt ./...
 
-# Docker commands
-docker-build:
-	docker-compose build
-
-docker-run:
-	docker-compose up -d
-
-docker-stop:
-	docker-compose down
-
-docker-logs:
-	docker-compose logs -f
-
 # Database migrations
 migrate-up:
 	go run ./cmd/util migrate up

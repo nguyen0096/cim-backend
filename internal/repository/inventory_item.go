@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"fmt"
 	"import-export-backend/internal/models"
 
 	"gorm.io/gorm"
@@ -10,7 +11,6 @@ import (
 type InventoryItemRepository interface {
 	Create(ctx context.Context, item *models.InventoryItem) error
 	GetByID(ctx context.Context, id uint) (*models.InventoryItem, error)
-	Update(ctx context.Context, item *models.InventoryItem) error
 	Delete(ctx context.Context, id uint) error
 	List(ctx context.Context, limit, offset int) ([]models.InventoryItem, error)
 	GetByInventoryID(ctx context.Context, inventoryID uint, limit, offset int) ([]models.InventoryItem, error)
@@ -19,6 +19,10 @@ type InventoryItemRepository interface {
 	Count(ctx context.Context) (int64, error)
 	CountByInventoryID(ctx context.Context, inventoryID uint) (int64, error)
 	CountLowStockItems(ctx context.Context) (int64, error)
+
+	// v1
+	Update(ctx context.Context, items []*models.InventoryItem, transactions []*models.InventoryTransaction) error
+	GetActiveItemsByInventoryIDs(ctx context.Context, inventoryIDs []string) ([]*models.InventoryItem, error)
 }
 
 type inventoryItemRepository struct {
@@ -43,10 +47,6 @@ func (r *inventoryItemRepository) GetByID(ctx context.Context, id uint) (*models
 		return nil, err
 	}
 	return &item, nil
-}
-
-func (r *inventoryItemRepository) Update(ctx context.Context, item *models.InventoryItem) error {
-	return r.db.WithContext(ctx).Save(item).Error
 }
 
 func (r *inventoryItemRepository) Delete(ctx context.Context, id uint) error {
@@ -122,4 +122,65 @@ func (r *inventoryItemRepository) CountLowStockItems(ctx context.Context) (int64
 		Where("quantity <= reorder_level").
 		Count(&count).Error
 	return count, err
+}
+
+func (r *inventoryItemRepository) Update(
+	ctx context.Context,
+	items []*models.InventoryItem,
+	transactions []*models.InventoryTransaction,
+) error {
+	return r.db.WithContext(ctx).Save(items).Error
+}
+
+// GetActiveItemsByInventoryIDs returns active inventory items for the given inventory IDs
+func (r *inventoryItemRepository) GetActiveItemsByInventoryIDs(ctx context.Context, inventoryIDs []string) ([]*models.InventoryItem, error) {
+	var items []*models.InventoryItem
+	return items, r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		err := tx.
+			Preload("Inventory").
+			Preload("Product").
+			Preload("Supplier").
+			Where("inventory_id IN ?", inventoryIDs).
+			Where("quantity > 0").
+			Find(&items).Error
+		if err != nil {
+			return fmt.Errorf("failed to get active inventory items by inventory IDs: %w", err)
+		}
+
+		// Return empty slice instead of error when no items found
+		if len(items) == 0 {
+			return nil
+		}
+
+		itemIDs := make([]uint, len(items))
+		for i, item := range items {
+			itemIDs[i] = item.ID
+		}
+
+		// Fetch all purchase transactions for these items with the date condition using JOIN
+		var transactions []*models.InventoryTransaction
+		err = tx.
+			Table("inventory_transactions").
+			Joins("JOIN inventory_items ON inventory_items.id = inventory_transactions.inventory_item_id").
+			Where("inventory_transactions.inventory_item_id IN ?", itemIDs).
+			Where("inventory_transactions.transaction_type = ?", models.InventoryTransactionTypePurchase).
+			Where("inventory_transactions.created_at >= COALESCE(inventory_items.latest_active_purchase_at, '-infinity'::timestamptz)").
+			Find(&transactions).Error
+		if err != nil {
+			return fmt.Errorf("failed to get active purchase transactions: %w", err)
+		}
+
+		// Create a map for quick lookup
+		transactionMap := make(map[uint][]*models.InventoryTransaction)
+		for _, transaction := range transactions {
+			transactionMap[transaction.InventoryItemID] = append(transactionMap[transaction.InventoryItemID], transaction)
+		}
+
+		// Map transactions to items
+		for _, item := range items {
+			item.ActivePurchaseTransactions = transactionMap[item.ID]
+		}
+
+		return nil
+	})
 }

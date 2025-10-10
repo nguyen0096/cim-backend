@@ -12,6 +12,7 @@ func Suppliers() []models.Supplier {
 	return []models.Supplier{
 		{
 			Base: models.Base{
+				ID:        1,
 				CreatedAt: now,
 				UpdatedAt: now,
 			},
@@ -22,6 +23,7 @@ func Suppliers() []models.Supplier {
 		},
 		{
 			Base: models.Base{
+				ID:        2,
 				CreatedAt: now,
 				UpdatedAt: now,
 			},
@@ -32,6 +34,7 @@ func Suppliers() []models.Supplier {
 		},
 		{
 			Base: models.Base{
+				ID:        3,
 				CreatedAt: now,
 				UpdatedAt: now,
 			},
@@ -50,6 +53,7 @@ func Products(supplierIDs []uint) []models.Product {
 	return []models.Product{
 		{
 			Base: models.Base{
+				ID:        1,
 				CreatedAt: now,
 				UpdatedAt: now,
 			},
@@ -60,6 +64,7 @@ func Products(supplierIDs []uint) []models.Product {
 		},
 		{
 			Base: models.Base{
+				ID:        2,
 				CreatedAt: now,
 				UpdatedAt: now,
 			},
@@ -70,6 +75,7 @@ func Products(supplierIDs []uint) []models.Product {
 		},
 		{
 			Base: models.Base{
+				ID:        3,
 				CreatedAt: now,
 				UpdatedAt: now,
 			},
@@ -80,6 +86,7 @@ func Products(supplierIDs []uint) []models.Product {
 		},
 		{
 			Base: models.Base{
+				ID:        4,
 				CreatedAt: now,
 				UpdatedAt: now,
 			},
@@ -90,6 +97,7 @@ func Products(supplierIDs []uint) []models.Product {
 		},
 		{
 			Base: models.Base{
+				ID:        5,
 				CreatedAt: now,
 				UpdatedAt: now,
 			},
@@ -100,6 +108,7 @@ func Products(supplierIDs []uint) []models.Product {
 		},
 		{
 			Base: models.Base{
+				ID:        6,
 				CreatedAt: now,
 				UpdatedAt: now,
 			},
@@ -110,6 +119,7 @@ func Products(supplierIDs []uint) []models.Product {
 		},
 		{
 			Base: models.Base{
+				ID:        7,
 				CreatedAt: now,
 				UpdatedAt: now,
 			},
@@ -120,6 +130,7 @@ func Products(supplierIDs []uint) []models.Product {
 		},
 		{
 			Base: models.Base{
+				ID:        8,
 				CreatedAt: now,
 				UpdatedAt: now,
 			},
@@ -130,6 +141,7 @@ func Products(supplierIDs []uint) []models.Product {
 		},
 		{
 			Base: models.Base{
+				ID:        9,
 				CreatedAt: now,
 				UpdatedAt: now,
 			},
@@ -140,6 +152,7 @@ func Products(supplierIDs []uint) []models.Product {
 		},
 		{
 			Base: models.Base{
+				ID:        10,
 				CreatedAt: now,
 				UpdatedAt: now,
 			},
@@ -184,6 +197,7 @@ func Inventory(productIDs []uint) []models.Inventory {
 	inventories := []models.Inventory{
 		{
 			Base: models.Base{
+				ID:        1,
 				CreatedAt: now,
 				UpdatedAt: now,
 			},
@@ -194,6 +208,7 @@ func Inventory(productIDs []uint) []models.Inventory {
 		},
 		{
 			Base: models.Base{
+				ID:        2,
 				CreatedAt: now,
 				UpdatedAt: now,
 			},
@@ -204,6 +219,7 @@ func Inventory(productIDs []uint) []models.Inventory {
 		},
 		{
 			Base: models.Base{
+				ID:        3,
 				CreatedAt: now,
 				UpdatedAt: now,
 			},
@@ -218,37 +234,82 @@ func Inventory(productIDs []uint) []models.Inventory {
 }
 
 // InventoryItems contains all test inventory item data
-func InventoryItems(productIDs []uint) []models.InventoryItem {
+func InventoryItems(inventoryIDs, productIDs, supplierIDs []uint) []models.InventoryItem {
 	now := time.Now()
 
-	items := make([]models.InventoryItem, len(InventoryConfigs))
-	for i, config := range InventoryConfigs {
-		// Map product to inventory based on location
-		var inventoryID uint
-		switch config.Location {
-		case "Warehouse A":
-			inventoryID = 1
-		case "Warehouse B":
-			inventoryID = 2
-		case "Warehouse C":
-			inventoryID = 3
-		default:
-			inventoryID = 1 // Default to first inventory
-		}
+	// Create inventory items with quantities that match transaction sums
+	// Item 1: 3 purchase transactions (5+3+2=10 total) - 1 disposal (1) = 9 quantity
+	// Item 2: 2 purchase transactions (10+5=15 total) = 15 quantity
+	// Item 3: 3 purchase transactions (20+15+10=45 total) = 45 quantity (NULL latest_active_purchase_transaction_id)
+	// Item 4: 3 purchase transactions (10+8+7=25 total) = 25 quantity
+	// Item 5: 1 purchase transaction (3 total) = 3 quantity (inactive - will be set to 0)
 
-		items[i] = models.InventoryItem{
+	items := []models.InventoryItem{
+		{
 			Base: models.Base{
+				ID:        1,
 				CreatedAt: now,
 				UpdatedAt: now,
 			},
-			InventoryID: inventoryID,
-			ProductID:   config.ProductID,
-			SupplierID:  config.SupplierID,
-			UnitPrice:   config.UnitPrice,
-			UnitType:    config.UnitType,
-			Quantity:    config.Quantity,
+			InventoryID: inventoryIDs[0], // Main Warehouse A
+			ProductID:   productIDs[0],   // MacBook Pro
+			SupplierID:  supplierIDs[0],
+			UnitType:    "piece",
+			Quantity:    9, // 5+3+2-1 = 9 (purchases minus disposal)
 			Status:      models.InventoryItemStatusActive,
-		}
+		},
+		{
+			Base: models.Base{
+				ID:        2,
+				CreatedAt: now,
+				UpdatedAt: now,
+			},
+			InventoryID: inventoryIDs[0], // Main Warehouse A
+			ProductID:   productIDs[1],   // LG Monitor
+			SupplierID:  supplierIDs[0],
+			UnitType:    "piece",
+			Quantity:    15, // 10+5 = 15
+			Status:      models.InventoryItemStatusActive,
+		},
+		{
+			Base: models.Base{
+				ID:        3,
+				CreatedAt: now,
+				UpdatedAt: now,
+			},
+			InventoryID: inventoryIDs[1], // Secondary Warehouse B
+			ProductID:   productIDs[2],   // Keychron Keyboard
+			SupplierID:  supplierIDs[0],
+			UnitType:    "piece",
+			Quantity:    45, // 20+15+10 = 45 (NULL latest_active_purchase_transaction_id)
+			Status:      models.InventoryItemStatusActive,
+		},
+		{
+			Base: models.Base{
+				ID:        4,
+				CreatedAt: now,
+				UpdatedAt: now,
+			},
+			InventoryID: inventoryIDs[1], // Secondary Warehouse B
+			ProductID:   productIDs[3],   // Logitech Mouse
+			SupplierID:  supplierIDs[0],
+			UnitType:    "piece",
+			Quantity:    25, // 10+8+7 = 25
+			Status:      models.InventoryItemStatusActive,
+		},
+		{
+			Base: models.Base{
+				ID:        5,
+				CreatedAt: now,
+				UpdatedAt: now,
+			},
+			InventoryID: inventoryIDs[0], // Main Warehouse A
+			ProductID:   productIDs[4],   // Herman Miller Chair
+			SupplierID:  supplierIDs[1],
+			UnitType:    "piece",
+			Quantity:    0, // Inactive item (quantity 0)
+			Status:      models.InventoryItemStatusActive,
+		},
 	}
 
 	return items
@@ -318,7 +379,7 @@ func PurchaseOrders(productIDs []uint, supplierIDs []uint) []models.PurchaseOrde
 					UnitPrice:        1395.00,
 					Quantity:         3,
 					ReceivedQuantity: 2,
-					Status:           models.PurchaseOrderItemStatusDelivering,
+					Status:           models.PurchaseOrderItemStatusAwaitingDelivery,
 				},
 				{
 					Base: models.Base{
@@ -353,7 +414,7 @@ func PurchaseOrders(productIDs []uint, supplierIDs []uint) []models.PurchaseOrde
 					UnitPrice:        89.99,
 					Quantity:         20,
 					ReceivedQuantity: 0,
-					Status:           models.PurchaseOrderItemStatusDelivering,
+					Status:           models.PurchaseOrderItemStatusAwaitingDelivery,
 				},
 				{
 					Base: models.Base{
@@ -365,7 +426,7 @@ func PurchaseOrders(productIDs []uint, supplierIDs []uint) []models.PurchaseOrde
 					UnitPrice:        99.99,
 					Quantity:         15,
 					ReceivedQuantity: 0,
-					Status:           models.PurchaseOrderItemStatusDelivering,
+					Status:           models.PurchaseOrderItemStatusAwaitingDelivery,
 				},
 				{
 					Base: models.Base{
@@ -377,7 +438,7 @@ func PurchaseOrders(productIDs []uint, supplierIDs []uint) []models.PurchaseOrde
 					UnitPrice:        399.99,
 					Quantity:         8,
 					ReceivedQuantity: 0,
-					Status:           models.PurchaseOrderItemStatusDelivering,
+					Status:           models.PurchaseOrderItemStatusAwaitingDelivery,
 				},
 			},
 		},
@@ -435,7 +496,7 @@ func PurchaseOrders(productIDs []uint, supplierIDs []uint) []models.PurchaseOrde
 					UnitPrice:        1099.99,
 					Quantity:         2,
 					ReceivedQuantity: 0,
-					Status:           models.PurchaseOrderItemStatusDelivering,
+					Status:           models.PurchaseOrderItemStatusAwaitingDelivery,
 				},
 			},
 		},
@@ -458,7 +519,7 @@ func PurchaseOrders(productIDs []uint, supplierIDs []uint) []models.PurchaseOrde
 					UnitPrice:        2999.99,
 					Quantity:         2,
 					ReceivedQuantity: 0,
-					Status:           models.PurchaseOrderItemStatusDelivering,
+					Status:           models.PurchaseOrderItemStatusAwaitingDelivery,
 				},
 				{
 					Base: models.Base{
@@ -470,9 +531,159 @@ func PurchaseOrders(productIDs []uint, supplierIDs []uint) []models.PurchaseOrde
 					UnitPrice:        599.99,
 					Quantity:         5,
 					ReceivedQuantity: 0,
-					Status:           models.PurchaseOrderItemStatusDelivering,
+					Status:           models.PurchaseOrderItemStatusAwaitingDelivery,
 				},
 			},
 		},
 	}
+}
+
+// InventoryTransactions contains test inventory transaction data
+func InventoryTransactions(inventoryItemIDs []uint) []models.InventoryTransaction {
+	now := time.Now()
+
+	transactions := []models.InventoryTransaction{
+		// Purchase transactions for inventory item 1 (MacBook Pro)
+		{
+			Base: models.Base{
+				ID:        1,
+				CreatedAt: now.AddDate(0, 0, -30), // 30 days ago
+				UpdatedAt: now.AddDate(0, 0, -30),
+			},
+			InventoryItemID: inventoryItemIDs[0],
+			TransactionType: models.InventoryTransactionTypePurchase,
+			Price:           2999.99,
+			Quantity:        5,
+		},
+		{
+			Base: models.Base{
+				ID:        2,
+				CreatedAt: now.AddDate(0, 0, -20), // 20 days ago
+				UpdatedAt: now.AddDate(0, 0, -20),
+			},
+			InventoryItemID: inventoryItemIDs[0],
+			TransactionType: models.InventoryTransactionTypePurchase,
+			Price:           2999.99,
+			Quantity:        3,
+		},
+		{
+			Base: models.Base{
+				ID:        3,
+				CreatedAt: now.AddDate(0, 0, -10), // 10 days ago
+				UpdatedAt: now.AddDate(0, 0, -10),
+			},
+			InventoryItemID: inventoryItemIDs[0],
+			TransactionType: models.InventoryTransactionTypePurchase,
+			Price:           2999.99,
+			Quantity:        2,
+		},
+		// Purchase transactions for inventory item 2 (LG Monitor)
+		{
+			Base: models.Base{
+				ID:        5,
+				CreatedAt: now.AddDate(0, 0, -25), // 25 days ago
+				UpdatedAt: now.AddDate(0, 0, -25),
+			},
+			InventoryItemID: inventoryItemIDs[1],
+			TransactionType: models.InventoryTransactionTypePurchase,
+			Price:           599.99,
+			Quantity:        10,
+		},
+		{
+			Base: models.Base{
+				ID:        6,
+				CreatedAt: now.AddDate(0, 0, -15), // 15 days ago
+				UpdatedAt: now.AddDate(0, 0, -15),
+			},
+			InventoryItemID: inventoryItemIDs[1],
+			TransactionType: models.InventoryTransactionTypePurchase,
+			Price:           599.99,
+			Quantity:        5,
+		},
+
+		// Purchase transactions for inventory item 3 (Keychron Keyboard) - with NULL latest_active_purchase_transaction_id
+		{
+			Base: models.Base{
+				ID:        7,
+				CreatedAt: now.AddDate(0, 0, -40), // 40 days ago
+				UpdatedAt: now.AddDate(0, 0, -40),
+			},
+			InventoryItemID: inventoryItemIDs[2],
+			TransactionType: models.InventoryTransactionTypePurchase,
+			Price:           89.99,
+			Quantity:        20,
+		},
+		{
+			Base: models.Base{
+				ID:        8,
+				CreatedAt: now.AddDate(0, 0, -30), // 30 days ago
+				UpdatedAt: now.AddDate(0, 0, -30),
+			},
+			InventoryItemID: inventoryItemIDs[2],
+			TransactionType: models.InventoryTransactionTypePurchase,
+			Price:           89.99,
+			Quantity:        15,
+		},
+		{
+			Base: models.Base{
+				ID:        9,
+				CreatedAt: now.AddDate(0, 0, -20), // 20 days ago
+				UpdatedAt: now.AddDate(0, 0, -20),
+			},
+			InventoryItemID: inventoryItemIDs[2],
+			TransactionType: models.InventoryTransactionTypePurchase,
+			Price:           89.99,
+			Quantity:        10,
+		},
+
+		// Purchase transactions for inventory item 4 (Logitech Mouse) - with specific latest_active_purchase_transaction_id
+		{
+			Base: models.Base{
+				ID:        10,
+				CreatedAt: now.AddDate(0, 0, -35), // 35 days ago
+				UpdatedAt: now.AddDate(0, 0, -35),
+			},
+			InventoryItemID: inventoryItemIDs[3],
+			TransactionType: models.InventoryTransactionTypePurchase,
+			Price:           99.99,
+			Quantity:        10,
+		},
+		{
+			Base: models.Base{
+				ID:        11,
+				CreatedAt: now.AddDate(0, 0, -25), // 25 days ago
+				UpdatedAt: now.AddDate(0, 0, -25),
+			},
+			InventoryItemID: inventoryItemIDs[3],
+			TransactionType: models.InventoryTransactionTypePurchase,
+			Price:           99.99,
+			Quantity:        8,
+		},
+		{
+			Base: models.Base{
+				ID:        12,
+				CreatedAt: now.AddDate(0, 0, -15), // 15 days ago
+				UpdatedAt: now.AddDate(0, 0, -15),
+			},
+			InventoryItemID: inventoryItemIDs[3],
+			TransactionType: models.InventoryTransactionTypePurchase,
+			Price:           99.99,
+			Quantity:        7,
+		},
+
+		// Purchase transactions for inventory item 5 (Herman Miller Chair) - zero quantity (inactive)
+		{
+			Base: models.Base{
+				ID:        13,
+				CreatedAt: now.AddDate(0, 0, -20), // 20 days ago
+				UpdatedAt: now.AddDate(0, 0, -20),
+			},
+			InventoryItemID: inventoryItemIDs[4],
+			TransactionType: models.InventoryTransactionTypePurchase,
+			Price:           1395.00,
+			Quantity:        3,
+		},
+	}
+
+	return transactions
 }

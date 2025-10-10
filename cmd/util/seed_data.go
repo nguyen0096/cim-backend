@@ -12,19 +12,9 @@ import (
 	"import-export-backend/pkg"
 	"import-export-backend/test/data"
 	"log"
-	"time"
 
 	"gorm.io/gorm"
 )
-
-// SeedData contains all the mock data with references
-type SeedData struct {
-	Suppliers      []models.Supplier
-	Products       []models.Product
-	Inventories    []models.Inventory
-	InventoryItems []models.InventoryItem
-	PurchaseOrders []models.PurchaseOrder
-}
 
 // seedDatabase populates the database with mock data
 func seedDatabase() error {
@@ -40,8 +30,7 @@ func seedDatabase() error {
 	// Create context with user email for CreatedBy field
 	ctx := pkg.WithUserEmail(context.Background(), "seeder@test.com")
 
-	// Generate seed data
-	seedData := generateSeedData()
+	// Seed data will be generated directly from test/data functions
 
 	// Start transaction
 	tx := db.WithContext(ctx).Begin()
@@ -52,8 +41,10 @@ func seedDatabase() error {
 	// Seed in correct order (respecting foreign key constraints)
 
 	// 1. Suppliers
+	suppliers := data.Suppliers()
 	var supplierIDs []uint
-	for _, supplier := range seedData.Suppliers {
+	for _, supplier := range suppliers {
+		// Use the fixed ID from test data
 		if err := tx.Create(&supplier).Error; err != nil {
 			tx.Rollback()
 			return fmt.Errorf("failed to create supplier: %w", err)
@@ -62,8 +53,10 @@ func seedDatabase() error {
 	}
 
 	// 2. Products
+	products := data.Products(nil)
 	var productIDs []uint
-	for _, product := range seedData.Products {
+	for _, product := range products {
+		// Use the fixed ID from test data
 		if err := tx.Create(&product).Error; err != nil {
 			tx.Rollback()
 			return fmt.Errorf("failed to create product: %w", err)
@@ -86,8 +79,10 @@ func seedDatabase() error {
 	}
 
 	// 3. Inventories
+	inventories := data.Inventory(productIDs)
 	var inventoryIDs []uint
-	for _, inventory := range seedData.Inventories {
+	for _, inventory := range inventories {
+		// Use the fixed ID from test data
 		if err := tx.Create(&inventory).Error; err != nil {
 			tx.Rollback()
 			return fmt.Errorf("failed to create inventory: %w", err)
@@ -95,17 +90,60 @@ func seedDatabase() error {
 		inventoryIDs = append(inventoryIDs, inventory.ID)
 	}
 
-	// 4. Inventory Items - generate with actual IDs
-	inventoryItems := generateInventoryItems(productIDs, inventoryIDs, supplierIDs)
+	// 4. Inventory Items - use fixed IDs from test data
+	inventoryItems := data.InventoryItems(inventoryIDs, productIDs, supplierIDs)
+	var inventoryItemIDs []uint
 	for _, item := range inventoryItems {
+		// Use the fixed ID from test data
 		if err := tx.Create(&item).Error; err != nil {
 			tx.Rollback()
 			return fmt.Errorf("failed to create inventory item: %w", err)
 		}
+		inventoryItemIDs = append(inventoryItemIDs, item.ID)
 	}
 
-	// 5. Purchase Orders - generate with actual product IDs and supplier IDs
-	purchaseOrders := generatePurchaseOrders(productIDs, supplierIDs)
+	// 5. Inventory Transactions - use fixed IDs from test data
+	inventoryTransactions := data.InventoryTransactions(inventoryItemIDs)
+	var transactionIDs []uint
+	for _, transaction := range inventoryTransactions {
+		// Use the fixed ID from test data
+		if err := tx.Create(&transaction).Error; err != nil {
+			tx.Rollback()
+			return fmt.Errorf("failed to create inventory transaction: %w", err)
+		}
+		transactionIDs = append(transactionIDs, transaction.ID)
+	}
+
+	// 5.5. Update inventory items with LatestActivePurchaseTransactionID
+	// Using fixed IDs from test data:
+	// Transaction 2: MacBook Pro (20 days ago) - ID 2
+	// Transaction 5: LG Monitor (25 days ago) - ID 5
+	// Transaction 10: Logitech Mouse (35 days ago) - ID 10
+	// Keychron Keyboard keeps LatestActivePurchaseTransactionID as NULL
+
+	// Update inventory items with LatestActivePurchaseTransactionID
+	// Item 0 (MacBook Pro): set to transaction 2 (20 days ago) - ID 2
+	if err := tx.Model(&models.InventoryItem{}).Where("id = ?", inventoryItemIDs[0]).Update("latest_active_purchase_transaction_id", uint(2)).Error; err != nil {
+		tx.Rollback()
+		return fmt.Errorf("failed to update inventory item 0: %w", err)
+	}
+
+	// Item 1 (LG Monitor): set to transaction 5 (25 days ago) - ID 5
+	if err := tx.Model(&models.InventoryItem{}).Where("id = ?", inventoryItemIDs[1]).Update("latest_active_purchase_transaction_id", uint(5)).Error; err != nil {
+		tx.Rollback()
+		return fmt.Errorf("failed to update inventory item 1: %w", err)
+	}
+
+	// Item 2 (Keychron Keyboard): keep LatestActivePurchaseTransactionID as NULL
+
+	// Item 3 (Logitech Mouse): set to transaction 10 (35 days ago) - ID 10
+	if err := tx.Model(&models.InventoryItem{}).Where("id = ?", inventoryItemIDs[3]).Update("latest_active_purchase_transaction_id", uint(10)).Error; err != nil {
+		tx.Rollback()
+		return fmt.Errorf("failed to update inventory item 3: %w", err)
+	}
+
+	// 6. Purchase Orders - generate with actual product IDs
+	purchaseOrders := data.PurchaseOrders(productIDs)
 	for _, po := range purchaseOrders {
 		if err := tx.Create(&po).Error; err != nil {
 			tx.Rollback()
@@ -124,299 +162,6 @@ func seedDatabase() error {
 	}
 
 	return nil
-}
-
-// generateInventoryItems creates inventory items with actual database IDs
-func generateInventoryItems(productIDs, inventoryIDs, supplierIDs []uint) []models.InventoryItem {
-	now := time.Now()
-
-	// Inventory configurations with pricing data
-	configs := []struct {
-		ProductIndex  int
-		SupplierIndex int
-		UnitPrice     float64
-		UnitType      string
-		Quantity      int
-		ReorderLevel  int
-		Location      string
-	}{
-		{0, 0, 2999.99, "piece", 15, 5, "Warehouse A"},
-		{1, 0, 599.99, "piece", 30, 10, "Warehouse B"},
-		{2, 0, 89.99, "piece", 45, 15, "Warehouse C"},
-		{3, 0, 99.99, "piece", 25, 8, "Warehouse A"},
-		{4, 1, 1395.00, "piece", 8, 3, "Warehouse B"},
-		{5, 1, 799.00, "box", 12, 5, "Warehouse C"},
-		{6, 2, 399.95, "piece", 20, 8, "Warehouse A"},
-		{7, 2, 199.99, "piece", 35, 12, "Warehouse B"},
-		{8, 0, 399.99, "piece", 18, 6, "Warehouse C"},
-		{9, 0, 1099.99, "device", 22, 8, "Warehouse A"},
-	}
-
-	items := make([]models.InventoryItem, len(configs))
-	for i, config := range configs {
-		// Map location to inventory ID
-		var inventoryID uint
-		switch config.Location {
-		case "Warehouse A":
-			inventoryID = inventoryIDs[0]
-		case "Warehouse B":
-			inventoryID = inventoryIDs[1]
-		case "Warehouse C":
-			inventoryID = inventoryIDs[2]
-		default:
-			inventoryID = inventoryIDs[0]
-		}
-
-		items[i] = models.InventoryItem{
-			Base: models.Base{
-				CreatedAt: now,
-				UpdatedAt: now,
-			},
-			InventoryID:   inventoryID,
-			ProductID:     productIDs[config.ProductIndex],
-			SupplierID:    supplierIDs[config.SupplierIndex],
-			UnitPrice:     config.UnitPrice,
-			UnitType:      config.UnitType,
-			Quantity:      config.Quantity,
-			ReorderLevel:  config.ReorderLevel,
-			MaxStockLevel: config.Quantity * 3,
-			Status:        models.InventoryItemStatusActive,
-		}
-	}
-
-	return items
-}
-
-// generatePurchaseOrders creates purchase orders with actual database IDs
-func generatePurchaseOrders(productIDs []uint, supplierIDs []uint) []models.PurchaseOrder {
-	now := time.Now()
-
-	return []models.PurchaseOrder{
-		{
-			Base: models.Base{
-				CreatedAt: now.AddDate(0, 0, -30), // 30 days ago
-				UpdatedAt: now.AddDate(0, 0, -30),
-			},
-			OrderNumber: "PO-2024-001",
-			Status:      models.PurchaseOrderStatusCompleted,
-			Notes:       "Q1 electronics restock order",
-			Items: []*models.PurchaseOrderItem{
-				{
-					Base: models.Base{
-						CreatedAt: now.AddDate(0, 0, -30),
-						UpdatedAt: now.AddDate(0, 0, -30),
-					},
-					ProductID:        &productIDs[0], // MacBook Pro
-					SupplierID:       &supplierIDs[0],
-					UnitPrice:        2999.99,
-					Quantity:         5,
-					ReceivedQuantity: 5,
-					Status:           models.PurchaseOrderItemStatusDelivered,
-				},
-				{
-					Base: models.Base{
-						CreatedAt: now.AddDate(0, 0, -30),
-						UpdatedAt: now.AddDate(0, 0, -30),
-					},
-					ProductID:        &productIDs[1], // LG Monitor
-					SupplierID:       &supplierIDs[0],
-					UnitPrice:        599.99,
-					Quantity:         10,
-					ReceivedQuantity: 10,
-					Status:           models.PurchaseOrderItemStatusDelivered,
-				},
-			},
-		},
-		{
-			Base: models.Base{
-				CreatedAt: now.AddDate(0, 0, -15), // 15 days ago
-				UpdatedAt: now.AddDate(0, 0, -5),
-			},
-			OrderNumber: "PO-2024-002",
-			Status:      models.PurchaseOrderStatusPartiallyDelivered,
-			Notes:       "Office furniture and accessories order",
-			Items: []*models.PurchaseOrderItem{
-				{
-					Base: models.Base{
-						CreatedAt: now.AddDate(0, 0, -15),
-						UpdatedAt: now.AddDate(0, 0, -5),
-					},
-					ProductID:        &productIDs[4], // Herman Miller Chair
-					SupplierID:       &supplierIDs[1],
-					UnitPrice:        1395.00,
-					Quantity:         3,
-					ReceivedQuantity: 2,
-					Status:           models.PurchaseOrderItemStatusDelivering,
-				},
-				{
-					Base: models.Base{
-						CreatedAt: now.AddDate(0, 0, -15),
-						UpdatedAt: now.AddDate(0, 0, -5),
-					},
-					ProductID:        &productIDs[5], // UPLIFT Desk
-					SupplierID:       &supplierIDs[1],
-					UnitPrice:        799.00,
-					Quantity:         2,
-					ReceivedQuantity: 2,
-					Status:           models.PurchaseOrderItemStatusDelivered,
-				},
-			},
-		},
-		{
-			Base: models.Base{
-				CreatedAt: now.AddDate(0, 0, -7), // 7 days ago
-				UpdatedAt: now.AddDate(0, 0, -7),
-			},
-			OrderNumber: "PO-2024-003",
-			Status:      models.PurchaseOrderStatusOrderPlaced,
-			Notes:       "Peripheral devices for new office setup",
-			Items: []*models.PurchaseOrderItem{
-				{
-					Base: models.Base{
-						CreatedAt: now.AddDate(0, 0, -7),
-						UpdatedAt: now.AddDate(0, 0, -7),
-					},
-					ProductID:        &productIDs[2], // Keychron Keyboard
-					SupplierID:       &supplierIDs[0],
-					UnitPrice:        89.99,
-					Quantity:         20,
-					ReceivedQuantity: 0,
-					Status:           models.PurchaseOrderItemStatusDelivering,
-				},
-				{
-					Base: models.Base{
-						CreatedAt: now.AddDate(0, 0, -7),
-						UpdatedAt: now.AddDate(0, 0, -7),
-					},
-					ProductID:        &productIDs[3], // Logitech Mouse
-					SupplierID:       &supplierIDs[0],
-					UnitPrice:        99.99,
-					Quantity:         15,
-					ReceivedQuantity: 0,
-					Status:           models.PurchaseOrderItemStatusDelivering,
-				},
-				{
-					Base: models.Base{
-						CreatedAt: now.AddDate(0, 0, -7),
-						UpdatedAt: now.AddDate(0, 0, -7),
-					},
-					ProductID:        &productIDs[8], // Sony Headphones
-					SupplierID:       &supplierIDs[0],
-					UnitPrice:        399.99,
-					Quantity:         8,
-					ReceivedQuantity: 0,
-					Status:           models.PurchaseOrderItemStatusDelivering,
-				},
-			},
-		},
-		{
-			Base: models.Base{
-				CreatedAt: now.AddDate(0, 0, -3), // 3 days ago
-				UpdatedAt: now.AddDate(0, 0, -1),
-			},
-			OrderNumber: "PO-2024-004",
-			Status:      models.PurchaseOrderStatusFullyDelivered,
-			Notes:       "Tech accessories for conference rooms",
-			Items: []*models.PurchaseOrderItem{
-				{
-					Base: models.Base{
-						CreatedAt: now.AddDate(0, 0, -3),
-						UpdatedAt: now.AddDate(0, 0, -1),
-					},
-					ProductID:        &productIDs[6], // CalDigit Hub
-					SupplierID:       &supplierIDs[2],
-					UnitPrice:        399.95,
-					Quantity:         4,
-					ReceivedQuantity: 4,
-					Status:           models.PurchaseOrderItemStatusDelivered,
-				},
-				{
-					Base: models.Base{
-						CreatedAt: now.AddDate(0, 0, -3),
-						UpdatedAt: now.AddDate(0, 0, -1),
-					},
-					ProductID:        &productIDs[7], // Logitech Webcam
-					SupplierID:       &supplierIDs[2],
-					UnitPrice:        199.99,
-					Quantity:         6,
-					ReceivedQuantity: 6,
-					Status:           models.PurchaseOrderItemStatusDelivered,
-				},
-			},
-		},
-		{
-			Base: models.Base{
-				CreatedAt: now.AddDate(0, 0, -1), // 1 day ago
-				UpdatedAt: now.AddDate(0, 0, -1),
-			},
-			OrderNumber: "PO-2024-005",
-			Status:      models.PurchaseOrderStatusCancelled,
-			Notes:       "Cancelled due to budget constraints",
-			Items: []*models.PurchaseOrderItem{
-				{
-					Base: models.Base{
-						CreatedAt: now.AddDate(0, 0, -1),
-						UpdatedAt: now.AddDate(0, 0, -1),
-					},
-					ProductID:        &productIDs[9], // iPad Pro
-					SupplierID:       &supplierIDs[0],
-					UnitPrice:        1099.99,
-					Quantity:         2,
-					ReceivedQuantity: 0,
-					Status:           models.PurchaseOrderItemStatusDelivering,
-				},
-			},
-		},
-		{
-			Base: models.Base{
-				CreatedAt: now, // Today
-				UpdatedAt: now,
-			},
-			OrderNumber: "PO-2024-006",
-			Status:      models.PurchaseOrderStatusOrderPlaced,
-			Notes:       "Emergency restock for high-demand items",
-			Items: []*models.PurchaseOrderItem{
-				{
-					Base: models.Base{
-						CreatedAt: now,
-						UpdatedAt: now,
-					},
-					ProductID:        &productIDs[0], // MacBook Pro
-					SupplierID:       &supplierIDs[0],
-					UnitPrice:        2999.99,
-					Quantity:         2,
-					ReceivedQuantity: 0,
-					Status:           models.PurchaseOrderItemStatusDelivering,
-				},
-				{
-					Base: models.Base{
-						CreatedAt: now,
-						UpdatedAt: now,
-					},
-					ProductID:        &productIDs[1], // LG Monitor
-					SupplierID:       &supplierIDs[0],
-					UnitPrice:        599.99,
-					Quantity:         5,
-					ReceivedQuantity: 0,
-					Status:           models.PurchaseOrderItemStatusDelivering,
-				},
-			},
-		},
-	}
-}
-
-// generateSeedData creates the mock data using the centralized test data
-func generateSeedData() SeedData {
-	suppliers := data.Suppliers()
-	products := data.Products(nil) // supplierIDs parameter is no longer needed
-
-	return SeedData{
-		Suppliers:      suppliers,
-		Products:       products,
-		Inventories:    data.Inventory(nil),      // productIDs parameter is no longer needed
-		InventoryItems: data.InventoryItems(nil), // productIDs parameter is no longer needed
-		PurchaseOrders: []models.PurchaseOrder{}, // Will be generated with actual IDs in seedDatabase
-	}
 }
 
 // seedUsers populates the database with default users

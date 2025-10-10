@@ -1,8 +1,10 @@
 package handlers
 
 import (
-	"context"
+	"fmt"
 	"import-export-backend/internal/models"
+	"import-export-backend/internal/services"
+	"import-export-backend/internal/services/dto"
 	"import-export-backend/pkg"
 	"net/http"
 	"strconv"
@@ -11,18 +13,10 @@ import (
 )
 
 type InventoryHandler struct {
-	inventoryService InventoryService
+	inventoryService services.InventoryService
 }
 
-type InventoryService interface {
-	CreateInventory(ctx context.Context, inventory *models.Inventory) error
-	GetInventoryByID(ctx context.Context, id uint) (*models.Inventory, error)
-	UpdateInventory(ctx context.Context, inventory *models.Inventory) error
-	DeleteInventory(ctx context.Context, id uint) error
-	ListInventory(ctx context.Context, limit, offset int) ([]models.Inventory, error)
-}
-
-func NewInventoryHandler(inventoryService InventoryService) *InventoryHandler {
+func NewInventoryHandler(inventoryService services.InventoryService) *InventoryHandler {
 	return &InventoryHandler{
 		inventoryService: inventoryService,
 	}
@@ -179,4 +173,78 @@ func (h *InventoryHandler) DeleteInventory(c echo.Context) error {
 func (h *InventoryHandler) GetInventorySummary(c echo.Context) error {
 	// Implementation for inventory summary report
 	return c.JSON(http.StatusOK, map[string]string{"message": "Inventory summary report"})
+}
+
+// DisposeInventoryItem disposes multiple inventory items
+// @Summary Dispose inventory items
+// @Description Dispose multiple inventory items by reducing their quantities
+// @Tags inventory-items
+// @Accept json
+// @Produce json
+// @Param disposal body dto.DisposeInventoryItemRequest true "Disposal data"
+// @Success 200 {object} map[string]interface{}
+// @Failure 400 {object} map[string]string
+// @Failure 404 {object} map[string]string
+// @Failure 500 {object} map[string]string
+// @Security BearerAuth
+// @Router /inventories/dispose [put]
+func (h *InventoryHandler) DisposeInventoryItems(c echo.Context) error {
+	var req dto.DisposeItemsRequest
+
+	if err := c.Bind(&req); err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid request body"})
+	}
+
+	if err := pkg.Validator.Struct(req); err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid request body"})
+	}
+
+	disposedItems, err := h.inventoryService.DisposeItems(c.Request().Context(), req)
+	if err != nil {
+		return fmt.Errorf("failed to dispose inventory items: %w", err)
+	}
+
+	response := map[string]interface{}{
+		"message": "Inventory items disposed successfully",
+		"items":   disposedItems,
+	}
+
+	return c.JSON(http.StatusOK, response)
+}
+
+// ConfirmInventoryItems confirms the actual inventory count for multiple items
+// @Summary Confirm inventory items
+// @Description Confirm the actual inventory count for multiple inventory items
+// @Tags inventory-items
+// @Accept json
+// @Produce json
+// @Param confirmation body dto.ConfirmInventoryRequest true "Confirmation data"
+// @Success 200 {object} map[string]interface{}
+// @Failure 400 {object} map[string]string
+// @Failure 404 {object} map[string]string
+// @Failure 500 {object} map[string]string
+// @Security BearerAuth
+// @Router /inventories/confirm [put]
+func (h *InventoryHandler) ConfirmInventoryItems(c echo.Context) error {
+	var req dto.ConfirmInventoryRequest
+
+	if err := c.Bind(&req); err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid request body"})
+	}
+
+	if err := pkg.Validator.Struct(req); err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid request body"})
+	}
+
+	confirmedItems, err := h.inventoryService.ConfirmInventory(c.Request().Context(), req)
+	if err != nil {
+		return fmt.Errorf("failed to confirm inventory items: %w", err)
+	}
+
+	response := map[string]interface{}{
+		"message": "Inventory items confirmed successfully",
+		"items":   confirmedItems,
+	}
+
+	return c.JSON(http.StatusOK, response)
 }

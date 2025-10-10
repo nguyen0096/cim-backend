@@ -9,6 +9,7 @@ import (
 	"import-export-backend/internal/models"
 	"import-export-backend/internal/repository"
 	"import-export-backend/internal/services/dto"
+	"import-export-backend/pkg"
 	"time"
 
 	"github.com/sirupsen/logrus"
@@ -25,6 +26,7 @@ type PurchaseOrderService interface {
 	GetPurchaseOrdersByStatus(status string) ([]models.PurchaseOrder, error)
 	UpdatePurchaseOrderStatus(ctx context.Context, id uint, status string) error
 	ReceivePurchaseOrder(ctx context.Context, id uint) error
+	UpdatePurchaseOrderItemStatus(ctx context.Context, purchaseOrderID, itemID uint, status models.PurchaseOrderItemStatus) (*dto.UpdatePurchaseOrderItemStatusResponse, error)
 
 	// V1
 	UpdatePurchaseOrderDeliveryStatus(ctx context.Context, req dto.UpdatePurchaseOrderDeliveryStatusRequest) error
@@ -391,6 +393,93 @@ func (s *purchaseOrderService) ReceivePurchaseOrder(ctx context.Context, id uint
 	return nil
 }
 
+// UpdatePurchaseOrderItemStatus updates the status of a purchase order item
+func (s *purchaseOrderService) UpdatePurchaseOrderItemStatus(ctx context.Context, purchaseOrderID, itemID uint, status models.PurchaseOrderItemStatus) (*dto.UpdatePurchaseOrderItemStatusResponse, error) {
+	s.logger.WithFields(logrus.Fields{
+		"operation":         "UpdatePurchaseOrderItemStatus",
+		"purchase_order_id": purchaseOrderID,
+		"item_id":           itemID,
+		"new_status":        status,
+	}).Info("Updating purchase order item status")
+
+	var result *dto.UpdatePurchaseOrderItemStatusResponse
+
+	// Wrap the operations in a transaction
+	err := s.db.Transaction(func(tx *gorm.DB) error {
+		// Update the item status using the transaction
+		err := tx.WithContext(ctx).Model(&models.PurchaseOrderItem{}).
+			Where("id = ? AND purchase_order_id = ?", itemID, purchaseOrderID).
+			Update("status", status).Error
+		if err != nil {
+			s.logger.WithFields(logrus.Fields{
+				"operation":         "UpdatePurchaseOrderItemStatus",
+				"purchase_order_id": purchaseOrderID,
+				"item_id":           itemID,
+				"error":             err,
+			}).Error("Failed to update purchase order item status in transaction")
+			return fmt.Errorf("failed to update purchase order item status: %w", err)
+		}
+
+		// Determine the order status based on item status
+		var orderStatus models.PurchaseOrderStatus = models.PurchaseOrderStatusPartiallyDelivered
+		// if status == models.PurchaseOrderItemStatusDelivered {
+		// 	if s.purchaseOrderRepo.AnyDeliveringItem(ctx, purchaseOrderID) {
+		// 		orderStatus = models.PurchaseOrderStatusPartiallyDelivered
+		// 		err = s.purchaseOrderRepo.UpdateStatus(ctx, purchaseOrderID, orderStatus)
+		// 	} else {
+		// 		orderStatus = models.PurchaseOrderStatusFullyDelivered
+		// 		err = s.purchaseOrderRepo.UpdateStatus(ctx, purchaseOrderID, orderStatus)
+		// 	}
+		// 	if err != nil {
+		// 		return nil, fmt.Errorf("failed to update purchase order status: %w", err)
+		// 	}
+		// }
+
+		// Update the purchase order status using the transaction
+		err = tx.WithContext(ctx).Model(&models.PurchaseOrder{}).
+			Where("id = ?", purchaseOrderID).
+			Update("status", orderStatus).Error
+		if err != nil {
+			s.logger.WithFields(logrus.Fields{
+				"operation":         "UpdatePurchaseOrderItemStatus",
+				"purchase_order_id": purchaseOrderID,
+				"order_status":      orderStatus,
+				"error":             err,
+			}).Error("Failed to update purchase order status in transaction")
+			return fmt.Errorf("failed to update purchase order status: %w", err)
+		}
+
+		// Set the result
+		result = &dto.UpdatePurchaseOrderItemStatusResponse{
+			ItemStatus:  status,
+			OrderStatus: orderStatus,
+		}
+
+		// Return nil to commit the transaction
+		return nil
+	})
+
+	if err != nil {
+		s.logger.WithFields(logrus.Fields{
+			"operation":         "UpdatePurchaseOrderItemStatus",
+			"purchase_order_id": purchaseOrderID,
+			"item_id":           itemID,
+			"error":             err,
+		}).Error("Transaction failed for purchase order item status update")
+		return nil, err
+	}
+
+	s.logger.WithFields(logrus.Fields{
+		"operation":         "UpdatePurchaseOrderItemStatus",
+		"purchase_order_id": purchaseOrderID,
+		"item_id":           itemID,
+		"item_status":       result.ItemStatus,
+		"order_status":      result.OrderStatus,
+	}).Info("Successfully updated purchase order item status")
+
+	return result, nil
+}
+
 // handleRevenueExpenseAsync handles revenue expense excel file operations asynchronously
 func (s *purchaseOrderService) handleRevenueExpenseAsync(ctx context.Context, purchaseOrder *models.PurchaseOrder) {
 	startTime := time.Now()
@@ -524,7 +613,7 @@ func (s *purchaseOrderService) UpdatePurchaseOrderDeliveryStatus(
 	}
 
 	// Update items and generate transactions
-	transactions, err := s.updatePOItemsAndGenerateTxns(ctx, po, req)
+	transactions, err := s.updatePOItemsAndGenerateTxns(po, req)
 	if err != nil {
 		return fmt.Errorf("failed to update items and generate transactions: %w", err)
 	}
@@ -548,7 +637,7 @@ func (s *purchaseOrderService) UpdatePurchaseOrderDeliveryStatus(
 // updateItemsAndGenerateTxns updates PurchaseOrder items based on delivery status update request
 // and generates according inventory transactions in memory.
 func (s *purchaseOrderService) updatePOItemsAndGenerateTxns(
-	ctx context.Context, po *models.PurchaseOrder,
+	po *models.PurchaseOrder,
 	req dto.UpdatePurchaseOrderDeliveryStatusRequest,
 ) ([]*models.InventoryTransaction, error) {
 	// Create a map for quick lookup of items by ID
@@ -580,19 +669,16 @@ func (s *purchaseOrderService) updatePOItemsAndGenerateTxns(
 				reqItem.ReceivedQuantity, remainingQuantity, reqItem.ID)
 		}
 
-		// Update the received quantity in memory
 		poItem.ReceivedQuantity += reqItem.ReceivedQuantity
+		poItem.UpdateStatus()
 
-		// Update item status if fully received
-		if poItem.ReceivedQuantity >= poItem.Quantity {
-			poItem.Status = models.PurchaseOrderItemStatusDelivered
-		}
-
-		// Create inventory transaction in memory
+		// Create inventory transaction
 		transaction := &models.InventoryTransaction{
-			InventoryItemID: *poItem.ProductID,
-			TransactionType: "purchase",
-			Quantity:        reqItem.ReceivedQuantity,
+			InventoryItemID:     *poItem.ProductID,
+			TransactionType:     models.InventoryTransactionTypePurchase,
+			Quantity:            reqItem.ReceivedQuantity,
+			Price:               poItem.UnitPrice,
+			PurchaseOrderItemID: pkg.Ptr(poItem.ID),
 		}
 		transactions = append(transactions, transaction)
 	}

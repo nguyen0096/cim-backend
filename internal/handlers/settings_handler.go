@@ -96,7 +96,7 @@ func (h *SettingsHandler) GetAllSettings(c echo.Context) error {
 // @Accept json
 // @Produce json
 // @Param key path string true "Setting key"
-// @Param request body models.SetSettingValueRequest true "Set setting value request"
+// @Param request body map[string]interface{} true "Set setting value request"
 // @Success 200 {object} models.SetSettingResponse
 // @Failure 400 {object} map[string]string
 // @Failure 500 {object} map[string]string
