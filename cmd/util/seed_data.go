@@ -143,7 +143,7 @@ func seedDatabase() error {
 	}
 
 	// 6. Purchase Orders - generate with actual product IDs
-	purchaseOrders := data.PurchaseOrders(productIDs)
+	purchaseOrders := data.PurchaseOrders(productIDs, supplierIDs)
 	for _, po := range purchaseOrders {
 		if err := tx.Create(&po).Error; err != nil {
 			tx.Rollback()
