@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"import-export-backend/test/data"
 	"os"
 
 	"github.com/joho/godotenv"
@@ -26,7 +27,7 @@ var seedCmd = &cobra.Command{
 	Long:  "Populate the database with predefined mock data for manual testing",
 	Run: func(cmd *cobra.Command, args []string) {
 		fmt.Println("🌱 Seeding database with mock data...")
-		if err := seedDatabase(); err != nil {
+		if err := data.SeedDatabase(); err != nil {
 			fmt.Fprintf(os.Stderr, "Error seeding database: %v\n", err)
 			os.Exit(1)
 		}

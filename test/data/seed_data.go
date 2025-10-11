@@ -1,8 +1,19 @@
 package data
 
 import (
+	"context"
+	"fmt"
+	"import-export-backend/internal/auth"
+	"import-export-backend/internal/config"
+	"import-export-backend/internal/database"
 	"import-export-backend/internal/models"
+	"import-export-backend/internal/repository"
+	"import-export-backend/internal/services"
+	"import-export-backend/pkg"
+	"log"
 	"time"
+
+	"gorm.io/gorm"
 )
 
 // Suppliers contains all test supplier data
@@ -10,9 +21,9 @@ func Suppliers() []models.Supplier {
 	now := time.Now()
 
 	return []models.Supplier{
+		// Tech & Office Suppliers
 		{
 			Base: models.Base{
-				ID:        1,
 				CreatedAt: now,
 				UpdatedAt: now,
 			},
@@ -23,7 +34,6 @@ func Suppliers() []models.Supplier {
 		},
 		{
 			Base: models.Base{
-				ID:        2,
 				CreatedAt: now,
 				UpdatedAt: now,
 			},
@@ -34,7 +44,6 @@ func Suppliers() []models.Supplier {
 		},
 		{
 			Base: models.Base{
-				ID:        3,
 				CreatedAt: now,
 				UpdatedAt: now,
 			},
@@ -42,6 +51,107 @@ func Suppliers() []models.Supplier {
 			ContactEmail: "orders@globalparts.com",
 			ContactPhone: "+1-555-0789",
 			Address:      "789 Industrial Way, Seattle, WA 98101",
+		},
+		// F&B Suppliers (Vietnam)
+		{
+			Base: models.Base{
+				CreatedAt: now,
+				UpdatedAt: now,
+			},
+			Name:         "Công ty Nông Sản Sạch Việt Nam",
+			ContactEmail: "contact@nongsansach.vn",
+			ContactPhone: "+84-28-3821-5001",
+			Address:      "123 Đường Nguyễn Văn Linh, Quận 7, TP.HCM",
+		},
+		{
+			Base: models.Base{
+				CreatedAt: now,
+				UpdatedAt: now,
+			},
+			Name:         "Vinamilk - Công ty Sữa Việt Nam",
+			ContactEmail: "sales@vinamilk.com.vn",
+			ContactPhone: "+84-28-5413-8888",
+			Address:      "10 Đường Tân Trào, Phường Tân Phú, Quận 7, TP.HCM",
+		},
+		{
+			Base: models.Base{
+				CreatedAt: now,
+				UpdatedAt: now,
+			},
+			Name:         "Công ty Thủy Sản Miền Trung",
+			ContactEmail: "info@thuysanmientrung.vn",
+			ContactPhone: "+84-236-3827-100",
+			Address:      "45 Đường Nguyễn Văn Linh, TP. Đà Nẵng",
+		},
+		{
+			Base: models.Base{
+				CreatedAt: now,
+				UpdatedAt: now,
+			},
+			Name:         "Trung Nguyên Coffee",
+			ContactEmail: "order@trungnguyen.com.vn",
+			ContactPhone: "+84-500-6789",
+			Address:      "12 Đường Thảo Điền, Quận 2, TP.HCM",
+		},
+		{
+			Base: models.Base{
+				CreatedAt: now,
+				UpdatedAt: now,
+			},
+			Name:         "Công ty Gạo Thiên Long",
+			ContactEmail: "sales@gaothienlong.vn",
+			ContactPhone: "+84-292-3821-456",
+			Address:      "234 Quốc Lộ 1A, TP. Cần Thơ",
+		},
+		{
+			Base: models.Base{
+				CreatedAt: now,
+				UpdatedAt: now,
+			},
+			Name:         "Công ty Gia Vị Việt",
+			ContactEmail: "contact@giaviviet.com",
+			ContactPhone: "+84-28-3920-7777",
+			Address:      "678 Đường Lê Văn Việt, Quận 9, TP.HCM",
+		},
+		{
+			Base: models.Base{
+				CreatedAt: now,
+				UpdatedAt: now,
+			},
+			Name:         "Vissan - Công ty Thực Phẩm Sài Gòn",
+			ContactEmail: "orders@vissan.com.vn",
+			ContactPhone: "+84-28-3812-5555",
+			Address:      "520 Đường Cách Mạng Tháng Tám, Quận 3, TP.HCM",
+		},
+		{
+			Base: models.Base{
+				CreatedAt: now,
+				UpdatedAt: now,
+			},
+			Name:         "Công ty Rau Quả Đà Lạt",
+			ContactEmail: "sales@rauquadalat.vn",
+			ContactPhone: "+84-263-3821-999",
+			Address:      "89 Đường Trần Hưng Đạo, TP. Đà Lạt",
+		},
+		{
+			Base: models.Base{
+				CreatedAt: now,
+				UpdatedAt: now,
+			},
+			Name:         "Công ty Nước Mắm Nam Ngư",
+			ContactEmail: "info@namngu.com.vn",
+			ContactPhone: "+84-297-3871-234",
+			Address:      "101 Đường Trần Phú, TP. Phú Quốc",
+		},
+		{
+			Base: models.Base{
+				CreatedAt: now,
+				UpdatedAt: now,
+			},
+			Name:         "Công ty Bánh Kẹo Kinh Đô",
+			ContactEmail: "contact@kinhdo.com.vn",
+			ContactPhone: "+84-28-5413-7000",
+			Address:      "443 Đường Hoàng Văn Thụ, Quận Tân Bình, TP.HCM",
 		},
 	}
 }
@@ -51,114 +161,1305 @@ func Products(supplierIDs []uint) []models.Product {
 	now := time.Now()
 
 	return []models.Product{
+		// Tech & Office Products
 		{
 			Base: models.Base{
-				ID:        1,
 				CreatedAt: now,
 				UpdatedAt: now,
 			},
 			Name:        "MacBook Pro 16-inch M3",
 			Description: "Professional laptop with M3 chip, 32GB RAM, 1TB SSD",
 			ProductType: "laptop",
+			Unit:        "piece",
 			Status:      "active",
 		},
 		{
 			Base: models.Base{
-				ID:        2,
 				CreatedAt: now,
 				UpdatedAt: now,
 			},
 			Name:        "LG UltraGear 27\" 4K Gaming Monitor",
 			Description: "27-inch 4K UHD gaming monitor with 144Hz refresh rate",
 			ProductType: "monitor",
+			Unit:        "piece",
 			Status:      "active",
 		},
 		{
 			Base: models.Base{
-				ID:        3,
 				CreatedAt: now,
 				UpdatedAt: now,
 			},
 			Name:        "Keychron K8 Mechanical Keyboard",
 			Description: "Wireless mechanical keyboard with RGB backlight and hot-swappable switches",
 			ProductType: "keyboard",
+			Unit:        "piece",
 			Status:      "active",
 		},
 		{
 			Base: models.Base{
-				ID:        4,
 				CreatedAt: now,
 				UpdatedAt: now,
 			},
 			Name:        "Logitech MX Master 3S",
 			Description: "Advanced wireless mouse with precision scrolling and customizable buttons",
 			ProductType: "mouse",
+			Unit:        "piece",
 			Status:      "active",
 		},
 		{
 			Base: models.Base{
-				ID:        5,
 				CreatedAt: now,
 				UpdatedAt: now,
 			},
 			Name:        "Herman Miller Aeron Chair",
 			Description: "Ergonomic office chair with lumbar support and breathable mesh",
 			ProductType: "chair",
+			Unit:        "piece",
 			Status:      "active",
 		},
 		{
 			Base: models.Base{
-				ID:        6,
 				CreatedAt: now,
 				UpdatedAt: now,
 			},
 			Name:        "UPLIFT Standing Desk 60x30",
 			Description: "Height-adjustable standing desk with bamboo top and memory settings",
 			ProductType: "desk",
+			Unit:        "piece",
 			Status:      "active",
 		},
 		{
 			Base: models.Base{
-				ID:        7,
 				CreatedAt: now,
 				UpdatedAt: now,
 			},
 			Name:        "CalDigit TS4 Thunderbolt 4 Hub",
 			Description: "18-port Thunderbolt 4 hub with 98W charging and 40Gbps data transfer",
 			ProductType: "hub",
+			Unit:        "piece",
 			Status:      "active",
 		},
 		{
 			Base: models.Base{
-				ID:        8,
 				CreatedAt: now,
 				UpdatedAt: now,
 			},
 			Name:        "Logitech Brio 4K Webcam",
 			Description: "Ultra HD 4K webcam with HDR and Windows Hello support",
-			ProductType: "headphones",
+			ProductType: "webcam",
+			Unit:        "piece",
 			Status:      "active",
 		},
 		{
 			Base: models.Base{
-				ID:        9,
 				CreatedAt: now,
 				UpdatedAt: now,
 			},
 			Name:        "Sony WH-1000XM5 Headphones",
 			Description: "Industry-leading noise cancelling wireless headphones with 30-hour battery",
 			ProductType: "headphones",
+			Unit:        "piece",
 			Status:      "active",
 		},
 		{
 			Base: models.Base{
-				ID:        10,
 				CreatedAt: now,
 				UpdatedAt: now,
 			},
 			Name:        "iPad Pro 12.9\" M2",
 			Description: "12.9-inch iPad Pro with M2 chip, 256GB storage, and Liquid Retina XDR display",
 			ProductType: "tablet",
+			Unit:        "piece",
+			Status:      "active",
+		},
+		// F&B Products (Vietnam)
+		{
+			Base: models.Base{
+				CreatedAt: now,
+				UpdatedAt: now,
+			},
+			Name:        "Gạo Tám Thơm ST25",
+			Description: "Gạo thơm ST25 đặc sản xuất khẩu, loại 1",
+			ProductType: "rice",
+			Unit:        "kg",
+			Status:      "active",
+		},
+		{
+			Base: models.Base{
+				CreatedAt: now,
+				UpdatedAt: now,
+			},
+			Name:        "Cà Phê Robusta Đắk Lắk",
+			Description: "Hạt cà phê Robusta nguyên chất từ Tây Nguyên",
+			ProductType: "coffee",
+			Unit:        "kg",
+			Status:      "active",
+		},
+		{
+			Base: models.Base{
+				CreatedAt: now,
+				UpdatedAt: now,
+			},
+			Name:        "Nước Mắm Phú Quốc 40 Độ Đạm",
+			Description: "Nước mắm truyền thống Phú Quốc, 40 độ đạm đạm protein",
+			ProductType: "condiment",
+			Unit:        "liter",
+			Status:      "active",
+		},
+		{
+			Base: models.Base{
+				CreatedAt: now,
+				UpdatedAt: now,
+			},
+			Name:        "Bánh Mì Tươi Sài Gòn",
+			Description: "Bánh mì que giòn tươi ngon mỗi ngày",
+			ProductType: "bakery",
+			Unit:        "piece",
+			Status:      "active",
+		},
+		{
+			Base: models.Base{
+				CreatedAt: now,
+				UpdatedAt: now,
+			},
+			Name:        "Rau Xà Lách Đà Lạt",
+			Description: "Rau xà lách tươi hữu cơ từ Đà Lạt",
+			ProductType: "produce",
+			Unit:        "kg",
+			Status:      "active",
+		},
+		{
+			Base: models.Base{
+				CreatedAt: now,
+				UpdatedAt: now,
+			},
+			Name:        "Sữa Tươi Vinamilk 100%",
+			Description: "Sữa tươi thanh trùng không đường",
+			ProductType: "dairy",
+			Unit:        "liter",
+			Status:      "active",
+		},
+		{
+			Base: models.Base{
+				CreatedAt: now,
+				UpdatedAt: now,
+			},
+			Name:        "Tôm Càng Xanh Cần Thơ",
+			Description: "Tôm càng xanh tươi sống từ đồng bằng sông Cửu Long",
+			ProductType: "seafood",
+			Unit:        "kg",
+			Status:      "active",
+		},
+		{
+			Base: models.Base{
+				CreatedAt: now,
+				UpdatedAt: now,
+			},
+			Name:        "Chả Lụa Đặc Biệt",
+			Description: "Chả lụa thượng hạng chất lượng cao",
+			ProductType: "meat",
+			Unit:        "kg",
+			Status:      "active",
+		},
+		{
+			Base: models.Base{
+				CreatedAt: now,
+				UpdatedAt: now,
+			},
+			Name:        "Trà Ô Long Đài Loan",
+			Description: "Trà ô long cao cấp nhập khẩu từ Đài Loan",
+			ProductType: "tea",
+			Unit:        "kg",
+			Status:      "active",
+		},
+		{
+			Base: models.Base{
+				CreatedAt: now,
+				UpdatedAt: now,
+			},
+			Name:        "Bánh Quy Bơ Kinh Đô",
+			Description: "Bánh quy bơ thơm ngon đặc biệt",
+			ProductType: "snack",
+			Unit:        "box",
+			Status:      "active",
+		},
+		// Additional F&B Products
+		{
+			Base: models.Base{
+				CreatedAt: now,
+				UpdatedAt: now,
+			},
+			Name:        "Bún Tươi",
+			Description: "Bún tươi dai ngon từ gạo tẻ",
+			ProductType: "noodle",
+			Unit:        "kg",
+			Status:      "active",
+		},
+		{
+			Base: models.Base{
+				CreatedAt: now,
+				UpdatedAt: now,
+			},
+			Name:        "Phở Khô",
+			Description: "Bánh phở khô loại 1",
+			ProductType: "noodle",
+			Unit:        "kg",
+			Status:      "active",
+		},
+		{
+			Base: models.Base{
+				CreatedAt: now,
+				UpdatedAt: now,
+			},
+			Name:        "Mì Gói Hảo Hảo",
+			Description: "Mì ăn liền vị tôm chua cay",
+			ProductType: "instant_noodle",
+			Unit:        "carton",
+			Status:      "active",
+		},
+		{
+			Base: models.Base{
+				CreatedAt: now,
+				UpdatedAt: now,
+			},
+			Name:        "Dầu Ăn Simply",
+			Description: "Dầu ăn cao cấp chai 1L",
+			ProductType: "cooking_oil",
+			Unit:        "liter",
+			Status:      "active",
+		},
+		{
+			Base: models.Base{
+				CreatedAt: now,
+				UpdatedAt: now,
+			},
+			Name:        "Nước Tương Chinsu",
+			Description: "Nước tương đậm đà hương vị truyền thống",
+			ProductType: "condiment",
+			Unit:        "liter",
+			Status:      "active",
+		},
+		{
+			Base: models.Base{
+				CreatedAt: now,
+				UpdatedAt: now,
+			},
+			Name:        "Tương Ớt Cholimex",
+			Description: "Tương ớt cay đặc biệt",
+			ProductType: "condiment",
+			Unit:        "bottle",
+			Status:      "active",
+		},
+		{
+			Base: models.Base{
+				CreatedAt: now,
+				UpdatedAt: now,
+			},
+			Name:        "Đường Trắng Biên Hòa",
+			Description: "Đường cát trắng tinh luyện",
+			ProductType: "sugar",
+			Unit:        "kg",
+			Status:      "active",
+		},
+		{
+			Base: models.Base{
+				CreatedAt: now,
+				UpdatedAt: now,
+			},
+			Name:        "Muối I-ốt",
+			Description: "Muối tinh I-ốt sạch",
+			ProductType: "salt",
+			Unit:        "kg",
+			Status:      "active",
+		},
+		{
+			Base: models.Base{
+				CreatedAt: now,
+				UpdatedAt: now,
+			},
+			Name:        "Bột Ngọt Aji-ngon",
+			Description: "Bột ngọt tăng vị tự nhiên",
+			ProductType: "seasoning",
+			Unit:        "kg",
+			Status:      "active",
+		},
+		{
+			Base: models.Base{
+				CreatedAt: now,
+				UpdatedAt: now,
+			},
+			Name:        "Hạt Nêm Knorr",
+			Description: "Hạt nêm thịt thăn xương ống heo",
+			ProductType: "seasoning",
+			Unit:        "kg",
+			Status:      "active",
+		},
+		{
+			Base: models.Base{
+				CreatedAt: now,
+				UpdatedAt: now,
+			},
+			Name:        "Cá Ngừ Đóng Hộp VisanFoods",
+			Description: "Cá ngừ xốt cà chua 170g",
+			ProductType: "canned_food",
+			Unit:        "can",
+			Status:      "active",
+		},
+		{
+			Base: models.Base{
+				CreatedAt: now,
+				UpdatedAt: now,
+			},
+			Name:        "Sữa Đặc Ông Thọ",
+			Description: "Sữa đặc có đường truyền thống",
+			ProductType: "dairy",
+			Unit:        "can",
+			Status:      "active",
+		},
+		{
+			Base: models.Base{
+				CreatedAt: now,
+				UpdatedAt: now,
+			},
+			Name:        "Sữa Chua Vinamilk",
+			Description: "Sữa chua có đường lốc 4 hộp",
+			ProductType: "dairy",
+			Unit:        "pack",
+			Status:      "active",
+		},
+		{
+			Base: models.Base{
+				CreatedAt: now,
+				UpdatedAt: now,
+			},
+			Name:        "Trứng Gà Tươi",
+			Description: "Trứng gà sạch các loại",
+			ProductType: "egg",
+			Unit:        "tray",
+			Status:      "active",
+		},
+		{
+			Base: models.Base{
+				CreatedAt: now,
+				UpdatedAt: now,
+			},
+			Name:        "Thịt Ba Chỉ Heo",
+			Description: "Thịt ba chỉ heo tươi VietGAP",
+			ProductType: "meat",
+			Unit:        "kg",
+			Status:      "active",
+		},
+		{
+			Base: models.Base{
+				CreatedAt: now,
+				UpdatedAt: now,
+			},
+			Name:        "Thịt Nạc Vai Heo",
+			Description: "Thịt nạc vai heo tươi",
+			ProductType: "meat",
+			Unit:        "kg",
+			Status:      "active",
+		},
+		{
+			Base: models.Base{
+				CreatedAt: now,
+				UpdatedAt: now,
+			},
+			Name:        "Thịt Gà Ta",
+			Description: "Thịt gà ta sạch",
+			ProductType: "poultry",
+			Unit:        "kg",
+			Status:      "active",
+		},
+		{
+			Base: models.Base{
+				CreatedAt: now,
+				UpdatedAt: now,
+			},
+			Name:        "Cá Basa Phi Lê",
+			Description: "Cá basa phi lê đông lạnh",
+			ProductType: "seafood",
+			Unit:        "kg",
+			Status:      "active",
+		},
+		{
+			Base: models.Base{
+				CreatedAt: now,
+				UpdatedAt: now,
+			},
+			Name:        "Cá Thu Tươi",
+			Description: "Cá thu biển tươi ngon",
+			ProductType: "seafood",
+			Unit:        "kg",
+			Status:      "active",
+		},
+		{
+			Base: models.Base{
+				CreatedAt: now,
+				UpdatedAt: now,
+			},
+			Name:        "Mực Ống Đông Lạnh",
+			Description: "Mực ống sạch đông lạnh",
+			ProductType: "seafood",
+			Unit:        "kg",
+			Status:      "active",
+		},
+		{
+			Base: models.Base{
+				CreatedAt: now,
+				UpdatedAt: now,
+			},
+			Name:        "Rau Muống",
+			Description: "Rau muống tươi",
+			ProductType: "produce",
+			Unit:        "kg",
+			Status:      "active",
+		},
+		{
+			Base: models.Base{
+				CreatedAt: now,
+				UpdatedAt: now,
+			},
+			Name:        "Cải Thảo",
+			Description: "Cải thảo Đà Lạt",
+			ProductType: "produce",
+			Unit:        "kg",
+			Status:      "active",
+		},
+		{
+			Base: models.Base{
+				CreatedAt: now,
+				UpdatedAt: now,
+			},
+			Name:        "Cà Chua",
+			Description: "Cà chua chín đỏ",
+			ProductType: "produce",
+			Unit:        "kg",
+			Status:      "active",
+		},
+		{
+			Base: models.Base{
+				CreatedAt: now,
+				UpdatedAt: now,
+			},
+			Name:        "Hành Tây",
+			Description: "Hành tây tím Đà Lạt",
+			ProductType: "produce",
+			Unit:        "kg",
+			Status:      "active",
+		},
+		{
+			Base: models.Base{
+				CreatedAt: now,
+				UpdatedAt: now,
+			},
+			Name:        "Tỏi",
+			Description: "Tỏi tươi Lý Sơn",
+			ProductType: "produce",
+			Unit:        "kg",
+			Status:      "active",
+		},
+		{
+			Base: models.Base{
+				CreatedAt: now,
+				UpdatedAt: now,
+			},
+			Name:        "Ớt",
+			Description: "Ớt hiểm các loại",
+			ProductType: "produce",
+			Unit:        "kg",
+			Status:      "active",
+		},
+		{
+			Base: models.Base{
+				CreatedAt: now,
+				UpdatedAt: now,
+			},
+			Name:        "Khoai Tây",
+			Description: "Khoai tây Đà Lạt",
+			ProductType: "produce",
+			Unit:        "kg",
+			Status:      "active",
+		},
+		{
+			Base: models.Base{
+				CreatedAt: now,
+				UpdatedAt: now,
+			},
+			Name:        "Su Su",
+			Description: "Su su tươi Đà Lạt",
+			ProductType: "produce",
+			Unit:        "kg",
+			Status:      "active",
+		},
+		{
+			Base: models.Base{
+				CreatedAt: now,
+				UpdatedAt: now,
+			},
+			Name:        "Cà Rốt",
+			Description: "Cà rốt Đà Lạt",
+			ProductType: "produce",
+			Unit:        "kg",
+			Status:      "active",
+		},
+		{
+			Base: models.Base{
+				CreatedAt: now,
+				UpdatedAt: now,
+			},
+			Name:        "Bí Đỏ",
+			Description: "Bí đỏ ngọt tự nhiên",
+			ProductType: "produce",
+			Unit:        "kg",
+			Status:      "active",
+		},
+		{
+			Base: models.Base{
+				CreatedAt: now,
+				UpdatedAt: now,
+			},
+			Name:        "Chuối Già",
+			Description: "Chuối già chín tự nhiên",
+			ProductType: "fruit",
+			Unit:        "kg",
+			Status:      "active",
+		},
+		{
+			Base: models.Base{
+				CreatedAt: now,
+				UpdatedAt: now,
+			},
+			Name:        "Cam Sành",
+			Description: "Cam sành Hà Giang",
+			ProductType: "fruit",
+			Unit:        "kg",
+			Status:      "active",
+		},
+		{
+			Base: models.Base{
+				CreatedAt: now,
+				UpdatedAt: now,
+			},
+			Name:        "Xoài Cát Hòa Lộc",
+			Description: "Xoài cát Hòa Lộc Tiền Giang",
+			ProductType: "fruit",
+			Unit:        "kg",
+			Status:      "active",
+		},
+		{
+			Base: models.Base{
+				CreatedAt: now,
+				UpdatedAt: now,
+			},
+			Name:        "Thanh Long Ruột Đỏ",
+			Description: "Thanh long ruột đỏ Bình Thuận",
+			ProductType: "fruit",
+			Unit:        "kg",
+			Status:      "active",
+		},
+		{
+			Base: models.Base{
+				CreatedAt: now,
+				UpdatedAt: now,
+			},
+			Name:        "Sầu Riêng Monthong",
+			Description: "Sầu riêng Monthong chuẩn xuất khẩu",
+			ProductType: "fruit",
+			Unit:        "kg",
+			Status:      "active",
+		},
+		{
+			Base: models.Base{
+				CreatedAt: now,
+				UpdatedAt: now,
+			},
+			Name:        "Măng Cụt",
+			Description: "Măng cụt tươi miền Tây",
+			ProductType: "fruit",
+			Unit:        "kg",
+			Status:      "active",
+		},
+		{
+			Base: models.Base{
+				CreatedAt: now,
+				UpdatedAt: now,
+			},
+			Name:        "Chôm Chôm",
+			Description: "Chôm chôm tươi ngọt",
+			ProductType: "fruit",
+			Unit:        "kg",
+			Status:      "active",
+		},
+		{
+			Base: models.Base{
+				CreatedAt: now,
+				UpdatedAt: now,
+			},
+			Name:        "Dưa Hấu Không Hạt",
+			Description: "Dưa hấu không hạt ngọt lịm",
+			ProductType: "fruit",
+			Unit:        "kg",
+			Status:      "active",
+		},
+		{
+			Base: models.Base{
+				CreatedAt: now,
+				UpdatedAt: now,
+			},
+			Name:        "Bơ Booth",
+			Description: "Bơ Booth Đắk Lắk",
+			ProductType: "fruit",
+			Unit:        "kg",
+			Status:      "active",
+		},
+		{
+			Base: models.Base{
+				CreatedAt: now,
+				UpdatedAt: now,
+			},
+			Name:        "Dừa Xiêm",
+			Description: "Dừa xiêm tươi mát",
+			ProductType: "fruit",
+			Unit:        "piece",
+			Status:      "active",
+		},
+		{
+			Base: models.Base{
+				CreatedAt: now,
+				UpdatedAt: now,
+			},
+			Name:        "Bia Sài Gòn Xanh",
+			Description: "Bia Sài Gòn xanh lager chai 330ml",
+			ProductType: "beverage",
+			Unit:        "bottle",
+			Status:      "active",
+		},
+		{
+			Base: models.Base{
+				CreatedAt: now,
+				UpdatedAt: now,
+			},
+			Name:        "Bia Tiger",
+			Description: "Bia Tiger lon 330ml",
+			ProductType: "beverage",
+			Unit:        "can",
+			Status:      "active",
+		},
+		{
+			Base: models.Base{
+				CreatedAt: now,
+				UpdatedAt: now,
+			},
+			Name:        "Nước Suối Lavie",
+			Description: "Nước khoáng thiên nhiên Lavie 500ml",
+			ProductType: "beverage",
+			Unit:        "bottle",
+			Status:      "active",
+		},
+		{
+			Base: models.Base{
+				CreatedAt: now,
+				UpdatedAt: now,
+			},
+			Name:        "Nước Ngọt Coca Cola",
+			Description: "Coca Cola lon 330ml",
+			ProductType: "beverage",
+			Unit:        "can",
+			Status:      "active",
+		},
+		{
+			Base: models.Base{
+				CreatedAt: now,
+				UpdatedAt: now,
+			},
+			Name:        "Nước Ngọt Pepsi",
+			Description: "Pepsi Cola lon 330ml",
+			ProductType: "beverage",
+			Unit:        "can",
+			Status:      "active",
+		},
+		{
+			Base: models.Base{
+				CreatedAt: now,
+				UpdatedAt: now,
+			},
+			Name:        "Trà Xanh Không Độ",
+			Description: "Trà xanh không độ C2 chai 455ml",
+			ProductType: "beverage",
+			Unit:        "bottle",
+			Status:      "active",
+		},
+		{
+			Base: models.Base{
+				CreatedAt: now,
+				UpdatedAt: now,
+			},
+			Name:        "Nước Cam Ép Minute Maid",
+			Description: "Nước cam ép 100% chai 1L",
+			ProductType: "beverage",
+			Unit:        "bottle",
+			Status:      "active",
+		},
+		{
+			Base: models.Base{
+				CreatedAt: now,
+				UpdatedAt: now,
+			},
+			Name:        "Sữa Tươi TH True Milk",
+			Description: "Sữa tươi tiệt trùng hộp 1L",
+			ProductType: "dairy",
+			Unit:        "box",
+			Status:      "active",
+		},
+		{
+			Base: models.Base{
+				CreatedAt: now,
+				UpdatedAt: now,
+			},
+			Name:        "Yaourt Uống Dutch Lady",
+			Description: "Yaourt uống lốc 4 chai",
+			ProductType: "dairy",
+			Unit:        "pack",
+			Status:      "active",
+		},
+		{
+			Base: models.Base{
+				CreatedAt: now,
+				UpdatedAt: now,
+			},
+			Name:        "Bánh Mì Sandwich",
+			Description: "Bánh mì sandwich cắt lát",
+			ProductType: "bakery",
+			Unit:        "loaf",
+			Status:      "active",
+		},
+		{
+			Base: models.Base{
+				CreatedAt: now,
+				UpdatedAt: now,
+			},
+			Name:        "Bánh Bông Lan Trứng Muối",
+			Description: "Bánh bông lan trứng muối thơm ngon",
+			ProductType: "bakery",
+			Unit:        "piece",
+			Status:      "active",
+		},
+		{
+			Base: models.Base{
+				CreatedAt: now,
+				UpdatedAt: now,
+			},
+			Name:        "Bánh Mì Que Việt Nam",
+			Description: "Bánh mì que giòn tan",
+			ProductType: "bakery",
+			Unit:        "piece",
+			Status:      "active",
+		},
+		{
+			Base: models.Base{
+				CreatedAt: now,
+				UpdatedAt: now,
+			},
+			Name:        "Bánh Croissant Bơ",
+			Description: "Bánh croissant bơ thơm ngậy",
+			ProductType: "bakery",
+			Unit:        "piece",
+			Status:      "active",
+		},
+		{
+			Base: models.Base{
+				CreatedAt: now,
+				UpdatedAt: now,
+			},
+			Name:        "Bánh Pía Tân Huê Viên",
+			Description: "Bánh pía đậu xanh sầu riêng",
+			ProductType: "bakery",
+			Unit:        "box",
+			Status:      "active",
+		},
+		{
+			Base: models.Base{
+				CreatedAt: now,
+				UpdatedAt: now,
+			},
+			Name:        "Bánh Trung Thu Kinh Đô",
+			Description: "Bánh trung thu thập cẩm cao cấp",
+			ProductType: "bakery",
+			Unit:        "box",
+			Status:      "active",
+		},
+		{
+			Base: models.Base{
+				CreatedAt: now,
+				UpdatedAt: now,
+			},
+			Name:        "Nem Chua Thanh Hóa",
+			Description: "Nem chua thanh hóa truyền thống",
+			ProductType: "snack",
+			Unit:        "kg",
+			Status:      "active",
+		},
+		{
+			Base: models.Base{
+				CreatedAt: now,
+				UpdatedAt: now,
+			},
+			Name:        "Kẹo Dừa Bến Tre",
+			Description: "Kẹo dừa thơm ngậy đặc sản",
+			ProductType: "snack",
+			Unit:        "box",
+			Status:      "active",
+		},
+		{
+			Base: models.Base{
+				CreatedAt: now,
+				UpdatedAt: now,
+			},
+			Name:        "Mứt Tết Hỗn Hợp",
+			Description: "Mứt tết gừng, bí, dừa, cà rốt",
+			ProductType: "snack",
+			Unit:        "box",
+			Status:      "active",
+		},
+		{
+			Base: models.Base{
+				CreatedAt: now,
+				UpdatedAt: now,
+			},
+			Name:        "Snack Oishi Vị Tôm",
+			Description: "Snack khoai tây Oishi vị tôm",
+			ProductType: "snack",
+			Unit:        "pack",
+			Status:      "active",
+		},
+		{
+			Base: models.Base{
+				CreatedAt: now,
+				UpdatedAt: now,
+			},
+			Name:        "Hạt Điều Rang Muối",
+			Description: "Hạt điều rang muối Bình Phước",
+			ProductType: "snack",
+			Unit:        "kg",
+			Status:      "active",
+		},
+		{
+			Base: models.Base{
+				CreatedAt: now,
+				UpdatedAt: now,
+			},
+			Name:        "Mực Tẩm Gia Vị",
+			Description: "Mực tẩm gia vị cay ngọt",
+			ProductType: "snack",
+			Unit:        "pack",
+			Status:      "active",
+		},
+		{
+			Base: models.Base{
+				CreatedAt: now,
+				UpdatedAt: now,
+			},
+			Name:        "Xúc Xích Đức Việt",
+			Description: "Xúc xích heo đặc biệt",
+			ProductType: "meat",
+			Unit:        "kg",
+			Status:      "active",
+		},
+		{
+			Base: models.Base{
+				CreatedAt: now,
+				UpdatedAt: now,
+			},
+			Name:        "Giò Lụa",
+			Description: "Giò lụa thượng hạng",
+			ProductType: "meat",
+			Unit:        "kg",
+			Status:      "active",
+		},
+		{
+			Base: models.Base{
+				CreatedAt: now,
+				UpdatedAt: now,
+			},
+			Name:        "Giò Thủ",
+			Description: "Giò thủ truyền thống",
+			ProductType: "meat",
+			Unit:        "kg",
+			Status:      "active",
+		},
+		{
+			Base: models.Base{
+				CreatedAt: now,
+				UpdatedAt: now,
+			},
+			Name:        "Chả Quế",
+			Description: "Chả quế thơm ngon",
+			ProductType: "meat",
+			Unit:        "kg",
+			Status:      "active",
+		},
+		{
+			Base: models.Base{
+				CreatedAt: now,
+				UpdatedAt: now,
+			},
+			Name:        "Pate Gan Heo",
+			Description: "Pate gan heo cao cấp",
+			ProductType: "meat",
+			Unit:        "can",
+			Status:      "active",
+		},
+		{
+			Base: models.Base{
+				CreatedAt: now,
+				UpdatedAt: now,
+			},
+			Name:        "Mật Ong Rừng U Minh",
+			Description: "Mật ong nguyên chất rừng U Minh",
+			ProductType: "condiment",
+			Unit:        "bottle",
+			Status:      "active",
+		},
+		{
+			Base: models.Base{
+				CreatedAt: now,
+				UpdatedAt: now,
+			},
+			Name:        "Bột Canh Heo Quay",
+			Description: "Bột canh heo quay đậm đà",
+			ProductType: "seasoning",
+			Unit:        "pack",
+			Status:      "active",
+		},
+		{
+			Base: models.Base{
+				CreatedAt: now,
+				UpdatedAt: now,
+			},
+			Name:        "Hạt Tiêu Phú Quốc",
+			Description: "Hạt tiêu đen nguyên hạt Phú Quốc",
+			ProductType: "spice",
+			Unit:        "kg",
+			Status:      "active",
+		},
+		{
+			Base: models.Base{
+				CreatedAt: now,
+				UpdatedAt: now,
+			},
+			Name:        "Bột Nghệ Nguyên Chất",
+			Description: "Bột nghệ nguyên chất không tẩm",
+			ProductType: "spice",
+			Unit:        "kg",
+			Status:      "active",
+		},
+		{
+			Base: models.Base{
+				CreatedAt: now,
+				UpdatedAt: now,
+			},
+			Name:        "Sả Tươi",
+			Description: "Sả tươi thơm mạnh",
+			ProductType: "spice",
+			Unit:        "kg",
+			Status:      "active",
+		},
+		{
+			Base: models.Base{
+				CreatedAt: now,
+				UpdatedAt: now,
+			},
+			Name:        "Gừng Tươi",
+			Description: "Gừng tươi cay nồng",
+			ProductType: "spice",
+			Unit:        "kg",
+			Status:      "active",
+		},
+		{
+			Base: models.Base{
+				CreatedAt: now,
+				UpdatedAt: now,
+			},
+			Name:        "Nước Dừa Đóng Hộp",
+			Description: "Nước dừa tươi đóng hộp Cocoxim",
+			ProductType: "beverage",
+			Unit:        "can",
+			Status:      "active",
+		},
+		{
+			Base: models.Base{
+				CreatedAt: now,
+				UpdatedAt: now,
+			},
+			Name:        "Nước Mía Đóng Chai",
+			Description: "Nước mía tươi đóng chai",
+			ProductType: "beverage",
+			Unit:        "bottle",
+			Status:      "active",
+		},
+		{
+			Base: models.Base{
+				CreatedAt: now,
+				UpdatedAt: now,
+			},
+			Name:        "Trà Atiso Đà Lạt",
+			Description: "Trà atiso giải nhiệt thanh lọc",
+			ProductType: "tea",
+			Unit:        "bottle",
+			Status:      "active",
+		},
+		{
+			Base: models.Base{
+				CreatedAt: now,
+				UpdatedAt: now,
+			},
+			Name:        "Trà Sữa Lipton",
+			Description: "Trá sữa lon 250ml",
+			ProductType: "beverage",
+			Unit:        "can",
+			Status:      "active",
+		},
+		{
+			Base: models.Base{
+				CreatedAt: now,
+				UpdatedAt: now,
+			},
+			Name:        "Mì Chính Ajinomoto",
+			Description: "Mì chính tinh khiết 400g",
+			ProductType: "seasoning",
+			Unit:        "pack",
+			Status:      "active",
+		},
+		{
+			Base: models.Base{
+				CreatedAt: now,
+				UpdatedAt: now,
+			},
+			Name:        "Giấm Gạo Nhật Bản",
+			Description: "Giấm gạo nấu ăn Nhật Bản",
+			ProductType: "condiment",
+			Unit:        "bottle",
+			Status:      "active",
+		},
+		{
+			Base: models.Base{
+				CreatedAt: now,
+				UpdatedAt: now,
+			},
+			Name:        "Dầu Hào Lee Kum Kee",
+			Description: "Dầu hào đặc biệt Lee Kum Kee",
+			ProductType: "condiment",
+			Unit:        "bottle",
+			Status:      "active",
+		},
+		{
+			Base: models.Base{
+				CreatedAt: now,
+				UpdatedAt: now,
+			},
+			Name:        "Bột Chiên Giòn",
+			Description: "Bột chiên xù giòn lâu",
+			ProductType: "flour",
+			Unit:        "kg",
+			Status:      "active",
+		},
+		{
+			Base: models.Base{
+				CreatedAt: now,
+				UpdatedAt: now,
+			},
+			Name:        "Bột Mì Đa Dụng",
+			Description: "Bột mì đa dụng số 8",
+			ProductType: "flour",
+			Unit:        "kg",
+			Status:      "active",
+		},
+		{
+			Base: models.Base{
+				CreatedAt: now,
+				UpdatedAt: now,
+			},
+			Name:        "Bột Năng",
+			Description: "Bột năng tinh khiết",
+			ProductType: "flour",
+			Unit:        "kg",
+			Status:      "active",
+		},
+		{
+			Base: models.Base{
+				CreatedAt: now,
+				UpdatedAt: now,
+			},
+			Name:        "Bột Gạo",
+			Description: "Bột gạo làm bánh",
+			ProductType: "flour",
+			Unit:        "kg",
+			Status:      "active",
+		},
+		{
+			Base: models.Base{
+				CreatedAt: now,
+				UpdatedAt: now,
+			},
+			Name:        "Bột Nở",
+			Description: "Bột nở làm bánh",
+			ProductType: "flour",
+			Unit:        "pack",
+			Status:      "active",
+		},
+		{
+			Base: models.Base{
+				CreatedAt: now,
+				UpdatedAt: now,
+			},
+			Name:        "Men Nở Bánh",
+			Description: "Men nở bánh mì instant",
+			ProductType: "flour",
+			Unit:        "pack",
+			Status:      "active",
+		},
+		{
+			Base: models.Base{
+				CreatedAt: now,
+				UpdatedAt: now,
+			},
+			Name:        "Bơ Thực Vật",
+			Description: "Bơ thực vật làm bánh",
+			ProductType: "dairy",
+			Unit:        "kg",
+			Status:      "active",
+		},
+		{
+			Base: models.Base{
+				CreatedAt: now,
+				UpdatedAt: now,
+			},
+			Name:        "Cream Cheese Philadelphia",
+			Description: "Phô mai kem làm bánh",
+			ProductType: "dairy",
+			Unit:        "kg",
+			Status:      "active",
+		},
+		{
+			Base: models.Base{
+				CreatedAt: now,
+				UpdatedAt: now,
+			},
+			Name:        "Phô Mai Lát Cheddar",
+			Description: "Phô mai lát Cheddar hộp 200g",
+			ProductType: "dairy",
+			Unit:        "box",
+			Status:      "active",
+		},
+		{
+			Base: models.Base{
+				CreatedAt: now,
+				UpdatedAt: now,
+			},
+			Name:        "Dừa Nạo Khô",
+			Description: "Dừa nạo sợi khô",
+			ProductType: "ingredient",
+			Unit:        "kg",
+			Status:      "active",
+		},
+		{
+			Base: models.Base{
+				CreatedAt: now,
+				UpdatedAt: now,
+			},
+			Name:        "Đậu Phộng Rang",
+			Description: "Đậu phộng rang giòn",
+			ProductType: "snack",
+			Unit:        "kg",
+			Status:      "active",
+		},
+		{
+			Base: models.Base{
+				CreatedAt: now,
+				UpdatedAt: now,
+			},
+			Name:        "Mè Rang",
+			Description: "Mè rang trắng thơm",
+			ProductType: "ingredient",
+			Unit:        "kg",
+			Status:      "active",
+		},
+		{
+			Base: models.Base{
+				CreatedAt: now,
+				UpdatedAt: now,
+			},
+			Name:        "Đậu Xanh Hạt",
+			Description: "Đậu xanh hạt nguyên vỏ",
+			ProductType: "ingredient",
+			Unit:        "kg",
+			Status:      "active",
+		},
+		{
+			Base: models.Base{
+				CreatedAt: now,
+				UpdatedAt: now,
+			},
+			Name:        "Đậu Đen",
+			Description: "Đậu đen hạt nguyên chất",
+			ProductType: "ingredient",
+			Unit:        "kg",
+			Status:      "active",
+		},
+		{
+			Base: models.Base{
+				CreatedAt: now,
+				UpdatedAt: now,
+			},
+			Name:        "Đậu Đỏ",
+			Description: "Đậu đỏ hạt làm chè",
+			ProductType: "ingredient",
+			Unit:        "kg",
+			Status:      "active",
+		},
+		{
+			Base: models.Base{
+				CreatedAt: now,
+				UpdatedAt: now,
+			},
+			Name:        "Nấm Hương Khô",
+			Description: "Nấm hương khô cao cấp",
+			ProductType: "ingredient",
+			Unit:        "kg",
+			Status:      "active",
+		},
+		{
+			Base: models.Base{
+				CreatedAt: now,
+				UpdatedAt: now,
+			},
+			Name:        "Miến Dong",
+			Description: "Miến dong miền Bắc",
+			ProductType: "noodle",
+			Unit:        "kg",
+			Status:      "active",
+		},
+		{
+			Base: models.Base{
+				CreatedAt: now,
+				UpdatedAt: now,
+			},
+			Name:        "Hủ Tiếu Khô Nam Vang",
+			Description: "Hủ tiếu khô Nam Vang đặc biệt",
+			ProductType: "noodle",
+			Unit:        "kg",
+			Status:      "active",
+		},
+		{
+			Base: models.Base{
+				CreatedAt: now,
+				UpdatedAt: now,
+			},
+			Name:        "Bánh Đa Nem",
+			Description: "Bánh đa nem cuốn loại 1",
+			ProductType: "ingredient",
+			Unit:        "pack",
 			Status:      "active",
 		},
 	}
@@ -175,20 +1476,6 @@ type InventoryData struct {
 	Location     string
 }
 
-// InventoryConfigs contains inventory configuration for all products
-var InventoryConfigs = []InventoryData{
-	{1, 1, 2999.99, "piece", 15, 5, "Warehouse A"},
-	{2, 1, 599.99, "piece", 30, 10, "Warehouse B"},
-	{3, 1, 89.99, "piece", 45, 15, "Warehouse C"},
-	{4, 1, 99.99, "piece", 25, 8, "Warehouse A"},
-	{5, 2, 1395.00, "piece", 8, 3, "Warehouse B"},
-	{6, 2, 799.00, "box", 12, 5, "Warehouse C"},
-	{7, 3, 399.95, "piece", 20, 8, "Warehouse A"},
-	{8, 3, 199.99, "piece", 35, 12, "Warehouse B"},
-	{9, 1, 399.99, "piece", 18, 6, "Warehouse C"},
-	{10, 1, 1099.99, "device", 22, 8, "Warehouse A"},
-}
-
 // Inventory contains all test inventory data
 func Inventory(productIDs []uint) []models.Inventory {
 	now := time.Now()
@@ -197,7 +1484,6 @@ func Inventory(productIDs []uint) []models.Inventory {
 	inventories := []models.Inventory{
 		{
 			Base: models.Base{
-				ID:        1,
 				CreatedAt: now,
 				UpdatedAt: now,
 			},
@@ -208,7 +1494,6 @@ func Inventory(productIDs []uint) []models.Inventory {
 		},
 		{
 			Base: models.Base{
-				ID:        2,
 				CreatedAt: now,
 				UpdatedAt: now,
 			},
@@ -219,7 +1504,6 @@ func Inventory(productIDs []uint) []models.Inventory {
 		},
 		{
 			Base: models.Base{
-				ID:        3,
 				CreatedAt: now,
 				UpdatedAt: now,
 			},
@@ -233,468 +1517,208 @@ func Inventory(productIDs []uint) []models.Inventory {
 	return inventories
 }
 
-// InventoryItems contains all test inventory item data
-func InventoryItems(inventoryIDs, productIDs, supplierIDs []uint) []models.InventoryItem {
-	now := time.Now()
+// createProductSupplierRelationships creates many-to-many relationships between products and suppliers
+func createProductSupplierRelationships(tx *gorm.DB, productIDs, supplierIDs []uint) error {
+	// Tech products (0-9) supplied by tech suppliers (0-2)
+	// F&B products (10+) supplied by multiple F&B suppliers (3-12)
+	type ProductSupplier struct {
+		ProductID  uint `gorm:"primaryKey"`
+		SupplierID uint `gorm:"primaryKey"`
+	}
+	var productSuppliers []ProductSupplier
 
-	// Create inventory items with quantities that match transaction sums
-	// Item 1: 3 purchase transactions (5+3+2=10 total) - 1 disposal (1) = 9 quantity
-	// Item 2: 2 purchase transactions (10+5=15 total) = 15 quantity
-	// Item 3: 3 purchase transactions (20+15+10=45 total) = 45 quantity (consuming_transaction_id = 0 means all transactions are active)
-	// Item 4: 3 purchase transactions (10+8+7=25 total) = 25 quantity
-	// Item 5: 1 purchase transaction (3 total) = 3 quantity (inactive - will be set to 0)
+	for i, productID := range productIDs {
+		if i < 10 {
+			// Tech products: assign to tech suppliers (cycling through 0-2)
+			supplierIndex := i % 3
+			productSuppliers = append(productSuppliers, ProductSupplier{
+				ProductID:  productID,
+				SupplierID: supplierIDs[supplierIndex],
+			})
+		} else {
+			// F&B products: assign to multiple F&B suppliers (each product gets 3-5 suppliers)
+			// Calculate how many suppliers this product should have (3-5)
+			numSuppliers := 3 + (i % 3) // Will give 3, 4, or 5 suppliers per product
+			fbSupplierStartIndex := 3   // F&B suppliers start at index 3
+			fbSupplierCount := 10       // We have 10 F&B suppliers (indices 3-12)
 
-	items := []models.InventoryItem{
-		{
-			Base: models.Base{
-				ID:        1,
-				CreatedAt: now,
-				UpdatedAt: now,
-			},
-			InventoryID: inventoryIDs[0], // Main Warehouse A
-			ProductID:   productIDs[0],   // MacBook Pro
-			SupplierID:  supplierIDs[0],
-			Unit:        "piece",
-			Quantity:    9, // 5+3+2-1 = 9 (purchases minus disposal)
-			Status:      models.InventoryItemStatusActive,
-		},
-		{
-			Base: models.Base{
-				ID:        2,
-				CreatedAt: now,
-				UpdatedAt: now,
-			},
-			InventoryID: inventoryIDs[0], // Main Warehouse A
-			ProductID:   productIDs[1],   // LG Monitor
-			SupplierID:  supplierIDs[0],
-			Unit:        "piece",
-			Quantity:    15, // 10+5 = 15
-			Status:      models.InventoryItemStatusActive,
-		},
-		{
-			Base: models.Base{
-				ID:        3,
-				CreatedAt: now,
-				UpdatedAt: now,
-			},
-			InventoryID: inventoryIDs[1], // Secondary Warehouse B
-			ProductID:   productIDs[2],   // Keychron Keyboard
-			SupplierID:  supplierIDs[0],
-			Unit:        "piece",
-			Quantity:    45, // 20+15+10 = 45 (consuming_transaction_id = 0 means all transactions are active)
-			Status:      models.InventoryItemStatusActive,
-		},
-		{
-			Base: models.Base{
-				ID:        4,
-				CreatedAt: now,
-				UpdatedAt: now,
-			},
-			InventoryID: inventoryIDs[1], // Secondary Warehouse B
-			ProductID:   productIDs[3],   // Logitech Mouse
-			SupplierID:  supplierIDs[0],
-			Unit:        "piece",
-			Quantity:    25, // 10+8+7 = 25
-			Status:      models.InventoryItemStatusActive,
-		},
-		{
-			Base: models.Base{
-				ID:        5,
-				CreatedAt: now,
-				UpdatedAt: now,
-			},
-			InventoryID: inventoryIDs[0], // Main Warehouse A
-			ProductID:   productIDs[4],   // Herman Miller Chair
-			SupplierID:  supplierIDs[1],
-			Unit:        "piece",
-			Quantity:    0, // Inactive item (quantity 0)
-			Status:      models.InventoryItemStatusActive,
-		},
+			for j := 0; j < numSuppliers; j++ {
+				// Distribute suppliers across products with some variation
+				supplierOffset := ((i-10)*2 + j) % fbSupplierCount
+				supplierIndex := fbSupplierStartIndex + supplierOffset
+				productSuppliers = append(productSuppliers, ProductSupplier{
+					ProductID:  productID,
+					SupplierID: supplierIDs[supplierIndex],
+				})
+			}
+		}
 	}
 
-	return items
+	if err := tx.Table("product_suppliers").Create(&productSuppliers).Error; err != nil {
+		return fmt.Errorf("failed to create product-supplier relationships: %w", err)
+	}
+
+	return nil
 }
 
-// PurchaseOrders contains all test purchase order data
-func PurchaseOrders(productIDs []uint, supplierIDs []uint, inventoryIDs []uint) []models.PurchaseOrder {
-	now := time.Now()
+// SeedDatabase populates the database with mock data
+func SeedDatabase() error {
+	// Load configuration
+	cfg := config.Load()
 
-	// If no supplierIDs provided, use default supplier ID 1 for all
-	if len(supplierIDs) == 0 {
-		supplierIDs = []uint{1, 2, 3}
+	// Initialize database
+	db, err := database.Initialize(cfg.Database)
+	if err != nil {
+		return fmt.Errorf("failed to initialize database: %w", err)
 	}
 
-	// If no inventoryIDs provided, use default inventory ID 1 for all
-	if len(inventoryIDs) == 0 {
-		inventoryIDs = []uint{1, 2, 3}
+	// Create context with user email for CreatedBy field
+	ctx := pkg.WithUserEmail(context.Background(), "seeder@test.com")
+
+	// Start transaction
+	tx := db.WithContext(ctx).Begin()
+	if tx.Error != nil {
+		return fmt.Errorf("failed to start transaction: %w", tx.Error)
 	}
 
-	return []models.PurchaseOrder{
-		{
-			Base: models.Base{
-				CreatedAt: now.AddDate(0, 0, -30), // 30 days ago
-				UpdatedAt: now.AddDate(0, 0, -30),
-			},
-			OrderNumber: "PO-2024-001",
-			InventoryID: &inventoryIDs[0], // Main Warehouse A
-			Status:      models.PurchaseOrderStatusCompleted,
-			Notes:       "Q1 electronics restock order",
-			Items: []*models.PurchaseOrderItem{
-				{
-					Base: models.Base{
-						CreatedAt: now.AddDate(0, 0, -30),
-						UpdatedAt: now.AddDate(0, 0, -30),
-					},
-					ProductID:        &productIDs[0], // MacBook Pro
-					SupplierID:       &supplierIDs[0],
-					UnitPrice:        2999.99,
-					Quantity:         5,
-					ReceivedQuantity: 5,
-					Status:           models.PurchaseOrderItemStatusDelivered,
-				},
-				{
-					Base: models.Base{
-						CreatedAt: now.AddDate(0, 0, -30),
-						UpdatedAt: now.AddDate(0, 0, -30),
-					},
-					ProductID:        &productIDs[1], // LG Monitor
-					SupplierID:       &supplierIDs[0],
-					UnitPrice:        599.99,
-					Quantity:         10,
-					ReceivedQuantity: 10,
-					Status:           models.PurchaseOrderItemStatusDelivered,
-				},
-			},
-		},
-		{
-			Base: models.Base{
-				CreatedAt: now.AddDate(0, 0, -15), // 15 days ago
-				UpdatedAt: now.AddDate(0, 0, -5),
-			},
-			OrderNumber: "PO-2024-002",
-			InventoryID: &inventoryIDs[1], // Secondary Warehouse B
-			Status:      models.PurchaseOrderStatusPartiallyDelivered,
-			Notes:       "Office furniture and accessories order",
-			Items: []*models.PurchaseOrderItem{
-				{
-					Base: models.Base{
-						CreatedAt: now.AddDate(0, 0, -15),
-						UpdatedAt: now.AddDate(0, 0, -5),
-					},
-					ProductID:        &productIDs[4], // Herman Miller Chair
-					SupplierID:       &supplierIDs[1],
-					UnitPrice:        1395.00,
-					Quantity:         3,
-					ReceivedQuantity: 2,
-					Status:           models.PurchaseOrderItemStatusAwaitingDelivery,
-				},
-				{
-					Base: models.Base{
-						CreatedAt: now.AddDate(0, 0, -15),
-						UpdatedAt: now.AddDate(0, 0, -5),
-					},
-					ProductID:        &productIDs[5], // UPLIFT Desk
-					SupplierID:       &supplierIDs[1],
-					UnitPrice:        799.00,
-					Quantity:         2,
-					ReceivedQuantity: 2,
-					Status:           models.PurchaseOrderItemStatusDelivered,
-				},
-			},
-		},
-		{
-			Base: models.Base{
-				CreatedAt: now.AddDate(0, 0, -7), // 7 days ago
-				UpdatedAt: now.AddDate(0, 0, -7),
-			},
-			OrderNumber: "PO-2024-003",
-			InventoryID: &inventoryIDs[2], // Distribution Center C
-			Status:      models.PurchaseOrderStatusOrderPlaced,
-			Notes:       "Peripheral devices for new office setup",
-			Items: []*models.PurchaseOrderItem{
-				{
-					Base: models.Base{
-						CreatedAt: now.AddDate(0, 0, -7),
-						UpdatedAt: now.AddDate(0, 0, -7),
-					},
-					ProductID:        &productIDs[2], // Keychron Keyboard
-					SupplierID:       &supplierIDs[0],
-					UnitPrice:        89.99,
-					Quantity:         20,
-					ReceivedQuantity: 0,
-					Status:           models.PurchaseOrderItemStatusAwaitingDelivery,
-				},
-				{
-					Base: models.Base{
-						CreatedAt: now.AddDate(0, 0, -7),
-						UpdatedAt: now.AddDate(0, 0, -7),
-					},
-					ProductID:        &productIDs[3], // Logitech Mouse
-					SupplierID:       &supplierIDs[0],
-					UnitPrice:        99.99,
-					Quantity:         15,
-					ReceivedQuantity: 0,
-					Status:           models.PurchaseOrderItemStatusAwaitingDelivery,
-				},
-				{
-					Base: models.Base{
-						CreatedAt: now.AddDate(0, 0, -7),
-						UpdatedAt: now.AddDate(0, 0, -7),
-					},
-					ProductID:        &productIDs[8], // Sony Headphones
-					SupplierID:       &supplierIDs[0],
-					UnitPrice:        399.99,
-					Quantity:         8,
-					ReceivedQuantity: 0,
-					Status:           models.PurchaseOrderItemStatusAwaitingDelivery,
-				},
-			},
-		},
-		{
-			Base: models.Base{
-				CreatedAt: now.AddDate(0, 0, -3), // 3 days ago
-				UpdatedAt: now.AddDate(0, 0, -1),
-			},
-			OrderNumber: "PO-2024-004",
-			InventoryID: &inventoryIDs[0], // Main Warehouse A
-			Status:      models.PurchaseOrderStatusFullyDelivered,
-			Notes:       "Tech accessories for conference rooms",
-			Items: []*models.PurchaseOrderItem{
-				{
-					Base: models.Base{
-						CreatedAt: now.AddDate(0, 0, -3),
-						UpdatedAt: now.AddDate(0, 0, -1),
-					},
-					ProductID:        &productIDs[6], // CalDigit Hub
-					SupplierID:       &supplierIDs[2],
-					UnitPrice:        399.95,
-					Quantity:         4,
-					ReceivedQuantity: 4,
-					Status:           models.PurchaseOrderItemStatusDelivered,
-				},
-				{
-					Base: models.Base{
-						CreatedAt: now.AddDate(0, 0, -3),
-						UpdatedAt: now.AddDate(0, 0, -1),
-					},
-					ProductID:        &productIDs[7], // Logitech Webcam
-					SupplierID:       &supplierIDs[2],
-					UnitPrice:        199.99,
-					Quantity:         6,
-					ReceivedQuantity: 6,
-					Status:           models.PurchaseOrderItemStatusDelivered,
-				},
-			},
-		},
-		{
-			Base: models.Base{
-				CreatedAt: now.AddDate(0, 0, -1), // 1 day ago
-				UpdatedAt: now.AddDate(0, 0, -1),
-			},
-			OrderNumber: "PO-2024-005",
-			InventoryID: &inventoryIDs[1], // Secondary Warehouse B
-			Status:      models.PurchaseOrderStatusCancelled,
-			Notes:       "Cancelled due to budget constraints",
-			Items: []*models.PurchaseOrderItem{
-				{
-					Base: models.Base{
-						CreatedAt: now.AddDate(0, 0, -1),
-						UpdatedAt: now.AddDate(0, 0, -1),
-					},
-					ProductID:        &productIDs[9], // iPad Pro
-					SupplierID:       &supplierIDs[0],
-					UnitPrice:        1099.99,
-					Quantity:         2,
-					ReceivedQuantity: 0,
-					Status:           models.PurchaseOrderItemStatusAwaitingDelivery,
-				},
-			},
-		},
-		{
-			Base: models.Base{
-				CreatedAt: now, // Today
-				UpdatedAt: now,
-			},
-			OrderNumber: "PO-2024-006",
-			InventoryID: &inventoryIDs[2], // Distribution Center C
-			Status:      models.PurchaseOrderStatusOrderPlaced,
-			Notes:       "Emergency restock for high-demand items",
-			Items: []*models.PurchaseOrderItem{
-				{
-					Base: models.Base{
-						CreatedAt: now,
-						UpdatedAt: now,
-					},
-					ProductID:        &productIDs[0], // MacBook Pro
-					SupplierID:       &supplierIDs[0],
-					UnitPrice:        2999.99,
-					Quantity:         2,
-					ReceivedQuantity: 0,
-					Status:           models.PurchaseOrderItemStatusAwaitingDelivery,
-				},
-				{
-					Base: models.Base{
-						CreatedAt: now,
-						UpdatedAt: now,
-					},
-					ProductID:        &productIDs[1], // LG Monitor
-					SupplierID:       &supplierIDs[0],
-					UnitPrice:        599.99,
-					Quantity:         5,
-					ReceivedQuantity: 0,
-					Status:           models.PurchaseOrderItemStatusAwaitingDelivery,
-				},
-			},
-		},
+	// Seed in correct order (respecting foreign key constraints)
+
+	// 1. Suppliers
+	suppliers := Suppliers()
+	if err := tx.Create(&suppliers).Error; err != nil {
+		tx.Rollback()
+		return fmt.Errorf("failed to create suppliers: %w", err)
 	}
+	// Collect supplier IDs after batch creation
+	var supplierIDs []uint
+	for _, supplier := range suppliers {
+		supplierIDs = append(supplierIDs, supplier.ID)
+	}
+
+	// 2. Products
+	products := Products(nil)
+	if err := tx.Create(&products).Error; err != nil {
+		tx.Rollback()
+		return fmt.Errorf("failed to create products: %w", err)
+	}
+	// Collect product IDs after batch creation
+	var productIDs []uint
+	for _, product := range products {
+		productIDs = append(productIDs, product.ID)
+	}
+
+	// 2.5. Create product-supplier relationships
+	if err := createProductSupplierRelationships(tx, productIDs, supplierIDs); err != nil {
+		tx.Rollback()
+		return fmt.Errorf("failed to create product-supplier relationships: %w", err)
+	}
+
+	// 3. Inventories
+	inventories := Inventory(productIDs)
+	if err := tx.Create(&inventories).Error; err != nil {
+		tx.Rollback()
+		return fmt.Errorf("failed to create inventories: %w", err)
+	}
+
+	// Commit transaction
+	if err := tx.Commit().Error; err != nil {
+		return fmt.Errorf("failed to commit transaction: %w", err)
+	}
+
+	// Seed users after database schema is populated
+	if err := seedUsers(db); err != nil {
+		return fmt.Errorf("failed to seed users: %w", err)
+	}
+
+	return nil
 }
 
-// InventoryTransactions contains test inventory transaction data
-func InventoryTransactions(inventoryItemIDs []uint) []models.InventoryTransaction {
-	now := time.Now()
+// seedUsers populates the database with default users
+func seedUsers(db *gorm.DB) error {
+	// Initialize Casbin service
+	casbinService, err := auth.NewCasbinService(db)
+	if err != nil {
+		return fmt.Errorf("failed to initialize Casbin service: %w", err)
+	}
 
-	transactions := []models.InventoryTransaction{
-		// Purchase transactions for inventory item 1 (MacBook Pro)
-		{
-			Base: models.Base{
-				ID:        1,
-				CreatedAt: now.AddDate(0, 0, -30), // 30 days ago
-				UpdatedAt: now.AddDate(0, 0, -30),
-			},
-			InventoryItemID: inventoryItemIDs[0],
-			TransactionType: models.InventoryTransactionTypePurchase,
-			Price:           2999.99,
-			Quantity:        5,
-		},
-		{
-			Base: models.Base{
-				ID:        2,
-				CreatedAt: now.AddDate(0, 0, -20), // 20 days ago
-				UpdatedAt: now.AddDate(0, 0, -20),
-			},
-			InventoryItemID: inventoryItemIDs[0],
-			TransactionType: models.InventoryTransactionTypePurchase,
-			Price:           2999.99,
-			Quantity:        3,
-		},
-		{
-			Base: models.Base{
-				ID:        3,
-				CreatedAt: now.AddDate(0, 0, -10), // 10 days ago
-				UpdatedAt: now.AddDate(0, 0, -10),
-			},
-			InventoryItemID: inventoryItemIDs[0],
-			TransactionType: models.InventoryTransactionTypePurchase,
-			Price:           2999.99,
-			Quantity:        2,
-		},
-		// Purchase transactions for inventory item 2 (LG Monitor)
-		{
-			Base: models.Base{
-				ID:        4,
-				CreatedAt: now.AddDate(0, 0, -25), // 25 days ago
-				UpdatedAt: now.AddDate(0, 0, -25),
-			},
-			InventoryItemID: inventoryItemIDs[1],
-			TransactionType: models.InventoryTransactionTypePurchase,
-			Price:           599.99,
-			Quantity:        10,
-		},
-		{
-			Base: models.Base{
-				ID:        5,
-				CreatedAt: now.AddDate(0, 0, -15), // 15 days ago
-				UpdatedAt: now.AddDate(0, 0, -15),
-			},
-			InventoryItemID: inventoryItemIDs[1],
-			TransactionType: models.InventoryTransactionTypePurchase,
-			Price:           599.99,
-			Quantity:        5,
-		},
+	// Initialize user repository and service
+	userRepo := repository.NewUserRepository(db)
+	userService := services.NewUserService(userRepo, casbinService)
 
-		// Purchase transactions for inventory item 3 (Keychron Keyboard) - with consuming_transaction_id = 0 (all transactions are active)
-		{
-			Base: models.Base{
-				ID:        6,
-				CreatedAt: now.AddDate(0, 0, -40), // 40 days ago
-				UpdatedAt: now.AddDate(0, 0, -40),
-			},
-			InventoryItemID: inventoryItemIDs[2],
-			TransactionType: models.InventoryTransactionTypePurchase,
-			Price:           89.99,
-			Quantity:        20,
-		},
-		{
-			Base: models.Base{
-				ID:        7,
-				CreatedAt: now.AddDate(0, 0, -30), // 30 days ago
-				UpdatedAt: now.AddDate(0, 0, -30),
-			},
-			InventoryItemID: inventoryItemIDs[2],
-			TransactionType: models.InventoryTransactionTypePurchase,
-			Price:           89.99,
-			Quantity:        15,
-		},
-		{
-			Base: models.Base{
-				ID:        8,
-				CreatedAt: now.AddDate(0, 0, -20), // 20 days ago
-				UpdatedAt: now.AddDate(0, 0, -20),
-			},
-			InventoryItemID: inventoryItemIDs[2],
-			TransactionType: models.InventoryTransactionTypePurchase,
-			Price:           89.99,
-			Quantity:        10,
-		},
+	ctx := context.Background()
 
-		// Purchase transactions for inventory item 4 (Logitech Mouse) - with specific consuming_transaction_id
+	// Define default users
+	defaultUsers := []struct {
+		UID   string
+		Email string
+		Name  string
+		Role  string
+	}{
 		{
-			Base: models.Base{
-				ID:        9,
-				CreatedAt: now.AddDate(0, 0, -35), // 35 days ago
-				UpdatedAt: now.AddDate(0, 0, -35),
-			},
-			InventoryItemID: inventoryItemIDs[3],
-			TransactionType: models.InventoryTransactionTypePurchase,
-			Price:           99.99,
-			Quantity:        10,
+			UID:   "demoAdminUid0000000000000000",
+			Email: "test@cim.local",
+			Name:  "Admin User",
+			Role:  string(models.RoleAdmin),
 		},
 		{
-			Base: models.Base{
-				ID:        10,
-				CreatedAt: now.AddDate(0, 0, -25), // 25 days ago
-				UpdatedAt: now.AddDate(0, 0, -25),
-			},
-			InventoryItemID: inventoryItemIDs[3],
-			TransactionType: models.InventoryTransactionTypePurchase,
-			Price:           99.99,
-			Quantity:        8,
+			UID:   "demoRootAdminUid000000000000",
+			Email: "admin@example.com",
+			Name:  "Admin User",
+			Role:  string(models.RoleAdmin),
 		},
 		{
-			Base: models.Base{
-				ID:        11,
-				CreatedAt: now.AddDate(0, 0, -15), // 15 days ago
-				UpdatedAt: now.AddDate(0, 0, -15),
-			},
-			InventoryItemID: inventoryItemIDs[3],
-			TransactionType: models.InventoryTransactionTypePurchase,
-			Price:           99.99,
-			Quantity:        7,
+			UID:   "demoRootAdminUid200000000000",
+			Email: "admin2@example.com",
+			Name:  "Admin User",
+			Role:  string(models.RoleAdmin),
 		},
-
-		// Purchase transactions for inventory item 5 (Herman Miller Chair) - zero quantity (inactive)
 		{
-			Base: models.Base{
-				ID:        12,
-				CreatedAt: now.AddDate(0, 0, -20), // 20 days ago
-				UpdatedAt: now.AddDate(0, 0, -20),
-			},
-			InventoryItemID: inventoryItemIDs[4],
-			TransactionType: models.InventoryTransactionTypePurchase,
-			Price:           1395.00,
-			Quantity:        3,
+			UID:   "demoAccountantUid00000000000",
+			Email: "accountant@cim.local",
+			Name:  "Accountant User",
+			Role:  string(models.RoleAccountant),
+		},
+		{
+			UID:   "demoStaffUid0000000000000000",
+			Email: "staff@cim.local",
+			Name:  "Staff User",
+			Role:  string(models.RoleStaff),
 		},
 	}
 
-	return transactions
+	// Seed each user
+	for _, userData := range defaultUsers {
+		// Check if user already exists
+		existingUser, err := userService.GetUserByUID(ctx, userData.UID)
+		if err != nil {
+			log.Printf("Error checking existing user %s: %v", userData.Email, err)
+			continue
+		}
+
+		if existingUser != nil {
+			log.Printf("User %s already exists, skipping", userData.Email)
+			continue
+		}
+
+		// Create user
+		user, err := userService.CreateOrUpdateUser(ctx, userData.UID, userData.Email, userData.Name)
+		if err != nil {
+			log.Printf("Failed to create user %s: %v", userData.Email, err)
+			continue
+		}
+
+		// Update role if different from default
+		if user.Role != userData.Role {
+			err = userService.UpdateUserRole(ctx, user.UID, userData.Role, "system")
+			if err != nil {
+				log.Printf("Failed to update role for user %s: %v", userData.Email, err)
+				continue
+			}
+		}
+
+		log.Printf("Created user: %s with role: %s", userData.Email, userData.Role)
+	}
+
+	log.Println("User seeding completed!")
+	return nil
 }
