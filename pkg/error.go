@@ -19,6 +19,9 @@ const (
 
 	// Purchase Order Error Codes
 	ErrorCodePurchaseOrderNoItems ErrorCode = 7 // purchase-order-no-items
+
+	// Inventory Error Codes
+	ErrorCodeBadInventoryItemState ErrorCode = 8 // bad-inventory-item-state
 )
 
 // AppError represents an application error with code, cause, and display message

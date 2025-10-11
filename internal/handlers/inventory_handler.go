@@ -219,7 +219,7 @@ func (h *InventoryHandler) DisposeInventoryItems(c echo.Context) error {
 // @Accept json
 // @Produce json
 // @Param confirmation body dto.ConfirmInventoryRequest true "Confirmation data"
-// @Success 200 {object} map[string]interface{}
+// @Success 204
 // @Failure 400 {object} map[string]string
 // @Failure 404 {object} map[string]string
 // @Failure 500 {object} map[string]string
@@ -236,15 +236,10 @@ func (h *InventoryHandler) ConfirmInventoryItems(c echo.Context) error {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid request body"})
 	}
 
-	confirmedItems, err := h.inventoryService.ConfirmInventory(c.Request().Context(), req)
+	err := h.inventoryService.ReconcileInventory(c.Request().Context(), req)
 	if err != nil {
-		return fmt.Errorf("failed to confirm inventory items: %w", err)
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to confirm inventory items"})
 	}
 
-	response := map[string]interface{}{
-		"message": "Inventory items confirmed successfully",
-		"items":   confirmedItems,
-	}
-
-	return c.JSON(http.StatusOK, response)
+	return c.JSON(http.StatusNoContent, nil)
 }

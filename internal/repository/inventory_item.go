@@ -6,6 +6,7 @@ import (
 	"import-export-backend/internal/models"
 
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 type InventoryItemRepository interface {
@@ -22,7 +23,8 @@ type InventoryItemRepository interface {
 
 	// v1
 	Update(ctx context.Context, items []*models.InventoryItem, transactions []*models.InventoryTransaction) error
-	GetActiveItemsByInventoryIDs(ctx context.Context, inventoryIDs []string) ([]*models.InventoryItem, error)
+	GetActiveItemsByInventoryIDs(ctx context.Context, inventoryIDs []uint) ([]*models.InventoryItem, error)
+	PersistReconciliation(ctx context.Context, items []*models.InventoryItem, sellTransactions []*models.InventoryTransaction) error
 }
 
 type inventoryItemRepository struct {
@@ -133,7 +135,7 @@ func (r *inventoryItemRepository) Update(
 }
 
 // GetActiveItemsByInventoryIDs returns active inventory items for the given inventory IDs
-func (r *inventoryItemRepository) GetActiveItemsByInventoryIDs(ctx context.Context, inventoryIDs []string) ([]*models.InventoryItem, error) {
+func (r *inventoryItemRepository) GetActiveItemsByInventoryIDs(ctx context.Context, inventoryIDs []uint) ([]*models.InventoryItem, error) {
 	var items []*models.InventoryItem
 	return items, r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		err := tx.
@@ -165,20 +167,75 @@ func (r *inventoryItemRepository) GetActiveItemsByInventoryIDs(ctx context.Conte
 			Where("inventory_transactions.inventory_item_id IN ?", itemIDs).
 			Where("inventory_transactions.transaction_type = ?", models.InventoryTransactionTypePurchase).
 			Where("inventory_transactions.created_at >= COALESCE(inventory_items.latest_active_purchase_at, '-infinity'::timestamptz)").
+			Order("inventory_transactions.created_at ASC"). // @todo: add Order test
 			Find(&transactions).Error
 		if err != nil {
 			return fmt.Errorf("failed to get active purchase transactions: %w", err)
 		}
 
-		// Create a map for quick lookup
 		transactionMap := make(map[uint][]*models.InventoryTransaction)
 		for _, transaction := range transactions {
 			transactionMap[transaction.InventoryItemID] = append(transactionMap[transaction.InventoryItemID], transaction)
 		}
-
-		// Map transactions to items
 		for _, item := range items {
 			item.ActivePurchaseTransactions = transactionMap[item.ID]
+		}
+
+		return nil
+	})
+}
+
+// PersistReconciliation persists inventory items and sell transactions with transaction safety
+func (r *inventoryItemRepository) PersistReconciliation(ctx context.Context, items []*models.InventoryItem, sellTransactions []*models.InventoryTransaction) error {
+	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		// Step 1: Fetch current inventory items with FOR UPDATE to prevent concurrent modifications
+		itemIDs := make([]uint, len(items))
+		for i, item := range items {
+			itemIDs[i] = item.ID
+		}
+
+		var currentItems []*models.InventoryItem
+		err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
+			Where("id IN ?", itemIDs).
+			Find(&currentItems).Error
+		if err != nil {
+			return fmt.Errorf("failed to fetch inventory items for update: %w", err)
+		}
+
+		// Create a map for quick lookup of current items
+		currentItemMap := make(map[uint]*models.InventoryItem)
+		for _, item := range currentItems {
+			currentItemMap[item.ID] = item
+		}
+
+		// Step 2: Validate that no quantities have been changed by other transactions
+		for _, updatedItem := range items {
+			currentItem, exists := currentItemMap[updatedItem.ID]
+			if !exists {
+				return fmt.Errorf("inventory item with ID %d not found", updatedItem.ID)
+			}
+
+			// Check if quantity has been modified by another transaction
+			if currentItem.Quantity != updatedItem.Quantity {
+				return fmt.Errorf("inventory item %d quantity has been modified by another transaction. Current: %d, Expected: %d",
+					updatedItem.ID, currentItem.Quantity, updatedItem.Quantity)
+			}
+		}
+
+		// Step 3: Persist updated inventory items
+		if len(items) > 0 {
+			err = tx.Save(items).Error
+			if err != nil {
+				return fmt.Errorf("failed to persist inventory items: %w", err)
+			}
+		}
+
+		// Step 4: Persist sell transactions
+		if len(sellTransactions) > 0 {
+			err = tx.Create(sellTransactions).Error
+			if err != nil {
+				return fmt.Errorf("failed to persist sell transactions: %w", err)
+			}
 		}
 
 		return nil

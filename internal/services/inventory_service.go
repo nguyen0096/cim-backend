@@ -20,7 +20,7 @@ type InventoryService interface {
 	RemoveInventory(ctx context.Context, productID uint, quantity int, referenceID uint, referenceType, notes string) error
 
 	// v1
-	ConfirmInventory(ctx context.Context, req dto.ConfirmInventoryRequest) ([]models.InventoryItem, error)
+	ReconcileInventory(ctx context.Context, req dto.ConfirmInventoryRequest) error
 	DisposeItems(ctx context.Context, req dto.DisposeItemsRequest) ([]*models.InventoryItem, error)
 }
 
@@ -127,7 +127,79 @@ func (s *inventoryService) DisposeItems(ctx context.Context, req dto.DisposeItem
 	return updatedItems, nil
 }
 
-func (s *inventoryService) ConfirmInventory(ctx context.Context, req dto.ConfirmInventoryRequest) ([]models.InventoryItem, error) {
+func (s *inventoryService) ReconcileInventory(ctx context.Context, req dto.ConfirmInventoryRequest) error {
+	itemIDs := make([]uint, len(req.Items))
+	for i, item := range req.Items {
+		itemIDs[i] = item.InventoryItemID
+	}
 
-	return nil, nil
+	activeItems, err := s.inventoryItemRepo.GetActiveItemsByInventoryIDs(ctx, itemIDs)
+	if err != nil {
+		return fmt.Errorf("failed to get active inventory items: %w", err)
+	}
+
+	if len(activeItems) == 0 {
+		return pkg.NewAppError(pkg.ErrorCodeNotFound, "no active inventory items found", nil)
+	}
+
+	// Validate transaction quantities against inventory item quantities
+	for _, item := range activeItems {
+		if err := item.ValidateActivePurchaseTransactions(); err != nil {
+			return fmt.Errorf("validation failed for inventory item %d: %w", item.ID, err)
+		}
+	}
+
+	// Step 2: Create sell transactions for each inventory item based on user-provided quantities
+	// Build a map for easy lookup of requested quantities
+	actualQuantities := make(map[uint]int)
+	for _, reqItem := range req.Items {
+		actualQuantities[reqItem.InventoryItemID] = reqItem.Quantity
+	}
+
+	var sellTransactions []*models.InventoryTransaction
+	var updatedItems []*models.InventoryItem
+
+	for _, item := range activeItems {
+		actualQty, exists := actualQuantities[item.ID]
+		if !exists {
+			return pkg.NewAppError(pkg.ErrorCodeValidation,
+				fmt.Sprintf("no quantity specified for inventory item %d", item.ID), nil)
+		}
+
+		// Validate that requested quantity doesn't exceed available quantity
+		if actualQty > item.Quantity {
+			return pkg.NewAppError(pkg.ErrorCodeValidation,
+				fmt.Sprintf("requested quantity %d exceeds available quantity %d for inventory item %d",
+					actualQty, item.Quantity, item.ID), nil)
+		}
+
+		totalToBeConsumed := item.Quantity - actualQty
+		for _, txn := range item.ActivePurchaseTransactions {
+			if totalToBeConsumed <= 0 {
+				break
+			}
+
+			txnUnconsumedQty := txn.Quantity - txn.ConsumedQuantity
+			sellQty := min(totalToBeConsumed, txnUnconsumedQty)
+
+			if sellQty > 0 {
+				sellTransaction := &models.InventoryTransaction{
+					InventoryItemID:      item.ID,
+					TransactionType:      models.InventoryTransactionTypeSell,
+					Price:                txn.Price, // Use same price as purchase
+					Quantity:             sellQty,
+					CounterTransactionID: &txn.ID,
+				}
+				sellTransactions = append(sellTransactions, sellTransaction)
+				txn.ConsumedQuantity += sellQty
+			}
+		}
+		item.Quantity = actualQty
+	}
+
+	// Save all sell transactions and update inventory items
+	if err := s.inventoryItemRepo.PersistReconciliation(ctx, updatedItems, sellTransactions); err != nil {
+		return fmt.Errorf("failed to create sell transactions and update inventory items: %w", err)
+	}
+	return nil
 }

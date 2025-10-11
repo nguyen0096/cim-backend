@@ -51,3 +51,8 @@ func ErrDuplicate(message string, cause error) *AppError {
 func ErrPurchaseOrderNoItems() *AppError {
 	return NewAppError(ErrorCodePurchaseOrderNoItems, "Purchase order has no items", nil)
 }
+
+// ErrBadInventoryItemStatus creates an error for bad inventory item status
+func ErrBadInventoryItemState(message string, cause error) *AppError {
+	return NewAppError(ErrorCodeBadInventoryItemState, message, cause)
+}
