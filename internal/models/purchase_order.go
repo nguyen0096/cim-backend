@@ -17,6 +17,7 @@ const (
 type PurchaseOrder struct {
 	Base
 	OrderNumber string               `json:"order_number" gorm:"unique;not null" example:"PO-2023-001"`
+	InventoryID *uint                `json:"inventory_id" gorm:"not null" validate:"required"`
 	Status      PurchaseOrderStatus  `json:"status" gorm:"default:order_placed;check:status IN ('order_placed', 'partially_delivered', 'fully_delivered', 'completed', 'cancelled')" example:"order_placed"`
 	TotalAmount float64              `json:"total_amount" gorm:"-" example:"999.99"` // Calculated field, not stored in DB
 	Notes       string               `json:"notes" example:"Purchase order notes"`
@@ -44,24 +45,32 @@ func (po *PurchaseOrder) UpdateStatus() error {
 		return pkg.ErrPurchaseOrderNoItems()
 	}
 
-	var hasUndeliveredItem = false
+	var hasAwaitingDeliveryItem = false
+	var hasPartiallyDelieveredItem = false
 	var hasDeliveredItem = false
 	for _, item := range po.Items {
 		if item != nil {
-			if item.Status == PurchaseOrderItemStatusDelivered {
+			switch item.Status {
+			case PurchaseOrderItemStatusAwaitingDelivery:
+				hasAwaitingDeliveryItem = true
+			case PurchaseOrderItemStatusPartiallyDelivered:
+				hasPartiallyDelieveredItem = true
+			case PurchaseOrderItemStatusDelivered:
 				hasDeliveredItem = true
-			} else {
-				hasUndeliveredItem = true
 			}
 		}
 	}
 
-	if hasUndeliveredItem && hasDeliveredItem {
+	// order_placed -> partially_delivered
+	if po.Status == PurchaseOrderStatusOrderPlaced &&
+		(hasPartiallyDelieveredItem || hasDeliveredItem) {
 		po.Status = PurchaseOrderStatusPartiallyDelivered
-	} else if hasDeliveredItem {
+	}
+
+	// partially_delivered -> fully_delivered
+	if po.Status == PurchaseOrderStatusPartiallyDelivered &&
+		!hasAwaitingDeliveryItem && !hasPartiallyDelieveredItem {
 		po.Status = PurchaseOrderStatusFullyDelivered
-	} else {
-		po.Status = PurchaseOrderStatusOrderPlaced
 	}
 
 	return nil

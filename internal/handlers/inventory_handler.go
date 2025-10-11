@@ -212,7 +212,7 @@ func (h *InventoryHandler) DisposeInventoryItems(c echo.Context) error {
 	return c.JSON(http.StatusOK, response)
 }
 
-// ConfirmInventoryItems confirms the actual inventory count for multiple items
+// ReconcileInventory confirms the actual inventory count for multiple items
 // @Summary Confirm inventory items
 // @Description Confirm the actual inventory count for multiple inventory items
 // @Tags inventory-items
@@ -225,7 +225,7 @@ func (h *InventoryHandler) DisposeInventoryItems(c echo.Context) error {
 // @Failure 500 {object} map[string]string
 // @Security BearerAuth
 // @Router /inventories/confirm [put]
-func (h *InventoryHandler) ConfirmInventoryItems(c echo.Context) error {
+func (h *InventoryHandler) ReconcileInventory(c echo.Context) error {
 	var req dto.ConfirmInventoryRequest
 
 	if err := c.Bind(&req); err != nil {
@@ -242,4 +242,24 @@ func (h *InventoryHandler) ConfirmInventoryItems(c echo.Context) error {
 	}
 
 	return c.JSON(http.StatusNoContent, nil)
+}
+
+// GetLastPurchasePrices retrieves the last purchase transaction price
+// for each Supplier Product.
+// @Summary Get last purchase prices
+// @Description Get the last purchase transaction price for each Supplier Product as a nested map (product_id -> supplier_id -> price)
+// @Tags inventories
+// @Accept json
+// @Produce json
+// @Success 200 {object} dto.LastPurchasePriceMap
+// @Failure 500 {object} map[string]string
+// @Security BearerAuth
+// @Router /inventories/last-purchase-prices [get]
+func (h *InventoryHandler) GetLastPurchasePrices(c echo.Context) error {
+	prices, err := h.inventoryService.GetLastPurchasePrices(c.Request().Context())
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to get last purchase prices"})
+	}
+
+	return c.JSON(http.StatusOK, prices)
 }

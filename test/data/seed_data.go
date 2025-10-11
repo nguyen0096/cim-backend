@@ -316,12 +316,17 @@ func InventoryItems(inventoryIDs, productIDs, supplierIDs []uint) []models.Inven
 }
 
 // PurchaseOrders contains all test purchase order data
-func PurchaseOrders(productIDs []uint, supplierIDs []uint) []models.PurchaseOrder {
+func PurchaseOrders(productIDs []uint, supplierIDs []uint, inventoryIDs []uint) []models.PurchaseOrder {
 	now := time.Now()
 
 	// If no supplierIDs provided, use default supplier ID 1 for all
 	if len(supplierIDs) == 0 {
 		supplierIDs = []uint{1, 2, 3}
+	}
+
+	// If no inventoryIDs provided, use default inventory ID 1 for all
+	if len(inventoryIDs) == 0 {
+		inventoryIDs = []uint{1, 2, 3}
 	}
 
 	return []models.PurchaseOrder{
@@ -331,6 +336,7 @@ func PurchaseOrders(productIDs []uint, supplierIDs []uint) []models.PurchaseOrde
 				UpdatedAt: now.AddDate(0, 0, -30),
 			},
 			OrderNumber: "PO-2024-001",
+			InventoryID: &inventoryIDs[0], // Main Warehouse A
 			Status:      models.PurchaseOrderStatusCompleted,
 			Notes:       "Q1 electronics restock order",
 			Items: []*models.PurchaseOrderItem{
@@ -366,6 +372,7 @@ func PurchaseOrders(productIDs []uint, supplierIDs []uint) []models.PurchaseOrde
 				UpdatedAt: now.AddDate(0, 0, -5),
 			},
 			OrderNumber: "PO-2024-002",
+			InventoryID: &inventoryIDs[1], // Secondary Warehouse B
 			Status:      models.PurchaseOrderStatusPartiallyDelivered,
 			Notes:       "Office furniture and accessories order",
 			Items: []*models.PurchaseOrderItem{
@@ -379,7 +386,7 @@ func PurchaseOrders(productIDs []uint, supplierIDs []uint) []models.PurchaseOrde
 					UnitPrice:        1395.00,
 					Quantity:         3,
 					ReceivedQuantity: 2,
-					Status:           models.PurchaseOrderItemStatusDelivering,
+					Status:           models.PurchaseOrderItemStatusAwaitingDelivery,
 				},
 				{
 					Base: models.Base{
@@ -401,6 +408,7 @@ func PurchaseOrders(productIDs []uint, supplierIDs []uint) []models.PurchaseOrde
 				UpdatedAt: now.AddDate(0, 0, -7),
 			},
 			OrderNumber: "PO-2024-003",
+			InventoryID: &inventoryIDs[2], // Distribution Center C
 			Status:      models.PurchaseOrderStatusOrderPlaced,
 			Notes:       "Peripheral devices for new office setup",
 			Items: []*models.PurchaseOrderItem{
@@ -414,7 +422,7 @@ func PurchaseOrders(productIDs []uint, supplierIDs []uint) []models.PurchaseOrde
 					UnitPrice:        89.99,
 					Quantity:         20,
 					ReceivedQuantity: 0,
-					Status:           models.PurchaseOrderItemStatusDelivering,
+					Status:           models.PurchaseOrderItemStatusAwaitingDelivery,
 				},
 				{
 					Base: models.Base{
@@ -426,7 +434,7 @@ func PurchaseOrders(productIDs []uint, supplierIDs []uint) []models.PurchaseOrde
 					UnitPrice:        99.99,
 					Quantity:         15,
 					ReceivedQuantity: 0,
-					Status:           models.PurchaseOrderItemStatusDelivering,
+					Status:           models.PurchaseOrderItemStatusAwaitingDelivery,
 				},
 				{
 					Base: models.Base{
@@ -438,7 +446,7 @@ func PurchaseOrders(productIDs []uint, supplierIDs []uint) []models.PurchaseOrde
 					UnitPrice:        399.99,
 					Quantity:         8,
 					ReceivedQuantity: 0,
-					Status:           models.PurchaseOrderItemStatusDelivering,
+					Status:           models.PurchaseOrderItemStatusAwaitingDelivery,
 				},
 			},
 		},
@@ -448,6 +456,7 @@ func PurchaseOrders(productIDs []uint, supplierIDs []uint) []models.PurchaseOrde
 				UpdatedAt: now.AddDate(0, 0, -1),
 			},
 			OrderNumber: "PO-2024-004",
+			InventoryID: &inventoryIDs[0], // Main Warehouse A
 			Status:      models.PurchaseOrderStatusFullyDelivered,
 			Notes:       "Tech accessories for conference rooms",
 			Items: []*models.PurchaseOrderItem{
@@ -483,6 +492,7 @@ func PurchaseOrders(productIDs []uint, supplierIDs []uint) []models.PurchaseOrde
 				UpdatedAt: now.AddDate(0, 0, -1),
 			},
 			OrderNumber: "PO-2024-005",
+			InventoryID: &inventoryIDs[1], // Secondary Warehouse B
 			Status:      models.PurchaseOrderStatusCancelled,
 			Notes:       "Cancelled due to budget constraints",
 			Items: []*models.PurchaseOrderItem{
@@ -496,7 +506,7 @@ func PurchaseOrders(productIDs []uint, supplierIDs []uint) []models.PurchaseOrde
 					UnitPrice:        1099.99,
 					Quantity:         2,
 					ReceivedQuantity: 0,
-					Status:           models.PurchaseOrderItemStatusDelivering,
+					Status:           models.PurchaseOrderItemStatusAwaitingDelivery,
 				},
 			},
 		},
@@ -506,6 +516,7 @@ func PurchaseOrders(productIDs []uint, supplierIDs []uint) []models.PurchaseOrde
 				UpdatedAt: now,
 			},
 			OrderNumber: "PO-2024-006",
+			InventoryID: &inventoryIDs[2], // Distribution Center C
 			Status:      models.PurchaseOrderStatusOrderPlaced,
 			Notes:       "Emergency restock for high-demand items",
 			Items: []*models.PurchaseOrderItem{
@@ -519,7 +530,7 @@ func PurchaseOrders(productIDs []uint, supplierIDs []uint) []models.PurchaseOrde
 					UnitPrice:        2999.99,
 					Quantity:         2,
 					ReceivedQuantity: 0,
-					Status:           models.PurchaseOrderItemStatusDelivering,
+					Status:           models.PurchaseOrderItemStatusAwaitingDelivery,
 				},
 				{
 					Base: models.Base{
@@ -531,7 +542,7 @@ func PurchaseOrders(productIDs []uint, supplierIDs []uint) []models.PurchaseOrde
 					UnitPrice:        599.99,
 					Quantity:         5,
 					ReceivedQuantity: 0,
-					Status:           models.PurchaseOrderItemStatusDelivering,
+					Status:           models.PurchaseOrderItemStatusAwaitingDelivery,
 				},
 			},
 		},
@@ -580,7 +591,7 @@ func InventoryTransactions(inventoryItemIDs []uint) []models.InventoryTransactio
 		// Purchase transactions for inventory item 2 (LG Monitor)
 		{
 			Base: models.Base{
-				ID:        5,
+				ID:        4,
 				CreatedAt: now.AddDate(0, 0, -25), // 25 days ago
 				UpdatedAt: now.AddDate(0, 0, -25),
 			},
@@ -591,7 +602,7 @@ func InventoryTransactions(inventoryItemIDs []uint) []models.InventoryTransactio
 		},
 		{
 			Base: models.Base{
-				ID:        6,
+				ID:        5,
 				CreatedAt: now.AddDate(0, 0, -15), // 15 days ago
 				UpdatedAt: now.AddDate(0, 0, -15),
 			},
@@ -604,7 +615,7 @@ func InventoryTransactions(inventoryItemIDs []uint) []models.InventoryTransactio
 		// Purchase transactions for inventory item 3 (Keychron Keyboard) - with consuming_transaction_id = 0 (all transactions are active)
 		{
 			Base: models.Base{
-				ID:        7,
+				ID:        6,
 				CreatedAt: now.AddDate(0, 0, -40), // 40 days ago
 				UpdatedAt: now.AddDate(0, 0, -40),
 			},
@@ -615,7 +626,7 @@ func InventoryTransactions(inventoryItemIDs []uint) []models.InventoryTransactio
 		},
 		{
 			Base: models.Base{
-				ID:        8,
+				ID:        7,
 				CreatedAt: now.AddDate(0, 0, -30), // 30 days ago
 				UpdatedAt: now.AddDate(0, 0, -30),
 			},
@@ -626,7 +637,7 @@ func InventoryTransactions(inventoryItemIDs []uint) []models.InventoryTransactio
 		},
 		{
 			Base: models.Base{
-				ID:        9,
+				ID:        8,
 				CreatedAt: now.AddDate(0, 0, -20), // 20 days ago
 				UpdatedAt: now.AddDate(0, 0, -20),
 			},
@@ -639,7 +650,7 @@ func InventoryTransactions(inventoryItemIDs []uint) []models.InventoryTransactio
 		// Purchase transactions for inventory item 4 (Logitech Mouse) - with specific consuming_transaction_id
 		{
 			Base: models.Base{
-				ID:        10,
+				ID:        9,
 				CreatedAt: now.AddDate(0, 0, -35), // 35 days ago
 				UpdatedAt: now.AddDate(0, 0, -35),
 			},
@@ -650,7 +661,7 @@ func InventoryTransactions(inventoryItemIDs []uint) []models.InventoryTransactio
 		},
 		{
 			Base: models.Base{
-				ID:        11,
+				ID:        10,
 				CreatedAt: now.AddDate(0, 0, -25), // 25 days ago
 				UpdatedAt: now.AddDate(0, 0, -25),
 			},
@@ -661,7 +672,7 @@ func InventoryTransactions(inventoryItemIDs []uint) []models.InventoryTransactio
 		},
 		{
 			Base: models.Base{
-				ID:        12,
+				ID:        11,
 				CreatedAt: now.AddDate(0, 0, -15), // 15 days ago
 				UpdatedAt: now.AddDate(0, 0, -15),
 			},
@@ -674,7 +685,7 @@ func InventoryTransactions(inventoryItemIDs []uint) []models.InventoryTransactio
 		// Purchase transactions for inventory item 5 (Herman Miller Chair) - zero quantity (inactive)
 		{
 			Base: models.Base{
-				ID:        13,
+				ID:        12,
 				CreatedAt: now.AddDate(0, 0, -20), // 20 days ago
 				UpdatedAt: now.AddDate(0, 0, -20),
 			},

@@ -13,6 +13,8 @@ const (
 	InventoryItemStatusInactive InventoryItemStatus = "inactive"
 )
 
+// @todo: add unique key: inventory_id + product_id + supplier_id + deleted_at
+
 // InventoryItem represents an item in an inventory
 type InventoryItem struct {
 	Base

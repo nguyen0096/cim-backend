@@ -4,10 +4,12 @@ import (
 	"context"
 	"fmt"
 	"import-export-backend/internal/models"
+	"import-export-backend/internal/services/dto"
 	"import-export-backend/pkg"
 	"time"
 
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 //go:generate mockery --name=PurchaseOrderRepository --structname=PurchaseOrderRepository --output=../mocks/repositorymocks --outpkg=repositorymocks
@@ -22,7 +24,7 @@ type PurchaseOrderRepository interface {
 
 	// v1
 	GetByID(id uint) (*models.PurchaseOrder, error)
-	PersistDeliveryUpdate(ctx context.Context, po *models.PurchaseOrder, transactions []*models.InventoryTransaction) error
+	PersistDeliveryUpdate(ctx context.Context, req dto.UpdatePurchaseOrderDeliveryStatusRequest) error
 }
 
 type purchaseOrderRepository struct {
@@ -157,17 +159,134 @@ func (r *purchaseOrderRepository) AnyDeliveringItem(ctx context.Context, purchas
 	return err == nil
 }
 
-func (r *purchaseOrderRepository) PersistDeliveryUpdate(ctx context.Context, po *models.PurchaseOrder, transactions []*models.InventoryTransaction) error {
+// PersistDeliveryUpdate updates purchase order delivery status, creating inventory items and transactions
+func (r *purchaseOrderRepository) PersistDeliveryUpdate(ctx context.Context, req dto.UpdatePurchaseOrderDeliveryStatusRequest) error {
 	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		if err := tx.Model(&po).Update("status", po.Status).Error; err != nil {
+		var po *models.PurchaseOrder
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
+			Where("id = ?", req.PurchaseOrderID).
+			Where("status NOT IN ?", []any{models.PurchaseOrderStatusCancelled}).
+			Find(&po).Error; err != nil {
+			return pkg.NewAppError(pkg.ErrorCodeNotFound,
+				fmt.Sprintf("purchase order ID %d not found", req.PurchaseOrderID), nil)
+		}
+
+		type POIData struct {
+			*models.PurchaseOrderItem
+			InventoryItemID *uint
+		}
+
+		var poiData []POIData
+		err := tx.Table("purchase_order_items poi").
+			Select(`
+				poi.*,
+				ii.id as inventory_item_id
+			`).
+			Joins(`LEFT JOIN inventory_items ii ON
+					poi.product_id = ii.product_id
+					AND poi.supplier_id = ii.supplier_id
+					AND ii.status = ?
+			`, models.InventoryStatusActive).
+			Where("poi.purchase_order_id = ?", req.PurchaseOrderID).
+			Scan(&poiData).Error
+		if err != nil {
+			return fmt.Errorf("failed to query purchase order items with inventory items: %w", err)
+		}
+
+		if len(poiData) == 0 {
+			return pkg.NewAppError(pkg.ErrorCodeNotFound, "no purchase order items found", nil)
+		}
+
+		poItemMap := make(map[uint]*POIData)
+		for i := range poiData {
+			poItemMap[poiData[i].ID] = &poiData[i]
+		}
+
+		// Step 3: Process dto items and build transactions and new inventory items
+		var transactions []*models.InventoryTransaction
+		var newInventoryItems []*models.InventoryItem
+
+		for _, dtoItem := range req.Items {
+			// Find corresponding purchase order item data
+			poItem, exists := poItemMap[dtoItem.ID]
+			if !exists {
+				return pkg.NewAppError(pkg.ErrorCodeNotFound, fmt.Sprintf("purchase order item with ID %d not found", dtoItem.ID), nil)
+			}
+
+			// Validate received quantity doesn't exceed remaining quantity
+			remainingQuantity := poItem.Quantity - poItem.ReceivedQuantity
+			if dtoItem.ReceivedQuantity > remainingQuantity {
+				return pkg.NewAppError(pkg.ErrorCodeValidation,
+					fmt.Sprintf("received quantity %d exceeds remaining quantity %d for item ID %d",
+						dtoItem.ReceivedQuantity, remainingQuantity, dtoItem.ID), nil)
+			}
+
+			poItem.ReceivedQuantity += dtoItem.ReceivedQuantity
+			poItem.PurchaseOrderItem.UpdateStatus()
+
+			transaction := &models.InventoryTransaction{
+				TransactionType:     models.InventoryTransactionTypePurchase,
+				Price:               poItem.UnitPrice,
+				Quantity:            dtoItem.ReceivedQuantity,
+				PurchaseOrderItemID: poItem.PurchaseOrderID,
+			}
+
+			if poItem.InventoryItemID != nil {
+				// Use existing inventory item
+				transaction.InventoryItemID = *poItem.InventoryItemID
+			} else {
+				transaction.InventoryItem = &models.InventoryItem{
+					InventoryID: *po.InventoryID,
+					ProductID:   *poItem.ProductID,
+					SupplierID:  *poItem.SupplierID,
+					UnitType:    "",
+					Quantity:    dtoItem.ReceivedQuantity,
+					Status:      models.InventoryItemStatusActive,
+				}
+				newInventoryItems = append(newInventoryItems, transaction.InventoryItem)
+			}
+
+			transactions = append(transactions, transaction)
+		}
+
+		// convert poiData to slice of PurchaseOrderItem model and set to
+		// PurchaseOrder field for updating status.
+		poItems := make([]*models.PurchaseOrderItem, 0, len(poiData))
+		for _, data := range poiData {
+			poItems = append(poItems, data.PurchaseOrderItem)
+		}
+		po.Items = poItems
+		err = po.UpdateStatus()
+		if err != nil {
+			return fmt.Errorf("failed to calculate purchase order status: %w", err)
+		}
+
+		// Persist data
+		if len(newInventoryItems) > 0 {
+			if err := tx.Create(newInventoryItems).Error; err != nil {
+				return fmt.Errorf("failed to create new inventory items: %w", err)
+			}
+			for _, txn := range transactions {
+				if txn.InventoryItem != nil && txn.InventoryItem.ID != 0 {
+					txn.InventoryItemID = txn.InventoryItem.ID
+				}
+			}
+		}
+
+		if err := tx.Save(transactions).Error; err != nil {
+			return fmt.Errorf("failed to save transaction: %w", err)
+		}
+
+		if err := tx.Save(poItems).Error; err != nil {
+			return fmt.Errorf("failed to save purchase order items: %w", err)
+		}
+
+		err = tx.Model(&models.PurchaseOrder{}).
+			Where("id = ?", po.ID).Update("status", po.Status).Error
+		if err != nil {
 			return fmt.Errorf("failed to update purchase order status: %w", err)
 		}
-		if err := tx.Create(transactions).Error; err != nil {
-			return fmt.Errorf("failed to create inventory transactions: %w", err)
-		}
-		if err := tx.Save(po.Items).Error; err != nil {
-			return fmt.Errorf("failed to update purchase order items: %w", err)
-		}
+
 		return nil
 	})
 }

@@ -22,6 +22,7 @@ type InventoryService interface {
 	// v1
 	ReconcileInventory(ctx context.Context, req dto.ConfirmInventoryRequest) error
 	DisposeItems(ctx context.Context, req dto.DisposeItemsRequest) ([]*models.InventoryItem, error)
+	GetLastPurchasePrices(ctx context.Context) (dto.LastPurchasePriceMap, error)
 }
 
 type inventoryService struct {
@@ -215,4 +216,23 @@ func (s *inventoryService) ReconcileInventory(ctx context.Context, req dto.Confi
 		return fmt.Errorf("failed to create sell transactions and update inventory items: %w", err)
 	}
 	return nil
+}
+
+// GetLastPurchasePrices retrieves the last purchase transaction price for each product_id + supplier_id combination
+func (s *inventoryService) GetLastPurchasePrices(ctx context.Context) (dto.LastPurchasePriceMap, error) {
+	prices, err := s.inventoryRepo.GetLastPurchasePrices(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get last purchase prices: %w", err)
+	}
+
+	// Transform array into nested map: product_id -> supplier_id -> last_price
+	priceMap := make(dto.LastPurchasePriceMap)
+	for _, price := range prices {
+		if priceMap[price.ProductID] == nil {
+			priceMap[price.ProductID] = make(map[uint]float64)
+		}
+		priceMap[price.ProductID][price.SupplierID] = price.LastPrice
+	}
+
+	return priceMap, nil
 }

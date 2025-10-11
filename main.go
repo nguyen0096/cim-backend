@@ -161,11 +161,12 @@ func main() {
 	inventories := api.Group("/inventories")
 	inventories.GET("", inventoryHandler.ListInventory)
 	inventories.POST("", inventoryHandler.CreateInventory)
+	inventories.GET("/last-purchase-prices", inventoryHandler.GetLastPurchasePrices)
 	inventories.GET("/:id", inventoryHandler.GetInventory)
 	inventories.PUT("/:id", inventoryHandler.UpdateInventory)
 	inventories.DELETE("/:id", inventoryHandler.DeleteInventory)
 	inventories.PUT("/:id/dispose", inventoryHandler.DisposeInventoryItems)
-	inventories.PUT("/:id/confirm", inventoryHandler.DisposeInventoryItems)
+	inventories.PUT("/:id/reconcile", inventoryHandler.ReconcileInventory)
 
 	// Nested inventory items routes
 	inventories.GET("/:id/inventory-items", inventoryItemHandler.GetInventoryItemsByInventoryID)

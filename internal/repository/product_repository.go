@@ -14,12 +14,14 @@ type ProductRepository interface {
 	UpdateStatus(ctx context.Context, id uint, status string) error
 	Delete(ctx context.Context, id uint) error
 	Restore(ctx context.Context, id uint) error
-	List(ctx context.Context, limit, offset int, sortBy, sortOrder, status string) ([]models.Product, error)
 	GetBySupplier(ctx context.Context, supplierID uint) ([]models.Product, error)
 	Search(ctx context.Context, query string, sortBy, sortOrder string) ([]models.Product, error)
 	SearchWithPagination(ctx context.Context, query string, limit, offset int, sortBy, sortOrder, status string) ([]models.Product, error)
 	Count(ctx context.Context, status string) (int64, error)
 	CountSearch(ctx context.Context, query string, status string) (int64, error)
+
+	// v1
+	List(ctx context.Context, limit, offset int, sortBy, sortOrder, status string) ([]models.Product, error)
 }
 
 type productRepository struct {
@@ -62,7 +64,9 @@ func (r *productRepository) Restore(ctx context.Context, id uint) error {
 
 func (r *productRepository) List(ctx context.Context, limit, offset int, sortBy, sortOrder, status string) ([]models.Product, error) {
 	var products []models.Product
-	query := r.db.WithContext(ctx).Preload("Suppliers").Preload("InventoryItems")
+	query := r.db.WithContext(ctx).
+		Preload("Suppliers").
+		Preload("InventoryItems")
 
 	// Apply status filter
 	if status != "" {

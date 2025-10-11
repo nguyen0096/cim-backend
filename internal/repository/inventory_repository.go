@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"import-export-backend/internal/models"
+	"import-export-backend/internal/services/dto"
 
 	"gorm.io/gorm"
 )
@@ -19,6 +20,7 @@ type InventoryRepository interface {
 	// v1
 	GetByID(ctx context.Context, id uint) (*models.Inventory, error)
 	GetTransactionsByInventoryItemIDs(ctx context.Context, inventoryItemIDs []uint) ([]models.InventoryTransaction, error)
+	GetLastPurchasePrices(ctx context.Context) ([]*dto.LastPurchasePriceResponse, error)
 }
 
 type inventoryRepository struct {
@@ -93,4 +95,40 @@ func (r *inventoryRepository) GetTransactionsByInventoryItemIDs(ctx context.Cont
 	var transactions []models.InventoryTransaction
 	err := r.db.WithContext(ctx).Where("inventory_item_id IN ?", inventoryItemIDs).Find(&transactions).Error
 	return transactions, err
+}
+
+// GetLastPurchasePrices retrieves the last purchase transaction price for each product_id + supplier_id combination
+func (r *inventoryRepository) GetLastPurchasePrices(ctx context.Context) ([]*dto.LastPurchasePriceResponse, error) {
+	var results []*dto.LastPurchasePriceResponse
+
+	err := r.db.WithContext(ctx).
+		Table("inventory_transactions AS it").
+		Select(`
+			ii.product_id,
+			ii.supplier_id,
+			it.price AS last_price,
+			it.created_at AS last_purchase_date
+		`).
+		Joins("INNER JOIN inventory_items AS ii ON it.inventory_item_id = ii.id").
+		Joins("INNER JOIN products AS p ON ii.product_id = p.id").
+		Joins("INNER JOIN suppliers AS s ON ii.supplier_id = s.id").
+		Joins(`INNER JOIN (
+			SELECT ii2.product_id, ii2.supplier_id, MAX(it2.created_at) AS max_created_at
+			FROM inventory_transactions AS it2
+			INNER JOIN inventory_items AS ii2 ON it2.inventory_item_id = ii2.id
+			WHERE it2.transaction_type = ?
+			GROUP BY ii2.product_id, ii2.supplier_id
+		) AS latest ON ii.product_id = latest.product_id 
+			AND ii.supplier_id = latest.supplier_id 
+			AND it.created_at = latest.max_created_at`, models.InventoryTransactionTypePurchase).
+		Where("it.transaction_type = ?", models.InventoryTransactionTypePurchase).
+		Where("p.status = ?", "active").
+		Where("s.status = ?", "active").
+		Scan(&results).Error
+
+	if err != nil {
+		return nil, fmt.Errorf("failed to get last purchase prices: %w", err)
+	}
+
+	return results, nil
 }

@@ -13,12 +13,14 @@ type ProductService interface {
 	UpdateProductStatus(ctx context.Context, id uint, status string) error
 	DeleteProduct(ctx context.Context, id uint) error
 	RestoreProduct(ctx context.Context, id uint) error
-	ListProducts(ctx context.Context, limit, offset int, sortBy, sortOrder, status string) ([]models.Product, error)
 	GetProductsBySupplier(ctx context.Context, supplierID uint) ([]models.Product, error)
 	SearchProducts(ctx context.Context, query string, sortBy, sortOrder string) ([]models.Product, error)
 	SearchProductsWithPagination(ctx context.Context, query string, limit, offset int, sortBy, sortOrder, status string) ([]models.Product, error)
 	CountProducts(ctx context.Context, status string) (int64, error)
 	CountSearchProducts(ctx context.Context, query string, status string) (int64, error)
+
+	// v1
+	ListProducts(ctx context.Context, limit, offset int, sortBy, sortOrder, status string) ([]models.Product, error)
 }
 
 type productService struct {

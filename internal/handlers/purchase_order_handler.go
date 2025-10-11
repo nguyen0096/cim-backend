@@ -281,7 +281,7 @@ func (h *PurchaseOrderHandler) UpdatePurchaseOrderDeliveryStatus(c echo.Context)
 
 	err := h.purchaseOrderService.UpdatePurchaseOrderDeliveryStatus(c.Request().Context(), req)
 	if err != nil {
-		return pkg.ErrInternal("Failed to update purchase order item status", err)
+		return fmt.Errorf("failed to update purchase order delivery status: %w", err)
 	}
 
 	return c.JSON(http.StatusNoContent, nil)
