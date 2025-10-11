@@ -379,7 +379,7 @@ func PurchaseOrders(productIDs []uint, supplierIDs []uint) []models.PurchaseOrde
 					UnitPrice:        1395.00,
 					Quantity:         3,
 					ReceivedQuantity: 2,
-					Status:           models.PurchaseOrderItemStatusAwaitingDelivery,
+					Status:           models.PurchaseOrderItemStatusDelivering,
 				},
 				{
 					Base: models.Base{
@@ -414,7 +414,7 @@ func PurchaseOrders(productIDs []uint, supplierIDs []uint) []models.PurchaseOrde
 					UnitPrice:        89.99,
 					Quantity:         20,
 					ReceivedQuantity: 0,
-					Status:           models.PurchaseOrderItemStatusAwaitingDelivery,
+					Status:           models.PurchaseOrderItemStatusDelivering,
 				},
 				{
 					Base: models.Base{
@@ -426,7 +426,7 @@ func PurchaseOrders(productIDs []uint, supplierIDs []uint) []models.PurchaseOrde
 					UnitPrice:        99.99,
 					Quantity:         15,
 					ReceivedQuantity: 0,
-					Status:           models.PurchaseOrderItemStatusAwaitingDelivery,
+					Status:           models.PurchaseOrderItemStatusDelivering,
 				},
 				{
 					Base: models.Base{
@@ -438,7 +438,7 @@ func PurchaseOrders(productIDs []uint, supplierIDs []uint) []models.PurchaseOrde
 					UnitPrice:        399.99,
 					Quantity:         8,
 					ReceivedQuantity: 0,
-					Status:           models.PurchaseOrderItemStatusAwaitingDelivery,
+					Status:           models.PurchaseOrderItemStatusDelivering,
 				},
 			},
 		},
@@ -496,7 +496,7 @@ func PurchaseOrders(productIDs []uint, supplierIDs []uint) []models.PurchaseOrde
 					UnitPrice:        1099.99,
 					Quantity:         2,
 					ReceivedQuantity: 0,
-					Status:           models.PurchaseOrderItemStatusAwaitingDelivery,
+					Status:           models.PurchaseOrderItemStatusDelivering,
 				},
 			},
 		},
@@ -519,7 +519,7 @@ func PurchaseOrders(productIDs []uint, supplierIDs []uint) []models.PurchaseOrde
 					UnitPrice:        2999.99,
 					Quantity:         2,
 					ReceivedQuantity: 0,
-					Status:           models.PurchaseOrderItemStatusAwaitingDelivery,
+					Status:           models.PurchaseOrderItemStatusDelivering,
 				},
 				{
 					Base: models.Base{
@@ -531,7 +531,7 @@ func PurchaseOrders(productIDs []uint, supplierIDs []uint) []models.PurchaseOrde
 					UnitPrice:        599.99,
 					Quantity:         5,
 					ReceivedQuantity: 0,
-					Status:           models.PurchaseOrderItemStatusAwaitingDelivery,
+					Status:           models.PurchaseOrderItemStatusDelivering,
 				},
 			},
 		},
