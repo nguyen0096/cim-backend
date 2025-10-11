@@ -240,7 +240,7 @@ func InventoryItems(inventoryIDs, productIDs, supplierIDs []uint) []models.Inven
 	// Create inventory items with quantities that match transaction sums
 	// Item 1: 3 purchase transactions (5+3+2=10 total) - 1 disposal (1) = 9 quantity
 	// Item 2: 2 purchase transactions (10+5=15 total) = 15 quantity
-	// Item 3: 3 purchase transactions (20+15+10=45 total) = 45 quantity (NULL latest_active_purchase_transaction_id)
+	// Item 3: 3 purchase transactions (20+15+10=45 total) = 45 quantity (consuming_transaction_id = 0 means all transactions are active)
 	// Item 4: 3 purchase transactions (10+8+7=25 total) = 25 quantity
 	// Item 5: 1 purchase transaction (3 total) = 3 quantity (inactive - will be set to 0)
 
@@ -281,7 +281,7 @@ func InventoryItems(inventoryIDs, productIDs, supplierIDs []uint) []models.Inven
 			ProductID:   productIDs[2],   // Keychron Keyboard
 			SupplierID:  supplierIDs[0],
 			UnitType:    "piece",
-			Quantity:    45, // 20+15+10 = 45 (NULL latest_active_purchase_transaction_id)
+			Quantity:    45, // 20+15+10 = 45 (consuming_transaction_id = 0 means all transactions are active)
 			Status:      models.InventoryItemStatusActive,
 		},
 		{
@@ -601,7 +601,7 @@ func InventoryTransactions(inventoryItemIDs []uint) []models.InventoryTransactio
 			Quantity:        5,
 		},
 
-		// Purchase transactions for inventory item 3 (Keychron Keyboard) - with NULL latest_active_purchase_transaction_id
+		// Purchase transactions for inventory item 3 (Keychron Keyboard) - with consuming_transaction_id = 0 (all transactions are active)
 		{
 			Base: models.Base{
 				ID:        7,
@@ -636,7 +636,7 @@ func InventoryTransactions(inventoryItemIDs []uint) []models.InventoryTransactio
 			Quantity:        10,
 		},
 
-		// Purchase transactions for inventory item 4 (Logitech Mouse) - with specific latest_active_purchase_transaction_id
+		// Purchase transactions for inventory item 4 (Logitech Mouse) - with specific consuming_transaction_id
 		{
 			Base: models.Base{
 				ID:        10,

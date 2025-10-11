@@ -133,6 +133,7 @@ func (s *inventoryService) ReconcileInventory(ctx context.Context, req dto.Confi
 		itemIDs[i] = item.InventoryItemID
 	}
 
+	// Step 1: Query data and validate
 	activeItems, err := s.inventoryItemRepo.GetActiveItemsByInventoryIDs(ctx, itemIDs)
 	if err != nil {
 		return fmt.Errorf("failed to get active inventory items: %w", err)
@@ -149,8 +150,8 @@ func (s *inventoryService) ReconcileInventory(ctx context.Context, req dto.Confi
 		}
 	}
 
-	// Step 2: Create sell transactions for each inventory item based on user-provided quantities
-	// Build a map for easy lookup of requested quantities
+	// Step 2: Create sell transactions for each inventory item
+	// based on user-provided quantities
 	actualQuantities := make(map[uint]int)
 	for _, reqItem := range req.Items {
 		actualQuantities[reqItem.InventoryItemID] = reqItem.Quantity
@@ -173,15 +174,25 @@ func (s *inventoryService) ReconcileInventory(ctx context.Context, req dto.Confi
 					actualQty, item.Quantity, item.ID), nil)
 		}
 
-		totalToBeConsumed := item.Quantity - actualQty
-		for _, txn := range item.ActivePurchaseTransactions {
-			if totalToBeConsumed <= 0 {
-				break
-			}
+		totalToConsume := item.Quantity - actualQty
+		txnCount := len(item.ActivePurchaseTransactions)
+		currentConsumingIdx := 0
+		for totalToConsume > 0 && currentConsumingIdx < txnCount {
+			txn := item.ActivePurchaseTransactions[currentConsumingIdx]
 
 			txnUnconsumedQty := txn.Quantity - txn.ConsumedQuantity
-			sellQty := min(totalToBeConsumed, txnUnconsumedQty)
+			if txnUnconsumedQty == 0 {
+				if currentConsumingIdx == txnCount-1 {
+					// no txn left to consume
+					break
+				}
 
+				// move to next transaction for consuming if there's still txn
+				currentConsumingIdx++
+				continue
+			}
+
+			sellQty := min(totalToConsume, txnUnconsumedQty)
 			if sellQty > 0 {
 				sellTransaction := &models.InventoryTransaction{
 					InventoryItemID:      item.ID,
@@ -194,10 +205,12 @@ func (s *inventoryService) ReconcileInventory(ctx context.Context, req dto.Confi
 				txn.ConsumedQuantity += sellQty
 			}
 		}
+
 		item.Quantity = actualQty
+		item.ConsumingTransactionID = item.ActivePurchaseTransactions[currentConsumingIdx].ID
 	}
 
-	// Save all sell transactions and update inventory items
+	// Step 3: Persist data
 	if err := s.inventoryItemRepo.PersistReconciliation(ctx, updatedItems, sellTransactions); err != nil {
 		return fmt.Errorf("failed to create sell transactions and update inventory items: %w", err)
 	}

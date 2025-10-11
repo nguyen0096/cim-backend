@@ -67,3 +67,4 @@ p, staff, users, view, allow
 g, demoAdminUid0000000000000000, admin
 g, demoAccountantUid00000000000, accountant
 g, demoStaffUid0000000000000000, staff
+g, demoMaintAdminUid00000000000, admin

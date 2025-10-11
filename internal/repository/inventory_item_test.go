@@ -78,23 +78,23 @@ func TestGetActiveItemsByInventoryIDs(t *testing.T) {
 		createdInventoryIDs = append(createdInventoryIDs, inventory.ID)
 	}
 
-	// Create inventory items with proper LatestActivePurchaseAt settings
+	// Create inventory items (ConsumingTransactionID will be set after transactions are created)
 	inventoryItems := []models.InventoryItem{
 		{
 			InventoryID: inventories[0].ID, ProductID: products[0].ID, SupplierID: suppliers[0].ID, UnitType: "piece", Quantity: 9, Status: models.InventoryItemStatusActive,
-			LatestActivePurchaseAt: now.AddDate(0, 0, -20), // Set to 20 days ago
+			// ConsumingTransactionID will be set to transaction 2's ID after creation
 		},
 		{
 			InventoryID: inventories[0].ID, ProductID: products[1].ID, SupplierID: suppliers[0].ID, UnitType: "piece", Quantity: 15, Status: models.InventoryItemStatusActive,
-			LatestActivePurchaseAt: now.AddDate(0, 0, -25), // Set to 25 days ago
+			// ConsumingTransactionID will be set to transaction 4's ID after creation
 		},
 		{
 			InventoryID: inventories[1].ID, ProductID: products[2].ID, SupplierID: suppliers[0].ID, UnitType: "piece", Quantity: 45, Status: models.InventoryItemStatusActive,
-			// LatestActivePurchaseAt is zero value (NULL) - should return all transactions
+			// ConsumingTransactionID is zero value (0) - should return all transactions
 		},
 		{
 			InventoryID: inventories[1].ID, ProductID: products[3].ID, SupplierID: suppliers[0].ID, UnitType: "piece", Quantity: 25, Status: models.InventoryItemStatusActive,
-			LatestActivePurchaseAt: now.AddDate(0, 0, -25), // Set to 25 days ago
+			// ConsumingTransactionID will be set to transaction 9's ID after creation
 		},
 		{
 			InventoryID: inventories[0].ID, ProductID: products[4].ID, SupplierID: suppliers[1].ID, UnitType: "piece", Quantity: 0, Status: models.InventoryItemStatusActive,
@@ -110,22 +110,31 @@ func TestGetActiveItemsByInventoryIDs(t *testing.T) {
 	// Create inventory transactions
 	transactions := []models.InventoryTransaction{
 		// Purchase transactions for inventory item 1 (MacBook Pro) - 3 transactions
+		// Transaction 0: Fully consumed (not included in active transactions)
 		{Base: models.Base{CreatedAt: now.AddDate(0, 0, -30), UpdatedAt: now.AddDate(0, 0, -30)}, InventoryItemID: inventoryItems[0].ID, TransactionType: models.InventoryTransactionTypePurchase, Price: 2999.99, Quantity: 5},
+		// Transaction 1: Currently being consumed (ConsumingTransactionID will point here)
 		{Base: models.Base{CreatedAt: now.AddDate(0, 0, -20), UpdatedAt: now.AddDate(0, 0, -20)}, InventoryItemID: inventoryItems[0].ID, TransactionType: models.InventoryTransactionTypePurchase, Price: 2999.99, Quantity: 3},
+		// Transaction 2: Not yet consumed
 		{Base: models.Base{CreatedAt: now.AddDate(0, 0, -10), UpdatedAt: now.AddDate(0, 0, -10)}, InventoryItemID: inventoryItems[0].ID, TransactionType: models.InventoryTransactionTypePurchase, Price: 2999.99, Quantity: 2},
 
 		// Purchase transactions for inventory item 2 (LG Monitor) - 2 transactions
+		// Transaction 3: Currently being consumed (ConsumingTransactionID will point here)
 		{Base: models.Base{CreatedAt: now.AddDate(0, 0, -25), UpdatedAt: now.AddDate(0, 0, -25)}, InventoryItemID: inventoryItems[1].ID, TransactionType: models.InventoryTransactionTypePurchase, Price: 599.99, Quantity: 10},
+		// Transaction 4: Not yet consumed
 		{Base: models.Base{CreatedAt: now.AddDate(0, 0, -15), UpdatedAt: now.AddDate(0, 0, -15)}, InventoryItemID: inventoryItems[1].ID, TransactionType: models.InventoryTransactionTypePurchase, Price: 599.99, Quantity: 5},
 
-		// Purchase transactions for inventory item 3 (Keychron Keyboard) - 3 transactions (NULL latest_active_purchase_at)
+		// Purchase transactions for inventory item 3 (Keychron Keyboard) - 3 transactions
+		// All transactions are active (ConsumingTransactionID = 0)
 		{Base: models.Base{CreatedAt: now.AddDate(0, 0, -40), UpdatedAt: now.AddDate(0, 0, -40)}, InventoryItemID: inventoryItems[2].ID, TransactionType: models.InventoryTransactionTypePurchase, Price: 89.99, Quantity: 20},
 		{Base: models.Base{CreatedAt: now.AddDate(0, 0, -30), UpdatedAt: now.AddDate(0, 0, -30)}, InventoryItemID: inventoryItems[2].ID, TransactionType: models.InventoryTransactionTypePurchase, Price: 89.99, Quantity: 15},
 		{Base: models.Base{CreatedAt: now.AddDate(0, 0, -20), UpdatedAt: now.AddDate(0, 0, -20)}, InventoryItemID: inventoryItems[2].ID, TransactionType: models.InventoryTransactionTypePurchase, Price: 89.99, Quantity: 10},
 
 		// Purchase transactions for inventory item 4 (Logitech Mouse) - 3 transactions
+		// Transaction 8: Fully consumed (not included in active transactions)
 		{Base: models.Base{CreatedAt: now.AddDate(0, 0, -35), UpdatedAt: now.AddDate(0, 0, -35)}, InventoryItemID: inventoryItems[3].ID, TransactionType: models.InventoryTransactionTypePurchase, Price: 99.99, Quantity: 10},
+		// Transaction 9: Currently being consumed (ConsumingTransactionID will point here)
 		{Base: models.Base{CreatedAt: now.AddDate(0, 0, -25), UpdatedAt: now.AddDate(0, 0, -25)}, InventoryItemID: inventoryItems[3].ID, TransactionType: models.InventoryTransactionTypePurchase, Price: 99.99, Quantity: 8},
+		// Transaction 10: Not yet consumed
 		{Base: models.Base{CreatedAt: now.AddDate(0, 0, -15), UpdatedAt: now.AddDate(0, 0, -15)}, InventoryItemID: inventoryItems[3].ID, TransactionType: models.InventoryTransactionTypePurchase, Price: 99.99, Quantity: 7},
 
 		// Purchase transaction for inventory item 5 (Herman Miller Chair) - 1 transaction (inactive)
@@ -133,6 +142,27 @@ func TestGetActiveItemsByInventoryIDs(t *testing.T) {
 	}
 	err = db.WithContext(ctx).Create(&transactions).Error
 	require.NoError(t, err, "Failed to create inventory transactions")
+
+	// Update inventory items with ConsumingTransactionID
+	// Item 0 (MacBook Pro): Set ConsumingTransactionID to transaction 1 (second transaction)
+	err = db.WithContext(ctx).Model(&models.InventoryItem{}).
+		Where("id = ?", inventoryItems[0].ID).
+		Update("consuming_transaction_id", transactions[1].ID).Error
+	require.NoError(t, err, "Failed to update inventory item 0 ConsumingTransactionID")
+
+	// Item 1 (LG Monitor): Set ConsumingTransactionID to transaction 3 (first transaction)
+	err = db.WithContext(ctx).Model(&models.InventoryItem{}).
+		Where("id = ?", inventoryItems[1].ID).
+		Update("consuming_transaction_id", transactions[3].ID).Error
+	require.NoError(t, err, "Failed to update inventory item 1 ConsumingTransactionID")
+
+	// Item 2 (Keychron Keyboard): ConsumingTransactionID remains 0 (all transactions are active)
+
+	// Item 3 (Logitech Mouse): Set ConsumingTransactionID to transaction 9 (second transaction)
+	err = db.WithContext(ctx).Model(&models.InventoryItem{}).
+		Where("id = ?", inventoryItems[3].ID).
+		Update("consuming_transaction_id", transactions[9].ID).Error
+	require.NoError(t, err, "Failed to update inventory item 3 ConsumingTransactionID")
 
 	// Setup cleanup to only delete data created by this test
 	t.Cleanup(func() {
@@ -214,10 +244,10 @@ func TestGetActiveItemsByInventoryIDs(t *testing.T) {
 		assert.Len(t, items, 0, "Should return empty result for empty inventory IDs list")
 	})
 
-	t.Run("should preload purchase transactions correctly for item with LatestActivePurchaseAt", func(t *testing.T) {
+	t.Run("should preload purchase transactions correctly for item with ConsumingTransactionID", func(t *testing.T) {
 		// Test with Main Warehouse A - MacBook Pro item
-		// MacBook Pro has LatestActivePurchaseAt set to 20 days ago (transaction 2's date)
-		// Should return transactions with CreatedAt >= 20 days ago (transactions 2 and 3)
+		// MacBook Pro has ConsumingTransactionID set to transaction 1's ID
+		// Should return transactions with ID >= transaction 1's ID (transactions 1 and 2)
 		items, err := repo.GetActiveItemsByInventoryIDs(ctx, []uint{inventories[0].ID})
 
 		require.NoError(t, err)
@@ -243,8 +273,8 @@ func TestGetActiveItemsByInventoryIDs(t *testing.T) {
 		}
 	})
 
-	t.Run("should preload all purchase transactions for item with NULL LatestActivePurchaseAt", func(t *testing.T) {
-		// Should return all purchase transactions
+	t.Run("should preload all purchase transactions for item with zero ConsumingTransactionID", func(t *testing.T) {
+		// Should return all purchase transactions when ConsumingTransactionID is 0
 
 		items, err := repo.GetActiveItemsByInventoryIDs(ctx, []uint{inventories[1].ID})
 

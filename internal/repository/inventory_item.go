@@ -159,14 +159,14 @@ func (r *inventoryItemRepository) GetActiveItemsByInventoryIDs(ctx context.Conte
 			itemIDs[i] = item.ID
 		}
 
-		// Fetch all purchase transactions for these items with the date condition using JOIN
+		// Fetch all purchase transactions for these items with the ID condition using JOIN
 		var transactions []*models.InventoryTransaction
 		err = tx.
 			Table("inventory_transactions").
 			Joins("JOIN inventory_items ON inventory_items.id = inventory_transactions.inventory_item_id").
 			Where("inventory_transactions.inventory_item_id IN ?", itemIDs).
 			Where("inventory_transactions.transaction_type = ?", models.InventoryTransactionTypePurchase).
-			Where("inventory_transactions.created_at >= COALESCE(inventory_items.latest_active_purchase_at, '-infinity'::timestamptz)").
+			Where("inventory_transactions.id >= COALESCE(inventory_items.consuming_transaction_id, 0)").
 			Order("inventory_transactions.created_at ASC"). // @todo: add Order test
 			Find(&transactions).Error
 		if err != nil {

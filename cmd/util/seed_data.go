@@ -114,30 +114,30 @@ func seedDatabase() error {
 		transactionIDs = append(transactionIDs, transaction.ID)
 	}
 
-	// 5.5. Update inventory items with LatestActivePurchaseTransactionID
+	// 5.5. Update inventory items with ConsumingTransactionID
 	// Using fixed IDs from test data:
 	// Transaction 2: MacBook Pro (20 days ago) - ID 2
 	// Transaction 5: LG Monitor (25 days ago) - ID 5
 	// Transaction 10: Logitech Mouse (35 days ago) - ID 10
-	// Keychron Keyboard keeps LatestActivePurchaseTransactionID as NULL
+	// Keychron Keyboard keeps ConsumingTransactionID as 0
 
-	// Update inventory items with LatestActivePurchaseTransactionID
+	// Update inventory items with ConsumingTransactionID
 	// Item 0 (MacBook Pro): set to transaction 2 (20 days ago) - ID 2
-	if err := tx.Model(&models.InventoryItem{}).Where("id = ?", inventoryItemIDs[0]).Update("latest_active_purchase_transaction_id", uint(2)).Error; err != nil {
+	if err := tx.Model(&models.InventoryItem{}).Where("id = ?", inventoryItemIDs[0]).Update("consuming_transaction_id", uint(2)).Error; err != nil {
 		tx.Rollback()
 		return fmt.Errorf("failed to update inventory item 0: %w", err)
 	}
 
 	// Item 1 (LG Monitor): set to transaction 5 (25 days ago) - ID 5
-	if err := tx.Model(&models.InventoryItem{}).Where("id = ?", inventoryItemIDs[1]).Update("latest_active_purchase_transaction_id", uint(5)).Error; err != nil {
+	if err := tx.Model(&models.InventoryItem{}).Where("id = ?", inventoryItemIDs[1]).Update("consuming_transaction_id", uint(5)).Error; err != nil {
 		tx.Rollback()
 		return fmt.Errorf("failed to update inventory item 1: %w", err)
 	}
 
-	// Item 2 (Keychron Keyboard): keep LatestActivePurchaseTransactionID as NULL
+	// Item 2 (Keychron Keyboard): keep ConsumingTransactionID as 0
 
 	// Item 3 (Logitech Mouse): set to transaction 10 (35 days ago) - ID 10
-	if err := tx.Model(&models.InventoryItem{}).Where("id = ?", inventoryItemIDs[3]).Update("latest_active_purchase_transaction_id", uint(10)).Error; err != nil {
+	if err := tx.Model(&models.InventoryItem{}).Where("id = ?", inventoryItemIDs[3]).Update("consuming_transaction_id", uint(10)).Error; err != nil {
 		tx.Rollback()
 		return fmt.Errorf("failed to update inventory item 3: %w", err)
 	}
