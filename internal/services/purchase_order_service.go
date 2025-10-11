@@ -23,12 +23,11 @@ type PurchaseOrderService interface {
 	DeletePurchaseOrder(id uint) error
 	ListPurchaseOrders(ctx context.Context, params models.ListParams) (*models.PaginationResult[models.PurchaseOrder], error)
 	GetPurchaseOrdersByStatus(status string) ([]models.PurchaseOrder, error)
-	UpdatePurchaseOrderStatus(ctx context.Context, id uint, status string) error
 	ReceivePurchaseOrder(ctx context.Context, id uint) error
 	UpdatePurchaseOrderItemStatus(ctx context.Context, purchaseOrderID, itemID uint, status models.PurchaseOrderItemStatus) (*dto.UpdatePurchaseOrderItemStatusResponse, error)
 
 	// V1
-	UpdatePurchaseOrderDeliveryStatus(ctx context.Context, req dto.UpdatePurchaseOrderDeliveryStatusRequest) error
+	ReceiveInventory(ctx context.Context, req dto.UpdatePurchaseOrderDeliveryStatusRequest) error
 }
 
 type purchaseOrderService struct {
@@ -276,56 +275,6 @@ func (s *purchaseOrderService) GetPurchaseOrdersByStatus(status string) ([]model
 	}).Info("Successfully retrieved purchase orders by status")
 
 	return purchaseOrders, nil
-}
-
-// UpdatePurchaseOrderStatus updates the status of a purchase order
-func (s *purchaseOrderService) UpdatePurchaseOrderStatus(ctx context.Context, id uint, status string) error {
-	s.logger.WithFields(logrus.Fields{
-		"operation":         "UpdatePurchaseOrderStatus",
-		"purchase_order_id": id,
-		"new_status":        status,
-	}).Info("Updating purchase order status")
-
-	purchaseOrder, err := s.purchaseOrderRepo.GetByID(id)
-	if err != nil {
-		s.logger.WithFields(logrus.Fields{
-			"operation":         "UpdatePurchaseOrderStatus",
-			"purchase_order_id": id,
-			"error":             err,
-		}).Error("Failed to get purchase order for status update")
-		return fmt.Errorf("failed to get purchase order: %w", err)
-	}
-
-	// If setting status to delivered, check if all other items are also delivered
-	if (status == string(models.PurchaseOrderStatusFullyDelivered) || status == string(models.PurchaseOrderStatusCompleted)) && s.purchaseOrderRepo.AnyDeliveringItem(ctx, id) {
-		return fmt.Errorf("cannot set item status to %s: not all items in the purchase order are delivered", status)
-	}
-
-	if status == string(models.PurchaseOrderStatusCompleted) && !s.purchaseOrderRepo.AnyDeliveringItem(ctx, id) {
-		// Start goroutine to handle revenue expense excel file operations
-		go s.handleRevenueExpenseAsync(context.Background(), purchaseOrder)
-	}
-
-	purchaseOrder.Status = models.PurchaseOrderStatus(status)
-	err = s.purchaseOrderRepo.Update(ctx, purchaseOrder)
-	if err != nil {
-		s.logger.WithFields(logrus.Fields{
-			"operation":         "UpdatePurchaseOrderStatus",
-			"purchase_order_id": id,
-			"new_status":        status,
-			"error":             err,
-		}).Error("Failed to update purchase order status")
-		return err
-	}
-
-	s.logger.WithFields(logrus.Fields{
-		"operation":         "UpdatePurchaseOrderStatus",
-		"purchase_order_id": id,
-		"new_status":        status,
-		"order_number":      purchaseOrder.OrderNumber,
-	}).Info("Successfully updated purchase order status")
-
-	return nil
 }
 
 func (s *purchaseOrderService) ReceivePurchaseOrder(ctx context.Context, id uint) error {
@@ -596,11 +545,11 @@ func (s *purchaseOrderService) getHeaderAndColorFromProductType(productType stri
 	return
 }
 
-func (s *purchaseOrderService) UpdatePurchaseOrderDeliveryStatus(
+func (s *purchaseOrderService) ReceiveInventory(
 	ctx context.Context,
 	req dto.UpdatePurchaseOrderDeliveryStatusRequest,
 ) error {
-	if err := s.purchaseOrderRepo.PersistDeliveryUpdate(ctx, req); err != nil {
+	if err := s.purchaseOrderRepo.ReceiveInventory(ctx, req); err != nil {
 		return fmt.Errorf("failed to persist delivery update: %w", err)
 	}
 	return nil

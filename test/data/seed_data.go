@@ -254,7 +254,7 @@ func InventoryItems(inventoryIDs, productIDs, supplierIDs []uint) []models.Inven
 			InventoryID: inventoryIDs[0], // Main Warehouse A
 			ProductID:   productIDs[0],   // MacBook Pro
 			SupplierID:  supplierIDs[0],
-			UnitType:    "piece",
+			Unit:        "piece",
 			Quantity:    9, // 5+3+2-1 = 9 (purchases minus disposal)
 			Status:      models.InventoryItemStatusActive,
 		},
@@ -267,7 +267,7 @@ func InventoryItems(inventoryIDs, productIDs, supplierIDs []uint) []models.Inven
 			InventoryID: inventoryIDs[0], // Main Warehouse A
 			ProductID:   productIDs[1],   // LG Monitor
 			SupplierID:  supplierIDs[0],
-			UnitType:    "piece",
+			Unit:        "piece",
 			Quantity:    15, // 10+5 = 15
 			Status:      models.InventoryItemStatusActive,
 		},
@@ -280,7 +280,7 @@ func InventoryItems(inventoryIDs, productIDs, supplierIDs []uint) []models.Inven
 			InventoryID: inventoryIDs[1], // Secondary Warehouse B
 			ProductID:   productIDs[2],   // Keychron Keyboard
 			SupplierID:  supplierIDs[0],
-			UnitType:    "piece",
+			Unit:        "piece",
 			Quantity:    45, // 20+15+10 = 45 (consuming_transaction_id = 0 means all transactions are active)
 			Status:      models.InventoryItemStatusActive,
 		},
@@ -293,7 +293,7 @@ func InventoryItems(inventoryIDs, productIDs, supplierIDs []uint) []models.Inven
 			InventoryID: inventoryIDs[1], // Secondary Warehouse B
 			ProductID:   productIDs[3],   // Logitech Mouse
 			SupplierID:  supplierIDs[0],
-			UnitType:    "piece",
+			Unit:        "piece",
 			Quantity:    25, // 10+8+7 = 25
 			Status:      models.InventoryItemStatusActive,
 		},
@@ -306,7 +306,7 @@ func InventoryItems(inventoryIDs, productIDs, supplierIDs []uint) []models.Inven
 			InventoryID: inventoryIDs[0], // Main Warehouse A
 			ProductID:   productIDs[4],   // Herman Miller Chair
 			SupplierID:  supplierIDs[1],
-			UnitType:    "piece",
+			Unit:        "piece",
 			Quantity:    0, // Inactive item (quantity 0)
 			Status:      models.InventoryItemStatusActive,
 		},

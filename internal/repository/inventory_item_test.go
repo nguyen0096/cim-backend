@@ -81,23 +81,23 @@ func TestGetActiveItemsByInventoryIDs(t *testing.T) {
 	// Create inventory items (ConsumingTransactionID will be set after transactions are created)
 	inventoryItems := []models.InventoryItem{
 		{
-			InventoryID: inventories[0].ID, ProductID: products[0].ID, SupplierID: suppliers[0].ID, UnitType: "piece", Quantity: 9, Status: models.InventoryItemStatusActive,
+			InventoryID: inventories[0].ID, ProductID: products[0].ID, SupplierID: suppliers[0].ID, Unit: "piece", Quantity: 9, Status: models.InventoryItemStatusActive,
 			// ConsumingTransactionID will be set to transaction 2's ID after creation
 		},
 		{
-			InventoryID: inventories[0].ID, ProductID: products[1].ID, SupplierID: suppliers[0].ID, UnitType: "piece", Quantity: 15, Status: models.InventoryItemStatusActive,
+			InventoryID: inventories[0].ID, ProductID: products[1].ID, SupplierID: suppliers[0].ID, Unit: "piece", Quantity: 15, Status: models.InventoryItemStatusActive,
 			// ConsumingTransactionID will be set to transaction 4's ID after creation
 		},
 		{
-			InventoryID: inventories[1].ID, ProductID: products[2].ID, SupplierID: suppliers[0].ID, UnitType: "piece", Quantity: 45, Status: models.InventoryItemStatusActive,
+			InventoryID: inventories[1].ID, ProductID: products[2].ID, SupplierID: suppliers[0].ID, Unit: "piece", Quantity: 45, Status: models.InventoryItemStatusActive,
 			// ConsumingTransactionID is zero value (0) - should return all transactions
 		},
 		{
-			InventoryID: inventories[1].ID, ProductID: products[3].ID, SupplierID: suppliers[0].ID, UnitType: "piece", Quantity: 25, Status: models.InventoryItemStatusActive,
+			InventoryID: inventories[1].ID, ProductID: products[3].ID, SupplierID: suppliers[0].ID, Unit: "piece", Quantity: 25, Status: models.InventoryItemStatusActive,
 			// ConsumingTransactionID will be set to transaction 9's ID after creation
 		},
 		{
-			InventoryID: inventories[0].ID, ProductID: products[4].ID, SupplierID: suppliers[1].ID, UnitType: "piece", Quantity: 0, Status: models.InventoryItemStatusActive,
+			InventoryID: inventories[0].ID, ProductID: products[4].ID, SupplierID: suppliers[1].ID, Unit: "piece", Quantity: 0, Status: models.InventoryItemStatusActive,
 			// Inactive item (quantity 0)
 		},
 	}
@@ -411,15 +411,15 @@ func TestPersistReconciliation(t *testing.T) {
 	inventoryItems := []models.InventoryItem{
 		{
 			InventoryID: inventories[0].ID, ProductID: products[0].ID, SupplierID: suppliers[0].ID,
-			UnitType: "piece", Quantity: 10, Status: models.InventoryItemStatusActive,
+			Unit: "piece", Quantity: 10, Status: models.InventoryItemStatusActive,
 		},
 		{
 			InventoryID: inventories[0].ID, ProductID: products[1].ID, SupplierID: suppliers[0].ID,
-			UnitType: "piece", Quantity: 20, Status: models.InventoryItemStatusActive,
+			Unit: "piece", Quantity: 20, Status: models.InventoryItemStatusActive,
 		},
 		{
 			InventoryID: inventories[1].ID, ProductID: products[2].ID, SupplierID: suppliers[1].ID,
-			UnitType: "piece", Quantity: 5, Status: models.InventoryItemStatusActive,
+			Unit: "piece", Quantity: 5, Status: models.InventoryItemStatusActive,
 		},
 	}
 	err = db.WithContext(ctx).Create(&inventoryItems).Error
@@ -462,12 +462,12 @@ func TestPersistReconciliation(t *testing.T) {
 			{
 				Base:        models.Base{ID: inventoryItems[0].ID},
 				InventoryID: inventories[0].ID, ProductID: products[0].ID, SupplierID: suppliers[0].ID,
-				UnitType: "piece", Quantity: 10, Status: models.InventoryItemStatusActive, // Current quantity in DB
+				Unit: "piece", Quantity: 10, Status: models.InventoryItemStatusActive, // Current quantity in DB
 			},
 			{
 				Base:        models.Base{ID: inventoryItems[1].ID},
 				InventoryID: inventories[0].ID, ProductID: products[1].ID, SupplierID: suppliers[0].ID,
-				UnitType: "piece", Quantity: 20, Status: models.InventoryItemStatusActive, // Current quantity in DB
+				Unit: "piece", Quantity: 20, Status: models.InventoryItemStatusActive, // Current quantity in DB
 			},
 		}
 
@@ -523,7 +523,7 @@ func TestPersistReconciliation(t *testing.T) {
 			{
 				Base:        models.Base{ID: 99999}, // Non-existent ID
 				InventoryID: inventories[0].ID, ProductID: products[0].ID, SupplierID: suppliers[0].ID,
-				UnitType: "piece", Quantity: 8, Status: models.InventoryItemStatusActive,
+				Unit: "piece", Quantity: 8, Status: models.InventoryItemStatusActive,
 			},
 		}
 
@@ -547,7 +547,7 @@ func TestPersistReconciliation(t *testing.T) {
 			{
 				Base:        models.Base{ID: inventoryItems[0].ID},
 				InventoryID: inventories[0].ID, ProductID: products[0].ID, SupplierID: suppliers[0].ID,
-				UnitType: "piece", Quantity: 8, Status: models.InventoryItemStatusActive,
+				Unit: "piece", Quantity: 8, Status: models.InventoryItemStatusActive,
 			},
 		}
 
@@ -582,7 +582,7 @@ func TestPersistReconciliation(t *testing.T) {
 			{
 				Base:        models.Base{ID: inventoryItems[0].ID},
 				InventoryID: inventories[0].ID, ProductID: products[0].ID, SupplierID: suppliers[0].ID,
-				UnitType: "piece", Quantity: 10, Status: models.InventoryItemStatusActive, // Current quantity in DB
+				Unit: "piece", Quantity: 10, Status: models.InventoryItemStatusActive, // Current quantity in DB
 			},
 		}
 
@@ -638,7 +638,7 @@ func TestPersistReconciliation(t *testing.T) {
 			{
 				Base:        models.Base{ID: 99999}, // Non-existent ID
 				InventoryID: inventories[0].ID, ProductID: products[0].ID, SupplierID: suppliers[0].ID,
-				UnitType: "piece", Quantity: 8, Status: models.InventoryItemStatusActive,
+				Unit: "piece", Quantity: 8, Status: models.InventoryItemStatusActive,
 			},
 		}
 
@@ -687,17 +687,17 @@ func TestPersistReconciliation(t *testing.T) {
 			{
 				Base:        models.Base{ID: inventoryItems[0].ID},
 				InventoryID: inventories[0].ID, ProductID: products[0].ID, SupplierID: suppliers[0].ID,
-				UnitType: "piece", Quantity: 10, Status: models.InventoryItemStatusActive, // Current quantity in DB
+				Unit: "piece", Quantity: 10, Status: models.InventoryItemStatusActive, // Current quantity in DB
 			},
 			{
 				Base:        models.Base{ID: inventoryItems[1].ID},
 				InventoryID: inventories[0].ID, ProductID: products[1].ID, SupplierID: suppliers[0].ID,
-				UnitType: "piece", Quantity: 20, Status: models.InventoryItemStatusActive, // Current quantity in DB
+				Unit: "piece", Quantity: 20, Status: models.InventoryItemStatusActive, // Current quantity in DB
 			},
 			{
 				Base:        models.Base{ID: inventoryItems[2].ID},
 				InventoryID: inventories[1].ID, ProductID: products[2].ID, SupplierID: suppliers[1].ID,
-				UnitType: "piece", Quantity: 5, Status: models.InventoryItemStatusActive, // Current quantity in DB
+				Unit: "piece", Quantity: 5, Status: models.InventoryItemStatusActive, // Current quantity in DB
 			},
 		}
 

@@ -19,12 +19,10 @@ type PurchaseOrderRepository interface {
 	Delete(id uint) error
 	List(ctx context.Context, params models.ListParams) ([]models.PurchaseOrder, int64, error)
 	GetByStatus(status string) ([]models.PurchaseOrder, error)
-	UpdateStatus(ctx context.Context, purchaseOrderID uint, status models.PurchaseOrderStatus) error
-	AnyDeliveringItem(ctx context.Context, purchaseOrderID uint) bool
 
 	// v1
 	GetByID(id uint) (*models.PurchaseOrder, error)
-	PersistDeliveryUpdate(ctx context.Context, req dto.UpdatePurchaseOrderDeliveryStatusRequest) error
+	ReceiveInventory(ctx context.Context, req dto.UpdatePurchaseOrderDeliveryStatusRequest) error
 }
 
 type purchaseOrderRepository struct {
@@ -159,8 +157,8 @@ func (r *purchaseOrderRepository) AnyDeliveringItem(ctx context.Context, purchas
 	return err == nil
 }
 
-// PersistDeliveryUpdate updates purchase order delivery status, creating inventory items and transactions
-func (r *purchaseOrderRepository) PersistDeliveryUpdate(ctx context.Context, req dto.UpdatePurchaseOrderDeliveryStatusRequest) error {
+// ReceiveInventory updates purchase order delivery status, creating inventory items and transactions
+func (r *purchaseOrderRepository) ReceiveInventory(ctx context.Context, req dto.UpdatePurchaseOrderDeliveryStatusRequest) error {
 	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		var po *models.PurchaseOrder
 		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
@@ -174,19 +172,21 @@ func (r *purchaseOrderRepository) PersistDeliveryUpdate(ctx context.Context, req
 		type POIData struct {
 			*models.PurchaseOrderItem
 			InventoryItemID *uint
+			ProductUnit     string
 		}
 
 		var poiData []POIData
 		err := tx.Table("purchase_order_items poi").
 			Select(`
 				poi.*,
-				ii.id as inventory_item_id
+				ii.id as inventory_item_id,
+				p.unit as product_unit
 			`).
-			Joins(`LEFT JOIN inventory_items ii ON
-					poi.product_id = ii.product_id
+			Joins(`LEFT JOIN inventory_items ii ON poi.product_id = ii.product_id
 					AND poi.supplier_id = ii.supplier_id
 					AND ii.status = ?
 			`, models.InventoryStatusActive).
+			Joins(`JOIN products p ON poi.product_id = p.id`).
 			Where("poi.purchase_order_id = ?", req.PurchaseOrderID).
 			Scan(&poiData).Error
 		if err != nil {
@@ -239,7 +239,7 @@ func (r *purchaseOrderRepository) PersistDeliveryUpdate(ctx context.Context, req
 					InventoryID: *po.InventoryID,
 					ProductID:   *poItem.ProductID,
 					SupplierID:  *poItem.SupplierID,
-					UnitType:    "",
+					Unit:        poItem.ProductUnit,
 					Quantity:    dtoItem.ReceivedQuantity,
 					Status:      models.InventoryItemStatusActive,
 				}

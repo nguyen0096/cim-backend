@@ -24,7 +24,7 @@ type InventoryItem struct {
 	Product                    *Product                `json:"product,omitempty" gorm:"foreignKey:ProductID" validate:"-"`
 	SupplierID                 uint                    `json:"supplier_id"`
 	Supplier                   *Supplier               `json:"supplier,omitempty" gorm:"foreignKey:SupplierID" validate:"-"`
-	UnitType                   string                  `json:"unit_type" gorm:"type:varchar(20)"`
+	Unit                       string                  `json:"unit" gorm:"type:varchar(20)"`
 	Quantity                   int                     `json:"quantity" gorm:"default:0"`
 	Status                     InventoryItemStatus     `json:"status" gorm:"default:active"`
 	ConsumingTransactionID     uint                    `json:"consuming_transaction_id" validate:"-"`

@@ -146,37 +146,6 @@ func (h *PurchaseOrderHandler) UpdatePurchaseOrder(c echo.Context) error {
 	return c.JSON(http.StatusOK, purchaseOrder)
 }
 
-func (h *PurchaseOrderHandler) UpdatePurchaseOrderStatus(c echo.Context) error {
-	id, err := pkg.ExtractIDParam(c)
-	if err != nil {
-		return err
-	}
-
-	var req struct {
-		Status string `json:"status"`
-	}
-
-	if err := c.Bind(&req); err != nil {
-		return pkg.ErrInvalidRequestBody(err)
-	}
-
-	if req.Status == string(models.PurchaseOrderStatusFullyDelivered) || req.Status == string(models.PurchaseOrderStatusPartiallyDelivered) {
-		userRole, _ := c.Get(pkg.AuthContextKeyUserRole).(string)
-
-		if !pkg.HasPermission(c.Request().Context(), "purchase-orders", "confirm") && !pkg.HasPermission(c.Request().Context(), "purchase-orders", "update") {
-			return c.JSON(http.StatusForbidden, map[string]string{
-				"error": fmt.Sprintf("Access denied: %s role cannot confirm purchase orders", userRole),
-			})
-		}
-	}
-
-	if err := h.purchaseOrderService.UpdatePurchaseOrderStatus(c.Request().Context(), id, req.Status); err != nil {
-		return fmt.Errorf("failed to update purchase order status: %w", err)
-	}
-
-	return c.JSON(http.StatusOK, map[string]string{"message": "Purchase order status updated successfully"})
-}
-
 func (h *PurchaseOrderHandler) DeletePurchaseOrder(c echo.Context) error {
 	id, err := pkg.ExtractIDParam(c)
 	if err != nil {
@@ -255,7 +224,7 @@ func (h *PurchaseOrderHandler) UpdatePurchaseOrderItemStatus(c echo.Context) err
 	return c.JSON(http.StatusOK, response)
 }
 
-// UpdatePurchaseOrderDeliveryStatus godoc
+// ReceiveInventory godoc
 // @Summary Update purchase order delivery status
 // @Description Update the delivery status of purchase order items by recording received quantities
 // @Tags purchase-orders
@@ -268,7 +237,7 @@ func (h *PurchaseOrderHandler) UpdatePurchaseOrderItemStatus(c echo.Context) err
 // @Failure 500 {object} map[string]string "Failed to update purchase order delivery status"
 // @Router /api/purchase-orders/delivery-status [put]
 // @Security BearerAuth
-func (h *PurchaseOrderHandler) UpdatePurchaseOrderDeliveryStatus(c echo.Context) error {
+func (h *PurchaseOrderHandler) ReceiveInventory(c echo.Context) error {
 	var req dto.UpdatePurchaseOrderDeliveryStatusRequest
 	if err := c.Bind(&req); err != nil {
 		return pkg.ErrInvalidRequestBody(err)
@@ -279,7 +248,7 @@ func (h *PurchaseOrderHandler) UpdatePurchaseOrderDeliveryStatus(c echo.Context)
 		return pkg.ErrValidation("validation failed", err)
 	}
 
-	err := h.purchaseOrderService.UpdatePurchaseOrderDeliveryStatus(c.Request().Context(), req)
+	err := h.purchaseOrderService.ReceiveInventory(c.Request().Context(), req)
 	if err != nil {
 		return fmt.Errorf("failed to update purchase order delivery status: %w", err)
 	}
