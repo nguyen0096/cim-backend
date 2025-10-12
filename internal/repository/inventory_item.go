@@ -9,16 +9,22 @@ import (
 	"gorm.io/gorm/clause"
 )
 
+// InventoryItemFilters represents filters for inventory items
+type InventoryItemFilters struct {
+	Status      string
+	ProductType string
+}
+
 type InventoryItemRepository interface {
 	Create(ctx context.Context, item *models.InventoryItem) error
 	GetByID(ctx context.Context, id uint) (*models.InventoryItem, error)
 	Delete(ctx context.Context, id uint) error
 	List(ctx context.Context, limit, offset int) ([]models.InventoryItem, error)
-	GetByInventoryID(ctx context.Context, inventoryID uint, limit, offset int) ([]models.InventoryItem, error)
+	GetByInventoryIDWithFilters(ctx context.Context, inventoryID uint, filters InventoryItemFilters, limit, offset int) ([]models.InventoryItem, error)
 	GetByProductID(ctx context.Context, productID uint) (*models.InventoryItem, error)
 	GetLowStockItems(ctx context.Context, limit, offset int) ([]models.InventoryItem, error)
 	Count(ctx context.Context) (int64, error)
-	CountByInventoryID(ctx context.Context, inventoryID uint) (int64, error)
+	CountByInventoryIDWithFilters(ctx context.Context, inventoryID uint, filters InventoryItemFilters) (int64, error)
 	CountLowStockItems(ctx context.Context) (int64, error)
 
 	// v1
@@ -66,12 +72,26 @@ func (r *inventoryItemRepository) List(ctx context.Context, limit, offset int) (
 	return items, err
 }
 
-func (r *inventoryItemRepository) GetByInventoryID(ctx context.Context, inventoryID uint, limit, offset int) ([]models.InventoryItem, error) {
+// GetByInventoryIDWithFilters retrieves inventory items by inventory ID with filters
+func (r *inventoryItemRepository) GetByInventoryIDWithFilters(ctx context.Context, inventoryID uint, filters InventoryItemFilters, limit, offset int) ([]models.InventoryItem, error) {
 	var items []models.InventoryItem
-	err := r.db.WithContext(ctx).
+	query := r.db.WithContext(ctx).
 		Preload("Inventory").
 		Preload("Product").
-		Where("inventory_id = ?", inventoryID).
+		Where("inventory_items.inventory_id = ?", inventoryID)
+
+	// Apply status filter
+	if filters.Status != "" {
+		query = query.Where("inventory_items.status = ?", filters.Status)
+	}
+
+	// Apply product_type filter by joining with products table
+	if filters.ProductType != "" {
+		query = query.Joins("JOIN products ON products.id = inventory_items.product_id").
+			Where("products.product_type = ?", filters.ProductType)
+	}
+
+	err := query.
 		Limit(limit).
 		Offset(offset).
 		Find(&items).Error
@@ -108,12 +128,25 @@ func (r *inventoryItemRepository) Count(ctx context.Context) (int64, error) {
 	return count, err
 }
 
-func (r *inventoryItemRepository) CountByInventoryID(ctx context.Context, inventoryID uint) (int64, error) {
+// CountByInventoryIDWithFilters counts inventory items by inventory ID with filters
+func (r *inventoryItemRepository) CountByInventoryIDWithFilters(ctx context.Context, inventoryID uint, filters InventoryItemFilters) (int64, error) {
 	var count int64
-	err := r.db.WithContext(ctx).
+	query := r.db.WithContext(ctx).
 		Model(&models.InventoryItem{}).
-		Where("inventory_id = ?", inventoryID).
-		Count(&count).Error
+		Where("inventory_items.inventory_id = ?", inventoryID)
+
+	// Apply status filter
+	if filters.Status != "" {
+		query = query.Where("inventory_items.status = ?", filters.Status)
+	}
+
+	// Apply product_type filter by joining with products table
+	if filters.ProductType != "" {
+		query = query.Joins("JOIN products ON products.id = inventory_items.product_id").
+			Where("products.product_type = ?", filters.ProductType)
+	}
+
+	err := query.Count(&count).Error
 	return count, err
 }
 

@@ -15,12 +15,12 @@ type InventoryItemService interface {
 	UpdateInventoryItem(ctx context.Context, item *models.InventoryItem) error
 	DeleteInventoryItem(ctx context.Context, id uint) error
 	ListInventoryItems(ctx context.Context, limit, offset int) ([]models.InventoryItem, error)
-	GetInventoryItemsByInventoryID(ctx context.Context, inventoryID uint, limit, offset int) ([]models.InventoryItem, error)
+	GetInventoryItemsByInventoryIDWithFilters(ctx context.Context, inventoryID uint, status, productType string, limit, offset int) ([]models.InventoryItem, error)
 	GetInventoryItemByProductID(ctx context.Context, productID uint) (*models.InventoryItem, error)
 	GetLowStockItems(ctx context.Context, limit, offset int) ([]models.InventoryItem, error)
 	AdjustInventoryItemQuantity(ctx context.Context, id uint, quantity int, notes string) error
 	CountInventoryItems(ctx context.Context) (int64, error)
-	CountInventoryItemsByInventoryID(ctx context.Context, inventoryID uint) (int64, error)
+	CountInventoryItemsByInventoryIDWithFilters(ctx context.Context, inventoryID uint, status, productType string) (int64, error)
 	CountLowStockItems(ctx context.Context) (int64, error)
 }
 
@@ -144,7 +144,8 @@ func (s *inventoryItemService) ListInventoryItems(ctx context.Context, limit, of
 	return items, nil
 }
 
-func (s *inventoryItemService) GetInventoryItemsByInventoryID(ctx context.Context, inventoryID uint, limit, offset int) ([]models.InventoryItem, error) {
+// GetInventoryItemsByInventoryIDWithFilters retrieves inventory items by inventory ID with filters
+func (s *inventoryItemService) GetInventoryItemsByInventoryIDWithFilters(ctx context.Context, inventoryID uint, status, productType string, limit, offset int) ([]models.InventoryItem, error) {
 	// Validate that inventory exists
 	inventory, err := s.inventoryRepo.GetByID(ctx, inventoryID)
 	if err != nil {
@@ -154,9 +155,14 @@ func (s *inventoryItemService) GetInventoryItemsByInventoryID(ctx context.Contex
 		return nil, pkg.NewAppError(pkg.ErrorCodeNotFound, "inventory not found", nil)
 	}
 
-	items, err := s.inventoryItemRepo.GetByInventoryID(ctx, inventoryID, limit, offset)
+	filters := repository.InventoryItemFilters{
+		Status:      status,
+		ProductType: productType,
+	}
+
+	items, err := s.inventoryItemRepo.GetByInventoryIDWithFilters(ctx, inventoryID, filters, limit, offset)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get inventory items by inventory ID: %w", err)
+		return nil, fmt.Errorf("failed to get inventory items by inventory ID with filters: %w", err)
 	}
 	return items, nil
 }
@@ -209,10 +215,16 @@ func (s *inventoryItemService) CountInventoryItems(ctx context.Context) (int64, 
 	return count, nil
 }
 
-func (s *inventoryItemService) CountInventoryItemsByInventoryID(ctx context.Context, inventoryID uint) (int64, error) {
-	count, err := s.inventoryItemRepo.CountByInventoryID(ctx, inventoryID)
+// CountInventoryItemsByInventoryIDWithFilters counts inventory items by inventory ID with filters
+func (s *inventoryItemService) CountInventoryItemsByInventoryIDWithFilters(ctx context.Context, inventoryID uint, status, productType string) (int64, error) {
+	filters := repository.InventoryItemFilters{
+		Status:      status,
+		ProductType: productType,
+	}
+
+	count, err := s.inventoryItemRepo.CountByInventoryIDWithFilters(ctx, inventoryID, filters)
 	if err != nil {
-		return 0, fmt.Errorf("failed to count inventory items by inventory ID: %w", err)
+		return 0, fmt.Errorf("failed to count inventory items by inventory ID with filters: %w", err)
 	}
 	return count, nil
 }

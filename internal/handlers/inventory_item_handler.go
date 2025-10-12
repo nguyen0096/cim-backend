@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"fmt"
 	"import-export-backend/internal/models"
 	"import-export-backend/internal/services"
 	"import-export-backend/pkg"
@@ -229,6 +230,8 @@ func (h *InventoryItemHandler) ListInventoryItems(c echo.Context) error {
 // @Param id path int true "Inventory ID"
 // @Param page query int false "Page number" default(1)
 // @Param limit query int false "Items per page" default(20)
+// @Param status query string false "Filter by status (active/inactive)"
+// @Param product_type query string false "Filter by product type"
 // @Success 200 {object} map[string]interface{}
 // @Failure 400 {object} map[string]string
 // @Failure 404 {object} map[string]string
@@ -244,6 +247,9 @@ func (h *InventoryItemHandler) GetInventoryItemsByInventoryID(c echo.Context) er
 	// Parse query parameters
 	limit, _ := strconv.Atoi(c.QueryParam("limit"))
 	page, _ := strconv.Atoi(c.QueryParam("page"))
+	status := c.QueryParam("status")
+	productType := c.QueryParam("product_type")
+	fmt.Println("productType", productType)
 
 	// Set defaults
 	if limit == 0 {
@@ -256,8 +262,8 @@ func (h *InventoryItemHandler) GetInventoryItemsByInventoryID(c echo.Context) er
 	// Calculate offset
 	offset := (page - 1) * limit
 
-	// Get inventory items and total count
-	items, err := h.inventoryItemService.GetInventoryItemsByInventoryID(c.Request().Context(), inventoryID, limit, offset)
+	// Get inventory items with filters (empty filters will return all results)
+	items, err := h.inventoryItemService.GetInventoryItemsByInventoryIDWithFilters(c.Request().Context(), inventoryID, status, productType, limit, offset)
 	if err != nil {
 		if appErr, ok := err.(*pkg.AppError); ok {
 			return c.JSON(appErr.HTTPStatus(), map[string]string{"error": appErr.Error()})
@@ -265,7 +271,7 @@ func (h *InventoryItemHandler) GetInventoryItemsByInventoryID(c echo.Context) er
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to fetch inventory items"})
 	}
 
-	total, err := h.inventoryItemService.CountInventoryItemsByInventoryID(c.Request().Context(), inventoryID)
+	total, err := h.inventoryItemService.CountInventoryItemsByInventoryIDWithFilters(c.Request().Context(), inventoryID, status, productType)
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to count inventory items"})
 	}

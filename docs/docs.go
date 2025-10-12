@@ -693,7 +693,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "List inventory items for a specific inventory with pagination",
+                "description": "List inventory items for a specific inventory with pagination and filters",
                 "consumes": [
                     "application/json"
                 ],
@@ -724,6 +724,18 @@ const docTemplate = `{
                         "default": 20,
                         "description": "Items per page",
                         "name": "limit",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filter by status (active/inactive)",
+                        "name": "status",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filter by product type",
+                        "name": "product_type",
                         "in": "query"
                     }
                 ],
