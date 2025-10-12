@@ -29,10 +29,11 @@ func (po *PurchaseOrder) CalculateTotalAmount() float64 {
 	var total float64
 	for _, item := range po.Items {
 		if item != nil {
-			item.TotalPrice = item.CalculateTotalPrice()
-			total += item.TotalPrice
+			item.TotalAmount = item.CalculateTotalAmount()
+			total += item.TotalAmount
 		}
 	}
+	po.TotalAmount = total
 	return total
 }
 

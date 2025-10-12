@@ -20,14 +20,18 @@ type PurchaseOrderItem struct {
 	Supplier         *Supplier               `json:"supplier,omitempty" gorm:"foreignKey:SupplierID"`
 	UnitPrice        float64                 `json:"unit_price" gorm:"type:decimal(13,2)" validate:"min=0"`
 	Quantity         int                     `json:"quantity" gorm:"not null" validate:"required,min=1"`
-	TotalPrice       float64                 `json:"total_price" gorm:"-"` // Calculated field, not stored in DB
 	ReceivedQuantity int                     `json:"received_quantity" gorm:"default:0"`
 	Status           PurchaseOrderItemStatus `json:"status" gorm:"default:awaiting_delivery;check:status IN ('awaiting_delivery', 'partially_delivered', 'delivered', 'cancelled')" example:"delivering"`
+
+	// Display fields, not stored in DB
+
+	TotalAmount float64 `json:"total_amount" gorm:"-"` // Calculated field, not stored in DB
 }
 
 // CalculateItemTotalPrice calculates the total price for a purchase order item
-func (poi *PurchaseOrderItem) CalculateTotalPrice() float64 {
-	return float64(poi.Quantity) * poi.UnitPrice
+func (poi *PurchaseOrderItem) CalculateTotalAmount() float64 {
+	poi.TotalAmount = float64(poi.Quantity) * poi.UnitPrice
+	return poi.TotalAmount
 }
 
 func (poi *PurchaseOrderItem) UpdateStatus() {

@@ -55,16 +55,16 @@ func TestCreatePurchaseOrder(t *testing.T) {
 			Notes:       "Test purchase order with all fields",
 			Items: []*models.PurchaseOrderItem{
 				{
-					ProductID:  pkg.Ptr(uint(1)),
-					SupplierID: pkg.Ptr(uint(1)),
-					Quantity:   5,
-					TotalPrice: 502.50,
+					ProductID:   pkg.Ptr(uint(1)),
+					SupplierID:  pkg.Ptr(uint(1)),
+					Quantity:    5,
+					TotalAmount: 502.50,
 				},
 				{
-					ProductID:  pkg.Ptr(uint(1)),
-					SupplierID: pkg.Ptr(uint(1)),
-					Quantity:   10,
-					TotalPrice: 2502.50,
+					ProductID:   pkg.Ptr(uint(1)),
+					SupplierID:  pkg.Ptr(uint(1)),
+					Quantity:    10,
+					TotalAmount: 2502.50,
 				},
 			},
 		}
@@ -102,10 +102,10 @@ func TestCreatePurchaseOrder(t *testing.T) {
 			Notes:       "Test purchase order without order number",
 			Items: []*models.PurchaseOrderItem{
 				{
-					ProductID:  pkg.Ptr(uint(1)),
-					SupplierID: pkg.Ptr(uint(1)),
-					Quantity:   5,
-					TotalPrice: 502.50,
+					ProductID:   pkg.Ptr(uint(1)),
+					SupplierID:  pkg.Ptr(uint(1)),
+					Quantity:    5,
+					TotalAmount: 502.50,
 				},
 			},
 		}
@@ -141,10 +141,10 @@ func TestCreatePurchaseOrder(t *testing.T) {
 			OrderNumber: "PO-003",
 			Items: []*models.PurchaseOrderItem{
 				{
-					ProductID:  pkg.Ptr(uint(1)),
-					SupplierID: pkg.Ptr(uint(1)),
-					Quantity:   5,
-					TotalPrice: 502.50,
+					ProductID:   pkg.Ptr(uint(1)),
+					SupplierID:  pkg.Ptr(uint(1)),
+					Quantity:    5,
+					TotalAmount: 502.50,
 				},
 			},
 		}
@@ -303,10 +303,10 @@ func TestCreatePurchaseOrder(t *testing.T) {
 			Items: []*models.PurchaseOrderItem{
 				{
 					// ProductID is nil - should fail validation (required)
-					ProductID:  nil,
-					SupplierID: pkg.Ptr(uint(1)),
-					Quantity:   5,
-					TotalPrice: 502.50,
+					ProductID:   nil,
+					SupplierID:  pkg.Ptr(uint(1)),
+					Quantity:    5,
+					TotalAmount: 502.50,
 				},
 			},
 		}
@@ -338,10 +338,10 @@ func TestCreatePurchaseOrder(t *testing.T) {
 			Notes:       "Test purchase order with invalid quantity",
 			Items: []*models.PurchaseOrderItem{
 				{
-					ProductID:  pkg.Ptr(uint(1)),
-					SupplierID: pkg.Ptr(uint(1)),
-					Quantity:   0, // Zero quantity - should fail validation (min=1)
-					TotalPrice: 502.50,
+					ProductID:   pkg.Ptr(uint(1)),
+					SupplierID:  pkg.Ptr(uint(1)),
+					Quantity:    0, // Zero quantity - should fail validation (min=1)
+					TotalAmount: 502.50,
 				},
 			},
 		}
@@ -373,10 +373,10 @@ func TestCreatePurchaseOrder(t *testing.T) {
 			Notes:       "Test purchase order with negative quantity",
 			Items: []*models.PurchaseOrderItem{
 				{
-					ProductID:  pkg.Ptr(uint(1)),
-					SupplierID: pkg.Ptr(uint(1)),
-					Quantity:   -5, // Negative quantity - should fail validation (min=1)
-					TotalPrice: 502.50,
+					ProductID:   pkg.Ptr(uint(1)),
+					SupplierID:  pkg.Ptr(uint(1)),
+					Quantity:    -5, // Negative quantity - should fail validation (min=1)
+					TotalAmount: 502.50,
 				},
 			},
 		}

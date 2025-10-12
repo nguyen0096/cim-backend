@@ -248,10 +248,10 @@ func (h *PurchaseOrderHandler) ReceiveInventory(c echo.Context) error {
 		return pkg.ErrValidation("validation failed", err)
 	}
 
-	err := h.purchaseOrderService.ReceiveInventory(c.Request().Context(), req)
+	po, err := h.purchaseOrderService.ReceiveInventory(c.Request().Context(), req)
 	if err != nil {
 		return fmt.Errorf("failed to update purchase order delivery status: %w", err)
 	}
 
-	return c.JSON(http.StatusNoContent, nil)
+	return c.JSON(http.StatusOK, po)
 }

@@ -27,7 +27,7 @@ type PurchaseOrderService interface {
 	UpdatePurchaseOrderItemStatus(ctx context.Context, purchaseOrderID, itemID uint, status models.PurchaseOrderItemStatus) (*dto.UpdatePurchaseOrderItemStatusResponse, error)
 
 	// V1
-	ReceiveInventory(ctx context.Context, req dto.UpdatePurchaseOrderDeliveryStatusRequest) error
+	ReceiveInventory(ctx context.Context, req dto.UpdatePurchaseOrderDeliveryStatusRequest) (*models.PurchaseOrder, error)
 }
 
 type purchaseOrderService struct {
@@ -519,7 +519,7 @@ func (s *purchaseOrderService) createExpenseData(items []*models.PurchaseOrderIt
 			"DIỄN GIẢI": item.Product.Name,
 		}
 
-		itemTotalPrice := item.CalculateTotalPrice()
+		itemTotalPrice := item.CalculateTotalAmount()
 		header, color := s.getHeaderAndColorFromProductType(item.Product.ProductType)
 		expensesData[i][header] = itemTotalPrice
 		cellColors[i] = color
@@ -548,9 +548,12 @@ func (s *purchaseOrderService) getHeaderAndColorFromProductType(productType stri
 func (s *purchaseOrderService) ReceiveInventory(
 	ctx context.Context,
 	req dto.UpdatePurchaseOrderDeliveryStatusRequest,
-) error {
-	if err := s.purchaseOrderRepo.ReceiveInventory(ctx, req); err != nil {
-		return fmt.Errorf("failed to persist delivery update: %w", err)
+) (*models.PurchaseOrder, error) {
+	po, err := s.purchaseOrderRepo.ReceiveInventory(ctx, req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to persist delivery update: %w", err)
 	}
-	return nil
+
+	po.TotalAmount = po.CalculateTotalAmount()
+	return po, nil
 }

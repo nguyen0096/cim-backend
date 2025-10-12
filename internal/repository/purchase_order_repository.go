@@ -23,7 +23,7 @@ type PurchaseOrderRepository interface {
 
 	// v1
 	GetByID(id uint) (*models.PurchaseOrder, error)
-	ReceiveInventory(ctx context.Context, req dto.UpdatePurchaseOrderDeliveryStatusRequest) error
+	ReceiveInventory(ctx context.Context, req dto.UpdatePurchaseOrderDeliveryStatusRequest) (*models.PurchaseOrder, error)
 }
 
 type purchaseOrderRepository struct {
@@ -159,9 +159,9 @@ func (r *purchaseOrderRepository) AnyDeliveringItem(ctx context.Context, purchas
 }
 
 // ReceiveInventory updates purchase order delivery status, creating inventory items and transactions
-func (r *purchaseOrderRepository) ReceiveInventory(ctx context.Context, req dto.UpdatePurchaseOrderDeliveryStatusRequest) error {
-	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		var po *models.PurchaseOrder
+func (r *purchaseOrderRepository) ReceiveInventory(ctx context.Context, req dto.UpdatePurchaseOrderDeliveryStatusRequest) (*models.PurchaseOrder, error) {
+	var po *models.PurchaseOrder
+	return po, r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
 			Where("id = ?", req.PurchaseOrderID).
 			Where("status NOT IN ?", []any{models.PurchaseOrderStatusCancelled}).

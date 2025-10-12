@@ -65,10 +65,10 @@ func TestCreatePurchaseOrder(t *testing.T) {
 			Notes:       "Test purchase order",
 			Items: []*models.PurchaseOrderItem{
 				{
-					ProductID:  &[]uint{1}[0],
-					SupplierID: &[]uint{1}[0],
-					Quantity:   5,
-					TotalPrice: 502.50,
+					ProductID:   &[]uint{1}[0],
+					SupplierID:  &[]uint{1}[0],
+					Quantity:    5,
+					TotalAmount: 502.50,
 				},
 			},
 		}
@@ -111,10 +111,10 @@ func TestCreatePurchaseOrder(t *testing.T) {
 			Notes:       "Test purchase order with existing order number",
 			Items: []*models.PurchaseOrderItem{
 				{
-					ProductID:  &[]uint{1}[0],
-					SupplierID: &[]uint{1}[0],
-					Quantity:   5,
-					TotalPrice: 502.50,
+					ProductID:   &[]uint{1}[0],
+					SupplierID:  &[]uint{1}[0],
+					Quantity:    5,
+					TotalAmount: 502.50,
 				},
 			},
 		}
@@ -145,10 +145,10 @@ func TestCreatePurchaseOrder(t *testing.T) {
 			TotalAmount: 1500.50,
 			Items: []*models.PurchaseOrderItem{
 				{
-					ProductID:  &[]uint{1}[0],
-					SupplierID: &[]uint{1}[0],
-					Quantity:   5,
-					TotalPrice: 502.50,
+					ProductID:   &[]uint{1}[0],
+					SupplierID:  &[]uint{1}[0],
+					Quantity:    5,
+					TotalAmount: 502.50,
 				},
 			},
 		}
