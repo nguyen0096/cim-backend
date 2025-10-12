@@ -161,10 +161,10 @@ func main() {
 	inventories := api.Group("/inventories")
 	inventories.GET("", inventoryHandler.ListInventory)
 	inventories.POST("", inventoryHandler.CreateInventory)
-	inventories.GET("/last-purchase-prices", inventoryHandler.GetLastPurchasePrices)
 	inventories.GET("/:id", inventoryHandler.GetInventory)
 	inventories.PUT("/:id", inventoryHandler.UpdateInventory)
 	inventories.DELETE("/:id", inventoryHandler.DeleteInventory)
+	inventories.GET("/last-purchase-prices", inventoryHandler.GetLastPurchasePrices)
 	inventories.PUT("/:id/dispose", inventoryHandler.DisposeInventoryItems)
 	inventories.PUT("/:id/reconcile", inventoryHandler.ReconcileInventory)
 

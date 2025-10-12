@@ -6,6 +6,7 @@ import (
 	"import-export-backend/internal/models"
 	"import-export-backend/internal/services/dto"
 	"import-export-backend/pkg"
+	"strings"
 	"time"
 
 	"gorm.io/gorm"
@@ -205,6 +206,7 @@ func (r *purchaseOrderRepository) ReceiveInventory(ctx context.Context, req dto.
 		// Step 3: Process dto items and build transactions and new inventory items
 		var transactions []*models.InventoryTransaction
 		var newInventoryItems []*models.InventoryItem
+		var updateInvetoryDeltas = make(map[uint]int)
 
 		for _, dtoItem := range req.Items {
 			// Find corresponding purchase order item data
@@ -234,6 +236,7 @@ func (r *purchaseOrderRepository) ReceiveInventory(ctx context.Context, req dto.
 			if poItem.InventoryItemID != nil {
 				// Use existing inventory item
 				transaction.InventoryItemID = *poItem.InventoryItemID
+				updateInvetoryDeltas[*poItem.InventoryItemID] += dtoItem.ReceivedQuantity
 			} else {
 				transaction.InventoryItem = &models.InventoryItem{
 					InventoryID: *po.InventoryID,
@@ -273,6 +276,13 @@ func (r *purchaseOrderRepository) ReceiveInventory(ctx context.Context, req dto.
 			}
 		}
 
+		if len(updateInvetoryDeltas) > 0 {
+			err = r.increaseQuantityInventoryItems(tx, updateInvetoryDeltas)
+			if err != nil {
+				return fmt.Errorf("failed to increase quantity of inventory items: %w", err)
+			}
+		}
+
 		if err := tx.Save(transactions).Error; err != nil {
 			return fmt.Errorf("failed to save transaction: %w", err)
 		}
@@ -289,4 +299,19 @@ func (r *purchaseOrderRepository) ReceiveInventory(ctx context.Context, req dto.
 
 		return nil
 	})
+}
+
+func (r *purchaseOrderRepository) increaseQuantityInventoryItems(db *gorm.DB, deltaMap map[uint]int) error {
+	values := make([]string, 0, len(deltaMap))
+	for k, v := range deltaMap {
+		values = append(values, fmt.Sprintf("(%d, %d)", k, v))
+	}
+	valuesStr := strings.Join(values, ",")
+
+	return db.Exec(fmt.Sprintf(`
+		WITH payload (id, delta) AS ( VALUES %s )
+		UPDATE inventory_items ii
+			SET quantity = ii.quantity + payload.delta
+		FROM payload WHERE ii.id = payload.id;
+	`, valuesStr)).Error
 }
