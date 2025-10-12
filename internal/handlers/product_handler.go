@@ -5,6 +5,7 @@ import (
 	"import-export-backend/internal/services"
 	"import-export-backend/pkg"
 	"net/http"
+	"path/filepath"
 	"strconv"
 	"time"
 
@@ -514,12 +515,12 @@ func (h *ProductHandler) GetProductInventory(c echo.Context) error {
 }
 
 // ImportProductsCSV godoc
-// @Summary Import products with suppliers from CSV
-// @Description Import products and their suppliers from a CSV file upload. CSV must use semicolon (;) as delimiter with headers: Name, Description, ProductType, Suppliers, ContactEmail, ContactPhone, Address. Products can have multiple suppliers by repeating rows with empty product fields.
+// @Summary Import products with suppliers from CSV or Excel
+// @Description Import products and their suppliers from a CSV or Excel file upload. Files must have headers: Name, Description, ProductType, Suppliers, ContactEmail, ContactPhone, Address. CSV uses semicolon (;) as delimiter. Products can have multiple suppliers by repeating rows with empty product fields.
 // @Tags products
 // @Accept multipart/form-data
 // @Produce json
-// @Param file formData file true "CSV file to upload"
+// @Param file formData file true "CSV or Excel file to upload"
 // @Success 200 {object} map[string]interface{} "Import successful"
 // @Failure 400 {object} map[string]interface{} "Bad request"
 // @Failure 500 {object} map[string]interface{} "Internal server error"
@@ -539,12 +540,12 @@ func (h *ProductHandler) ImportProductsCSV(c echo.Context) error {
 	logger.WithFields(logrus.Fields{
 		"filename": file.Filename,
 		"size":     file.Size,
-	}).Info("Processing CSV file upload")
+	}).Info("Processing file upload")
 
 	// Validate file type
-	if !pkg.IsCSVFile(file.Filename) {
+	if !pkg.IsProductImportFile(file.Filename) {
 		logger.WithField("filename", file.Filename).Warn("Invalid file type")
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "File must be a CSV file"})
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "File must be a CSV or Excel file (.csv, .xlsx, .xls)"})
 	}
 
 	// Open the uploaded file
@@ -555,10 +556,21 @@ func (h *ProductHandler) ImportProductsCSV(c echo.Context) error {
 	}
 	defer src.Close()
 
-	// Import products from CSV
-	count, err := h.productService.ImportProductsFromCSV(c.Request().Context(), src)
+	// Import products based on file type
+	var count int
+	if pkg.IsCSVFile(file.Filename) {
+		logger.Info("Importing from CSV file")
+		count, err = h.productService.ImportProductsFromCSV(c.Request().Context(), src)
+	} else if pkg.IsExcelFile(file.Filename) {
+		logger.Info("Importing from Excel file")
+		count, err = h.productService.ImportProductsFromExcel(c.Request().Context(), src)
+	} else {
+		logger.WithField("filename", file.Filename).Error("Unexpected file type passed validation")
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Unsupported file format"})
+	}
+
 	if err != nil {
-		logger.WithError(err).Error("Failed to import products from CSV")
+		logger.WithError(err).Error("Failed to import products")
 		// Check if it's an AppError
 		if appErr, ok := err.(*pkg.AppError); ok {
 			return c.JSON(appErr.HTTPStatus(), map[string]interface{}{
@@ -572,6 +584,7 @@ func (h *ProductHandler) ImportProductsCSV(c echo.Context) error {
 	duration := time.Since(startTime)
 	logger.WithFields(logrus.Fields{
 		"imported_count": count,
+		"file_type":      filepath.Ext(file.Filename),
 		"duration_ms":    duration.Milliseconds(),
 	}).Info("Products imported successfully")
 

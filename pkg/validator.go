@@ -15,8 +15,13 @@ func IsCSVFile(filename string) bool {
 	return ext == ".csv"
 }
 
-// IsExcelFile checks if the filename has a .xlsx extension
+// IsExcelFile checks if the filename has an Excel extension
 func IsExcelFile(filename string) bool {
 	ext := strings.ToLower(filepath.Ext(filename))
-	return ext == ".xlsx"
+	return ext == ".xlsx" || ext == ".xls"
+}
+
+// IsProductImportFile checks if the filename is a valid product import file (CSV or Excel)
+func IsProductImportFile(filename string) bool {
+	return IsCSVFile(filename) || IsExcelFile(filename)
 }

@@ -9,6 +9,8 @@ import (
 	"import-export-backend/pkg"
 	"io"
 	"strings"
+
+	"github.com/xuri/excelize/v2"
 )
 
 type ProductService interface {
@@ -27,6 +29,7 @@ type ProductService interface {
 	// v1
 	ListProducts(ctx context.Context, limit, offset int, sortBy, sortOrder, status string) ([]models.Product, error)
 	ImportProductsFromCSV(ctx context.Context, csvReader io.Reader) (int, error)
+	ImportProductsFromExcel(ctx context.Context, excelReader io.Reader) (int, error)
 }
 
 type productService struct {
@@ -255,6 +258,205 @@ func (s *productService) ImportProductsFromCSV(ctx context.Context, csvReader io
 	// Check if we have any products to import
 	if len(productsData) == 0 {
 		return 0, pkg.ErrValidation("CSV file contains no valid product data", nil)
+	}
+
+	// Import products with their suppliers
+	for i := range productsData {
+		// Create product
+		if err := s.productRepo.Create(ctx, &productsData[i].product); err != nil {
+			return 0, fmt.Errorf("failed to create product '%s': %w", productsData[i].product.Name, err)
+		}
+
+		// Create or find suppliers and associate with product
+		if len(productsData[i].suppliers) > 0 {
+			var supplierPointers []*models.Supplier
+			for j := range productsData[i].suppliers {
+				supplier, err := s.supplierRepo.FindOrCreateByName(ctx, &productsData[i].suppliers[j])
+				if err != nil {
+					return 0, fmt.Errorf("failed to create/find supplier '%s': %w", productsData[i].suppliers[j].Name, err)
+				}
+				supplierPointers = append(supplierPointers, supplier)
+			}
+
+			// Associate suppliers with product
+			productsData[i].product.Suppliers = supplierPointers
+			if err := s.productRepo.Update(ctx, &productsData[i].product); err != nil {
+				return 0, fmt.Errorf("failed to associate suppliers with product '%s': %w", productsData[i].product.Name, err)
+			}
+		}
+	}
+
+	return len(productsData), nil
+}
+
+// ImportProductsFromExcel imports products with suppliers from an Excel file
+// Excel format: Name;Description;ProductType;Suppliers;ContactEmail;ContactPhone;Address
+// Products can have multiple suppliers by repeating rows with empty product fields
+func (s *productService) ImportProductsFromExcel(ctx context.Context, excelReader io.Reader) (int, error) {
+	// Open Excel file
+	f, err := excelize.OpenReader(excelReader)
+	if err != nil {
+		return 0, pkg.ErrValidation("failed to open Excel file", err)
+	}
+	defer f.Close()
+
+	// Get the first sheet name
+	sheets := f.GetSheetList()
+	if len(sheets) == 0 {
+		return 0, pkg.ErrValidation("Excel file has no sheets", nil)
+	}
+	sheetName := sheets[0]
+
+	// Read all rows from the sheet
+	rows, err := f.GetRows(sheetName)
+	if err != nil {
+		return 0, pkg.ErrValidation("failed to read Excel rows", err)
+	}
+
+	if len(rows) == 0 {
+		return 0, pkg.ErrValidation("Excel file is empty", nil)
+	}
+
+	// Process header
+	header := rows[0]
+
+	// Normalize headers (trim spaces and convert to lowercase)
+	for i := range header {
+		header[i] = strings.ToLower(strings.TrimSpace(header[i]))
+	}
+
+	// Find column indices
+	nameIdx := -1
+	descIdx := -1
+	typeIdx := -1
+	supplierNameIdx := -1
+	contactEmailIdx := -1
+	contactPhoneIdx := -1
+	addressIdx := -1
+
+	for i, h := range header {
+		switch h {
+		case "name":
+			nameIdx = i
+		case "description":
+			descIdx = i
+		case "producttype", "product_type", "type":
+			typeIdx = i
+		case "suppliers", "supplier", "suppliername":
+			supplierNameIdx = i
+		case "contactemail", "contact_email", "email":
+			contactEmailIdx = i
+		case "contactphone", "contact_phone", "phone":
+			contactPhoneIdx = i
+		case "address":
+			addressIdx = i
+		}
+	}
+
+	// Validate required columns
+	if nameIdx == -1 {
+		return 0, pkg.ErrValidation("Excel header missing required column: 'Name'", nil)
+	}
+	if typeIdx == -1 {
+		return 0, pkg.ErrValidation("Excel header missing required column: 'ProductType'", nil)
+	}
+
+	// Structure to hold products with their suppliers
+	type productWithSuppliers struct {
+		product   models.Product
+		suppliers []models.Supplier
+	}
+
+	var productsData []productWithSuppliers
+	var currentProduct *productWithSuppliers
+
+	// Process data rows (skip header)
+	for lineNumber, row := range rows[1:] {
+		// Skip completely empty rows
+		allEmpty := true
+		for _, cell := range row {
+			if strings.TrimSpace(cell) != "" {
+				allEmpty = false
+				break
+			}
+		}
+		if allEmpty {
+			continue
+		}
+
+		// Check if this is a product row or a supplier row
+		hasProductData := false
+		if len(row) > nameIdx && strings.TrimSpace(row[nameIdx]) != "" {
+			hasProductData = true
+		}
+
+		if hasProductData {
+			// This is a new product row
+			productName := strings.TrimSpace(row[nameIdx])
+			productType := ""
+			if len(row) > typeIdx {
+				productType = strings.TrimSpace(row[typeIdx])
+			}
+			productDescription := ""
+			if descIdx != -1 && len(row) > descIdx {
+				productDescription = strings.TrimSpace(row[descIdx])
+			}
+
+			if productName == "" {
+				return 0, pkg.ErrValidation(fmt.Sprintf("line %d: product 'Name' is required", lineNumber+2), nil)
+			}
+			if productType == "" {
+				return 0, pkg.ErrValidation(fmt.Sprintf("line %d: product 'ProductType' is required", lineNumber+2), nil)
+			}
+
+			// Create new product
+			product := models.Product{
+				Name:        productName,
+				Description: productDescription,
+				ProductType: productType,
+				Status:      "active",
+			}
+
+			currentProduct = &productWithSuppliers{
+				product:   product,
+				suppliers: []models.Supplier{},
+			}
+			productsData = append(productsData, *currentProduct)
+		}
+
+		// Parse supplier information if available
+		if supplierNameIdx != -1 && len(row) > supplierNameIdx {
+			supplierName := strings.TrimSpace(row[supplierNameIdx])
+			if supplierName != "" {
+				if currentProduct == nil {
+					return 0, pkg.ErrValidation(fmt.Sprintf("line %d: supplier data found without a product", lineNumber+2), nil)
+				}
+
+				supplier := models.Supplier{
+					Name:   supplierName,
+					Status: "active",
+				}
+
+				// Optional supplier fields
+				if contactEmailIdx != -1 && len(row) > contactEmailIdx {
+					supplier.ContactEmail = strings.TrimSpace(row[contactEmailIdx])
+				}
+				if contactPhoneIdx != -1 && len(row) > contactPhoneIdx {
+					supplier.ContactPhone = strings.TrimSpace(row[contactPhoneIdx])
+				}
+				if addressIdx != -1 && len(row) > addressIdx {
+					supplier.Address = strings.TrimSpace(row[addressIdx])
+				}
+
+				// Add supplier to current product
+				productsData[len(productsData)-1].suppliers = append(productsData[len(productsData)-1].suppliers, supplier)
+			}
+		}
+	}
+
+	// Check if we have any products to import
+	if len(productsData) == 0 {
+		return 0, pkg.ErrValidation("Excel file contains no valid product data", nil)
 	}
 
 	// Import products with their suppliers
