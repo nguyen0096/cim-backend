@@ -7,8 +7,10 @@ import (
 	"gorm.io/gorm"
 )
 
+//go:generate mockery --name=ProductRepository --structname=ProductRepository --output=../mocks/repositories --outpkg=repositorymocks
 type ProductRepository interface {
 	Create(ctx context.Context, product *models.Product) error
+	BulkCreate(ctx context.Context, products []models.Product) error
 	GetByID(ctx context.Context, id uint) (*models.Product, error)
 	Update(ctx context.Context, product *models.Product) error
 	UpdateStatus(ctx context.Context, id uint, status string) error
@@ -34,6 +36,14 @@ func NewProductRepository(db *gorm.DB) ProductRepository {
 
 func (r *productRepository) Create(ctx context.Context, product *models.Product) error {
 	return r.db.WithContext(ctx).Create(product).Error
+}
+
+// BulkCreate inserts multiple products in a single transaction
+func (r *productRepository) BulkCreate(ctx context.Context, products []models.Product) error {
+	if len(products) == 0 {
+		return nil
+	}
+	return r.db.WithContext(ctx).Create(&products).Error
 }
 
 func (r *productRepository) GetByID(ctx context.Context, id uint) (*models.Product, error) {

@@ -2,6 +2,7 @@ p, admin, products, view, allow
 p, admin, products, create, allow
 p, admin, products, update, allow
 p, admin, products, delete, allow
+p, admin, products, upload, allow
 p, admin, suppliers, view, allow
 p, admin, suppliers, create, allow
 p, admin, suppliers, update, allow

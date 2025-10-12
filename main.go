@@ -81,7 +81,7 @@ func main() {
 	// Initialize services
 	userService := services.NewUserService(userRepo, casbinService)
 	supplierService := services.NewSupplierService(supplierRepo)
-	productService := services.NewProductService(productRepo)
+	productService := services.NewProductService(productRepo, supplierRepo)
 	inventoryService := services.NewInventoryService(inventoryRepo, inventoryItemRepo, productRepo)
 	inventoryItemService := services.NewInventoryItemService(inventoryItemRepo, inventoryRepo, productRepo)
 	excelService := services.NewExcelService(productRepo, inventoryRepo)
@@ -150,6 +150,7 @@ func main() {
 	products.GET("", productHandler.GetProducts)
 	products.GET("/search", productHandler.SearchProducts)
 	products.POST("", productHandler.CreateProduct)
+	products.POST("/import-csv", productHandler.ImportProductsCSV)
 	products.GET("/:id", productHandler.GetProduct)
 	products.PUT("/:id", productHandler.UpdateProduct)
 	products.PUT("/:id/status", productHandler.UpdateProductStatus)

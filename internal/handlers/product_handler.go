@@ -512,3 +512,71 @@ func (h *ProductHandler) GetProductInventory(c echo.Context) error {
 
 	return c.JSON(http.StatusOK, map[string]string{"message": "Product inventory endpoint"})
 }
+
+// ImportProductsCSV godoc
+// @Summary Import products with suppliers from CSV
+// @Description Import products and their suppliers from a CSV file upload. CSV must use semicolon (;) as delimiter with headers: Name, Description, ProductType, Suppliers, ContactEmail, ContactPhone, Address. Products can have multiple suppliers by repeating rows with empty product fields.
+// @Tags products
+// @Accept multipart/form-data
+// @Produce json
+// @Param file formData file true "CSV file to upload"
+// @Success 200 {object} map[string]interface{} "Import successful"
+// @Failure 400 {object} map[string]interface{} "Bad request"
+// @Failure 500 {object} map[string]interface{} "Internal server error"
+// @Security BearerAuth
+// @Router /products/import-csv [post]
+func (h *ProductHandler) ImportProductsCSV(c echo.Context) error {
+	startTime := time.Now()
+	logger := h.getRequestLogger(c, "ImportProductsCSV")
+
+	// Get uploaded file
+	file, err := c.FormFile("file")
+	if err != nil {
+		logger.WithError(err).Error("No file uploaded")
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "No file uploaded"})
+	}
+
+	logger.WithFields(logrus.Fields{
+		"filename": file.Filename,
+		"size":     file.Size,
+	}).Info("Processing CSV file upload")
+
+	// Validate file type
+	if !pkg.IsCSVFile(file.Filename) {
+		logger.WithField("filename", file.Filename).Warn("Invalid file type")
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "File must be a CSV file"})
+	}
+
+	// Open the uploaded file
+	src, err := file.Open()
+	if err != nil {
+		logger.WithError(err).Error("Failed to open uploaded file")
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Failed to open file"})
+	}
+	defer src.Close()
+
+	// Import products from CSV
+	count, err := h.productService.ImportProductsFromCSV(c.Request().Context(), src)
+	if err != nil {
+		logger.WithError(err).Error("Failed to import products from CSV")
+		// Check if it's an AppError
+		if appErr, ok := err.(*pkg.AppError); ok {
+			return c.JSON(appErr.HTTPStatus(), map[string]interface{}{
+				"error": appErr.Message,
+				"code":  appErr.Code.String(),
+			})
+		}
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to import products"})
+	}
+
+	duration := time.Since(startTime)
+	logger.WithFields(logrus.Fields{
+		"imported_count": count,
+		"duration_ms":    duration.Milliseconds(),
+	}).Info("Products imported successfully")
+
+	return c.JSON(http.StatusOK, map[string]interface{}{
+		"message": "Products imported successfully",
+		"count":   count,
+	})
+}

@@ -43,6 +43,7 @@ func rollbackMigrations() error {
 		&models.PurchaseOrder{},
 		&models.Inventory{},
 		&models.InventoryItem{},
+		&models.InventoryTransaction{},
 		&models.Product{},
 		&models.Supplier{},
 		&models.Settings{},

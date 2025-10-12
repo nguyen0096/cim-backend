@@ -134,12 +134,6 @@ curl -X POST "http://localhost:8080/api/v1/purchase-orders" \
   -H "Authorization: Bearer accountant-token" \
   -H "Content-Type: application/json" \
   -d '{"supplier_id": "123", "items": []}'
-
-# Test accountant creating product (should fail)
-curl -X POST "http://localhost:8080/api/v1/products" \
-  -H "Authorization: Bearer accountant-token" \
-  -H "Content-Type: application/json" \
-  -d '{"name": "Test Product"}'
 ```
 
 ## Database Schema

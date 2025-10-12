@@ -7,9 +7,12 @@ import (
 	"gorm.io/gorm"
 )
 
+//go:generate mockery --name=SupplierRepository --structname=SupplierRepository --output=../mocks/repositories --outpkg=repositorymocks
 type SupplierRepository interface {
 	Create(ctx context.Context, supplier *models.Supplier) error
 	GetByID(ctx context.Context, id uint) (*models.Supplier, error)
+	GetByName(ctx context.Context, name string) (*models.Supplier, error)
+	FindOrCreateByName(ctx context.Context, supplier *models.Supplier) (*models.Supplier, error)
 	Update(ctx context.Context, supplier *models.Supplier) error
 	UpdateStatus(ctx context.Context, id uint, status string) error
 	Delete(ctx context.Context, id uint) error
@@ -40,6 +43,48 @@ func (r *supplierRepository) GetByID(ctx context.Context, id uint) (*models.Supp
 		return nil, err
 	}
 	return &supplier, nil
+}
+
+// GetByName retrieves a supplier by name
+func (r *supplierRepository) GetByName(ctx context.Context, name string) (*models.Supplier, error) {
+	var supplier models.Supplier
+	err := r.db.WithContext(ctx).Where("name = ?", name).First(&supplier).Error
+	if err != nil {
+		return nil, err
+	}
+	return &supplier, nil
+}
+
+// FindOrCreateByName finds an existing supplier by name or creates a new one
+func (r *supplierRepository) FindOrCreateByName(ctx context.Context, supplier *models.Supplier) (*models.Supplier, error) {
+	var existing models.Supplier
+	err := r.db.WithContext(ctx).Where("name = ?", supplier.Name).First(&existing).Error
+	if err == nil {
+		// Supplier exists, update fields if provided
+		if supplier.ContactEmail != "" {
+			existing.ContactEmail = supplier.ContactEmail
+		}
+		if supplier.ContactPhone != "" {
+			existing.ContactPhone = supplier.ContactPhone
+		}
+		if supplier.Address != "" {
+			existing.Address = supplier.Address
+		}
+		if err := r.db.WithContext(ctx).Save(&existing).Error; err != nil {
+			return nil, err
+		}
+		return &existing, nil
+	}
+
+	if err == gorm.ErrRecordNotFound {
+		// Create new supplier
+		if err := r.db.WithContext(ctx).Create(supplier).Error; err != nil {
+			return nil, err
+		}
+		return supplier, nil
+	}
+
+	return nil, err
 }
 
 func (r *supplierRepository) Update(ctx context.Context, supplier *models.Supplier) error {
