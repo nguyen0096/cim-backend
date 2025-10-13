@@ -181,7 +181,7 @@ func (h *InventoryHandler) GetInventorySummary(c echo.Context) error {
 // @Tags inventory-items
 // @Accept json
 // @Produce json
-// @Param disposal body dto.DisposeInventoryItemRequest true "Disposal data"
+// @Param disposal body dto.DisposeItemsRequest true "Disposal data"
 // @Success 200 {object} map[string]interface{}
 // @Failure 400 {object} map[string]string
 // @Failure 404 {object} map[string]string

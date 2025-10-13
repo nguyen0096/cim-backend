@@ -112,8 +112,7 @@ const docTemplate = `{
                             }
                         }
                     }
-                },
-                "x-codegen-max-depth:": 2
+                }
             },
             "post": {
                 "security": [
@@ -286,7 +285,7 @@ const docTemplate = `{
                     "200": {
                         "description": "Successfully updated purchase order item status",
                         "schema": {
-                            "$ref": "#/definitions/models.UpdatePurchaseOrderItemStatusResponse"
+                            "$ref": "#/definitions/dto.UpdatePurchaseOrderItemStatusResponse"
                         }
                     },
                     "400": {
@@ -478,6 +477,173 @@ const docTemplate = `{
                             "additionalProperties": {
                                 "type": "string"
                             }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/inventories/confirm": {
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Confirm the actual inventory count for multiple inventory items",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "inventory-items"
+                ],
+                "summary": "Confirm inventory items",
+                "parameters": [
+                    {
+                        "description": "Confirmation data",
+                        "name": "confirmation",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/dto.ConfirmInventoryRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/inventories/dispose": {
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Dispose multiple inventory items by reducing their quantities",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "inventory-items"
+                ],
+                "summary": "Dispose inventory items",
+                "parameters": [
+                    {
+                        "description": "Disposal data",
+                        "name": "disposal",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/dto.DisposeItemsRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/inventories/last-purchase-prices": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Get the last purchase transaction price for each Supplier Product as a nested map (product_id -\u003e supplier_id -\u003e price)",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "inventories"
+                ],
+                "summary": "Get last purchase prices",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/dto.LastPurchasePriceMap"
                         }
                     },
                     "500": {
@@ -693,7 +859,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "List inventory items for a specific inventory with pagination and filters",
+                "description": "List inventory items for a specific inventory with pagination",
                 "consumes": [
                     "application/json"
                 ],
@@ -1431,6 +1597,58 @@ const docTemplate = `{
                 }
             }
         },
+        "/products/import-csv": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Import products and their suppliers from a CSV or Excel file upload. Files must have headers: Name, Description, ProductType, Suppliers, ContactEmail, ContactPhone, Address. CSV uses semicolon (;) as delimiter. Products can have multiple suppliers by repeating rows with empty product fields.",
+                "consumes": [
+                    "multipart/form-data"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "products"
+                ],
+                "summary": "Import products with suppliers from CSV or Excel",
+                "parameters": [
+                    {
+                        "type": "file",
+                        "description": "CSV or Excel file to upload",
+                        "name": "file",
+                        "in": "formData",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Import successful",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "400": {
+                        "description": "Bad request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
         "/products/search": {
             "get": {
                 "security": [
@@ -1918,6 +2136,70 @@ const docTemplate = `{
         }
     },
     "definitions": {
+        "dto.ConfirmInventoryRequest": {
+            "type": "object",
+            "required": [
+                "inventory_id",
+                "items"
+            ],
+            "properties": {
+                "inventory_id": {
+                    "type": "integer"
+                },
+                "items": {
+                    "type": "array",
+                    "minItems": 1,
+                    "items": {
+                        "$ref": "#/definitions/dto.InventoryItemQuantity"
+                    }
+                }
+            }
+        },
+        "dto.DisposeItemsRequest": {
+            "type": "object",
+            "required": [
+                "inventory_id",
+                "items"
+            ],
+            "properties": {
+                "inventory_id": {
+                    "type": "integer"
+                },
+                "items": {
+                    "type": "array",
+                    "minItems": 1,
+                    "items": {
+                        "$ref": "#/definitions/dto.InventoryItemQuantity"
+                    }
+                }
+            }
+        },
+        "dto.InventoryItemQuantity": {
+            "type": "object",
+            "required": [
+                "inventory_item_id",
+                "quantity"
+            ],
+            "properties": {
+                "inventory_item_id": {
+                    "type": "integer"
+                },
+                "quantity": {
+                    "type": "integer",
+                    "minimum": 1
+                }
+            }
+        },
+        "dto.LastPurchasePriceMap": {
+            "type": "object",
+            "additionalProperties": {
+                "type": "object",
+                "additionalProperties": {
+                    "type": "number",
+                    "format": "float64"
+                }
+            }
+        },
         "dto.UpdatePurchaseOrderDeliveryStatusRequest": {
             "type": "object",
             "required": [
@@ -1950,6 +2232,27 @@ const docTemplate = `{
                 }
             }
         },
+        "dto.UpdatePurchaseOrderItemStatusResponse": {
+            "type": "object",
+            "properties": {
+                "item_status": {
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/models.PurchaseOrderItemStatus"
+                        }
+                    ],
+                    "example": "delivered"
+                },
+                "order_status": {
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/models.PurchaseOrderStatus"
+                        }
+                    ],
+                    "example": "fully_delivered"
+                }
+            }
+        },
         "models.GetSettingsResponse": {
             "description": "Response containing all application settings",
             "type": "object",
@@ -1963,26 +2266,360 @@ const docTemplate = `{
             }
         },
         "models.Inventory": {
-            "type": "object"
+            "type": "object",
+            "properties": {
+                "created_at": {
+                    "type": "string"
+                },
+                "created_by": {
+                    "type": "string"
+                },
+                "deleted_at": {
+                    "type": "string"
+                },
+                "description": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "items": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/models.InventoryItem"
+                    }
+                },
+                "location": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "status": {
+                    "$ref": "#/definitions/models.InventoryStatus"
+                },
+                "updated_at": {
+                    "type": "string"
+                }
+            }
         },
         "models.InventoryItem": {
-            "type": "object"
+            "type": "object",
+            "properties": {
+                "active_purchase_transactions": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/models.InventoryTransaction"
+                    }
+                },
+                "consuming_transaction_id": {
+                    "type": "integer"
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "created_by": {
+                    "type": "string"
+                },
+                "deleted_at": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "inventory": {
+                    "$ref": "#/definitions/models.Inventory"
+                },
+                "inventory_id": {
+                    "type": "integer"
+                },
+                "product": {
+                    "$ref": "#/definitions/models.Product"
+                },
+                "product_id": {
+                    "type": "integer"
+                },
+                "quantity": {
+                    "type": "integer"
+                },
+                "status": {
+                    "$ref": "#/definitions/models.InventoryItemStatus"
+                },
+                "supplier": {
+                    "$ref": "#/definitions/models.Supplier"
+                },
+                "supplier_id": {
+                    "type": "integer"
+                },
+                "unit": {
+                    "type": "string"
+                },
+                "updated_at": {
+                    "type": "string"
+                }
+            }
+        },
+        "models.InventoryItemStatus": {
+            "type": "string",
+            "enum": [
+                "active",
+                "inactive"
+            ],
+            "x-enum-varnames": [
+                "InventoryItemStatusActive",
+                "InventoryItemStatusInactive"
+            ]
+        },
+        "models.InventoryStatus": {
+            "type": "string",
+            "enum": [
+                "active",
+                "inactive"
+            ],
+            "x-enum-varnames": [
+                "InventoryStatusActive",
+                "InventoryStatusInactive"
+            ]
+        },
+        "models.InventoryTransaction": {
+            "type": "object",
+            "properties": {
+                "consumed_quantity": {
+                    "type": "integer"
+                },
+                "counter_transaction_id": {
+                    "type": "integer"
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "created_by": {
+                    "type": "string"
+                },
+                "deleted_at": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "inventory_item": {
+                    "$ref": "#/definitions/models.InventoryItem"
+                },
+                "inventory_item_id": {
+                    "type": "integer"
+                },
+                "price": {
+                    "type": "number"
+                },
+                "purchase_order_item_id": {
+                    "type": "integer"
+                },
+                "quantity": {
+                    "type": "integer"
+                },
+                "transaction_type": {
+                    "$ref": "#/definitions/models.InventoryTransactionType"
+                },
+                "updated_at": {
+                    "type": "string"
+                }
+            }
+        },
+        "models.InventoryTransactionType": {
+            "type": "string",
+            "enum": [
+                "purchase",
+                "disposal",
+                "sell"
+            ],
+            "x-enum-varnames": [
+                "InventoryTransactionTypePurchase",
+                "InventoryTransactionTypeDisposal",
+                "InventoryTransactionTypeSell"
+            ]
         },
         "models.Product": {
-            "type": "object"
+            "type": "object",
+            "properties": {
+                "created_at": {
+                    "type": "string"
+                },
+                "created_by": {
+                    "type": "string"
+                },
+                "deleted_at": {
+                    "type": "string"
+                },
+                "description": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "inventory_items": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/models.InventoryItem"
+                    }
+                },
+                "name": {
+                    "type": "string"
+                },
+                "product_type": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                },
+                "suppliers": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/models.Supplier"
+                    }
+                },
+                "unit": {
+                    "type": "string"
+                },
+                "updated_at": {
+                    "type": "string"
+                }
+            }
         },
         "models.PurchaseOrder": {
-            "type": "object"
+            "description": "Purchase order entity with items and status tracking",
+            "type": "object",
+            "required": [
+                "inventory_id",
+                "items"
+            ],
+            "properties": {
+                "created_at": {
+                    "type": "string"
+                },
+                "created_by": {
+                    "type": "string"
+                },
+                "deleted_at": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "inventory_id": {
+                    "type": "integer"
+                },
+                "items": {
+                    "type": "array",
+                    "minItems": 1,
+                    "items": {
+                        "$ref": "#/definitions/models.PurchaseOrderItem"
+                    }
+                },
+                "notes": {
+                    "type": "string",
+                    "example": "Purchase order notes"
+                },
+                "order_number": {
+                    "type": "string",
+                    "example": "PO-2023-001"
+                },
+                "status": {
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/models.PurchaseOrderStatus"
+                        }
+                    ],
+                    "example": "order_placed"
+                },
+                "total_amount": {
+                    "description": "Calculated field, not stored in DB",
+                    "type": "number",
+                    "example": 999.99
+                },
+                "updated_at": {
+                    "type": "string"
+                }
+            }
+        },
+        "models.PurchaseOrderItem": {
+            "type": "object",
+            "required": [
+                "product_id",
+                "quantity",
+                "supplier_id"
+            ],
+            "properties": {
+                "created_at": {
+                    "type": "string"
+                },
+                "created_by": {
+                    "type": "string"
+                },
+                "deleted_at": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "product": {
+                    "$ref": "#/definitions/models.Product"
+                },
+                "product_id": {
+                    "type": "integer"
+                },
+                "purchase_order": {
+                    "$ref": "#/definitions/models.PurchaseOrder"
+                },
+                "purchase_order_id": {
+                    "type": "integer"
+                },
+                "quantity": {
+                    "type": "integer",
+                    "minimum": 1
+                },
+                "received_quantity": {
+                    "type": "integer"
+                },
+                "status": {
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/models.PurchaseOrderItemStatus"
+                        }
+                    ],
+                    "example": "delivering"
+                },
+                "supplier": {
+                    "$ref": "#/definitions/models.Supplier"
+                },
+                "supplier_id": {
+                    "type": "integer"
+                },
+                "total_amount": {
+                    "description": "Calculated field, not stored in DB",
+                    "type": "number"
+                },
+                "unit_price": {
+                    "type": "number",
+                    "minimum": 0
+                },
+                "updated_at": {
+                    "type": "string"
+                }
+            }
         },
         "models.PurchaseOrderItemStatus": {
             "type": "string",
             "enum": [
-                "delivering",
-                "delivered"
+                "awaiting_delivery",
+                "partially_delivered",
+                "delivered",
+                "cancelled"
             ],
             "x-enum-varnames": [
-                "PurchaseOrderItemStatusDelivering",
-                "PurchaseOrderItemStatusDelivered"
+                "PurchaseOrderItemStatusAwaitingDelivery",
+                "PurchaseOrderItemStatusPartiallyDelivered",
+                "PurchaseOrderItemStatusDelivered",
+                "PurchaseOrderItemStatusCancelled"
             ]
         },
         "models.PurchaseOrderStatus": {
@@ -2024,24 +2661,44 @@ const docTemplate = `{
                 }
             }
         },
-        "models.UpdatePurchaseOrderItemStatusResponse": {
+        "models.Supplier": {
             "type": "object",
             "properties": {
-                "item_status": {
-                    "allOf": [
-                        {
-                            "$ref": "#/definitions/models.PurchaseOrderItemStatus"
-                        }
-                    ],
-                    "example": "delivered"
+                "address": {
+                    "type": "string"
                 },
-                "order_status": {
-                    "allOf": [
-                        {
-                            "$ref": "#/definitions/models.PurchaseOrderStatus"
-                        }
-                    ],
-                    "example": "fully_delivered"
+                "contact_email": {
+                    "type": "string"
+                },
+                "contact_phone": {
+                    "type": "string"
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "created_by": {
+                    "type": "string"
+                },
+                "deleted_at": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "products": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/models.Product"
+                    }
+                },
+                "status": {
+                    "type": "string"
+                },
+                "updated_at": {
+                    "type": "string"
                 }
             }
         }

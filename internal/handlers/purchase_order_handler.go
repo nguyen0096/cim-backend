@@ -186,7 +186,7 @@ func (h *PurchaseOrderHandler) GetPurchaseSummary(c echo.Context) error {
 // @Param id path int true "Purchase Order ID"
 // @Param item_id path int true "Purchase Order Item ID"
 // @Param status body object{status=string} true "Status update request"
-// @Success 200 {object} models.UpdatePurchaseOrderItemStatusResponse "Successfully updated purchase order item status"
+// @Success 200 {object} dto.UpdatePurchaseOrderItemStatusResponse "Successfully updated purchase order item status"
 // @Failure 400 {object} map[string]string "Invalid request parameters"
 // @Failure 404 {object} map[string]string "Purchase order or item not found"
 // @Failure 500 {object} map[string]string "Failed to update purchase order item status"

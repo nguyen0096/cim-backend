@@ -1,5 +1,49 @@
 basePath: /api/v1
 definitions:
+  dto.ConfirmInventoryRequest:
+    properties:
+      inventory_id:
+        type: integer
+      items:
+        items:
+          $ref: '#/definitions/dto.InventoryItemQuantity'
+        minItems: 1
+        type: array
+    required:
+    - inventory_id
+    - items
+    type: object
+  dto.DisposeItemsRequest:
+    properties:
+      inventory_id:
+        type: integer
+      items:
+        items:
+          $ref: '#/definitions/dto.InventoryItemQuantity'
+        minItems: 1
+        type: array
+    required:
+    - inventory_id
+    - items
+    type: object
+  dto.InventoryItemQuantity:
+    properties:
+      inventory_item_id:
+        type: integer
+      quantity:
+        minimum: 1
+        type: integer
+    required:
+    - inventory_item_id
+    - quantity
+    type: object
+  dto.LastPurchasePriceMap:
+    additionalProperties:
+      additionalProperties:
+        format: float64
+        type: number
+      type: object
+    type: object
   dto.UpdatePurchaseOrderDeliveryStatusRequest:
     properties:
       items:
@@ -22,6 +66,17 @@ definitions:
     - items
     - purchase_order_id
     type: object
+  dto.UpdatePurchaseOrderItemStatusResponse:
+    properties:
+      item_status:
+        allOf:
+        - $ref: '#/definitions/models.PurchaseOrderItemStatus'
+        example: delivered
+      order_status:
+        allOf:
+        - $ref: '#/definitions/models.PurchaseOrderStatus'
+        example: fully_delivered
+    type: object
   models.GetSettingsResponse:
     description: Response containing all application settings
     properties:
@@ -31,21 +86,247 @@ definitions:
         type: array
     type: object
   models.Inventory:
+    properties:
+      created_at:
+        type: string
+      created_by:
+        type: string
+      deleted_at:
+        type: string
+      description:
+        type: string
+      id:
+        type: integer
+      items:
+        items:
+          $ref: '#/definitions/models.InventoryItem'
+        type: array
+      location:
+        type: string
+      name:
+        type: string
+      status:
+        $ref: '#/definitions/models.InventoryStatus'
+      updated_at:
+        type: string
     type: object
   models.InventoryItem:
+    properties:
+      active_purchase_transactions:
+        items:
+          $ref: '#/definitions/models.InventoryTransaction'
+        type: array
+      consuming_transaction_id:
+        type: integer
+      created_at:
+        type: string
+      created_by:
+        type: string
+      deleted_at:
+        type: string
+      id:
+        type: integer
+      inventory:
+        $ref: '#/definitions/models.Inventory'
+      inventory_id:
+        type: integer
+      product:
+        $ref: '#/definitions/models.Product'
+      product_id:
+        type: integer
+      quantity:
+        type: integer
+      status:
+        $ref: '#/definitions/models.InventoryItemStatus'
+      supplier:
+        $ref: '#/definitions/models.Supplier'
+      supplier_id:
+        type: integer
+      unit:
+        type: string
+      updated_at:
+        type: string
     type: object
+  models.InventoryItemStatus:
+    enum:
+    - active
+    - inactive
+    type: string
+    x-enum-varnames:
+    - InventoryItemStatusActive
+    - InventoryItemStatusInactive
+  models.InventoryStatus:
+    enum:
+    - active
+    - inactive
+    type: string
+    x-enum-varnames:
+    - InventoryStatusActive
+    - InventoryStatusInactive
+  models.InventoryTransaction:
+    properties:
+      consumed_quantity:
+        type: integer
+      counter_transaction_id:
+        type: integer
+      created_at:
+        type: string
+      created_by:
+        type: string
+      deleted_at:
+        type: string
+      id:
+        type: integer
+      inventory_item:
+        $ref: '#/definitions/models.InventoryItem'
+      inventory_item_id:
+        type: integer
+      price:
+        type: number
+      purchase_order_item_id:
+        type: integer
+      quantity:
+        type: integer
+      transaction_type:
+        $ref: '#/definitions/models.InventoryTransactionType'
+      updated_at:
+        type: string
+    type: object
+  models.InventoryTransactionType:
+    enum:
+    - purchase
+    - disposal
+    - sell
+    type: string
+    x-enum-varnames:
+    - InventoryTransactionTypePurchase
+    - InventoryTransactionTypeDisposal
+    - InventoryTransactionTypeSell
   models.Product:
+    properties:
+      created_at:
+        type: string
+      created_by:
+        type: string
+      deleted_at:
+        type: string
+      description:
+        type: string
+      id:
+        type: integer
+      inventory_items:
+        items:
+          $ref: '#/definitions/models.InventoryItem'
+        type: array
+      name:
+        type: string
+      product_type:
+        type: string
+      status:
+        type: string
+      suppliers:
+        items:
+          $ref: '#/definitions/models.Supplier'
+        type: array
+      unit:
+        type: string
+      updated_at:
+        type: string
     type: object
   models.PurchaseOrder:
+    description: Purchase order entity with items and status tracking
+    properties:
+      created_at:
+        type: string
+      created_by:
+        type: string
+      deleted_at:
+        type: string
+      id:
+        type: integer
+      inventory_id:
+        type: integer
+      items:
+        items:
+          $ref: '#/definitions/models.PurchaseOrderItem'
+        minItems: 1
+        type: array
+      notes:
+        example: Purchase order notes
+        type: string
+      order_number:
+        example: PO-2023-001
+        type: string
+      status:
+        allOf:
+        - $ref: '#/definitions/models.PurchaseOrderStatus'
+        example: order_placed
+      total_amount:
+        description: Calculated field, not stored in DB
+        example: 999.99
+        type: number
+      updated_at:
+        type: string
+    required:
+    - inventory_id
+    - items
+    type: object
+  models.PurchaseOrderItem:
+    properties:
+      created_at:
+        type: string
+      created_by:
+        type: string
+      deleted_at:
+        type: string
+      id:
+        type: integer
+      product:
+        $ref: '#/definitions/models.Product'
+      product_id:
+        type: integer
+      purchase_order:
+        $ref: '#/definitions/models.PurchaseOrder'
+      purchase_order_id:
+        type: integer
+      quantity:
+        minimum: 1
+        type: integer
+      received_quantity:
+        type: integer
+      status:
+        allOf:
+        - $ref: '#/definitions/models.PurchaseOrderItemStatus'
+        example: delivering
+      supplier:
+        $ref: '#/definitions/models.Supplier'
+      supplier_id:
+        type: integer
+      total_amount:
+        description: Calculated field, not stored in DB
+        type: number
+      unit_price:
+        minimum: 0
+        type: number
+      updated_at:
+        type: string
+    required:
+    - product_id
+    - quantity
+    - supplier_id
     type: object
   models.PurchaseOrderItemStatus:
     enum:
-    - delivering
+    - awaiting_delivery
+    - partially_delivered
     - delivered
+    - cancelled
     type: string
     x-enum-varnames:
-    - PurchaseOrderItemStatusDelivering
+    - PurchaseOrderItemStatusAwaitingDelivery
+    - PurchaseOrderItemStatusPartiallyDelivered
     - PurchaseOrderItemStatusDelivered
+    - PurchaseOrderItemStatusCancelled
   models.PurchaseOrderStatus:
     enum:
     - order_placed
@@ -75,16 +356,32 @@ definitions:
       value:
         type: object
     type: object
-  models.UpdatePurchaseOrderItemStatusResponse:
+  models.Supplier:
     properties:
-      item_status:
-        allOf:
-        - $ref: '#/definitions/models.PurchaseOrderItemStatus'
-        example: delivered
-      order_status:
-        allOf:
-        - $ref: '#/definitions/models.PurchaseOrderStatus'
-        example: fully_delivered
+      address:
+        type: string
+      contact_email:
+        type: string
+      contact_phone:
+        type: string
+      created_at:
+        type: string
+      created_by:
+        type: string
+      deleted_at:
+        type: string
+      id:
+        type: integer
+      name:
+        type: string
+      products:
+        items:
+          $ref: '#/definitions/models.Product'
+        type: array
+      status:
+        type: string
+      updated_at:
+        type: string
     type: object
 host: localhost:8080
 info:
@@ -162,7 +459,6 @@ paths:
       summary: List purchase orders
       tags:
       - purchase-orders
-      'x-codegen-max-depth:': 2
     post:
       consumes:
       - application/json
@@ -229,7 +525,7 @@ paths:
         "200":
           description: Successfully updated purchase order item status
           schema:
-            $ref: '#/definitions/models.UpdatePurchaseOrderItemStatusResponse'
+            $ref: '#/definitions/dto.UpdatePurchaseOrderItemStatusResponse'
         "400":
           description: Invalid request parameters
           schema:
@@ -553,6 +849,14 @@ paths:
         in: query
         name: limit
         type: integer
+      - description: Filter by status (active/inactive)
+        in: query
+        name: status
+        type: string
+      - description: Filter by product type
+        in: query
+        name: product_type
+        type: string
       produces:
       - application/json
       responses:
@@ -817,6 +1121,113 @@ paths:
       summary: Adjust inventory item quantity
       tags:
       - inventory-items
+  /inventories/confirm:
+    put:
+      consumes:
+      - application/json
+      description: Confirm the actual inventory count for multiple inventory items
+      parameters:
+      - description: Confirmation data
+        in: body
+        name: confirmation
+        required: true
+        schema:
+          $ref: '#/definitions/dto.ConfirmInventoryRequest'
+      produces:
+      - application/json
+      responses:
+        "204":
+          description: No Content
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Confirm inventory items
+      tags:
+      - inventory-items
+  /inventories/dispose:
+    put:
+      consumes:
+      - application/json
+      description: Dispose multiple inventory items by reducing their quantities
+      parameters:
+      - description: Disposal data
+        in: body
+        name: disposal
+        required: true
+        schema:
+          $ref: '#/definitions/dto.DisposeItemsRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Dispose inventory items
+      tags:
+      - inventory-items
+  /inventories/last-purchase-prices:
+    get:
+      consumes:
+      - application/json
+      description: Get the last purchase transaction price for each Supplier Product
+        as a nested map (product_id -> supplier_id -> price)
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.LastPurchasePriceMap'
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Get last purchase prices
+      tags:
+      - inventories
   /inventory-items:
     get:
       consumes:
@@ -1055,6 +1466,43 @@ paths:
       security:
       - BearerAuth: []
       summary: Update product status
+      tags:
+      - products
+  /products/import-csv:
+    post:
+      consumes:
+      - multipart/form-data
+      description: 'Import products and their suppliers from a CSV or Excel file upload.
+        Files must have headers: Name, Description, ProductType, Suppliers, ContactEmail,
+        ContactPhone, Address. CSV uses semicolon (;) as delimiter. Products can have
+        multiple suppliers by repeating rows with empty product fields.'
+      parameters:
+      - description: CSV or Excel file to upload
+        in: formData
+        name: file
+        required: true
+        type: file
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Import successful
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Bad request
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Import products with suppliers from CSV or Excel
       tags:
       - products
   /products/search:

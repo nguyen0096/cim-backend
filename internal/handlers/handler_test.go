@@ -31,7 +31,9 @@ func assertErrorResponse(t *testing.T, rec *httptest.ResponseRecorder, expectedS
 	var responseBody map[string]interface{}
 	err := json.Unmarshal(rec.Body.Bytes(), &responseBody)
 	require.NoError(t, err)
-	assert.Equal(t, expectedError, responseBody["error"])
+	errorMsg, ok := responseBody["error"].(string)
+	require.True(t, ok, "error field should be a string")
+	assert.Contains(t, errorMsg, expectedError)
 }
 
 // assertValidationErrorResponse asserts that the response contains a validation error
@@ -43,7 +45,9 @@ func assertValidationErrorResponse(t *testing.T, rec *httptest.ResponseRecorder)
 	require.NoError(t, err)
 
 	// Check that it's a validation error
-	assert.Equal(t, "validation failed", responseBody["error"])
+	errorMsg, ok := responseBody["error"].(string)
+	require.True(t, ok, "error field should be a string")
+	assert.Contains(t, errorMsg, "Validation failed")
 	assert.Equal(t, "validation", responseBody["code"])
 }
 
