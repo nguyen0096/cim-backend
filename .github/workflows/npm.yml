@@ -59,19 +59,6 @@ jobs:
           # Increment patch version
           NEW_PATCH=$((PATCH + 1))
           VERSION="$MAJOR.$MINOR.$NEW_PATCH"
-          echo "Incremented version: $VERSION"
-
-          # Determine version based on branch
-          if [[ "${{ github.ref }}" == refs/tags/v* ]]; then
-            VERSION=${GITHUB_REF#refs/tags/v}
-            echo "Using tag version: $VERSION"
-          elif [[ "${{ github.ref }}" == refs/heads/develop ]]; then
-            VERSION="$VERSION-dev.$(date +%Y%m%d%H%M%S)"
-            echo "Using develop branch version: $VERSION"
-          else
-            VERSION="$VERSION-main.$(date +%Y%m%d%H%M%S)"
-            echo "Using main branch version: $VERSION"
-          fi
 
           echo "final_publishing_version=$VERSION" >> $GITHUB_OUTPUT
           echo "Final publishing version: $VERSION"
