@@ -1,7 +1,7 @@
 package handlers
 
 import (
-	"import-export-backend/internal/services"
+	"cim-backend/internal/services"
 	"net/http"
 
 	"github.com/labstack/echo/v4"

@@ -1,6 +1,6 @@
 package models
 
-import "import-export-backend/pkg"
+import "cim-backend/pkg"
 
 type PurchaseOrderStatus string
 

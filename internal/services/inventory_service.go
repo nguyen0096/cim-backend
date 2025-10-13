@@ -1,12 +1,12 @@
 package services
 
 import (
+	"cim-backend/internal/models"
+	"cim-backend/internal/repository"
+	"cim-backend/internal/services/dto"
+	"cim-backend/pkg"
 	"context"
 	"fmt"
-	"import-export-backend/internal/models"
-	"import-export-backend/internal/repository"
-	"import-export-backend/internal/services/dto"
-	"import-export-backend/pkg"
 )
 
 //go:generate mockery --name=InventoryService --structname=InventoryService --output=./servicemocks --outpkg=servicemocks

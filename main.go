@@ -1,16 +1,16 @@
 package main
 
 import (
-	"import-export-backend/internal/auth"
-	"import-export-backend/internal/config"
-	"import-export-backend/internal/database"
-	"import-export-backend/internal/handlers"
-	"import-export-backend/internal/middleware"
-	"import-export-backend/internal/repository"
-	"import-export-backend/internal/services"
+	"cim-backend/internal/auth"
+	"cim-backend/internal/config"
+	"cim-backend/internal/database"
+	"cim-backend/internal/handlers"
+	"cim-backend/internal/middleware"
+	"cim-backend/internal/repository"
+	"cim-backend/internal/services"
 	"log"
 
-	_ "import-export-backend/docs" // Import generated docs
+	_ "cim-backend/docs" // Import generated docs
 
 	"github.com/labstack/echo/v4"
 	echoMiddleware "github.com/labstack/echo/v4/middleware"

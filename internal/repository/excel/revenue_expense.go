@@ -8,8 +8,8 @@ import (
 	"strings"
 	"time"
 
-	"import-export-backend/internal/models"
-	"import-export-backend/pkg"
+	"cim-backend/internal/models"
+	"cim-backend/pkg"
 )
 
 // RevenueExpenseExcelRepository handles data access for revenue/expense Excel operations

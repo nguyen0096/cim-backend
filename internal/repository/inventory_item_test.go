@@ -1,11 +1,11 @@
 package repository
 
 import (
+	"cim-backend/internal/config"
+	"cim-backend/internal/database"
+	"cim-backend/internal/models"
+	"cim-backend/pkg"
 	"context"
-	"import-export-backend/internal/config"
-	"import-export-backend/internal/database"
-	"import-export-backend/internal/models"
-	"import-export-backend/pkg"
 	"testing"
 	"time"
 

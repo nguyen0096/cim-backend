@@ -1,10 +1,10 @@
 package services
 
 import (
+	"cim-backend/internal/mocks/repositorymocks"
+	"cim-backend/internal/models"
 	"context"
 	"errors"
-	"import-export-backend/internal/mocks/repositorymocks"
-	"import-export-backend/internal/models"
 	"regexp"
 	"testing"
 

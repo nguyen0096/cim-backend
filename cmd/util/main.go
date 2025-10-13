@@ -1,8 +1,8 @@
 package main
 
 import (
+	"cim-backend/test/data"
 	"fmt"
-	"import-export-backend/test/data"
 	"os"
 
 	"github.com/joho/godotenv"
@@ -17,8 +17,8 @@ var (
 
 var rootCmd = &cobra.Command{
 	Use:   "util",
-	Short: "Utility CLI for import-export-backend",
-	Long:  "A utility CLI application for various import-export-backend operations",
+	Short: "Utility CLI for cim-backend",
+	Long:  "A utility CLI application for various cim-backend operations",
 }
 
 var seedCmd = &cobra.Command{

@@ -1,10 +1,10 @@
 package main
 
 import (
+	"cim-backend/internal/config"
+	"cim-backend/internal/database"
+	"cim-backend/internal/models"
 	"fmt"
-	"import-export-backend/internal/config"
-	"import-export-backend/internal/database"
-	"import-export-backend/internal/models"
 )
 
 // runMigrations runs database migrations without starting the web server

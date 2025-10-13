@@ -1,11 +1,11 @@
 package services
 
 import (
+	"cim-backend/internal/models"
+	"cim-backend/internal/repository"
 	"context"
 	"encoding/json"
 	"fmt"
-	"import-export-backend/internal/models"
-	"import-export-backend/internal/repository"
 )
 
 // SettingsService defines the interface for settings business logic

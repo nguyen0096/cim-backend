@@ -6,11 +6,11 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"import-export-backend/internal/middleware"
-	"import-export-backend/internal/mocks/repositorymocks"
-	"import-export-backend/internal/mocks/servicemocks"
-	"import-export-backend/internal/models"
-	"import-export-backend/pkg"
+	"cim-backend/internal/middleware"
+	"cim-backend/internal/mocks/repositorymocks"
+	"cim-backend/internal/mocks/servicemocks"
+	"cim-backend/internal/models"
+	"cim-backend/pkg"
 
 	"github.com/labstack/echo/v4"
 	"github.com/sirupsen/logrus"

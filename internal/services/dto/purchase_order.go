@@ -1,6 +1,6 @@
 package dto
 
-import "import-export-backend/internal/models"
+import "cim-backend/internal/models"
 
 // UpdatePurchaseOrderItemStatusResponse represents the response for updating purchase order item status
 type UpdatePurchaseOrderItemStatusResponse struct {

@@ -1,10 +1,10 @@
 package repository
 
 import (
+	"cim-backend/internal/models"
+	"cim-backend/internal/services/dto"
 	"context"
 	"fmt"
-	"import-export-backend/internal/models"
-	"import-export-backend/internal/services/dto"
 
 	"gorm.io/gorm"
 )
@@ -118,8 +118,8 @@ func (r *inventoryRepository) GetLastPurchasePrices(ctx context.Context) ([]*dto
 			INNER JOIN inventory_items AS ii2 ON it2.inventory_item_id = ii2.id
 			WHERE it2.transaction_type = ?
 			GROUP BY ii2.product_id, ii2.supplier_id
-		) AS latest ON ii.product_id = latest.product_id 
-			AND ii.supplier_id = latest.supplier_id 
+		) AS latest ON ii.product_id = latest.product_id
+			AND ii.supplier_id = latest.supplier_id
 			AND it.created_at = latest.max_created_at`, models.InventoryTransactionTypePurchase).
 		Where("it.transaction_type = ?", models.InventoryTransactionTypePurchase).
 		Where("p.status = ?", "active").

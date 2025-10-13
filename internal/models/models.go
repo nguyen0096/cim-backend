@@ -6,7 +6,7 @@ import (
 
 	"gorm.io/gorm"
 
-	"import-export-backend/pkg"
+	"cim-backend/pkg"
 )
 
 type Base struct {

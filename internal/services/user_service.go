@@ -1,12 +1,12 @@
 package services
 
 import (
+	"cim-backend/internal/auth"
+	"cim-backend/internal/models"
+	"cim-backend/internal/repository"
+	"cim-backend/pkg"
 	"context"
 	"fmt"
-	"import-export-backend/internal/auth"
-	"import-export-backend/internal/models"
-	"import-export-backend/internal/repository"
-	"import-export-backend/pkg"
 )
 
 // UserService handles user business logic

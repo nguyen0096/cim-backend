@@ -4,7 +4,7 @@ import (
 	"context"
 	"net/http"
 
-	"import-export-backend/internal/models"
+	"cim-backend/internal/models"
 
 	"github.com/labstack/echo/v4"
 )

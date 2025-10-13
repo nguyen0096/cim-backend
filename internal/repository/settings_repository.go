@@ -1,10 +1,10 @@
 package repository
 
 import (
+	"cim-backend/internal/models"
 	"context"
 	"encoding/json"
 	"fmt"
-	"import-export-backend/internal/models"
 
 	"gorm.io/datatypes"
 	"gorm.io/gorm"

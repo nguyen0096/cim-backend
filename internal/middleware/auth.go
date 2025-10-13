@@ -1,10 +1,10 @@
 package middleware
 
 import (
+	"cim-backend/internal/auth"
+	"cim-backend/pkg"
 	"context"
 	"fmt"
-	"import-export-backend/internal/auth"
-	"import-export-backend/pkg"
 	"net/http"
 	"strings"
 

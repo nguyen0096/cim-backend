@@ -1,9 +1,9 @@
 package handlers
 
 import (
-	"import-export-backend/internal/models"
-	"import-export-backend/internal/services"
-	"import-export-backend/pkg"
+	"cim-backend/internal/models"
+	"cim-backend/internal/services"
+	"cim-backend/pkg"
 	"net/http"
 	"path/filepath"
 	"strconv"

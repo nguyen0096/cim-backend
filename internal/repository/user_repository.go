@@ -1,9 +1,9 @@
 package repository
 
 import (
+	"cim-backend/internal/models"
 	"context"
 	"fmt"
-	"import-export-backend/internal/models"
 
 	"gorm.io/gorm"
 )

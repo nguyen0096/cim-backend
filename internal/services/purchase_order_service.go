@@ -1,14 +1,14 @@
 package services
 
 import (
+	"cim-backend/internal/config"
+	"cim-backend/internal/models"
+	"cim-backend/internal/repository"
+	"cim-backend/internal/services/dto"
 	"context"
 	"crypto/rand"
 	"encoding/json"
 	"fmt"
-	"import-export-backend/internal/config"
-	"import-export-backend/internal/models"
-	"import-export-backend/internal/repository"
-	"import-export-backend/internal/services/dto"
 	"time"
 
 	"github.com/sirupsen/logrus"

@@ -1,9 +1,9 @@
 package database
 
 import (
+	"cim-backend/internal/config"
+	"cim-backend/internal/models"
 	"fmt"
-	"import-export-backend/internal/config"
-	"import-export-backend/internal/models"
 
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"

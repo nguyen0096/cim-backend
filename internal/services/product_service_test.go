@@ -1,11 +1,11 @@
 package services
 
 import (
+	repositorymocks "cim-backend/internal/mocks/repositories"
+	"cim-backend/internal/models"
+	"cim-backend/pkg"
 	"context"
 	"errors"
-	repositorymocks "import-export-backend/internal/mocks/repositories"
-	"import-export-backend/internal/models"
-	"import-export-backend/pkg"
 	"strings"
 	"testing"
 

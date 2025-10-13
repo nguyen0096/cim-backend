@@ -1,15 +1,15 @@
 package data
 
 import (
+	"cim-backend/internal/auth"
+	"cim-backend/internal/config"
+	"cim-backend/internal/database"
+	"cim-backend/internal/models"
+	"cim-backend/internal/repository"
+	"cim-backend/internal/services"
+	"cim-backend/pkg"
 	"context"
 	"fmt"
-	"import-export-backend/internal/auth"
-	"import-export-backend/internal/config"
-	"import-export-backend/internal/database"
-	"import-export-backend/internal/models"
-	"import-export-backend/internal/repository"
-	"import-export-backend/internal/services"
-	"import-export-backend/pkg"
 	"log"
 	"time"
 

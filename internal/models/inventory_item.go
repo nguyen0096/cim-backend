@@ -1,8 +1,8 @@
 package models
 
 import (
+	"cim-backend/pkg"
 	"fmt"
-	"import-export-backend/pkg"
 )
 
 // InventoryItemStatus represents the status of an inventory item

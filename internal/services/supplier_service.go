@@ -1,9 +1,9 @@
 package services
 
 import (
+	"cim-backend/internal/models"
+	"cim-backend/internal/repository"
 	"context"
-	"import-export-backend/internal/models"
-	"import-export-backend/internal/repository"
 )
 
 type SupplierService interface {
