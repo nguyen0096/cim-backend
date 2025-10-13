@@ -1,10 +1,10 @@
-Name;Description;ProductType;Suppliers;ContactEmail;ContactPhone;Address
-Laptop Computer;High-performance laptop;Ăn nhẹ;Tech Electronics Inc;contact@techelectronics.com;+1-555-0123;123 Silicon Valley Blvd, San Jose, CA 95110
-;;;Xiaomi;contact@xiaomi.com;+1-555-0456;456 Business Park Dr, Dallas, TX 75201
-;;;Global Parts Ltd;orders@globalparts.com;+1-555-0789;789 Industrial Way, Seattle, WA 98101
-Tablet;High-performance tablet;Cơm;Tech Electronics Inc;contact@techelectronics.com;+1-555-0123;123 Silicon Valley Blvd, San Jose, CA 95110
-;;;Apple;contact@apple.com;+1-555-0123;123 Silicon Valley Blvd, San Jose, CA 95110
-;;;Samsung;contact@samsung.com;+1-555-0123;123 Silicon Valley Blvd, San Jose, CA 95110
-;;;Google;contact@google.com;+1-555-0123;123 Silicon Valley Blvd, San Jose, CA 95110
-Pepsi;;Nước;Công ty TNHH Giải khát Sài Gòn;contact@email.com;0123456789;D5 Khu dân cư Thảo Nguyên
-;;;Vạn Thịnh Phát;contact@email.com;0123456789;D9 Khu dân cư Thảo Nguyên
+Name;Description;ProductType;Unit;Suppliers;ContactEmail;ContactPhone;Address
+Cơm tấm;High-performance laptop;Cơm;Phần;Tech Electronics Inc;contact@techelectronics.com;+1-555-0123;123 Silicon Valley Blvd, San Jose, CA 95110
+;;;;Xiaomi;contact@xiaomi.com;+1-555-0456;456 Business Park Dr, Dallas, TX 75201
+;;;;Global Parts Ltd;orders@globalparts.com;+1-555-0789;789 Industrial Way, Seattle, WA 98101
+Khoai tây chiên;High-performance tablet;Ăn nhẹ;Gói;Tech Electronics Inc;contact@techelectronics.com;+1-555-0123;123 Silicon Valley Blvd, San Jose, CA 95110
+;;;;Apple;contact@apple.com;+1-555-0123;123 Silicon Valley Blvd, San Jose, CA 95110
+;;;;Samsung;contact@samsung.com;+1-555-0123;123 Silicon Valley Blvd, San Jose, CA 95110
+;;;;Google;contact@google.com;+1-555-0123;123 Silicon Valley Blvd, San Jose, CA 95110
+Pepsi;;Nước;Lốc;Công ty TNHH Giải khát Sài Gòn;contact@email.com;0123456789;D5 Khu dân cư Thảo Nguyên
+;;;;Vạn Thịnh Phát;contact@email.com;0123456789;D9 Khu dân cư Thảo Nguyên

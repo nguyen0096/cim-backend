@@ -316,9 +316,13 @@ func (s *productService) ImportProductsFromExcel(ctx context.Context, excelReade
 	if len(rows) == 0 {
 		return 0, pkg.ErrValidation("Excel file is empty", nil)
 	}
+	headerInx := 0
+	if len(rows[headerInx]) < 3 {
+		headerInx++
+	}
 
 	// Process header
-	header := rows[0]
+	header := rows[headerInx]
 
 	// Normalize headers (trim spaces and convert to lowercase)
 	for i := range header {
@@ -371,7 +375,7 @@ func (s *productService) ImportProductsFromExcel(ctx context.Context, excelReade
 	var currentProduct *productWithSuppliers
 
 	// Process data rows (skip header)
-	for lineNumber, row := range rows[1:] {
+	for lineNumber, row := range rows[headerInx+1:] {
 		// Skip completely empty rows
 		allEmpty := true
 		for _, cell := range row {
