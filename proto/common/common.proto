@@ -1,0 +1,43 @@
+syntax = "proto3";
+
+package common;
+
+option go_package = "cim-backend/proto/common";
+
+import "google/protobuf/timestamp.proto";
+
+// Base contains common fields for all entities
+message Base {
+  uint32 id = 1;
+  string created_by = 2;
+  google.protobuf.Timestamp created_at = 3;
+  google.protobuf.Timestamp updated_at = 4;
+  google.protobuf.Timestamp deleted_at = 5;
+}
+
+// ListParams represents pagination and filtering parameters
+message ListParams {
+  int32 page = 1;
+  int32 limit = 2;
+  string search = 3;
+  string sort = 4;
+  string order = 5;
+  string status = 6;
+  string start_date = 7;
+  string end_date = 8;
+}
+
+// PaginationResult represents paginated response
+message PaginationResult {
+  int64 total = 1;
+  int32 page = 2;
+  int32 limit = 3;
+  int32 total_pages = 4;
+}
+
+// ErrorResponse represents an error response
+message ErrorResponse {
+  string code = 1;
+  string message = 2;
+  map<string, string> details = 3;
+}

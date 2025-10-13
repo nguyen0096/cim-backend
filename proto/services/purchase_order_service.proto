@@ -1,0 +1,48 @@
+syntax = "proto3";
+
+package services;
+
+option go_package = "cim-backend/proto/services";
+
+import "common/common.proto";
+import "models/purchase_order.proto";
+import "models/dto.proto";
+import "google/protobuf/empty.proto";
+
+// PurchaseOrderService provides purchase order management operations
+service PurchaseOrderService {
+  // List all purchase orders with pagination and filtering
+  rpc ListPurchaseOrders(ListPurchaseOrdersRequest) returns (ListPurchaseOrdersResponse);
+
+  // Create a new purchase order
+  rpc CreatePurchaseOrder(CreatePurchaseOrderRequest) returns (models.PurchaseOrder);
+
+  // Update purchase order item status
+  rpc UpdatePurchaseOrderItemStatus(UpdatePurchaseOrderItemStatusRequest) returns (models.UpdatePurchaseOrderItemStatusResponse);
+
+  // Update purchase order delivery status
+  rpc UpdatePurchaseOrderDeliveryStatus(models.UpdatePurchaseOrderDeliveryStatusRequest) returns (google.protobuf.Empty);
+}
+
+// ListPurchaseOrdersRequest represents request to list purchase orders
+message ListPurchaseOrdersRequest {
+  common.ListParams params = 1;
+}
+
+// ListPurchaseOrdersResponse represents response with list of purchase orders
+message ListPurchaseOrdersResponse {
+  repeated models.PurchaseOrder data = 1;
+  common.PaginationResult pagination = 2;
+}
+
+// CreatePurchaseOrderRequest represents request to create a purchase order
+message CreatePurchaseOrderRequest {
+  models.PurchaseOrder purchase_order = 1;
+}
+
+// UpdatePurchaseOrderItemStatusRequest represents request to update item status
+message UpdatePurchaseOrderItemStatusRequest {
+  uint32 purchase_order_id = 1;
+  uint32 item_id = 2;
+  string status = 3;
+}

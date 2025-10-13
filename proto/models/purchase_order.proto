@@ -1,0 +1,35 @@
+syntax = "proto3";
+
+package models;
+
+option go_package = "cim-backend/proto/models";
+
+import "common/common.proto";
+import "models/product.proto";
+
+// PurchaseOrder represents a purchase order
+message PurchaseOrder {
+  common.Base base = 1;
+  string order_number = 2;
+  uint32 inventory_id = 3;
+  string status = 4;
+  double total_amount = 5;
+  string notes = 6;
+  repeated PurchaseOrderItem items = 7;
+}
+
+// PurchaseOrderItem represents an item in a purchase order
+message PurchaseOrderItem {
+  common.Base base = 1;
+  uint32 purchase_order_id = 2;
+  PurchaseOrder purchase_order = 3;
+  uint32 product_id = 4;
+  Product product = 5;
+  uint32 supplier_id = 6;
+  Supplier supplier = 7;
+  double unit_price = 8;
+  int32 quantity = 9;
+  int32 received_quantity = 10;
+  string status = 11;
+  double total_amount = 12;
+}

@@ -1,5 +1,5 @@
-.PHONY: build run test clean docker-build docker-run docker-stop migrate-up migrate-down docs mock
- 
+.PHONY: build run test clean docker-build docker-run docker-stop migrate-up migrate-down docs mock proto proto-install proto-clean buf-install buf-lint buf-format
+
 # Build the application
 build:
 	go build -o bin/main .
@@ -56,6 +56,13 @@ prod-setup:
 docs:
 	swag init -g main.go
 
+# Install protobuf tools
+proto-install:
+	@echo "Installing protobuf compiler and plugins..."
+	@which protoc > /dev/null || (echo "Please install protoc (Protocol Buffers compiler)" && exit 1)
+	go install github.com/bufbuild/buf/cmd/buf@latest
+	@echo "Protobuf tools installed successfully!"
+
 # Test API with sample data
 test-api:
 	./test-api.sh
@@ -84,6 +91,7 @@ help:
 	@echo "  docs           - Generate API documentation"
 	@echo "  test-api       - Test API with sample data"
 	@echo "  seed-db        - Seed database with mock data"
+	@echo "  proto-install  - Install protobuf compiler tools"
 
 generate:
 	go generate ./...

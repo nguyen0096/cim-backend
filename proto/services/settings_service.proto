@@ -1,0 +1,44 @@
+syntax = "proto3";
+
+package services;
+
+option go_package = "cim-backend/proto/services";
+
+import "models/settings.proto";
+import "google/protobuf/empty.proto";
+
+// SettingsService provides application settings management operations
+service SettingsService {
+  // Get all settings
+  rpc GetSettings(google.protobuf.Empty) returns (models.GetSettingsResponse);
+
+  // Get a setting by key
+  rpc GetSetting(GetSettingRequest) returns (models.Settings);
+
+  // Set a setting value
+  rpc SetSetting(SetSettingRequest) returns (models.SetSettingResponse);
+
+  // Delete a setting
+  rpc DeleteSetting(DeleteSettingRequest) returns (DeleteSettingResponse);
+}
+
+// GetSettingRequest represents request to get a setting by key
+message GetSettingRequest {
+  string key = 1;
+}
+
+// SetSettingRequest represents request to set a setting
+message SetSettingRequest {
+  string key = 1;
+  models.SetSettingRequest setting = 2;
+}
+
+// DeleteSettingRequest represents request to delete a setting
+message DeleteSettingRequest {
+  string key = 1;
+}
+
+// DeleteSettingResponse represents response after deleting a setting
+message DeleteSettingResponse {
+  string message = 1;
+}

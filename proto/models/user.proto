@@ -1,0 +1,20 @@
+syntax = "proto3";
+
+package models;
+
+option go_package = "cim-backend/proto/models";
+
+import "google/protobuf/timestamp.proto";
+
+// User represents a user in the system
+message User {
+  string id = 1; // UUID
+  string uid = 2; // Firebase UID
+  string email = 3;
+  string name = 4;
+  string role = 5;
+  bool active = 6;
+  google.protobuf.Timestamp created_at = 7;
+  google.protobuf.Timestamp updated_at = 8;
+  google.protobuf.Timestamp deleted_at = 9;
+}

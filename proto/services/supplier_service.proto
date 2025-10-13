@@ -1,0 +1,22 @@
+syntax = "proto3";
+
+package services;
+
+option go_package = "cim-backend/proto/services";
+
+// SupplierService provides supplier management operations
+service SupplierService {
+  // Update supplier status
+  rpc UpdateSupplierStatus(UpdateSupplierStatusRequest) returns (UpdateSupplierStatusResponse);
+}
+
+// UpdateSupplierStatusRequest represents request to update supplier status
+message UpdateSupplierStatusRequest {
+  uint32 id = 1;
+  string status = 2;
+}
+
+// UpdateSupplierStatusResponse represents response after updating status
+message UpdateSupplierStatusResponse {
+  string message = 1;
+}

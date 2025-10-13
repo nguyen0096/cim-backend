@@ -1,0 +1,63 @@
+syntax = "proto3";
+
+package models;
+
+option go_package = "cim-backend/proto/models";
+
+// UpdatePurchaseOrderItemStatusResponse represents the response for updating purchase order item status
+message UpdatePurchaseOrderItemStatusResponse {
+  string item_status = 1;
+  string order_status = 2;
+}
+
+// UpdatePurchaseOrderDeliveryStatusRequest represents request to update delivery status
+message UpdatePurchaseOrderDeliveryStatusRequest {
+  uint32 purchase_order_id = 1;
+  repeated PurchaseOrderItemDelivery items = 2;
+}
+
+// PurchaseOrderItemDelivery represents a single item delivery update
+message PurchaseOrderItemDelivery {
+  uint32 id = 1;
+  int32 received_quantity = 2;
+}
+
+// ConfirmInventoryRequest represents the request for confirming inventory
+message ConfirmInventoryRequest {
+  uint32 inventory_id = 1;
+  repeated InventoryItemQuantity items = 2;
+}
+
+// DisposeItemsRequest represents the request for disposing inventory items
+message DisposeItemsRequest {
+  uint32 inventory_id = 1;
+  repeated InventoryItemQuantity items = 2;
+}
+
+// InventoryItemQuantity represents a single inventory item disposal
+message InventoryItemQuantity {
+  uint32 inventory_item_id = 1;
+  int32 quantity = 2;
+}
+
+// LastPurchasePriceResponse represents the last purchase price for a product-supplier combination
+message LastPurchasePriceResponse {
+  uint32 product_id = 1;
+  uint32 supplier_id = 2;
+  double last_price = 3;
+  string last_purchase_date = 4;
+}
+
+// LastPurchasePriceMap represents nested map of product_id -> supplier_id -> last_price
+message LastPurchasePriceMap {
+  map<uint32, SupplierPriceMap> prices = 1;
+}
+
+message SupplierPriceMap {
+  map<uint32, double> supplier_prices = 1;
+}
+
+// UpdateStatusRequest represents status update request
+message UpdateStatusRequest {
+  string status = 1;
+}

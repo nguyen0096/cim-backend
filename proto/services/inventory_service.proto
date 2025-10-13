@@ -1,0 +1,75 @@
+syntax = "proto3";
+
+package services;
+
+option go_package = "cim-backend/proto/services";
+
+import "common/common.proto";
+import "models/product.proto";
+import "models/dto.proto";
+import "google/protobuf/empty.proto";
+
+// InventoryService provides inventory management operations
+service InventoryService {
+  // List all inventories with pagination
+  rpc ListInventories(ListInventoriesRequest) returns (ListInventoriesResponse);
+
+  // Get an inventory by ID
+  rpc GetInventory(GetInventoryRequest) returns (models.Inventory);
+
+  // Create a new inventory
+  rpc CreateInventory(CreateInventoryRequest) returns (models.Inventory);
+
+  // Update an inventory
+  rpc UpdateInventory(UpdateInventoryRequest) returns (models.Inventory);
+
+  // Delete an inventory
+  rpc DeleteInventory(DeleteInventoryRequest) returns (google.protobuf.Empty);
+
+  // Get last purchase prices
+  rpc GetLastPurchasePrices(google.protobuf.Empty) returns (models.LastPurchasePriceMap);
+
+  // Confirm inventory items
+  rpc ConfirmInventory(models.ConfirmInventoryRequest) returns (google.protobuf.Empty);
+
+  // Dispose inventory items
+  rpc DisposeInventoryItems(models.DisposeItemsRequest) returns (DisposeItemsResponse);
+}
+
+// ListInventoriesRequest represents request to list inventories
+message ListInventoriesRequest {
+  common.ListParams params = 1;
+}
+
+// ListInventoriesResponse represents response with list of inventories
+message ListInventoriesResponse {
+  repeated models.Inventory data = 1;
+  common.PaginationResult pagination = 2;
+}
+
+// GetInventoryRequest represents request to get an inventory by ID
+message GetInventoryRequest {
+  uint32 id = 1;
+}
+
+// CreateInventoryRequest represents request to create an inventory
+message CreateInventoryRequest {
+  models.Inventory inventory = 1;
+}
+
+// UpdateInventoryRequest represents request to update an inventory
+message UpdateInventoryRequest {
+  uint32 id = 1;
+  models.Inventory inventory = 2;
+}
+
+// DeleteInventoryRequest represents request to delete an inventory
+message DeleteInventoryRequest {
+  uint32 id = 1;
+}
+
+// DisposeItemsResponse represents response after disposing items
+message DisposeItemsResponse {
+  string message = 1;
+  int32 items_disposed = 2;
+}

@@ -43,3 +43,10 @@ __debug_bin*
 
 # Excel temp files
 ~$*.xlsx
+
+# Protobuf generated files
+*.pb.go
+*_grpc.pb.go
+protogenes
+protogengo
+.npmrc
