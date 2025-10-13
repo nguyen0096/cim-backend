@@ -1,0 +1,36 @@
+{
+  "name": "@cim-backend/protogenes",
+  "version": "0.1.0",
+  "description": "Generated TypeScript/JavaScript types and services from Protocol Buffers for CIM Backend",
+  "main": "index.js",
+  "types": "index.d.ts",
+  "files": [
+    "index.js",
+    "index.d.ts",
+    "common/",
+    "models/",
+    "services/",
+    "README.md"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/YOUR_ORG/cim-backend.git"
+  },
+  "keywords": [
+    "protobuf",
+    "grpc",
+    "typescript",
+    "cim",
+    "protocol-buffers",
+    "buf"
+  ],
+  "author": "",
+  "license": "MIT",
+  "publishConfig": {
+    "registry": "https://npm.pkg.github.com",
+    "access": "restricted"
+  },
+  "engines": {
+    "node": ">=16.0.0"
+  }
+}

@@ -1,0 +1,64 @@
+name: NPM Release
+
+on:
+  push:
+    branches: [main, develop]
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  npm_release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: ">=1.22"
+
+      - name: Setup Buf
+        uses: bufbuild/buf-setup-action@v1
+
+      - name: Install protobuf tools
+        run: make proto-install
+
+      - name: Lint proto files
+        run: buf lint
+
+      - name: Generate proto files
+        run: buf generate
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22.x"
+          registry-url: "https://npm.pkg.github.com"
+
+      - name: Determine version
+        id: version
+        run: |
+          if [[ "${{ github.ref }}" == refs/tags/v* ]]; then
+            VERSION=${GITHUB_REF#refs/tags/v}
+          elif [[ "${{ github.ref }}" == refs/heads/develop ]]; then
+            VERSION="0.0.0-dev.$(date +%Y%m%d%H%M%S)"
+          else
+            VERSION="0.0.0-main.$(date +%Y%m%d%H%M%S)"
+          fi
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Publishing version: $VERSION"
+
+      - name: Update package version
+        run: |
+          cd ./protogenes
+          npm version ${{ steps.version.outputs.version }} --no-git-tag-version
+
+      - name: Publish to GitHub Packages
+        run: |
+          cd ./protogenes
+          npm publish
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
