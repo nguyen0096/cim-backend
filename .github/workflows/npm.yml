@@ -73,17 +73,13 @@ jobs:
             echo "Using main branch version: $VERSION"
           fi
 
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "final_publishing_version=$VERSION" >> $GITHUB_OUTPUT
           echo "Final publishing version: $VERSION"
 
-      - name: Update package version
+      - name: Update package version and publish
         run: |
           cd ./protogenes
-          npm version ${{ steps.version.outputs.version }} --no-git-tag-version
-
-      - name: Publish to GitHub Packages
-        run: |
-          cd ./protogenes
+          npm version ${{ steps.version.outputs.final_publishing_version }} --no-git-tag-version
           npm publish
         env:
           NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
