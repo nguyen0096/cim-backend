@@ -244,6 +244,7 @@ func (h *ProductHandler) CreateProduct(c echo.Context) error {
 		Name        string `json:"name"`
 		Description string `json:"description"`
 		ProductType string `json:"product_type"`
+		Unit        string `json:"unit"`
 		Status      string `json:"status"`
 		SupplierIDs []uint `json:"supplier_ids"`
 	}
@@ -269,6 +270,7 @@ func (h *ProductHandler) CreateProduct(c echo.Context) error {
 		Name:        request.Name,
 		Description: request.Description,
 		ProductType: request.ProductType,
+		Unit:        request.Unit,
 		Status:      request.Status,
 	}
 
@@ -338,6 +340,7 @@ func (h *ProductHandler) UpdateProduct(c echo.Context) error {
 		Name        string `json:"name"`
 		Description string `json:"description"`
 		ProductType string `json:"product_type"`
+		Unit        string `json:"unit"`
 		Status      string `json:"status"`
 		SupplierIDs []uint `json:"supplier_ids"`
 	}
@@ -352,6 +355,7 @@ func (h *ProductHandler) UpdateProduct(c echo.Context) error {
 		Name:        request.Name,
 		Description: request.Description,
 		ProductType: request.ProductType,
+		Unit:        request.Unit,
 		Status:      request.Status,
 	}
 
