@@ -1,4 +1,4 @@
-module import-export-backend
+module cim-backend
 
 go 1.25
 

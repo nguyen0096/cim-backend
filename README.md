@@ -8,7 +8,7 @@ A Go-based backend system for order management and warehouse operations with Exc
 
 ```bash
 git clone <repository-url>
-cd import-export-backend
+cd cim-backend
 docker-compose up -d
 ```
 
