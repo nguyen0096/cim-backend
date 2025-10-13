@@ -5,7 +5,7 @@ package models;
 option go_package = "cim-backend/proto/models";
 
 import "common/common.proto";
-import "models/product.proto";
+import "models/product_supplier.proto";
 
 // PurchaseOrder represents a purchase order
 message PurchaseOrder {

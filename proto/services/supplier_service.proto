@@ -4,10 +4,72 @@ package services;
 
 option go_package = "cim-backend/proto/services";
 
+import "models/product_supplier.proto";
+
 // SupplierService provides supplier management operations
 service SupplierService {
+  // Create a new supplier
+  rpc CreateSupplier(CreateSupplierRequest) returns (CreateSupplierResponse);
+
+  // Get supplier by ID
+  rpc GetSupplier(GetSupplierRequest) returns (GetSupplierResponse);
+
+  // Update supplier information
+  rpc UpdateSupplier(UpdateSupplierRequest) returns (UpdateSupplierResponse);
+
   // Update supplier status
   rpc UpdateSupplierStatus(UpdateSupplierStatusRequest) returns (UpdateSupplierStatusResponse);
+
+  // Delete supplier (soft delete)
+  rpc DeleteSupplier(DeleteSupplierRequest) returns (DeleteSupplierResponse);
+
+  // Restore deleted supplier
+  rpc RestoreSupplier(RestoreSupplierRequest) returns (RestoreSupplierResponse);
+
+  // List suppliers with pagination
+  rpc ListSuppliers(ListSuppliersRequest) returns (ListSuppliersResponse);
+
+  // Search suppliers
+  rpc SearchSuppliers(SearchSuppliersRequest) returns (SearchSuppliersResponse);
+}
+
+// CreateSupplierRequest represents request to create a new supplier
+message CreateSupplierRequest {
+  string name = 1;
+  string contact_email = 2;
+  string contact_phone = 3;
+  string address = 4;
+  string status = 5; // Default: "active"
+}
+
+// CreateSupplierResponse represents response after creating supplier
+message CreateSupplierResponse {
+  models.Supplier supplier = 1;
+}
+
+// GetSupplierRequest represents request to get supplier by ID
+message GetSupplierRequest {
+  uint32 id = 1;
+}
+
+// GetSupplierResponse represents response with supplier data
+message GetSupplierResponse {
+  models.Supplier supplier = 1;
+}
+
+// UpdateSupplierRequest represents request to update supplier
+message UpdateSupplierRequest {
+  uint32 id = 1;
+  string name = 2;
+  string contact_email = 3;
+  string contact_phone = 4;
+  string address = 5;
+  string status = 6;
+}
+
+// UpdateSupplierResponse represents response after updating supplier
+message UpdateSupplierResponse {
+  models.Supplier supplier = 1;
 }
 
 // UpdateSupplierStatusRequest represents request to update supplier status
@@ -19,4 +81,61 @@ message UpdateSupplierStatusRequest {
 // UpdateSupplierStatusResponse represents response after updating status
 message UpdateSupplierStatusResponse {
   string message = 1;
+}
+
+// DeleteSupplierRequest represents request to delete supplier
+message DeleteSupplierRequest {
+  uint32 id = 1;
+}
+
+// DeleteSupplierResponse represents response after deleting supplier
+message DeleteSupplierResponse {
+  string message = 1;
+}
+
+// RestoreSupplierRequest represents request to restore supplier
+message RestoreSupplierRequest {
+  uint32 id = 1;
+}
+
+// RestoreSupplierResponse represents response after restoring supplier
+message RestoreSupplierResponse {
+  string message = 1;
+}
+
+// ListSuppliersRequest represents request to list suppliers with pagination
+message ListSuppliersRequest {
+  int32 limit = 1;
+  int32 page = 2;
+  string sort = 3; // sort field
+  string order = 4; // sort order (asc/desc)
+  string status = 5; // filter by status
+}
+
+// ListSuppliersResponse represents response with paginated suppliers
+message ListSuppliersResponse {
+  repeated models.Supplier suppliers = 1;
+  int64 total = 2;
+  int32 page = 3;
+  int32 limit = 4;
+  int32 total_pages = 5;
+}
+
+// SearchSuppliersRequest represents request to search suppliers
+message SearchSuppliersRequest {
+  string query = 1;
+  int32 limit = 2;
+  int32 page = 3;
+  string sort = 4; // sort field
+  string order = 5; // sort order (asc/desc)
+  string status = 6; // filter by status
+}
+
+// SearchSuppliersResponse represents response with search results
+message SearchSuppliersResponse {
+  repeated models.Supplier suppliers = 1;
+  int64 total = 2;
+  int32 page = 3;
+  int32 limit = 4;
+  int32 total_pages = 5;
 }

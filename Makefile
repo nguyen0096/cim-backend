@@ -59,8 +59,8 @@ docs:
 # Install protobuf tools
 proto-install:
 	@echo "Installing protobuf compiler and plugins..."
-	@which protoc > /dev/null || (echo "Please install protoc (Protocol Buffers compiler)" && exit 1)
 	go install github.com/bufbuild/buf/cmd/buf@latest
+	go install google.golang.org/protobuf/cmd/protoc-gen-go@latest
 	@echo "Protobuf tools installed successfully!"
 
 # Test API with sample data
