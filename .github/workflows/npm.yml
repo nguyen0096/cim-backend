@@ -45,30 +45,21 @@ jobs:
         env:
           NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          # Get the current version from package.json
-          CURRENT_VERSION=$(node -p "require('./protogenes/package.json').version")
-          echo "Current version in package.json: $CURRENT_VERSION"
-
           # Try to get the latest published version from GitHub Packages
           PUBLISHED_VERSION=$(npm view @HN-corp/cim-backend@latest version --registry=https://npm.pkg.github.com 2>/dev/null || echo "")
 
-          if [[ -z "$PUBLISHED_VERSION" ]]; then
-            echo "No published version found, using current version: $CURRENT_VERSION"
-            VERSION=$CURRENT_VERSION
-          else
-            echo "Latest published version: $PUBLISHED_VERSION"
+          echo "Latest published version: $PUBLISHED_VERSION"
 
-            # Increment patch version
-            IFS='.' read -ra VERSION_PARTS <<< "$PUBLISHED_VERSION"
-            MAJOR=${VERSION_PARTS[0]}
-            MINOR=${VERSION_PARTS[1]}
-            PATCH=${VERSION_PARTS[2]}
+          # Increment patch version
+          IFS='.' read -ra VERSION_PARTS <<< "$PUBLISHED_VERSION"
+          MAJOR=${VERSION_PARTS[0]}
+          MINOR=${VERSION_PARTS[1]}
+          PATCH=${VERSION_PARTS[2]}
 
-            # Increment patch version
-            NEW_PATCH=$((PATCH + 1))
-            VERSION="$MAJOR.$MINOR.$NEW_PATCH"
-            echo "Incremented version: $VERSION"
-          fi
+          # Increment patch version
+          NEW_PATCH=$((PATCH + 1))
+          VERSION="$MAJOR.$MINOR.$NEW_PATCH"
+          echo "Incremented version: $VERSION"
 
           # Determine version based on branch
           if [[ "${{ github.ref }}" == refs/tags/v* ]]; then

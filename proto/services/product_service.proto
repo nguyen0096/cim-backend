@@ -5,7 +5,7 @@ package services;
 option go_package = "cim-backend/proto/services";
 
 import "common/common.proto";
-import "models/product_supplier.proto";
+import "models/all_models.proto";
 
 // ProductService provides product management operations
 service ProductService {

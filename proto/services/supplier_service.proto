@@ -4,7 +4,7 @@ package services;
 
 option go_package = "cim-backend/proto/services";
 
-import "models/product_supplier.proto";
+import "models/all_models.proto";
 
 // SupplierService provides supplier management operations
 service SupplierService {
