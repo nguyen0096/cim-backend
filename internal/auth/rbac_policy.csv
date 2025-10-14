@@ -35,6 +35,8 @@ p, admin, prices, view, allow
 p, admin, permissions, view, allow
 p, admin, users, view, allow
 p, admin, users, create, allow
+p, admin, users, update, allow
+p, admin, users, delete, allow
 
 p, accountant, products, view, allow
 p, accountant, products, create, allow

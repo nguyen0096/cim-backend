@@ -141,7 +141,7 @@ func main() {
 	users.POST("", userHandler.CreateUser)
 	users.GET("/role/:role", userHandler.GetUsersByRole)
 	users.GET("/permissions", userHandler.GetUserPermissions)
-	users.PUT("/:uid/role", userHandler.UpdateUserRole)
+	users.PUT("/:id", userHandler.UpdateUser)
 	users.DELETE("/:id", userHandler.DeleteUser)
 
 	// Product routes

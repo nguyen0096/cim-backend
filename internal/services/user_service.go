@@ -71,10 +71,10 @@ func (s *UserService) GetUserByUID(ctx context.Context, uid string) (*models.Use
 	return user, nil
 }
 
-// UpdateUserRole updates a user's role (admin only)
-func (s *UserService) UpdateUserRole(ctx context.Context, uid, newRole string, updatedBy string) error {
+// UpdateUser updates all properties of a user (admin only)
+func (s *UserService) UpdateUser(ctx context.Context, uid, email, name, role, status string, updatedBy string) error {
 	// Validate role
-	if !models.UserRole(newRole).IsValidRole() {
+	if !models.UserRole(role).IsValidRole() {
 		return pkg.NewAppError(pkg.ErrorCodeValidation, "Invalid role", nil)
 	}
 
@@ -87,33 +87,56 @@ func (s *UserService) UpdateUserRole(ctx context.Context, uid, newRole string, u
 		return pkg.NewAppError(pkg.ErrorCodeNotFound, "User not found", nil)
 	}
 
-	// Update role in database
-	if err := s.userRepo.UpdateRole(ctx, uid, newRole); err != nil {
-		return fmt.Errorf("failed to update user role in database: %w", err)
-	}
-
-	// Remove old role from Casbin
-	oldRoles, err := s.casbinService.GetRolesForUser(uid)
-	if err != nil {
-		return fmt.Errorf("failed to get user roles from Casbin: %w", err)
-	}
-	for _, role := range oldRoles {
-		if err := s.casbinService.DeleteRoleForUser(uid, role); err != nil {
-			return fmt.Errorf("failed to remove old role from Casbin: %w", err)
+	// Check if email is being changed and if new email already exists
+	if user.Email != email {
+		existingUser, err := s.userRepo.GetByEmail(ctx, email)
+		if err != nil {
+			return fmt.Errorf("failed to check existing user by email: %w", err)
+		}
+		if existingUser != nil {
+			return pkg.NewAppError(pkg.ErrorCodeValidation, "User with this email already exists", nil)
 		}
 	}
 
-	// Add new role to Casbin
-	if err := s.casbinService.AddRoleForUser(uid, newRole); err != nil {
-		return fmt.Errorf("failed to add new role to Casbin: %w", err)
+	// Check if role is being changed for Casbin update
+	roleChanged := user.Role != role
+
+	// Update user properties
+	user.Email = email
+	user.Name = name
+	user.Role = role
+	user.Status = status
+
+	// Update user in database
+	if err := s.userRepo.Update(ctx, user); err != nil {
+		return fmt.Errorf("failed to update user in database: %w", err)
+	}
+
+	// Update role in Casbin if role changed
+	if roleChanged {
+		// Remove old role from Casbin
+		oldRoles, err := s.casbinService.GetRolesForUser(uid)
+		if err != nil {
+			return fmt.Errorf("failed to get user roles from Casbin: %w", err)
+		}
+		for _, oldRole := range oldRoles {
+			if err := s.casbinService.DeleteRoleForUser(uid, oldRole); err != nil {
+				return fmt.Errorf("failed to remove old role from Casbin: %w", err)
+			}
+		}
+
+		// Add new role to Casbin
+		if err := s.casbinService.AddRoleForUser(uid, role); err != nil {
+			return fmt.Errorf("failed to add new role to Casbin: %w", err)
+		}
 	}
 
 	return nil
 }
 
 // ListUsers retrieves all users with pagination (admin only)
-func (s *UserService) ListUsers(ctx context.Context, limit, offset int) ([]*models.User, int64, error) {
-	users, total, err := s.userRepo.List(ctx, limit, offset)
+func (s *UserService) ListUsers(ctx context.Context, limit, offset int, excludeUserID string) ([]*models.User, int64, error) {
+	users, total, err := s.userRepo.List(ctx, limit, offset, excludeUserID)
 	if err != nil {
 		return nil, 0, fmt.Errorf("failed to list users: %w", err)
 	}

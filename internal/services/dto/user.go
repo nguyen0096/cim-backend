@@ -19,3 +19,12 @@ type CreateUserResponse struct {
 	Status    string `json:"status" example:"active"`
 	CreatedAt string `json:"created_at" example:"2023-01-01T00:00:00Z"`
 }
+
+// UpdateUserRequest represents the request for updating a user
+type UpdateUserRequest struct {
+	UID    string `json:"uid" example:"firebase-uid-123"`
+	Email  string `json:"email" validate:"required,email" example:"user@example.com"`
+	Name   string `json:"name" example:"John Doe"`
+	Role   string `json:"role" validate:"required;contains=admin,accountant,staff" example:"staff"`
+	Status string `json:"status" validate:"required;contains=active,pending,inactive" example:"active"`
+}

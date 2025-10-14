@@ -1701,7 +1701,7 @@ func seedUsers(db *gorm.DB) error {
 		}
 
 		// Create user
-		user, err := userService.CreateOrUpdateUser(ctx, userData.UID, userData.Email, userData.Name)
+		user, err := userService.CreateOrUpdateUser(ctx, userData.UID, userData.Email, userData.Name, "active")
 		if err != nil {
 			log.Printf("Failed to create user %s: %v", userData.Email, err)
 			continue
@@ -1709,7 +1709,7 @@ func seedUsers(db *gorm.DB) error {
 
 		// Update role if different from default
 		if user.Role != userData.Role {
-			err = userService.UpdateUserRole(ctx, user.UID, userData.Role, "system")
+			err = userService.UpdateUser(ctx, user.UID, user.Email, user.Name, userData.Role, user.Status, "system")
 			if err != nil {
 				log.Printf("Failed to update role for user %s: %v", userData.Email, err)
 				continue

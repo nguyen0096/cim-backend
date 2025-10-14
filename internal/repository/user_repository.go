@@ -65,17 +65,24 @@ func (r *UserRepository) GetByID(ctx context.Context, id string) (*models.User, 
 }
 
 // List retrieves all users with pagination
-func (r *UserRepository) List(ctx context.Context, limit, offset int) ([]*models.User, int64, error) {
+func (r *UserRepository) List(ctx context.Context, limit, offset int, excludeUserID string) ([]*models.User, int64, error) {
 	var users []*models.User
 	var total int64
 
+	baseQuery := r.db.WithContext(ctx).Model(&models.User{}).Where("deleted_at IS NULL")
+
+	// Exclude current user if provided
+	if excludeUserID != "" {
+		baseQuery = baseQuery.Where("uid != ?", excludeUserID)
+	}
+
 	// Get total count
-	if err := r.db.WithContext(ctx).Model(&models.User{}).Where("deleted_at IS NULL").Count(&total).Error; err != nil {
+	if err := baseQuery.Count(&total).Error; err != nil {
 		return nil, 0, fmt.Errorf("failed to count users: %w", err)
 	}
 
 	// Get users with pagination
-	if err := r.db.WithContext(ctx).Where("deleted_at IS NULL").Limit(limit).Offset(offset).Find(&users).Error; err != nil {
+	if err := baseQuery.Limit(limit).Offset(offset).Find(&users).Error; err != nil {
 		return nil, 0, fmt.Errorf("failed to list users: %w", err)
 	}
 

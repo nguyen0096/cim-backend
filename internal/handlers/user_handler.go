@@ -6,7 +6,6 @@ import (
 	"cim-backend/internal/services"
 	"cim-backend/internal/services/dto"
 	"cim-backend/pkg"
-	"context"
 	"net/http"
 	"strconv"
 	"time"
@@ -33,8 +32,7 @@ func (h *UserHandler) GetProfile(c echo.Context) error {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid user ID"})
 	}
 
-	ctx := context.Background()
-	user, err := h.userService.GetUserByUID(ctx, userID)
+	user, err := h.userService.GetUserByUID(c.Request().Context(), userID)
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to get user"})
 	}
@@ -53,75 +51,94 @@ func (h *UserHandler) GetProfile(c echo.Context) error {
 
 // ListUsers retrieves all users (admin only)
 func (h *UserHandler) ListUsers(c echo.Context) error {
-	// Get pagination parameters
-	limitStr := c.QueryParam("limit")
-	offsetStr := c.QueryParam("offset")
+	// Parse query parameters
+	limit, _ := strconv.Atoi(c.QueryParam("limit"))
+	page, _ := strconv.Atoi(c.QueryParam("page"))
 
-	limit := 10 // default
-	offset := 0 // default
-
-	if limitStr != "" {
-		if l, err := strconv.Atoi(limitStr); err == nil && l > 0 {
-			limit = l
-		}
+	// Set defaults
+	if limit == 0 {
+		limit = 20
+	}
+	if page == 0 {
+		page = 1
 	}
 
-	if offsetStr != "" {
-		if o, err := strconv.Atoi(offsetStr); err == nil && o >= 0 {
-			offset = o
-		}
-	}
+	// Calculate offset
+	offset := (page - 1) * limit
 
-	ctx := context.Background()
-	users, total, err := h.userService.ListUsers(ctx, limit, offset)
+	// Get current user ID to exclude from results
+	currentUserID, _ := c.Get(pkg.AuthContextKeyUserID).(string)
+
+	users, total, err := h.userService.ListUsers(c.Request().Context(), limit, offset, currentUserID)
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to list users"})
 	}
 
-	return c.JSON(http.StatusOK, map[string]interface{}{
-		"users":  users,
-		"total":  total,
-		"limit":  limit,
-		"offset": offset,
-	})
+	// Calculate total pages
+	totalPages := int((total + int64(limit) - 1) / int64(limit))
+
+	// Create response
+	response := map[string]interface{}{
+		"data":       users,
+		"total":      total,
+		"page":       page,
+		"limit":      limit,
+		"totalPages": totalPages,
+	}
+
+	return c.JSON(http.StatusOK, response)
 }
 
-// UpdateUserRole updates a user's role (admin only)
-func (h *UserHandler) UpdateUserRole(c echo.Context) error {
-	userUID := c.Param("uid")
-	if userUID == "" {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "User UID is required"})
+// UpdateUser updates all properties of a user (admin only)
+// @Summary Update user
+// @Description Update all properties of a user including email, name, role, and status
+// @Tags users
+// @Accept json
+// @Produce json
+// @Param uid path string true "User UID"
+// @Param user body dto.UpdateUserRequest true "User update data"
+// @Success 200 {object} map[string]string "User updated successfully"
+// @Failure 400 {object} map[string]string "Bad request"
+// @Failure 404 {object} map[string]string "User not found"
+// @Failure 500 {object} map[string]string "Internal server error"
+// @Security BearerAuth
+// @Router /users/{uid} [put]
+func (h *UserHandler) UpdateUser(c echo.Context) error {
+	userID := c.Param("id")
+	if userID == "" {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "User ID is required"})
 	}
 
-	var req struct {
-		Role string `json:"role" validate:"required"`
-	}
-
+	var req dto.UpdateUserRequest
 	if err := c.Bind(&req); err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid request"})
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid request", "details": err.Error()})
+	}
+
+	// Validate request
+	if err := pkg.Validator.Struct(&req); err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Validation failed", "details": err.Error()})
 	}
 
 	// Get current user (admin performing the action)
 	currentUserID, _ := c.Get(pkg.AuthContextKeyUserID).(string)
 
-	ctx := context.Background()
-	err := h.userService.UpdateUserRole(ctx, userUID, req.Role, currentUserID)
+	err := h.userService.UpdateUser(c.Request().Context(), userID, req.Email, req.Name, req.Role, req.Status, currentUserID)
 	if err != nil {
 		if appErr, ok := err.(*pkg.AppError); ok {
 			return c.JSON(appErr.HTTPStatus(), map[string]string{"error": appErr.Message})
 		}
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to update user role"})
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to update user"})
 	}
 
 	// Update Firebase custom claims
 	claims := map[string]interface{}{
 		"role": req.Role,
 	}
-	if err := h.firebaseAuth.SetCustomClaims(ctx, userUID, claims); err != nil {
+	if err := h.firebaseAuth.SetCustomClaims(c.Request().Context(), userID, claims); err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to update Firebase claims"})
 	}
 
-	return c.JSON(http.StatusOK, map[string]string{"message": "User role updated successfully"})
+	return c.JSON(http.StatusOK, map[string]string{"message": "User updated successfully"})
 }
 
 // GetUsersByRole retrieves users by role (admin only)
@@ -136,8 +153,7 @@ func (h *UserHandler) GetUsersByRole(c echo.Context) error {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid role"})
 	}
 
-	ctx := context.Background()
-	users, err := h.userService.GetUsersByRole(ctx, role)
+	users, err := h.userService.GetUsersByRole(c.Request().Context(), role)
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to get users by role"})
 	}
@@ -166,8 +182,7 @@ func (h *UserHandler) GetUserPermissions(c echo.Context) error {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid user ID"})
 	}
 
-	ctx := context.Background()
-	permissions, err := h.userService.GetUserPermissions(ctx, userID)
+	permissions, err := h.userService.GetUserPermissions(c.Request().Context(), userID)
 	if err != nil {
 		if appErr, ok := err.(*pkg.AppError); ok {
 			return c.JSON(appErr.HTTPStatus(), map[string]string{"error": appErr.Message})
@@ -198,16 +213,15 @@ func (h *UserHandler) CreateUser(c echo.Context) error {
 	var req dto.CreateUserRequest
 
 	if err := c.Bind(&req); err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid request"})
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid request", "details": err.Error()})
 	}
 
 	// Validate request
-	if err := c.Validate(&req); err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Validation failed"})
+	if err := pkg.Validator.Struct(&req); err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Validation failed", "details": err.Error()})
 	}
 
-	ctx := context.Background()
-	user, err := h.userService.CreateUser(ctx, req.UID, req.Email, req.Name, req.Role, req.Status)
+	user, err := h.userService.CreateUser(c.Request().Context(), req.UID, req.Email, req.Name, req.Role, req.Status)
 	if err != nil {
 		if appErr, ok := err.(*pkg.AppError); ok {
 			return c.JSON(appErr.HTTPStatus(), map[string]string{"error": appErr.Message})
@@ -236,8 +250,7 @@ func (h *UserHandler) DeleteUser(c echo.Context) error {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "User ID is required"})
 	}
 
-	ctx := context.Background()
-	err := h.userService.DeleteUser(ctx, userID)
+	err := h.userService.DeleteUser(c.Request().Context(), userID)
 	if err != nil {
 		if appErr, ok := err.(*pkg.AppError); ok {
 			return c.JSON(appErr.HTTPStatus(), map[string]string{"error": appErr.Message})
