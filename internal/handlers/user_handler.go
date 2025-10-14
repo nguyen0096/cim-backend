@@ -4,10 +4,12 @@ import (
 	"cim-backend/internal/auth"
 	"cim-backend/internal/models"
 	"cim-backend/internal/services"
+	"cim-backend/internal/services/dto"
 	"cim-backend/pkg"
 	"context"
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/labstack/echo/v4"
 )
@@ -22,57 +24,6 @@ func NewUserHandler(userService *services.UserService, firebaseAuth *auth.Fireba
 		userService:  userService,
 		firebaseAuth: firebaseAuth,
 	}
-}
-
-// VerifyToken verifies a Firebase token and creates/updates user
-func (h *UserHandler) VerifyToken(c echo.Context) error {
-	var req struct {
-		Token string `json:"token" validate:"required"`
-	}
-
-	if err := c.Bind(&req); err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid request"})
-	}
-
-	// Verify Firebase token
-	ctx := context.Background()
-	firebaseToken, err := h.firebaseAuth.VerifyToken(ctx, req.Token)
-	if err != nil {
-		return c.JSON(http.StatusUnauthorized, map[string]string{"error": "Invalid token"})
-	}
-
-	// Extract user information
-	uid := firebaseToken.UID
-	email, _ := firebaseToken.Claims["email"].(string)
-	name, _ := firebaseToken.Claims["name"].(string)
-	role, _ := firebaseToken.Claims["role"].(string)
-
-	// Create or update user
-	user, err := h.userService.CreateOrUpdateUser(ctx, uid, email, name)
-	if err != nil {
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to create/update user"})
-	}
-
-	// Set custom claims if role is provided and different from database
-	if role != "" && role != user.Role {
-		claims := map[string]interface{}{
-			"role": user.Role,
-		}
-		if err := h.firebaseAuth.SetCustomClaims(ctx, uid, claims); err != nil {
-			return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to set user role"})
-		}
-	}
-
-	return c.JSON(http.StatusOK, map[string]interface{}{
-		"valid": true,
-		"user": map[string]interface{}{
-			"id":    user.ID,
-			"uid":   user.UID,
-			"email": user.Email,
-			"name":  user.Name,
-			"role":  user.Role,
-		},
-	})
 }
 
 // GetProfile retrieves the current user's profile
@@ -228,6 +179,54 @@ func (h *UserHandler) GetUserPermissions(c echo.Context) error {
 		"user_id":     userID,
 		"permissions": permissions,
 	})
+}
+
+// CreateUser creates a new user (admin only)
+// @Summary Create a new user
+// @Description Create a new user with specified UID, email, name, and role
+// @Tags users
+// @Accept json
+// @Produce json
+// @Param user body dto.CreateUserRequest true "User creation data"
+// @Success 201 {object} dto.CreateUserResponse "User created successfully"
+// @Failure 400 {object} map[string]string "Bad request"
+// @Failure 409 {object} map[string]string "User already exists"
+// @Failure 500 {object} map[string]string "Internal server error"
+// @Security BearerAuth
+// @Router /users [post]
+func (h *UserHandler) CreateUser(c echo.Context) error {
+	var req dto.CreateUserRequest
+
+	if err := c.Bind(&req); err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid request"})
+	}
+
+	// Validate request
+	if err := c.Validate(&req); err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Validation failed"})
+	}
+
+	ctx := context.Background()
+	user, err := h.userService.CreateUser(ctx, req.UID, req.Email, req.Name, req.Role, req.Status)
+	if err != nil {
+		if appErr, ok := err.(*pkg.AppError); ok {
+			return c.JSON(appErr.HTTPStatus(), map[string]string{"error": appErr.Message})
+		}
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to create user"})
+	}
+
+	// Convert to response DTO
+	response := dto.CreateUserResponse{
+		ID:        user.ID.String(),
+		UID:       user.UID,
+		Email:     user.Email,
+		Name:      user.Name,
+		Role:      user.Role,
+		Status:    user.Status,
+		CreatedAt: user.CreatedAt.Format(time.RFC3339),
+	}
+
+	return c.JSON(http.StatusCreated, response)
 }
 
 // DeleteUser soft deletes a user (admin only)

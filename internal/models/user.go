@@ -10,11 +10,11 @@ import (
 // User represents a user in the system
 type User struct {
 	ID        uuid.UUID      `json:"id" gorm:"type:uuid;primary_key;default:gen_random_uuid()"`
-	UID       string         `json:"uid" gorm:"uniqueIndex;not null"` // Firebase UID
+	UID       string         `json:"uid" gorm:"uniqueIndex"` // Firebase UID
 	Email     string         `json:"email" gorm:"uniqueIndex;not null"`
 	Name      string         `json:"name"`
-	Role      string         `json:"role" gorm:"default:'staff'"` // admin, accountant, staff
-	Active    bool           `json:"active" gorm:"default:true"`
+	Role      string         `json:"role" gorm:"default:'staff'"`                                                    // admin, accountant, staff
+	Status    string         `json:"status" gorm:"default:active;check:status IN ('active', 'pending', 'inactive')"` // active, pending, inactive
 	CreatedAt time.Time      `json:"created_at"`
 	UpdatedAt time.Time      `json:"updated_at"`
 	DeletedAt gorm.DeletedAt `json:"deleted_at,omitempty" gorm:"index"`

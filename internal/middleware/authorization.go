@@ -145,6 +145,8 @@ func pathToResource(path string) string {
 		return "purchase-order-items"
 	case resource == "inventories" && len(segments) >= 3:
 		return "inventory-items"
+	case resource == "users" && len(segments) > 1 && segments[1] == "permissions":
+		return "permissions"
 	default:
 		return resource
 	}

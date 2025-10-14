@@ -32,7 +32,9 @@ p, admin, settings, create, allow
 p, admin, settings, update, allow
 p, admin, settings, delete, allow
 p, admin, prices, view, allow
+p, admin, permissions, view, allow
 p, admin, users, view, allow
+p, admin, users, create, allow
 
 p, accountant, products, view, allow
 p, accountant, products, create, allow
@@ -55,7 +57,7 @@ p, accountant, settings, view, allow
 p, accountant, settings, create, allow
 p, accountant, settings, update, allow
 p, accountant, prices, view, allow
-p, accountant, users, view, allow
+p, accountant, permissions, view, allow
 
 p, staff, purchase-orders, view, allow
 p, staff, purchase-orders, confirm, allow
@@ -63,7 +65,7 @@ p, staff, purchase-order-items, view, allow
 p, staff, purchase-order-items, create, allow
 p, staff, purchase-order-items, update, allow
 p, staff, purchase-order-items, delete, allow
-p, staff, users, view, allow
+p, staff, permissions, view, allow
 
 g, demoAdminUid0000000000000000, admin
 g, demoAccountantUid00000000000, accountant

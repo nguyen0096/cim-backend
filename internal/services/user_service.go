@@ -24,7 +24,7 @@ func NewUserService(userRepo *repository.UserRepository, casbinService *auth.Cas
 }
 
 // CreateOrUpdateUser creates a new user or updates existing one from Firebase token
-func (s *UserService) CreateOrUpdateUser(ctx context.Context, uid, email, name string) (*models.User, error) {
+func (s *UserService) CreateOrUpdateUser(ctx context.Context, uid, email, name, status string) (*models.User, error) {
 	// Check if user already exists
 	existingUser, err := s.userRepo.GetByUID(ctx, uid)
 	if err != nil {
@@ -47,7 +47,7 @@ func (s *UserService) CreateOrUpdateUser(ctx context.Context, uid, email, name s
 		Email:  email,
 		Name:   name,
 		Role:   string(models.RoleStaff), // Default role
-		Active: true,
+		Status: status,
 	}
 
 	if err := s.userRepo.Create(ctx, newUser); err != nil {
@@ -147,6 +147,56 @@ func (s *UserService) GetUserPermissions(ctx context.Context, userUID string) ([
 	}
 
 	return permissions, nil
+}
+
+// CreateUser creates a new user (admin only)
+func (s *UserService) CreateUser(ctx context.Context, uid, email, name, role, status string) (*models.User, error) {
+	// Validate role
+	if !models.UserRole(role).IsValidRole() {
+		return nil, pkg.NewAppError(pkg.ErrorCodeValidation, "Invalid role", nil)
+	}
+
+	// Check if user already exists by UID
+	existingUserByUID, err := s.userRepo.GetByUID(ctx, uid)
+	if err != nil {
+		return nil, fmt.Errorf("failed to check existing user by UID: %w", err)
+	}
+	if existingUserByUID != nil {
+		return nil, pkg.NewAppError(pkg.ErrorCodeValidation, "User with this UID already exists", nil)
+	}
+
+	// Check if user already exists by email
+	existingUserByEmail, err := s.userRepo.GetByEmail(ctx, email)
+	if err != nil {
+		return nil, fmt.Errorf("failed to check existing user by email: %w", err)
+	}
+	if existingUserByEmail != nil {
+		return nil, pkg.NewAppError(pkg.ErrorCodeValidation, "User with this email already exists", nil)
+	}
+
+	// Create new user
+	newUser := &models.User{
+		Email:  email,
+		UID:    uid,
+		Name:   name,
+		Role:   role,
+		Status: status,
+	}
+
+	if err := s.userRepo.Create(ctx, newUser); err != nil {
+		return nil, fmt.Errorf("failed to create user: %w", err)
+	}
+
+	// Assign role in Casbin
+	if err := s.casbinService.AddRoleForUser(uid, role); err != nil {
+		// If Casbin assignment fails, we should clean up the created user
+		if deleteErr := s.userRepo.Delete(ctx, newUser.ID.String()); deleteErr != nil {
+			return nil, fmt.Errorf("failed to create user and clean up after role assignment failure: %w", err)
+		}
+		return nil, fmt.Errorf("failed to assign role: %w", err)
+	}
+
+	return newUser, nil
 }
 
 // DeleteUser soft deletes a user (admin only)

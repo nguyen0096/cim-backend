@@ -133,12 +133,12 @@ func main() {
 
 	// Authentication routes
 	authGroup := api.Group("/auth")
-	authGroup.POST("/verify-token", userHandler.VerifyToken)
 	authGroup.GET("/profile", userHandler.GetProfile)
 
 	// User management routes (admin only)
 	users := api.Group("/users")
 	users.GET("", userHandler.ListUsers)
+	users.POST("", userHandler.CreateUser)
 	users.GET("/role/:role", userHandler.GetUsersByRole)
 	users.GET("/permissions", userHandler.GetUserPermissions)
 	users.PUT("/:uid/role", userHandler.UpdateUserRole)

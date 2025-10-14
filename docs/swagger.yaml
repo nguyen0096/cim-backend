@@ -1,5 +1,259 @@
 basePath: /api/v1
 definitions:
+  cim-backend_internal_models.GetSettingsResponse:
+    description: Response containing all application settings
+    properties:
+      data:
+        items:
+          $ref: '#/definitions/cim-backend_internal_models.Settings'
+        type: array
+    type: object
+  cim-backend_internal_models.Inventory:
+    properties:
+      created_at:
+        type: string
+      created_by:
+        type: string
+      deleted_at:
+        type: string
+      description:
+        type: string
+      id:
+        type: integer
+      items:
+        items:
+          $ref: '#/definitions/cim-backend_internal_models.InventoryItem'
+        type: array
+      location:
+        type: string
+      name:
+        type: string
+      status:
+        $ref: '#/definitions/models.InventoryStatus'
+      updated_at:
+        type: string
+    type: object
+  cim-backend_internal_models.InventoryItem:
+    properties:
+      active_purchase_transactions:
+        items:
+          $ref: '#/definitions/cim-backend_internal_models.InventoryTransaction'
+        type: array
+      consuming_transaction_id:
+        type: integer
+      created_at:
+        type: string
+      created_by:
+        type: string
+      deleted_at:
+        type: string
+      id:
+        type: integer
+      inventory:
+        $ref: '#/definitions/cim-backend_internal_models.Inventory'
+      inventory_id:
+        type: integer
+      product:
+        $ref: '#/definitions/cim-backend_internal_models.Product'
+      product_id:
+        type: integer
+      quantity:
+        type: integer
+      status:
+        $ref: '#/definitions/models.InventoryItemStatus'
+      supplier:
+        $ref: '#/definitions/cim-backend_internal_models.Supplier'
+      supplier_id:
+        type: integer
+      unit:
+        type: string
+      updated_at:
+        type: string
+    type: object
+  cim-backend_internal_models.InventoryTransaction:
+    properties:
+      consumed_quantity:
+        type: integer
+      counter_transaction_id:
+        type: integer
+      created_at:
+        type: string
+      created_by:
+        type: string
+      deleted_at:
+        type: string
+      id:
+        type: integer
+      inventory_item:
+        $ref: '#/definitions/cim-backend_internal_models.InventoryItem'
+      inventory_item_id:
+        type: integer
+      price:
+        type: number
+      purchase_order_item_id:
+        type: integer
+      quantity:
+        type: integer
+      transaction_type:
+        $ref: '#/definitions/models.InventoryTransactionType'
+      updated_at:
+        type: string
+    type: object
+  cim-backend_internal_models.Product:
+    properties:
+      created_at:
+        type: string
+      created_by:
+        type: string
+      deleted_at:
+        type: string
+      description:
+        type: string
+      id:
+        type: integer
+      inventory_items:
+        items:
+          $ref: '#/definitions/cim-backend_internal_models.InventoryItem'
+        type: array
+      name:
+        type: string
+      product_type:
+        type: string
+      status:
+        type: string
+      suppliers:
+        items:
+          $ref: '#/definitions/cim-backend_internal_models.Supplier'
+        type: array
+      unit:
+        type: string
+      updated_at:
+        type: string
+    type: object
+  cim-backend_internal_models.PurchaseOrder:
+    description: Purchase order entity with items and status tracking
+    properties:
+      created_at:
+        type: string
+      created_by:
+        type: string
+      deleted_at:
+        type: string
+      id:
+        type: integer
+      inventory_id:
+        type: integer
+      items:
+        items:
+          $ref: '#/definitions/cim-backend_internal_models.PurchaseOrderItem'
+        minItems: 1
+        type: array
+      notes:
+        example: Purchase order notes
+        type: string
+      order_number:
+        example: PO-2023-001
+        type: string
+      status:
+        allOf:
+        - $ref: '#/definitions/models.PurchaseOrderStatus'
+        example: order_placed
+      total_amount:
+        description: Calculated field, not stored in DB
+        example: 999.99
+        type: number
+      updated_at:
+        type: string
+    required:
+    - inventory_id
+    - items
+    type: object
+  cim-backend_internal_models.PurchaseOrderItem:
+    properties:
+      created_at:
+        type: string
+      created_by:
+        type: string
+      deleted_at:
+        type: string
+      id:
+        type: integer
+      product:
+        $ref: '#/definitions/cim-backend_internal_models.Product'
+      product_id:
+        type: integer
+      purchase_order:
+        $ref: '#/definitions/cim-backend_internal_models.PurchaseOrder'
+      purchase_order_id:
+        type: integer
+      quantity:
+        minimum: 1
+        type: integer
+      received_quantity:
+        type: integer
+      status:
+        allOf:
+        - $ref: '#/definitions/models.PurchaseOrderItemStatus'
+        example: delivering
+      supplier:
+        $ref: '#/definitions/cim-backend_internal_models.Supplier'
+      supplier_id:
+        type: integer
+      total_amount:
+        description: Calculated field, not stored in DB
+        type: number
+      unit_price:
+        minimum: 0
+        type: number
+      updated_at:
+        type: string
+    required:
+    - product_id
+    - quantity
+    - supplier_id
+    type: object
+  cim-backend_internal_models.SetSettingResponse:
+    description: Response after successfully setting a configuration value
+    properties:
+      message:
+        example: Setting updated successfully
+        type: string
+    type: object
+  cim-backend_internal_models.Settings:
+    properties:
+      key:
+        example: app_name
+        type: string
+      value:
+        type: object
+    type: object
+  cim-backend_internal_models.Supplier:
+    properties:
+      address:
+        type: string
+      contact_email:
+        type: string
+      contact_phone:
+        type: string
+      created_at:
+        type: string
+      created_by:
+        type: string
+      deleted_at:
+        type: string
+      id:
+        type: integer
+      name:
+        type: string
+      products:
+        items:
+          $ref: '#/definitions/cim-backend_internal_models.Product'
+        type: array
+      status:
+        type: string
+      updated_at:
+        type: string
+    type: object
   dto.ConfirmInventoryRequest:
     properties:
       inventory_id:
@@ -12,6 +266,50 @@ definitions:
     required:
     - inventory_id
     - items
+    type: object
+  dto.CreateUserRequest:
+    properties:
+      email:
+        example: user@example.com
+        type: string
+      name:
+        example: John Doe
+        type: string
+      role:
+        example: staff
+        type: string
+      uid:
+        example: firebase-uid-123
+        type: string
+    required:
+    - email
+    - name
+    - role
+    - uid
+    type: object
+  dto.CreateUserResponse:
+    properties:
+      active:
+        example: true
+        type: boolean
+      created_at:
+        example: "2023-01-01T00:00:00Z"
+        type: string
+      email:
+        example: user@example.com
+        type: string
+      id:
+        example: 550e8400-e29b-41d4-a716-446655440000
+        type: string
+      name:
+        example: John Doe
+        type: string
+      role:
+        example: staff
+        type: string
+      uid:
+        example: firebase-uid-123
+        type: string
     type: object
   dto.DisposeItemsRequest:
     properties:
@@ -77,76 +375,6 @@ definitions:
         - $ref: '#/definitions/models.PurchaseOrderStatus'
         example: fully_delivered
     type: object
-  models.GetSettingsResponse:
-    description: Response containing all application settings
-    properties:
-      data:
-        items:
-          $ref: '#/definitions/models.Settings'
-        type: array
-    type: object
-  models.Inventory:
-    properties:
-      created_at:
-        type: string
-      created_by:
-        type: string
-      deleted_at:
-        type: string
-      description:
-        type: string
-      id:
-        type: integer
-      items:
-        items:
-          $ref: '#/definitions/models.InventoryItem'
-        type: array
-      location:
-        type: string
-      name:
-        type: string
-      status:
-        $ref: '#/definitions/models.InventoryStatus'
-      updated_at:
-        type: string
-    type: object
-  models.InventoryItem:
-    properties:
-      active_purchase_transactions:
-        items:
-          $ref: '#/definitions/models.InventoryTransaction'
-        type: array
-      consuming_transaction_id:
-        type: integer
-      created_at:
-        type: string
-      created_by:
-        type: string
-      deleted_at:
-        type: string
-      id:
-        type: integer
-      inventory:
-        $ref: '#/definitions/models.Inventory'
-      inventory_id:
-        type: integer
-      product:
-        $ref: '#/definitions/models.Product'
-      product_id:
-        type: integer
-      quantity:
-        type: integer
-      status:
-        $ref: '#/definitions/models.InventoryItemStatus'
-      supplier:
-        $ref: '#/definitions/models.Supplier'
-      supplier_id:
-        type: integer
-      unit:
-        type: string
-      updated_at:
-        type: string
-    type: object
   models.InventoryItemStatus:
     enum:
     - active
@@ -163,35 +391,6 @@ definitions:
     x-enum-varnames:
     - InventoryStatusActive
     - InventoryStatusInactive
-  models.InventoryTransaction:
-    properties:
-      consumed_quantity:
-        type: integer
-      counter_transaction_id:
-        type: integer
-      created_at:
-        type: string
-      created_by:
-        type: string
-      deleted_at:
-        type: string
-      id:
-        type: integer
-      inventory_item:
-        $ref: '#/definitions/models.InventoryItem'
-      inventory_item_id:
-        type: integer
-      price:
-        type: number
-      purchase_order_item_id:
-        type: integer
-      quantity:
-        type: integer
-      transaction_type:
-        $ref: '#/definitions/models.InventoryTransactionType'
-      updated_at:
-        type: string
-    type: object
   models.InventoryTransactionType:
     enum:
     - purchase
@@ -202,119 +401,6 @@ definitions:
     - InventoryTransactionTypePurchase
     - InventoryTransactionTypeDisposal
     - InventoryTransactionTypeSell
-  models.Product:
-    properties:
-      created_at:
-        type: string
-      created_by:
-        type: string
-      deleted_at:
-        type: string
-      description:
-        type: string
-      id:
-        type: integer
-      inventory_items:
-        items:
-          $ref: '#/definitions/models.InventoryItem'
-        type: array
-      name:
-        type: string
-      product_type:
-        type: string
-      status:
-        type: string
-      suppliers:
-        items:
-          $ref: '#/definitions/models.Supplier'
-        type: array
-      unit:
-        type: string
-      updated_at:
-        type: string
-    type: object
-  models.PurchaseOrder:
-    description: Purchase order entity with items and status tracking
-    properties:
-      created_at:
-        type: string
-      created_by:
-        type: string
-      deleted_at:
-        type: string
-      id:
-        type: integer
-      inventory_id:
-        type: integer
-      items:
-        items:
-          $ref: '#/definitions/models.PurchaseOrderItem'
-        minItems: 1
-        type: array
-      notes:
-        example: Purchase order notes
-        type: string
-      order_number:
-        example: PO-2023-001
-        type: string
-      status:
-        allOf:
-        - $ref: '#/definitions/models.PurchaseOrderStatus'
-        example: order_placed
-      total_amount:
-        description: Calculated field, not stored in DB
-        example: 999.99
-        type: number
-      updated_at:
-        type: string
-    required:
-    - inventory_id
-    - items
-    type: object
-  models.PurchaseOrderItem:
-    properties:
-      created_at:
-        type: string
-      created_by:
-        type: string
-      deleted_at:
-        type: string
-      id:
-        type: integer
-      product:
-        $ref: '#/definitions/models.Product'
-      product_id:
-        type: integer
-      purchase_order:
-        $ref: '#/definitions/models.PurchaseOrder'
-      purchase_order_id:
-        type: integer
-      quantity:
-        minimum: 1
-        type: integer
-      received_quantity:
-        type: integer
-      status:
-        allOf:
-        - $ref: '#/definitions/models.PurchaseOrderItemStatus'
-        example: delivering
-      supplier:
-        $ref: '#/definitions/models.Supplier'
-      supplier_id:
-        type: integer
-      total_amount:
-        description: Calculated field, not stored in DB
-        type: number
-      unit_price:
-        minimum: 0
-        type: number
-      updated_at:
-        type: string
-    required:
-    - product_id
-    - quantity
-    - supplier_id
-    type: object
   models.PurchaseOrderItemStatus:
     enum:
     - awaiting_delivery
@@ -341,48 +427,6 @@ definitions:
     - PurchaseOrderStatusFullyDelivered
     - PurchaseOrderStatusCompleted
     - PurchaseOrderStatusCancelled
-  models.SetSettingResponse:
-    description: Response after successfully setting a configuration value
-    properties:
-      message:
-        example: Setting updated successfully
-        type: string
-    type: object
-  models.Settings:
-    properties:
-      key:
-        example: app_name
-        type: string
-      value:
-        type: object
-    type: object
-  models.Supplier:
-    properties:
-      address:
-        type: string
-      contact_email:
-        type: string
-      contact_phone:
-        type: string
-      created_at:
-        type: string
-      created_by:
-        type: string
-      deleted_at:
-        type: string
-      id:
-        type: integer
-      name:
-        type: string
-      products:
-        items:
-          $ref: '#/definitions/models.Product'
-        type: array
-      status:
-        type: string
-      updated_at:
-        type: string
-    type: object
 host: localhost:8080
 info:
   contact:
@@ -469,14 +513,14 @@ paths:
         name: purchase_order
         required: true
         schema:
-          $ref: '#/definitions/models.PurchaseOrder'
+          $ref: '#/definitions/cim-backend_internal_models.PurchaseOrder'
       produces:
       - application/json
       responses:
         "201":
           description: Successfully created purchase order
           schema:
-            $ref: '#/definitions/models.PurchaseOrder'
+            $ref: '#/definitions/cim-backend_internal_models.PurchaseOrder'
         "400":
           description: Invalid request body
           schema:
@@ -678,14 +722,14 @@ paths:
         name: inventory
         required: true
         schema:
-          $ref: '#/definitions/models.Inventory'
+          $ref: '#/definitions/cim-backend_internal_models.Inventory'
       produces:
       - application/json
       responses:
         "201":
           description: Created
           schema:
-            $ref: '#/definitions/models.Inventory'
+            $ref: '#/definitions/cim-backend_internal_models.Inventory'
         "400":
           description: Bad Request
           schema:
@@ -758,7 +802,7 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/models.Inventory'
+            $ref: '#/definitions/cim-backend_internal_models.Inventory'
         "400":
           description: Bad Request
           schema:
@@ -797,14 +841,14 @@ paths:
         name: inventory
         required: true
         schema:
-          $ref: '#/definitions/models.Inventory'
+          $ref: '#/definitions/cim-backend_internal_models.Inventory'
       produces:
       - application/json
       responses:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/models.Inventory'
+            $ref: '#/definitions/cim-backend_internal_models.Inventory'
         "400":
           description: Bad Request
           schema:
@@ -903,14 +947,14 @@ paths:
         name: inventoryItem
         required: true
         schema:
-          $ref: '#/definitions/models.InventoryItem'
+          $ref: '#/definitions/cim-backend_internal_models.InventoryItem'
       produces:
       - application/json
       responses:
         "201":
           description: Created
           schema:
-            $ref: '#/definitions/models.InventoryItem'
+            $ref: '#/definitions/cim-backend_internal_models.InventoryItem'
         "400":
           description: Bad Request
           schema:
@@ -993,7 +1037,7 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/models.InventoryItem'
+            $ref: '#/definitions/cim-backend_internal_models.InventoryItem'
         "400":
           description: Bad Request
           schema:
@@ -1037,14 +1081,14 @@ paths:
         name: inventoryItem
         required: true
         schema:
-          $ref: '#/definitions/models.InventoryItem'
+          $ref: '#/definitions/cim-backend_internal_models.InventoryItem'
       produces:
       - application/json
       responses:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/models.InventoryItem'
+            $ref: '#/definitions/cim-backend_internal_models.InventoryItem'
         "400":
           description: Bad Request
           schema:
@@ -1097,7 +1141,7 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/models.InventoryItem'
+            $ref: '#/definitions/cim-backend_internal_models.InventoryItem'
         "400":
           description: Bad Request
           schema:
@@ -1315,7 +1359,7 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/models.InventoryItem'
+            $ref: '#/definitions/cim-backend_internal_models.InventoryItem'
         "400":
           description: Bad Request
           schema:
@@ -1398,14 +1442,14 @@ paths:
         name: product
         required: true
         schema:
-          $ref: '#/definitions/models.Product'
+          $ref: '#/definitions/cim-backend_internal_models.Product'
       produces:
       - application/json
       responses:
         "201":
           description: Created product
           schema:
-            $ref: '#/definitions/models.Product'
+            $ref: '#/definitions/cim-backend_internal_models.Product'
         "400":
           description: Bad request
           schema:
@@ -1575,7 +1619,7 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/models.GetSettingsResponse'
+            $ref: '#/definitions/cim-backend_internal_models.GetSettingsResponse'
         "500":
           description: Internal Server Error
           schema:
@@ -1636,7 +1680,7 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/models.Settings'
+            $ref: '#/definitions/cim-backend_internal_models.Settings'
         "400":
           description: Bad Request
           schema:
@@ -1681,7 +1725,7 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/models.SetSettingResponse'
+            $ref: '#/definitions/cim-backend_internal_models.SetSettingResponse'
         "400":
           description: Bad Request
           schema:
@@ -1744,6 +1788,48 @@ paths:
       summary: Update supplier status
       tags:
       - suppliers
+  /users:
+    post:
+      consumes:
+      - application/json
+      description: Create a new user with specified UID, email, name, and role
+      parameters:
+      - description: User creation data
+        in: body
+        name: user
+        required: true
+        schema:
+          $ref: '#/definitions/dto.CreateUserRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: User created successfully
+          schema:
+            $ref: '#/definitions/dto.CreateUserResponse'
+        "400":
+          description: Bad request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "409":
+          description: User already exists
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Create a new user
+      tags:
+      - users
   /users/permissions:
     get:
       consumes:
