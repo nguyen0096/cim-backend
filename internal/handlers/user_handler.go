@@ -120,9 +120,7 @@ func (h *UserHandler) UpdateUser(c echo.Context) error {
 	}
 
 	// Get current user (admin performing the action)
-	currentUserID, _ := c.Get(pkg.AuthContextKeyUserID).(string)
-
-	err := h.userService.UpdateUser(c.Request().Context(), userID, req.Name, req.Role, req.Status, currentUserID)
+	err := h.userService.UpdateUser(c.Request().Context(), userID, "", req.Name, req.Role, req.Status, false)
 	if err != nil {
 		if appErr, ok := err.(*pkg.AppError); ok {
 			return c.JSON(appErr.HTTPStatus(), map[string]string{"error": appErr.Message})
@@ -177,12 +175,12 @@ func (h *UserHandler) GetUsersByRole(c echo.Context) error {
 // @Security BearerAuth
 // @Router /users/permissions [get]
 func (h *UserHandler) GetUserPermissions(c echo.Context) error {
-	userID, _ := c.Get(pkg.AuthContextKeyUserID).(string)
-	if userID == "" {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid user ID"})
+	userEmail, _ := c.Get(pkg.AuthContextKeyUserEmail).(string)
+	if userEmail == "" {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid user email"})
 	}
 
-	permissions, err := h.userService.GetUserPermissions(c.Request().Context(), userID)
+	permissions, err := h.userService.GetUserPermissions(c.Request().Context(), userEmail)
 	if err != nil {
 		if appErr, ok := err.(*pkg.AppError); ok {
 			return c.JSON(appErr.HTTPStatus(), map[string]string{"error": appErr.Message})
@@ -191,7 +189,6 @@ func (h *UserHandler) GetUserPermissions(c echo.Context) error {
 	}
 
 	return c.JSON(http.StatusOK, map[string]interface{}{
-		"user_id":     userID,
 		"permissions": permissions,
 	})
 }
@@ -235,7 +232,7 @@ func (h *UserHandler) CreateUser(c echo.Context) error {
 		UID:       user.UID,
 		Email:     user.Email,
 		Name:      user.Name,
-		Role:      user.Role,
+		Role:      string(user.Role),
 		Status:    user.Status,
 		CreatedAt: user.CreatedAt.Format(time.RFC3339),
 	}

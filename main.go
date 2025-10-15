@@ -129,7 +129,7 @@ func main() {
 	api := e.Group("/api/v1")
 
 	api.Use(middleware.AuthMiddleware(firebaseAuth))
-	api.Use(middleware.AuthorizationMiddleware(casbinService, userRepo))
+	api.Use(middleware.AuthorizationMiddleware(casbinService, userService))
 
 	// Authentication routes
 	authGroup := api.Group("/auth")

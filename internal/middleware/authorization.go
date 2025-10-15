@@ -2,7 +2,7 @@ package middleware
 
 import (
 	"cim-backend/internal/auth"
-	"cim-backend/internal/repository"
+	"cim-backend/internal/services"
 	"cim-backend/pkg"
 	"context"
 	"fmt"
@@ -13,12 +13,12 @@ import (
 )
 
 // AuthorizationMiddleware creates middleware for role-based access control
-func AuthorizationMiddleware(casbinService *auth.CasbinService, userRepo *repository.UserRepository) echo.MiddlewareFunc {
+func AuthorizationMiddleware(casbinService *auth.CasbinService, userService *services.UserService) echo.MiddlewareFunc {
 	return func(next echo.HandlerFunc) echo.HandlerFunc {
 		return func(c echo.Context) error {
 			// Get user ID from context (set by AuthMiddleware)
-			userID, _ := c.Get(pkg.AuthContextKeyUserID).(string)
-			if userID == "" {
+			userUID, _ := c.Get(pkg.AuthContextKeyUserID).(string)
+			if userUID == "" {
 				return c.JSON(http.StatusUnauthorized, map[string]string{
 					"error": "User ID not found",
 				})
@@ -27,19 +27,44 @@ func AuthorizationMiddleware(casbinService *auth.CasbinService, userRepo *reposi
 			// Check if user role already exists in context (skip database query if available)
 			userRole, exists := c.Get(pkg.AuthContextKeyUserRole).(string)
 			if !exists || userRole == "" {
-				// Fetch user role from database using Firebase UID
-				user, err := userRepo.GetByUID(c.Request().Context(), userID)
-				if err != nil {
-					fmt.Printf("Error fetching user from database: %v\n", err)
-					return c.JSON(http.StatusInternalServerError, map[string]string{
-						"error": "Failed to fetch user information",
+				// Get user email from context
+				userEmail, exists := c.Get(pkg.AuthContextKeyUserEmail).(string)
+				if !exists || userEmail == "" {
+					return c.JSON(http.StatusUnauthorized, map[string]string{
+						"error": "User email not found in token",
 					})
 				}
 
-				// Set user role (default to staff if user not found)
-				userRole = "staff"
-				if user != nil {
-					userRole = user.Role
+				// Fetch user role from database using email
+				user, err := userService.GetUserByEmail(c.Request().Context(), userEmail)
+				if err != nil {
+					fmt.Printf("Error fetching user from database: %v\n", err)
+					return c.JSON(http.StatusForbidden, map[string]string{
+						"error":   "Failed to fetch user information",
+						"details": err.Error(),
+					})
+				}
+
+				switch user.Status {
+				case "inactive":
+					return c.JSON(http.StatusForbidden, map[string]string{
+						"error": "User is inactive",
+					})
+				case "pending":
+					return c.JSON(http.StatusForbidden, map[string]string{
+						"error": "User is pending",
+					})
+				default:
+					userRole = string(user.Role)
+				}
+
+				if user.UID != userUID {
+					// Update UID and handle Casbin policy updates
+					user.UID = userUID
+					if err := userService.UpdateUser(c.Request().Context(), user.ID.String(), userUID, user.Name, string(user.Role), user.Status, true); err != nil {
+						fmt.Printf("Error updating user UID: %v\n", err)
+						// Continue anyway, this is not critical for authorization
+					}
 				}
 			}
 
@@ -54,14 +79,14 @@ func AuthorizationMiddleware(casbinService *auth.CasbinService, userRepo *reposi
 			// Check authorization using Casbin
 			allowed, err := casbinService.Enforce(userRole, resource, action)
 			if err != nil {
-				fmt.Printf("Authorization error for user %s: %v\n", userID, err)
+				fmt.Printf("Authorization error for user %s: %v\n", userUID, err)
 				return c.JSON(http.StatusInternalServerError, map[string]string{
 					"error": "Authorization check failed",
 				})
 			}
 
 			if !allowed {
-				fmt.Printf("Access denied for user %s (role: %s) to %s %s\n", userID, userRole, action, resource)
+				fmt.Printf("Access denied for user %s (role: %s) to %s %s\n", userUID, userRole, action, resource)
 				return c.JSON(http.StatusForbidden, map[string]string{
 					"error": fmt.Sprintf("Access denied: %s role cannot %s %s", userRole, action, resource),
 				})

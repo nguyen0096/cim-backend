@@ -23,45 +23,6 @@ func NewUserService(userRepo *repository.UserRepository, casbinService *auth.Cas
 	}
 }
 
-// CreateOrUpdateUser creates a new user or updates existing one from Firebase token
-func (s *UserService) CreateOrUpdateUser(ctx context.Context, uid, email, name, status string) (*models.User, error) {
-	// Check if user already exists
-	existingUser, err := s.userRepo.GetByUID(ctx, uid)
-	if err != nil {
-		return nil, fmt.Errorf("failed to check existing user: %w", err)
-	}
-
-	if existingUser != nil {
-		// Update existing user
-		existingUser.Email = email
-		existingUser.Name = name
-		if err := s.userRepo.Update(ctx, existingUser); err != nil {
-			return nil, fmt.Errorf("failed to update user: %w", err)
-		}
-		return existingUser, nil
-	}
-
-	// Create new user with default role
-	newUser := &models.User{
-		UID:    uid,
-		Email:  email,
-		Name:   name,
-		Role:   string(models.RoleStaff), // Default role
-		Status: status,
-	}
-
-	if err := s.userRepo.Create(ctx, newUser); err != nil {
-		return nil, fmt.Errorf("failed to create user: %w", err)
-	}
-
-	// Assign default role in Casbin
-	if err := s.casbinService.AddRoleForUser(uid, string(models.RoleStaff)); err != nil {
-		return nil, fmt.Errorf("failed to assign default role: %w", err)
-	}
-
-	return newUser, nil
-}
-
 // GetUserByUID retrieves a user by Firebase UID
 func (s *UserService) GetUserByUID(ctx context.Context, uid string) (*models.User, error) {
 	user, err := s.userRepo.GetByUID(ctx, uid)
@@ -71,15 +32,24 @@ func (s *UserService) GetUserByUID(ctx context.Context, uid string) (*models.Use
 	return user, nil
 }
 
+// GetUserByEmail retrieves a user by email
+func (s *UserService) GetUserByEmail(ctx context.Context, email string) (*models.User, error) {
+	user, err := s.userRepo.GetByEmail(ctx, email)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get user by email: %w", err)
+	}
+	return user, nil
+}
+
 // UpdateUser updates user properties except email (admin only)
-func (s *UserService) UpdateUser(ctx context.Context, userID, name, role, status string, updatedBy string) error {
+func (s *UserService) UpdateUser(ctx context.Context, id, uid, name, role, status string, forceCasbinUpdate bool) error {
 	// Validate role
 	if !models.UserRole(role).IsValidRole() {
 		return pkg.NewAppError(pkg.ErrorCodeValidation, "Invalid role", nil)
 	}
 
 	// Get current user
-	user, err := s.userRepo.GetByID(ctx, userID)
+	user, err := s.userRepo.GetByID(ctx, id)
 	if err != nil {
 		return fmt.Errorf("failed to get user: %w", err)
 	}
@@ -90,11 +60,14 @@ func (s *UserService) UpdateUser(ctx context.Context, userID, name, role, status
 	// Email updates are not allowed - keep existing email
 
 	// Check if role is being changed for Casbin update
-	roleChanged := user.Role != role
+	roleChanged := user.Role != models.UserRole(role)
 
 	// Update user properties (email cannot be changed)
+	if uid != "" {
+		user.UID = uid
+	}
 	user.Name = name
-	user.Role = role
+	user.Role = models.UserRole(role)
 	user.Status = status
 
 	// Update user in database
@@ -103,7 +76,7 @@ func (s *UserService) UpdateUser(ctx context.Context, userID, name, role, status
 	}
 
 	// Update role in Casbin if role changed
-	if roleChanged {
+	if (roleChanged && user.UID != "") || forceCasbinUpdate {
 		// Remove old role from Casbin
 		oldRoles, err := s.casbinService.GetRolesForUser(user.UID)
 		if err != nil {
@@ -152,9 +125,9 @@ func (s *UserService) SearchUsers(ctx context.Context, query string, limit, offs
 }
 
 // GetUserPermissions retrieves all permissions for a user based on their roles
-func (s *UserService) GetUserPermissions(ctx context.Context, userUID string) ([]string, error) {
+func (s *UserService) GetUserPermissions(ctx context.Context, userEmail string) ([]string, error) {
 	// Verify user exists
-	user, err := s.userRepo.GetByUID(ctx, userUID)
+	user, err := s.userRepo.GetByEmail(ctx, userEmail)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get user: %w", err)
 	}
@@ -162,13 +135,16 @@ func (s *UserService) GetUserPermissions(ctx context.Context, userUID string) ([
 		return nil, pkg.NewAppError(pkg.ErrorCodeNotFound, "User not found", nil)
 	}
 
-	// Return empty permissions for inactive users
 	if user.Status == "inactive" {
 		return nil, pkg.NewAppError(pkg.ErrorCodeForbidden, "User is inactive", nil)
 	}
 
+	if user.UID == "" {
+		return nil, pkg.NewAppError(pkg.ErrorCodeNotFound, "User UID not found", nil)
+	}
+
 	// Get permissions from Casbin
-	permissions, err := s.casbinService.GetUserPermissions(userUID)
+	permissions, err := s.casbinService.GetUserPermissions(user.UID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get user permissions: %w", err)
 	}
@@ -183,30 +159,12 @@ func (s *UserService) CreateUser(ctx context.Context, uid, email, name, role, st
 		return nil, pkg.NewAppError(pkg.ErrorCodeValidation, "Invalid role", nil)
 	}
 
-	// Check if user already exists by UID
-	existingUserByUID, err := s.userRepo.GetByUID(ctx, uid)
-	if err != nil {
-		return nil, fmt.Errorf("failed to check existing user by UID: %w", err)
-	}
-	if existingUserByUID != nil {
-		return nil, pkg.NewAppError(pkg.ErrorCodeValidation, "User with this UID already exists", nil)
-	}
-
-	// Check if user already exists by email
-	existingUserByEmail, err := s.userRepo.GetByEmail(ctx, email)
-	if err != nil {
-		return nil, fmt.Errorf("failed to check existing user by email: %w", err)
-	}
-	if existingUserByEmail != nil {
-		return nil, pkg.NewAppError(pkg.ErrorCodeValidation, "User with this email already exists", nil)
-	}
-
 	// Create new user
 	newUser := &models.User{
 		Email:  email,
 		UID:    uid,
 		Name:   name,
-		Role:   role,
+		Role:   models.UserRole(role),
 		Status: status,
 	}
 
@@ -216,10 +174,6 @@ func (s *UserService) CreateUser(ctx context.Context, uid, email, name, role, st
 
 	// Assign role in Casbin
 	if err := s.casbinService.AddRoleForUser(uid, role); err != nil {
-		// If Casbin assignment fails, we should clean up the created user
-		if deleteErr := s.userRepo.Delete(ctx, newUser.ID.String()); deleteErr != nil {
-			return nil, fmt.Errorf("failed to create user and clean up after role assignment failure: %w", err)
-		}
 		return nil, fmt.Errorf("failed to assign role: %w", err)
 	}
 
@@ -251,6 +205,44 @@ func (s *UserService) DeleteUser(ctx context.Context, userID string) error {
 	// Delete user from database
 	if err := s.userRepo.Delete(ctx, userID); err != nil {
 		return fmt.Errorf("failed to delete user: %w", err)
+	}
+
+	return nil
+}
+
+// UpdateUserUID updates user UID and handles Casbin policy updates
+func (s *UserService) UpdateUserUID(ctx context.Context, user *models.User, newUID string) error {
+	// If UID is already the same, no need to update
+	if user.UID == newUID {
+		return nil
+	}
+
+	oldUID := user.UID
+	user.UID = newUID
+
+	// Update user in database
+	if err := s.userRepo.Update(ctx, user); err != nil {
+		return fmt.Errorf("failed to update user UID in database: %w", err)
+	}
+
+	// Get current roles from Casbin for the old UID
+	oldRoles, err := s.casbinService.GetRolesForUser(oldUID)
+	if err != nil {
+		return fmt.Errorf("failed to get user roles from Casbin: %w", err)
+	}
+
+	// Remove old roles from Casbin
+	for _, role := range oldRoles {
+		if err := s.casbinService.DeleteRoleForUser(oldUID, role); err != nil {
+			return fmt.Errorf("failed to remove old role from Casbin: %w", err)
+		}
+	}
+
+	// Add roles to Casbin with new UID
+	for _, role := range oldRoles {
+		if err := s.casbinService.AddRoleForUser(newUID, role); err != nil {
+			return fmt.Errorf("failed to add role to Casbin with new UID: %w", err)
+		}
 	}
 
 	return nil

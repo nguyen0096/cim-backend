@@ -1688,32 +1688,11 @@ func seedUsers(db *gorm.DB) error {
 
 	// Seed each user
 	for _, userData := range defaultUsers {
-		// Check if user already exists
-		existingUser, err := userService.GetUserByUID(ctx, userData.UID)
-		if err != nil {
-			log.Printf("Error checking existing user %s: %v", userData.Email, err)
-			continue
-		}
-
-		if existingUser != nil {
-			log.Printf("User %s already exists, skipping", userData.Email)
-			continue
-		}
-
 		// Create user
-		user, err := userService.CreateOrUpdateUser(ctx, userData.UID, userData.Email, userData.Name, "active")
+		_, err = userService.CreateUser(ctx, userData.UID, userData.Email, userData.Name, userData.Role, "active")
 		if err != nil {
 			log.Printf("Failed to create user %s: %v", userData.Email, err)
 			continue
-		}
-
-		// Update role if different from default
-		if user.Role != userData.Role {
-			err = userService.UpdateUser(ctx, user.UID, user.Email, user.Name, userData.Role, user.Status, "system")
-			if err != nil {
-				log.Printf("Failed to update role for user %s: %v", userData.Email, err)
-				continue
-			}
 		}
 
 		log.Printf("Created user: %s with role: %s", userData.Email, userData.Role)

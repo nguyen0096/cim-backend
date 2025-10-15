@@ -13,7 +13,7 @@ type User struct {
 	UID       string         `json:"uid" gorm:"uniqueIndex"` // Firebase UID
 	Email     string         `json:"email" gorm:"uniqueIndex;not null"`
 	Name      string         `json:"name"`
-	Role      string         `json:"role" gorm:"default:'staff'"`                                                    // admin, accountant, staff
+	Role      UserRole       `json:"role" gorm:"default:'staff'"`                                                    // admin, accountant, staff
 	Status    string         `json:"status" gorm:"default:active;check:status IN ('active', 'pending', 'inactive')"` // active, pending, inactive
 	CreatedAt time.Time      `json:"created_at"`
 	UpdatedAt time.Time      `json:"updated_at"`
