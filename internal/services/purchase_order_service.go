@@ -5,6 +5,7 @@ import (
 	"cim-backend/internal/models"
 	"cim-backend/internal/repository"
 	"cim-backend/internal/services/dto"
+	"cim-backend/pkg"
 	"context"
 	"crypto/rand"
 	"encoding/json"
@@ -530,7 +531,7 @@ func (s *purchaseOrderService) createExpenseData(items []*models.PurchaseOrderIt
 
 	for i, item := range items {
 		expensesData[i] = map[string]interface{}{
-			"DIỄN GIẢI": item.Product.Name,
+			pkg.RevenueExpenseColumnName: item.Product.Name,
 		}
 
 		itemTotalPrice := item.CalculateTotalAmount()
@@ -546,14 +547,14 @@ func (s *purchaseOrderService) createExpenseData(items []*models.PurchaseOrderIt
 func (s *purchaseOrderService) getHeaderAndColorFromProductType(productType string) (header string, color string) {
 	switch productType {
 	case "Cơm":
-		header = "ĂN NHẸ,CƠM"
-		color = "17B319" // Green color
+		header = pkg.RevenueExpenseColumnSnackAndRice
+		color = pkg.RevenueExpenseColumnSnackAndRiceColor
 	case "Ăn nhẹ":
-		header = "ĂN NHẸ,CƠM"
-		color = "27B4F5" // Blue color
+		header = pkg.RevenueExpenseColumnSnackAndRice
+		color = pkg.RevenueExpenseColumnSnackAndRiceColor
 	case "Nước":
-		header = "NƯỚC"
-		color = "F5E727" // Yellow color
+		header = pkg.RevenueExpenseColumnWater
+		color = pkg.RevenueExpenseColumnWaterColor
 	}
 
 	return

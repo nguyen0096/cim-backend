@@ -1,6 +1,7 @@
 package excel
 
 import (
+	"cim-backend/pkg"
 	"context"
 	"fmt"
 	"io"
@@ -21,7 +22,7 @@ func TestRevenueExpenseExcelRepository(t *testing.T) {
 
 	// Create temporary copy of the original file
 	originalFile := TestRevenueExpenseExcelFile
-	tempFile := filepath.Join(t.TempDir(), "Thu_chi_test.xlsx")
+	tempFile := filepath.Join("../../../test/data/excel/Thu_chi_test.xlsx")
 
 	// Copy original file to temp location
 	src, err := os.Open(originalFile)
@@ -111,8 +112,8 @@ func TestRevenueExpenseExcelRepository(t *testing.T) {
 	}
 	// Attempt to add expense using detected columns - test what actually works
 	sampleExpense := map[string]interface{}{
-		"DIỄN GIẢI": "Test expense",
-		"NƯỚC":      "15000", // This column is confirmed to work
+		pkg.RevenueExpenseColumnName:  "Test expense",
+		pkg.RevenueExpenseColumnWater: 15000,
 	}
 
 	// Read last transaction date
@@ -126,7 +127,7 @@ func TestRevenueExpenseExcelRepository(t *testing.T) {
 
 	// Add expense
 	t.Log("🔄 Adding sample expense using detected columns...")
-	err = revenueExpenseExcelRepo.AddExpenses(ctx, sheetName, []map[string]interface{}{sampleExpense}, []string{""})
+	err = revenueExpenseExcelRepo.AddExpenses(ctx, sheetName, []map[string]interface{}{sampleExpense}, []string{pkg.RevenueExpenseColumnSnackAndRiceColor, pkg.RevenueExpenseColumnWaterColor})
 	require.Nil(t, err)
 	t.Log("✅ Sample expense added successfully")
 
@@ -139,9 +140,9 @@ func TestRevenueExpenseExcelRepository(t *testing.T) {
 	// Compare last expense with expected expense
 	t.Log("\n🔍 Comparing last expense with expected expense...")
 	expectedExpense := map[string]interface{}{
-		"DIỄN GIẢI": "Test expense",
-		"NƯỚC":      "15000",
-		"STT":       1,
+		pkg.RevenueExpenseColumnName:          "Test expense",
+		pkg.RevenueExpenseColumnWater:         15000,
+		pkg.RevenueExpenseColumnOrdinalNumber: 1,
 	}
 	compareExpenses(t, expectedExpense, lastExpense)
 
@@ -154,14 +155,22 @@ func TestRevenueExpenseExcelRepository(t *testing.T) {
 	// Verify that last transaction date is today
 	require.Equal(t, lastTransactionDate2.Format("2006-01-02"), time.Now().Format("2006-01-02"))
 
+	// lastTransactionCellStyle, err := revenueExpenseExcelRepo.GetLastTransactionCellStyle(ctx, sheetName)
+	// require.Nil(t, err)
+	// require.Equal(t, lastTransactionCellStyle[2], 34)
+	// require.Equal(t, lastTransactionCellStyle[3], 34)
+
 	sampleExpense2 := map[string]interface{}{
-		"DIỄN GIẢI": "Test expense 2",
-		"NƯỚC":      "10000", // This column is confirmed to work
+		pkg.RevenueExpenseColumnName:          "Test expense 2",
+		pkg.RevenueExpenseColumnSnackAndRice:  1000000,
+		pkg.RevenueExpenseColumnOrdinalNumber: 2,
 	}
 
 	// Add another expense
 	t.Log("🔄 Adding sample expense using detected columns...")
-	err = revenueExpenseExcelRepo.AddExpenses(ctx, sheetName, []map[string]interface{}{sampleExpense2}, []string{""})
+	err = revenueExpenseExcelRepo.AddExpenses(ctx, sheetName,
+		[]map[string]interface{}{sampleExpense2},
+		[]string{pkg.RevenueExpenseColumnSnackAndRiceColor})
 	require.Nil(t, err)
 	t.Log("✅ Sample expense added successfully")
 
@@ -174,9 +183,9 @@ func TestRevenueExpenseExcelRepository(t *testing.T) {
 	// Compare last expense with expected expense
 	t.Log("\n🔍 Comparing last expense with expected expense...")
 	expectedExpense2 := map[string]interface{}{
-		"DIỄN GIẢI": "Test expense 2",
-		"NƯỚC":      "10000",
-		"STT":       2,
+		pkg.RevenueExpenseColumnName:          "Test expense 2",
+		pkg.RevenueExpenseColumnSnackAndRice:  1000000,
+		pkg.RevenueExpenseColumnOrdinalNumber: 2,
 	}
 	compareExpenses(t, expectedExpense2, lastExpense2)
 

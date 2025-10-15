@@ -10,6 +10,8 @@ import (
 
 	"cim-backend/internal/models"
 	"cim-backend/pkg"
+
+	"github.com/xuri/excelize/v2"
 )
 
 // RevenueExpenseExcelRepository handles data access for revenue/expense Excel operations
@@ -22,6 +24,10 @@ type RevenueExpenseExcelRepository interface {
 	VerifyFileAndSheet(ctx context.Context, filePath string, sheetName string) error
 	Close() error
 	ForceCacheRefresh()
+
+	// FOR TESTING ONLY
+	GetLastTransactionCellStyle(ctx context.Context, sheetName string) ([]int, error)
+	GetFileAndSheetData(sheetName string) (*excelize.File, *models.ExcelSheetMetadata, [][]string, error)
 }
 
 // revenueExpenseExcelRepository implements RevenueExpenseExcelRepository
@@ -81,7 +87,7 @@ func (r *revenueExpenseExcelRepository) AddExpenses(ctx context.Context, sheetNa
 		targetRow++
 	} else {
 		// find the ordinal number in the last row
-		lastRow, err := r.FindLastTransactionRow(rows)
+		lastRow, _, err := r.FindLastTransactionRow(rows)
 		if err != nil {
 			return fmt.Errorf("failed to find last transaction row: %w", err)
 		}
@@ -95,7 +101,7 @@ func (r *revenueExpenseExcelRepository) AddExpenses(ctx context.Context, sheetNa
 
 	// Add all expense data rows
 	for i, expenseData := range expensesData {
-		expenseData["STT"] = ordinalNumber
+		expenseData[pkg.RevenueExpenseColumnOrdinalNumber] = ordinalNumber
 		ordinalNumber++
 		if err := r.AddDataRowWithColor(file, sheetName, targetRow, expenseData, cellColors[i]); err != nil {
 			return fmt.Errorf("failed to add expense data row at index %d: %w", i, err)
@@ -123,7 +129,7 @@ func (r *revenueExpenseExcelRepository) GetLastExpense(ctx context.Context, shee
 	}
 
 	// Find the last data row
-	lastDataRow, err := r.FindLastTransactionRow(rows)
+	lastDataRow, _, err := r.FindLastTransactionRow(rows)
 	if err != nil {
 		return nil, err
 	}
@@ -131,20 +137,8 @@ func (r *revenueExpenseExcelRepository) GetLastExpense(ctx context.Context, shee
 	// Build the expense data map using the headers
 	expenseData := make(map[string]interface{})
 
-	// Get the schema to access sheet metadata
-	schema := r.GetSchema(ctx)
-	if schema == nil {
-		return nil, fmt.Errorf("no schema available")
-	}
-
 	// Find the sheet metadata for the specified sheet
-	var sheetMetadata *models.ExcelSheetMetadata
-	for _, sheet := range schema.Sheets {
-		if sheet.SheetName == sheetName {
-			sheetMetadata = &sheet
-			break
-		}
-	}
+	sheetMetadata := r.findSheetMetadata(sheetName)
 
 	if sheetMetadata == nil {
 		return nil, fmt.Errorf("sheet %s not found in metadata", sheetName)
@@ -160,6 +154,44 @@ func (r *revenueExpenseExcelRepository) GetLastExpense(ctx context.Context, shee
 	}
 
 	return expenseData, nil
+}
+
+// TEST ONLY: get last transaction cell style
+func (r *revenueExpenseExcelRepository) GetLastTransactionCellStyle(ctx context.Context, sheetName string) ([]int, error) {
+	file, sheetMetadata, rows, err := r.GetFileAndSheetData(sheetName)
+	if err != nil {
+		return []int{}, err
+	}
+
+	// Find the last data row
+	_, lastRowIndex, err := r.FindLastTransactionRow(rows)
+	if err != nil {
+		return []int{}, err
+	}
+
+	var styles []int
+	for _, column := range sheetMetadata.Headers {
+		if column.ColumnName != pkg.RevenueExpenseColumnOrdinalNumber &&
+			column.ColumnName != pkg.RevenueExpenseColumnWater &&
+			column.ColumnName != pkg.RevenueExpenseColumnSnackAndRice &&
+			column.ColumnName != pkg.RevenueExpenseColumnName {
+			continue
+		}
+		cellName, _ := excelize.CoordinatesToCellName(column.ColumnIndex+1, lastRowIndex)
+		fmt.Printf("cellName: %s\n", cellName)
+		style, err := file.GetCellStyle(sheetName, cellName)
+		if err != nil {
+			return []int{}, err
+		}
+		styles = append(styles, style)
+	}
+
+	return styles, nil
+}
+
+// FOR TESTING ONLY
+func (r *revenueExpenseExcelRepository) GetFileAndSheetData(sheetName string) (*excelize.File, *models.ExcelSheetMetadata, [][]string, error) {
+	return r.BaseExcelRepository.GetFileAndSheetData(sheetName)
 }
 
 // GetLastTransactionDate retrieves the date of the most recent transaction from the Excel file

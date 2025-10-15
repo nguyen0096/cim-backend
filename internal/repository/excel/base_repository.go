@@ -2,6 +2,7 @@ package excel
 
 import (
 	"cim-backend/internal/models"
+	"cim-backend/pkg"
 	"context"
 	"fmt"
 	"os"
@@ -116,20 +117,20 @@ func (r *BaseExcelRepository) GetSchema(ctx context.Context) *models.FileMetadat
 }
 
 // GetFileAndSheetData opens the Excel file and returns file, sheet name, and rows
-func (r *BaseExcelRepository) GetFileAndSheetData(sheetName string) (*excelize.File, string, [][]string, error) {
+func (r *BaseExcelRepository) GetFileAndSheetData(sheetName string) (*excelize.File, *models.ExcelSheetMetadata, [][]string, error) {
 	if err := r.validateRepositoryState(); err != nil {
-		return nil, "", nil, err
+		return nil, nil, nil, err
 	}
 
 	file, err := r.getCachedFile()
 	if err != nil {
-		return nil, "", nil, err
+		return nil, nil, nil, err
 	}
 
 	// Validate that the sheet exists in metadata
 	sheetMetadata := r.findSheetMetadata(sheetName)
 	if sheetMetadata == nil {
-		return nil, "", nil, fmt.Errorf("sheet %s not found in metadata", sheetName)
+		return nil, nil, nil, fmt.Errorf("sheet %s not found in metadata", sheetName)
 	}
 
 	// Check if we have cached rows and they're still valid
@@ -137,18 +138,18 @@ func (r *BaseExcelRepository) GetFileAndSheetData(sheetName string) (*excelize.F
 	if r.cache.valid && len(r.cache.rows) > 0 {
 		rows := r.cache.rows
 		r.cacheMutex.RUnlock()
-		return file, sheetName, rows, nil
+		return file, sheetMetadata, rows, nil
 	}
 	r.cacheMutex.RUnlock()
 
 	// Get current rows
 	rows, err := file.GetRows(sheetName)
 	if err != nil {
-		return nil, "", nil, fmt.Errorf("failed to get rows: %w", err)
+		return nil, nil, nil, fmt.Errorf("failed to get rows: %w", err)
 	}
 
 	if len(rows) == 0 {
-		return nil, "", nil, fmt.Errorf("no data found in sheet")
+		return nil, nil, nil, fmt.Errorf("no data found in sheet")
 	}
 
 	// Cache the rows for future use
@@ -157,7 +158,7 @@ func (r *BaseExcelRepository) GetFileAndSheetData(sheetName string) (*excelize.F
 	r.cache.valid = true
 	r.cacheMutex.Unlock()
 
-	return file, sheetName, rows, nil
+	return file, sheetMetadata, rows, nil
 }
 
 // FindHeaderRow finds the row that contains column headers with caching
@@ -183,15 +184,16 @@ func (r *BaseExcelRepository) FindHeaderRow(rows [][]string) int {
 }
 
 // FindLastTransactionRow finds the last row with actual data (scanning from bottom up)
-func (r *BaseExcelRepository) FindLastTransactionRow(rows [][]string) ([]string, error) {
+func (r *BaseExcelRepository) FindLastTransactionRow(rows [][]string) ([]string, int, error) {
 	// Find header row
 	headerRow := r.FindHeaderRow(rows)
 	if headerRow < 0 || headerRow >= len(rows) {
-		return nil, fmt.Errorf("no header row found")
+		return nil, 0, fmt.Errorf("no header row found")
 	}
 
 	// Find the last data row (scan from bottom up, starting after the header)
 	var lastRow []string
+	var lastRowIndex int
 	for i := len(rows) - 1; i >= headerRow+1; i-- {
 		if len(rows[i]) == 0 {
 			continue
@@ -200,15 +202,16 @@ func (r *BaseExcelRepository) FindLastTransactionRow(rows [][]string) ([]string,
 		// Check if this row has any non-empty data (optimized)
 		if HasNonEmptyData(rows[i]) {
 			lastRow = rows[i]
+			lastRowIndex = i
 			break
 		}
 	}
 
 	if len(lastRow) == 0 {
-		return nil, fmt.Errorf("no transaction rows found")
+		return nil, 0, fmt.Errorf("no transaction rows found")
 	}
 
-	return lastRow, nil
+	return lastRow, lastRowIndex, nil
 }
 
 // FindLastDateRow finds the last row with a date in the first column
@@ -325,6 +328,11 @@ func (r *BaseExcelRepository) AddDataRowWithColor(file *excelize.File, sheetName
 		return fmt.Errorf("failed to create data style: %w", err)
 	}
 
+	thousandStyleID, err := CreateCellStyleWithCurrencyThousandSeparator(file)
+	if err != nil {
+		return fmt.Errorf("failed to create currency thousand separator style: %w", err)
+	}
+
 	// Find the sheet metadata for the specified sheet
 	sheetMetadata := r.findSheetMetadata(sheetName)
 	if sheetMetadata == nil {
@@ -333,18 +341,26 @@ func (r *BaseExcelRepository) AddDataRowWithColor(file *excelize.File, sheetName
 
 	for _, column := range sheetMetadata.Headers {
 		cellName, _ := excelize.CoordinatesToCellName(column.ColumnIndex+1, targetRow)
+
+		value, exists := data[column.ColumnName]
+		if !exists {
+			continue
+		}
+		if column.ColumnName == pkg.RevenueExpenseColumnWater || column.ColumnName == pkg.RevenueExpenseColumnSnackAndRice {
+			file.SetCellStyle(sheetName, cellName, cellName, thousandStyleID)
+		} else {
+			file.SetCellStyle(sheetName, cellName, cellName, styleID)
+		}
 		file.SetCellStyle(sheetName, cellName, cellName, styleID)
 
-		if value, exists := data[column.ColumnName]; exists {
-			// Convert value to uppercase string
-			valueStr := fmt.Sprintf("%v", value)
-			uppercaseValue := strings.ToUpper(valueStr)
-			file.SetCellValue(sheetName, cellName, uppercaseValue)
-		}
+		// Convert value to uppercase string
+		valueStr := fmt.Sprintf("%v", value)
+		uppercaseValue := strings.ToUpper(valueStr)
+		file.SetCellValue(sheetName, cellName, uppercaseValue)
 	}
 
 	if cellColor != "" {
-		colorStyleID, err := CreateCellStyleWithColor(file, "", cellColor)
+		colorStyleID, err := CreateCellStyleWithColor(file, cellColor)
 		if err != nil {
 			return fmt.Errorf("failed to create color style: %w", err)
 		}

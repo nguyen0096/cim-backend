@@ -55,13 +55,23 @@ func CreateCellStyle(file *excelize.File, dateFormat string) (int, error) {
 	return styleID, nil
 }
 
+func CreateCellStyleWithCurrencyThousandSeparator(file *excelize.File) (int, error) {
+	style := NewDefaultCellStyle()
+	style.Font.Bold = true
+	style.Font.Size = 14
+	currencyThousandSeparatorFormat := "#.##0"
+	style.CustomNumFmt = &currencyThousandSeparatorFormat
+	styleID, err := file.NewStyle(style)
+	if err != nil {
+		return 0, fmt.Errorf("failed to create style with currency thousand format: %w", err)
+	}
+	return styleID, nil
+}
+
 // CreateCellStyleWithColor creates a new Excel cell style with optional date format and background color
-func CreateCellStyleWithColor(file *excelize.File, dateFormat string, cellColor string) (int, error) {
+func CreateCellStyleWithColor(file *excelize.File, cellColor string) (int, error) {
 	// Clone the default style to avoid modifying the original style
 	style := NewDefaultCellStyle()
-	if dateFormat != "" {
-		style.CustomNumFmt = &dateFormat
-	}
 	if cellColor != "" {
 		style.Fill = excelize.Fill{
 			Type:    "pattern",
