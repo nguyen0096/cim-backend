@@ -20,6 +20,7 @@ type PurchaseOrderRepository interface {
 	Delete(id uint) error
 	List(ctx context.Context, params models.ListParams) ([]models.PurchaseOrder, int64, error)
 	GetByStatus(status string) ([]models.PurchaseOrder, error)
+	UpdateStatus(ctx context.Context, purchaseOrderID uint, status models.PurchaseOrderStatus) error
 
 	// v1
 	GetByID(id uint) (*models.PurchaseOrder, error)
@@ -49,6 +50,10 @@ func (r *purchaseOrderRepository) GetByID(id uint) (*models.PurchaseOrder, error
 
 func (r *purchaseOrderRepository) Update(ctx context.Context, purchaseOrder *models.PurchaseOrder) error {
 	return r.db.WithContext(ctx).Save(purchaseOrder).Error
+}
+
+func (r *purchaseOrderRepository) UpdateStatus(ctx context.Context, purchaseOrderID uint, status models.PurchaseOrderStatus) error {
+	return r.db.WithContext(ctx).Model(&models.PurchaseOrder{}).Where("id = ?", purchaseOrderID).Update("status", status).Error
 }
 
 func (r *purchaseOrderRepository) Delete(id uint) error {
@@ -143,10 +148,6 @@ func (r *purchaseOrderRepository) GetByStatus(status string) ([]models.PurchaseO
 	var purchaseOrders []models.PurchaseOrder
 	err := r.db.Preload("Items").Preload("Items.Product").Where("status = ?", status).Find(&purchaseOrders).Error
 	return purchaseOrders, err
-}
-
-func (r *purchaseOrderRepository) UpdateStatus(ctx context.Context, purchaseOrderID uint, status models.PurchaseOrderStatus) error {
-	return r.db.WithContext(ctx).Model(&models.PurchaseOrder{}).Where("id = ?", purchaseOrderID).Update("status", status).Error
 }
 
 // AnyDeliveringItem checks if all items in a purchase order are delivered

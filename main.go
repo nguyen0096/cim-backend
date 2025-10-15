@@ -200,6 +200,7 @@ func main() {
 	purchaseOrders.GET("", purchaseOrderHandler.ListPurchaseOrders)
 	purchaseOrders.POST("", purchaseOrderHandler.CreatePurchaseOrder)
 	purchaseOrders.PUT("/:id/receive", purchaseOrderHandler.ReceiveInventory)
+	purchaseOrders.PUT("/:id/status", purchaseOrderHandler.UpdatePurchaseOrderStatus)
 
 	// Excel routes
 	excel := api.Group("/excel")

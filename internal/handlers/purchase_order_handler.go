@@ -127,23 +127,37 @@ func (h *PurchaseOrderHandler) GetPurchaseOrder(c echo.Context) error {
 	return c.JSON(http.StatusOK, purchaseOrder)
 }
 
-func (h *PurchaseOrderHandler) UpdatePurchaseOrder(c echo.Context) error {
+func (h *PurchaseOrderHandler) UpdatePurchaseOrderStatus(c echo.Context) error {
 	id, err := pkg.ExtractIDParam(c)
 	if err != nil {
 		return err
 	}
 
-	var purchaseOrder models.PurchaseOrder
-	if err := c.Bind(&purchaseOrder); err != nil {
+	var req struct {
+		Status string `json:"status" validate:"required,oneof=cancelled completed"`
+	}
+
+	if err := c.Bind(&req); err != nil {
 		return pkg.ErrInvalidRequestBody(err)
 	}
 
-	purchaseOrder.ID = id
-	if err := h.purchaseOrderService.UpdatePurchaseOrder(c.Request().Context(), &purchaseOrder); err != nil {
-		return fmt.Errorf("failed to update purchase order: %w", err)
+	if err := pkg.Validator.Struct(req); err != nil {
+		return pkg.ErrValidation("validation failed", err)
 	}
 
-	return c.JSON(http.StatusOK, purchaseOrder)
+	userRole, _ := c.Get(pkg.AuthContextKeyUserRole).(string)
+
+	if !pkg.HasPermission(c.Request().Context(), "purchase-orders", "update") {
+		return c.JSON(http.StatusForbidden, map[string]string{
+			"error": fmt.Sprintf("Access denied: %s role cannot confirm purchase orders", userRole),
+		})
+	}
+
+	if err := h.purchaseOrderService.UpdatePurchaseOrderStatus(c.Request().Context(), id, models.PurchaseOrderStatus(req.Status)); err != nil {
+		return fmt.Errorf("failed to update purchase order status: %w", err)
+	}
+
+	return c.JSON(http.StatusOK, map[string]string{"message": "Purchase order status updated successfully"})
 }
 
 func (h *PurchaseOrderHandler) DeletePurchaseOrder(c echo.Context) error {

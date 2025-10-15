@@ -48,7 +48,7 @@ func (r *productRepository) BulkCreate(ctx context.Context, products []models.Pr
 
 func (r *productRepository) GetByID(ctx context.Context, id uint) (*models.Product, error) {
 	var product models.Product
-	err := r.db.WithContext(ctx).Preload("Suppliers").Preload("InventoryItems").First(&product, "id = ?", id).Error
+	err := r.db.WithContext(ctx).Preload("Suppliers").Preload("InventoryItems.Inventory").First(&product, "id = ?", id).Error
 	if err != nil {
 		return nil, err
 	}

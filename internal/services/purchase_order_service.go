@@ -19,7 +19,7 @@ import (
 type PurchaseOrderService interface {
 	CreatePurchaseOrder(ctx context.Context, purchaseOrder *models.PurchaseOrder) error
 	GetPurchaseOrderByID(id uint) (*models.PurchaseOrder, error)
-	UpdatePurchaseOrder(ctx context.Context, purchaseOrder *models.PurchaseOrder) error
+	UpdatePurchaseOrderStatus(ctx context.Context, id uint, status models.PurchaseOrderStatus) error
 	DeletePurchaseOrder(id uint) error
 	ListPurchaseOrders(ctx context.Context, params models.ListParams) (*models.PaginationResult[models.PurchaseOrder], error)
 	GetPurchaseOrdersByStatus(status string) ([]models.PurchaseOrder, error)
@@ -153,29 +153,33 @@ func (s *purchaseOrderService) GetPurchaseOrderByID(id uint) (*models.PurchaseOr
 	return purchaseOrder, nil
 }
 
-func (s *purchaseOrderService) UpdatePurchaseOrder(ctx context.Context, purchaseOrder *models.PurchaseOrder) error {
+func (s *purchaseOrderService) UpdatePurchaseOrderStatus(ctx context.Context, id uint, status models.PurchaseOrderStatus) error {
 	s.logger.WithFields(logrus.Fields{
-		"operation":         "UpdatePurchaseOrder",
-		"purchase_order_id": purchaseOrder.ID,
-		"order_number":      purchaseOrder.OrderNumber,
-	}).Info("Updating purchase order")
+		"operation":         "UpdatePurchaseOrderStatus",
+		"purchase_order_id": id,
+		"status":            status,
+	}).Info("Updating purchase order status")
 
-	err := s.purchaseOrderRepo.Update(ctx, purchaseOrder)
+	err := s.purchaseOrderRepo.UpdateStatus(ctx, id, status)
 	if err != nil {
 		s.logger.WithFields(logrus.Fields{
-			"operation":         "UpdatePurchaseOrder",
-			"purchase_order_id": purchaseOrder.ID,
-			"order_number":      purchaseOrder.OrderNumber,
+			"operation":         "UpdatePurchaseOrderStatus",
+			"purchase_order_id": id,
+			"status":            status,
 			"error":             err,
-		}).Error("Failed to update purchase order")
+		}).Error("Failed to update purchase order status")
 		return err
 	}
 
+	if status == models.PurchaseOrderStatusCompleted {
+		go s.handleRevenueExpenseAsync(context.Background(), id)
+	}
+
 	s.logger.WithFields(logrus.Fields{
-		"operation":         "UpdatePurchaseOrder",
-		"purchase_order_id": purchaseOrder.ID,
-		"order_number":      purchaseOrder.OrderNumber,
-	}).Info("Successfully updated purchase order")
+		"operation":         "UpdatePurchaseOrderStatus",
+		"purchase_order_id": id,
+		"status":            status,
+	}).Info("Successfully updated purchase order status")
 
 	return nil
 }
@@ -429,8 +433,18 @@ func (s *purchaseOrderService) UpdatePurchaseOrderItemStatus(ctx context.Context
 }
 
 // handleRevenueExpenseAsync handles revenue expense excel file operations asynchronously
-func (s *purchaseOrderService) handleRevenueExpenseAsync(ctx context.Context, purchaseOrder *models.PurchaseOrder) {
+func (s *purchaseOrderService) handleRevenueExpenseAsync(ctx context.Context, purchaseOrderID uint) {
 	startTime := time.Now()
+
+	purchaseOrder, err := s.purchaseOrderRepo.GetByID(purchaseOrderID)
+	if err != nil {
+		s.logger.WithFields(logrus.Fields{
+			"operation":         "handleRevenueExpenseAsync",
+			"purchase_order_id": purchaseOrderID,
+			"error":             err,
+		}).Error("Failed to get purchase order")
+		return
+	}
 	logger := s.logger.WithFields(logrus.Fields{
 		"operation":         "handleRevenueExpenseAsync",
 		"purchase_order_id": purchaseOrder.ID,
@@ -439,7 +453,7 @@ func (s *purchaseOrderService) handleRevenueExpenseAsync(ctx context.Context, pu
 	logger.Info("Starting async revenue expense processing")
 
 	// Get and validate settings
-	filePath, sheetName, err := s.getRevenueExpenseSettings(ctx, purchaseOrder.ID)
+	filePath, sheetName, err := s.getRevenueExpenseSettings(ctx)
 	if err != nil {
 		duration := time.Since(startTime)
 		logger.WithFields(logrus.Fields{
@@ -481,7 +495,7 @@ func (s *purchaseOrderService) handleRevenueExpenseAsync(ctx context.Context, pu
 }
 
 // getRevenueExpenseSettings retrieves and validates revenue expense excel settings
-func (s *purchaseOrderService) getRevenueExpenseSettings(ctx context.Context, purchaseOrderID uint) (string, string, error) {
+func (s *purchaseOrderService) getRevenueExpenseSettings(ctx context.Context) (string, string, error) {
 	settings, err := s.settingsService.GetSetting(ctx, config.RevenueExpenseExcelSettingsKey)
 	if err != nil {
 		return "", "", fmt.Errorf("failed to get revenue expense excel settings: %w", err)
