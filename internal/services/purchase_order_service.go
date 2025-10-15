@@ -551,7 +551,7 @@ func (s *purchaseOrderService) getHeaderAndColorFromProductType(productType stri
 	case "Ăn nhẹ":
 		header = "ĂN NHẸ,CƠM"
 		color = "27B4F5" // Blue color
-	default:
+	case "Nước":
 		header = "NƯỚC"
 		color = "F5E727" // Yellow color
 	}
