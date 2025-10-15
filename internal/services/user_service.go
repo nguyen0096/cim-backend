@@ -142,6 +142,15 @@ func (s *UserService) GetUsersByRole(ctx context.Context, role string) ([]*model
 	return users, nil
 }
 
+// SearchUsers searches users by name or email with pagination
+func (s *UserService) SearchUsers(ctx context.Context, query string, limit, offset int, excludeUserID string) ([]*models.User, int64, error) {
+	users, total, err := s.userRepo.Search(ctx, query, limit, offset, excludeUserID)
+	if err != nil {
+		return nil, 0, fmt.Errorf("failed to search users: %w", err)
+	}
+	return users, total, nil
+}
+
 // GetUserPermissions retrieves all permissions for a user based on their roles
 func (s *UserService) GetUserPermissions(ctx context.Context, userUID string) ([]string, error) {
 	// Verify user exists
@@ -151,6 +160,11 @@ func (s *UserService) GetUserPermissions(ctx context.Context, userUID string) ([
 	}
 	if user == nil {
 		return nil, pkg.NewAppError(pkg.ErrorCodeNotFound, "User not found", nil)
+	}
+
+	// Return empty permissions for inactive users
+	if user.Status == "inactive" {
+		return nil, pkg.NewAppError(pkg.ErrorCodeForbidden, "User is inactive", nil)
 	}
 
 	// Get permissions from Casbin

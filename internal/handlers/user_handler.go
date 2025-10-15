@@ -260,3 +260,58 @@ func (h *UserHandler) DeleteUser(c echo.Context) error {
 
 	return c.JSON(http.StatusOK, map[string]string{"message": "User deleted successfully"})
 }
+
+// SearchUsers searches users by name or email with pagination (admin only)
+// @Summary Search users
+// @Description Search users by name or email with pagination support
+// @Tags users
+// @Accept json
+// @Produce json
+// @Param query query string false "Search query for name or email"
+// @Param limit query int false "Number of results per page (default: 20)"
+// @Param page query int false "Page number (default: 1)"
+// @Success 200 {object} map[string]interface{} "Search results with pagination"
+// @Failure 400 {object} map[string]string "Bad request"
+// @Failure 500 {object} map[string]string "Internal server error"
+// @Security BearerAuth
+// @Router /users/search [get]
+func (h *UserHandler) SearchUsers(c echo.Context) error {
+	// Parse query parameters
+	query := c.QueryParam("q")
+	limit, _ := strconv.Atoi(c.QueryParam("limit"))
+	page, _ := strconv.Atoi(c.QueryParam("page"))
+
+	// Set defaults
+	if limit == 0 {
+		limit = 20
+	}
+	if page == 0 {
+		page = 1
+	}
+
+	// Calculate offset
+	offset := (page - 1) * limit
+
+	// Get current user ID to exclude from results
+	currentUserID, _ := c.Get(pkg.AuthContextKeyUserID).(string)
+
+	users, total, err := h.userService.SearchUsers(c.Request().Context(), query, limit, offset, currentUserID)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to search users"})
+	}
+
+	// Calculate total pages
+	totalPages := int((total + int64(limit) - 1) / int64(limit))
+
+	// Create response
+	response := map[string]interface{}{
+		"data":       users,
+		"total":      total,
+		"page":       page,
+		"limit":      limit,
+		"totalPages": totalPages,
+		"query":      query,
+	}
+
+	return c.JSON(http.StatusOK, response)
+}

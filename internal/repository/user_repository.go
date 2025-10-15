@@ -121,3 +121,34 @@ func (r *UserRepository) GetByRole(ctx context.Context, role string) ([]*models.
 	}
 	return users, nil
 }
+
+// Search searches users by name or email with pagination
+func (r *UserRepository) Search(ctx context.Context, query string, limit, offset int, excludeUserID string) ([]*models.User, int64, error) {
+	var users []*models.User
+	var total int64
+
+	baseQuery := r.db.WithContext(ctx).Model(&models.User{}).Where("deleted_at IS NULL")
+
+	// Add search condition
+	if query != "" {
+		searchPattern := "%" + query + "%"
+		baseQuery = baseQuery.Where("(name ILIKE ? OR email ILIKE ?)", searchPattern, searchPattern)
+	}
+
+	// Exclude current user if provided
+	if excludeUserID != "" {
+		baseQuery = baseQuery.Where("uid != ?", excludeUserID)
+	}
+
+	// Get total count
+	if err := baseQuery.Count(&total).Error; err != nil {
+		return nil, 0, fmt.Errorf("failed to count users: %w", err)
+	}
+
+	// Get users with pagination
+	if err := baseQuery.Limit(limit).Offset(offset).Find(&users).Error; err != nil {
+		return nil, 0, fmt.Errorf("failed to search users: %w", err)
+	}
+
+	return users, total, nil
+}

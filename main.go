@@ -138,6 +138,7 @@ func main() {
 	// User management routes (admin only)
 	users := api.Group("/users")
 	users.GET("", userHandler.ListUsers)
+	users.GET("/search", userHandler.SearchUsers)
 	users.POST("", userHandler.CreateUser)
 	users.GET("/role/:role", userHandler.GetUsersByRole)
 	users.GET("/permissions", userHandler.GetUserPermissions)

@@ -2,9 +2,9 @@ package dto
 
 // CreateUserRequest represents the request for creating a new user
 type CreateUserRequest struct {
-	UID    string `json:"uid" validate:"required" example:"firebase-uid-123"`
+	UID    string `json:"uid" example:"firebase-uid-123"`
 	Email  string `json:"email" validate:"required,email" example:"user@example.com"`
-	Name   string `json:"name" validate:"required" example:"John Doe"`
+	Name   string `json:"name" example:"John Doe"`
 	Status string `json:"status" validate:"required,oneof=active pending inactive" example:"active"`
 	Role   string `json:"role" validate:"required,oneof=admin accountant staff" example:"staff"`
 }

@@ -101,6 +101,7 @@ Users are managed through:
 ### User Management (Admin only)
 
 - `GET /api/v1/users` - List all users
+- `GET /api/v1/users/search` - Search users by name or email
 - `GET /api/v1/users/role/:role` - Get users by role
 - `PUT /api/v1/users/:uid/role` - Update user role
 - `DELETE /api/v1/users/:id` - Delete user
