@@ -122,7 +122,7 @@ func (h *UserHandler) UpdateUser(c echo.Context) error {
 	// Get current user (admin performing the action)
 	currentUserID, _ := c.Get(pkg.AuthContextKeyUserID).(string)
 
-	err := h.userService.UpdateUser(c.Request().Context(), userID, req.Email, req.Name, req.Role, req.Status, currentUserID)
+	err := h.userService.UpdateUser(c.Request().Context(), userID, req.Name, req.Role, req.Status, currentUserID)
 	if err != nil {
 		if appErr, ok := err.(*pkg.AppError); ok {
 			return c.JSON(appErr.HTTPStatus(), map[string]string{"error": appErr.Message})

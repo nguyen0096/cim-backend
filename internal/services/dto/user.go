@@ -5,8 +5,8 @@ type CreateUserRequest struct {
 	UID    string `json:"uid" validate:"required" example:"firebase-uid-123"`
 	Email  string `json:"email" validate:"required,email" example:"user@example.com"`
 	Name   string `json:"name" validate:"required" example:"John Doe"`
-	Status string `json:"status" validate:"required" example:"active"`
-	Role   string `json:"role" validate:"required" example:"staff"`
+	Status string `json:"status" validate:"required,oneof=active pending inactive" example:"active"`
+	Role   string `json:"role" validate:"required,oneof=admin accountant staff" example:"staff"`
 }
 
 // CreateUserResponse represents the response for creating a new user
@@ -22,9 +22,7 @@ type CreateUserResponse struct {
 
 // UpdateUserRequest represents the request for updating a user
 type UpdateUserRequest struct {
-	UID    string `json:"uid" example:"firebase-uid-123"`
-	Email  string `json:"email" validate:"required,email" example:"user@example.com"`
 	Name   string `json:"name" example:"John Doe"`
-	Role   string `json:"role" validate:"required;contains=admin,accountant,staff" example:"staff"`
-	Status string `json:"status" validate:"required;contains=active,pending,inactive" example:"active"`
+	Role   string `json:"role" validate:"required,oneof=admin accountant staff" example:"staff"`
+	Status string `json:"status" validate:"required,oneof=active pending inactive" example:"active"`
 }

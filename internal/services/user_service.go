@@ -71,15 +71,15 @@ func (s *UserService) GetUserByUID(ctx context.Context, uid string) (*models.Use
 	return user, nil
 }
 
-// UpdateUser updates all properties of a user (admin only)
-func (s *UserService) UpdateUser(ctx context.Context, uid, email, name, role, status string, updatedBy string) error {
+// UpdateUser updates user properties except email (admin only)
+func (s *UserService) UpdateUser(ctx context.Context, userID, name, role, status string, updatedBy string) error {
 	// Validate role
 	if !models.UserRole(role).IsValidRole() {
 		return pkg.NewAppError(pkg.ErrorCodeValidation, "Invalid role", nil)
 	}
 
 	// Get current user
-	user, err := s.userRepo.GetByUID(ctx, uid)
+	user, err := s.userRepo.GetByID(ctx, userID)
 	if err != nil {
 		return fmt.Errorf("failed to get user: %w", err)
 	}
@@ -87,22 +87,12 @@ func (s *UserService) UpdateUser(ctx context.Context, uid, email, name, role, st
 		return pkg.NewAppError(pkg.ErrorCodeNotFound, "User not found", nil)
 	}
 
-	// Check if email is being changed and if new email already exists
-	if user.Email != email {
-		existingUser, err := s.userRepo.GetByEmail(ctx, email)
-		if err != nil {
-			return fmt.Errorf("failed to check existing user by email: %w", err)
-		}
-		if existingUser != nil {
-			return pkg.NewAppError(pkg.ErrorCodeValidation, "User with this email already exists", nil)
-		}
-	}
+	// Email updates are not allowed - keep existing email
 
 	// Check if role is being changed for Casbin update
 	roleChanged := user.Role != role
 
-	// Update user properties
-	user.Email = email
+	// Update user properties (email cannot be changed)
 	user.Name = name
 	user.Role = role
 	user.Status = status
@@ -115,18 +105,18 @@ func (s *UserService) UpdateUser(ctx context.Context, uid, email, name, role, st
 	// Update role in Casbin if role changed
 	if roleChanged {
 		// Remove old role from Casbin
-		oldRoles, err := s.casbinService.GetRolesForUser(uid)
+		oldRoles, err := s.casbinService.GetRolesForUser(user.UID)
 		if err != nil {
 			return fmt.Errorf("failed to get user roles from Casbin: %w", err)
 		}
 		for _, oldRole := range oldRoles {
-			if err := s.casbinService.DeleteRoleForUser(uid, oldRole); err != nil {
+			if err := s.casbinService.DeleteRoleForUser(user.UID, oldRole); err != nil {
 				return fmt.Errorf("failed to remove old role from Casbin: %w", err)
 			}
 		}
 
 		// Add new role to Casbin
-		if err := s.casbinService.AddRoleForUser(uid, role); err != nil {
+		if err := s.casbinService.AddRoleForUser(user.UID, role); err != nil {
 			return fmt.Errorf("failed to add new role to Casbin: %w", err)
 		}
 	}
