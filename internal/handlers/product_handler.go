@@ -6,7 +6,6 @@ import (
 	"cim-backend/pkg"
 	"net/http"
 	"path/filepath"
-	"strconv"
 	"time"
 
 	"github.com/go-playground/validator/v10"
@@ -14,6 +13,54 @@ import (
 	"github.com/labstack/echo/v4"
 	"github.com/sirupsen/logrus"
 )
+
+// ProductListRequest represents the query parameters for listing products
+type ProductListRequest struct {
+	Limit       int    `query:"limit"`
+	Page        int    `query:"page"`
+	Sort        string `query:"sort"`
+	Order       string `query:"order"`
+	Status      string `query:"status"`
+	ProductType string `query:"product_type"`
+}
+
+// ProductSearchRequest represents the query parameters for searching products
+type ProductSearchRequest struct {
+	ProductListRequest
+	Query string `query:"q" validate:"required"`
+}
+
+// SetDefaults sets default values for the request
+func (r *ProductListRequest) SetDefaults() {
+	if r.Limit == 0 {
+		r.Limit = 20
+	}
+	if r.Page == 0 {
+		r.Page = 1
+	}
+	if r.Sort == "" {
+		r.Sort = "created_at"
+	}
+	if r.Order == "" {
+		r.Order = "desc"
+	}
+}
+
+// SetDefaults sets default values for the request
+func (r *ProductSearchRequest) SetDefaults() {
+	if r.Limit == 0 {
+		r.Limit = 20
+	}
+	if r.Page == 0 {
+		r.Page = 1
+	}
+	if r.Sort == "" {
+		r.Sort = "created_at"
+	}
+	if r.Order == "" {
+		r.Order = "desc"
+	}
+}
 
 type ProductHandler struct {
 	productService services.ProductService
@@ -55,6 +102,7 @@ func (h *ProductHandler) getRequestLogger(c echo.Context, operation string) *log
 // @Param sort query string false "Sort field" default("created_at")
 // @Param order query string false "Sort order (asc/desc)" default("desc")
 // @Param status query string false "Filter by status (active/inactive)" default("active")
+// @Param product_type query string false "Filter by product type (electronics, clothing, food, etc.)"
 // @Success 200 {object} map[string]interface{} "List of products with pagination info"
 // @Failure 500 {object} map[string]interface{} "Internal server error"
 // @Security BearerAuth
@@ -63,54 +111,44 @@ func (h *ProductHandler) GetProducts(c echo.Context) error {
 	startTime := time.Now()
 	logger := h.getRequestLogger(c, "GetProducts")
 
-	// Parse query parameters
-	limit, _ := strconv.Atoi(c.QueryParam("limit"))
-	page, _ := strconv.Atoi(c.QueryParam("page"))
-	sortBy := c.QueryParam("sort")
-	sortOrder := c.QueryParam("order")
-	status := c.QueryParam("status")
-
-	// Set defaults
-	if limit == 0 {
-		limit = 20
-	}
-	if page == 0 {
-		page = 1
+	// Parse query parameters into request struct
+	var request ProductListRequest
+	if err := c.Bind(&request); err != nil {
+		logger.WithError(err).Error("Failed to bind query parameters")
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid query parameters"})
 	}
 
-	if sortBy == "" {
-		sortBy = "created_at"
-	}
-	if sortOrder == "" {
-		sortOrder = "desc"
-	}
+	// Set default values
+	request.SetDefaults()
 
 	// Calculate offset
-	offset := (page - 1) * limit
+	offset := (request.Page - 1) * request.Limit
 
 	logger.WithFields(logrus.Fields{
-		"limit":      limit,
-		"page":       page,
-		"offset":     offset,
-		"sort_by":    sortBy,
-		"sort_order": sortOrder,
+		"limit":        request.Limit,
+		"page":         request.Page,
+		"offset":       offset,
+		"sort_by":      request.Sort,
+		"sort_order":   request.Order,
+		"status":       request.Status,
+		"product_type": request.ProductType,
 	}).Info("Getting products with pagination")
 
 	// Get products and total count
-	products, err := h.productService.ListProducts(c.Request().Context(), limit, offset, sortBy, sortOrder, status)
+	products, err := h.productService.ListProducts(c.Request().Context(), request.Limit, offset, request.Sort, request.Order, request.Status, request.ProductType)
 	if err != nil {
 		logger.WithError(err).Error("Failed to fetch products from service")
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to fetch products"})
 	}
 
-	total, err := h.productService.CountProducts(c.Request().Context(), status)
+	total, err := h.productService.CountProducts(c.Request().Context(), request.Status, request.ProductType)
 	if err != nil {
 		logger.WithError(err).Error("Failed to count products")
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to count products"})
 	}
 
 	// Calculate total pages
-	totalPages := int((total + int64(limit) - 1) / int64(limit))
+	totalPages := int((total + int64(request.Limit) - 1) / int64(request.Limit))
 
 	duration := time.Since(startTime)
 	logger.WithFields(logrus.Fields{
@@ -124,8 +162,8 @@ func (h *ProductHandler) GetProducts(c echo.Context) error {
 	response := map[string]interface{}{
 		"data":       products,
 		"total":      total,
-		"page":       page,
-		"limit":      limit,
+		"page":       request.Page,
+		"limit":      request.Limit,
 		"totalPages": totalPages,
 	}
 
@@ -144,6 +182,7 @@ func (h *ProductHandler) GetProducts(c echo.Context) error {
 // @Param sort query string false "Sort field" default("created_at")
 // @Param order query string false "Sort order (asc/desc)" default("desc")
 // @Param status query string false "Filter by status (active/inactive)" default("active")
+// @Param product_type query string false "Filter by product type (electronics, clothing, food, etc.)"
 // @Success 200 {object} map[string]interface{} "Search results with pagination info"
 // @Failure 400 {object} map[string]interface{} "Bad request"
 // @Failure 500 {object} map[string]interface{} "Internal server error"
@@ -153,59 +192,55 @@ func (h *ProductHandler) SearchProducts(c echo.Context) error {
 	startTime := time.Now()
 	logger := h.getRequestLogger(c, "SearchProducts")
 
-	query := c.QueryParam("q")
-	if query == "" {
+	// Parse query parameters into request struct
+	var request ProductSearchRequest
+	if err := c.Bind(&request); err != nil {
+		logger.WithError(err).Error("Failed to bind query parameters")
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid query parameters"})
+	}
+
+	// Validate required query parameter
+	if request.Query == "" {
 		logger.Warn("Search request without query parameter")
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Query parameter 'q' is required"})
 	}
 
-	// Parse query parameters
-	limit, _ := strconv.Atoi(c.QueryParam("limit"))
-	page, _ := strconv.Atoi(c.QueryParam("page"))
-	sortBy := c.QueryParam("sort")
-	sortOrder := c.QueryParam("order")
-	status := c.QueryParam("status")
-
-	// Set defaults
-	if limit == 0 {
-		limit = 20
-	}
-	if page == 0 {
-		page = 1
-	}
+	// Set default values
+	request.SetDefaults()
 
 	// Calculate offset
-	offset := (page - 1) * limit
+	offset := (request.Page - 1) * request.Limit
 
 	logger.WithFields(logrus.Fields{
-		"query":      query,
-		"limit":      limit,
-		"page":       page,
-		"offset":     offset,
-		"sort_by":    sortBy,
-		"sort_order": sortOrder,
-		"status":     status,
+		"query":        request.Query,
+		"limit":        request.Limit,
+		"page":         request.Page,
+		"offset":       offset,
+		"sort_by":      request.Sort,
+		"sort_order":   request.Order,
+		"status":       request.Status,
+		"product_type": request.ProductType,
 	}).Info("Searching products")
 
 	// Get products and total count
-	products, err := h.productService.SearchProductsWithPagination(c.Request().Context(), query, limit, offset, sortBy, sortOrder, status)
+	products, err := h.productService.SearchProductsWithPagination(c.Request().Context(), request.Query, request.Limit, offset, request.Sort, request.Order, request.Status, request.ProductType)
 	if err != nil {
-		logger.WithError(err).WithField("query", query).Error("Failed to search products")
+		logger.WithError(err).WithField("query", request.Query).Error("Failed to search products")
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to search products"})
 	}
 
-	total, err := h.productService.CountSearchProducts(c.Request().Context(), query, status)
+	total, err := h.productService.CountSearchProducts(c.Request().Context(), request.Query, request.Status, request.ProductType)
 	if err != nil {
-		logger.WithError(err).WithField("query", query).Error("Failed to count search results")
+		logger.WithError(err).WithField("query", request.Query).Error("Failed to count search results")
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to count search results"})
 	}
 
 	// Calculate total pages
-	totalPages := int((total + int64(limit) - 1) / int64(limit))
+	totalPages := int((total + int64(request.Limit) - 1) / int64(request.Limit))
 
 	duration := time.Since(startTime)
 	logger.WithFields(logrus.Fields{
-		"query":         query,
+		"query":         request.Query,
 		"results_count": len(products),
 		"total_results": total,
 		"total_pages":   totalPages,
@@ -216,8 +251,8 @@ func (h *ProductHandler) SearchProducts(c echo.Context) error {
 	response := map[string]interface{}{
 		"data":       products,
 		"total":      total,
-		"page":       page,
-		"limit":      limit,
+		"page":       request.Page,
+		"limit":      request.Limit,
 		"totalPages": totalPages,
 	}
 
