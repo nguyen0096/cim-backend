@@ -33,10 +33,7 @@ func NewSettingsRepository(db *gorm.DB) SettingsRepository {
 // Get retrieves a setting by key
 func (r *settingsRepository) Get(ctx context.Context, key string) (*models.Settings, error) {
 	var setting models.Settings
-	if err := r.db.WithContext(ctx).Where("key = ?", key).First(&setting).Error; err != nil {
-		if err == gorm.ErrRecordNotFound {
-			return nil, nil
-		}
+	if err := r.db.WithContext(ctx).Where("key = ?", key).First(&setting).Error; err != nil && err != gorm.ErrRecordNotFound {
 		return nil, err
 	}
 	return &setting, nil
