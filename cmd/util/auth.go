@@ -67,11 +67,10 @@ var authCmd = &cobra.Command{
 			os.Exit(1)
 		}
 
-		bearerToken := "Bearer " + token
-		fmt.Println(bearerToken)
+		fmt.Println(token)
 
 		// Copy to clipboard using pbcopy
-		if err := copyToClipboard(bearerToken); err != nil {
+		if err := copyToClipboard(token); err != nil {
 			fmt.Fprintf(os.Stderr, "Warning: Could not copy to clipboard: %v\n", err)
 		} else {
 			fmt.Println("✓ Token copied to clipboard")

@@ -1,7 +1,7 @@
 package dto
 
-// ConfirmInventoryRequest represents the request for confirming inventory
-type ConfirmInventoryRequest struct {
+// ReconcileInventoryRequest represents the request for confirming inventory
+type ReconcileInventoryRequest struct {
 	InventoryID uint                    `json:"inventory_id" validate:"required" param:"id"`
 	Items       []InventoryItemQuantity `json:"items" validate:"required,min=1,dive"`
 }

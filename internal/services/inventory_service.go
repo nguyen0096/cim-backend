@@ -20,7 +20,7 @@ type InventoryService interface {
 	RemoveInventory(ctx context.Context, productID uint, quantity int, referenceID uint, referenceType, notes string) error
 
 	// v1
-	ReconcileInventory(ctx context.Context, req dto.ConfirmInventoryRequest) error
+	ReconcileInventory(ctx context.Context, req dto.ReconcileInventoryRequest) error
 	DisposeItems(ctx context.Context, req dto.DisposeItemsRequest) ([]*models.InventoryItem, error)
 	GetLastPurchasePrices(ctx context.Context) (dto.LastPurchasePriceMap, error)
 }
@@ -128,14 +128,14 @@ func (s *inventoryService) DisposeItems(ctx context.Context, req dto.DisposeItem
 	return updatedItems, nil
 }
 
-func (s *inventoryService) ReconcileInventory(ctx context.Context, req dto.ConfirmInventoryRequest) error {
+func (s *inventoryService) ReconcileInventory(ctx context.Context, req dto.ReconcileInventoryRequest) error {
 	itemIDs := make([]uint, len(req.Items))
 	for i, item := range req.Items {
 		itemIDs[i] = item.InventoryItemID
 	}
 
 	// Step 1: Query data and validate
-	activeItems, err := s.inventoryItemRepo.GetActiveItemsByInventoryIDs(ctx, itemIDs)
+	activeItems, err := s.inventoryItemRepo.GetActiveInventoryItems(ctx, itemIDs)
 	if err != nil {
 		return fmt.Errorf("failed to get active inventory items: %w", err)
 	}
@@ -159,8 +159,8 @@ func (s *inventoryService) ReconcileInventory(ctx context.Context, req dto.Confi
 	}
 
 	var sellTransactions []*models.InventoryTransaction
-	var updatedItems []*models.InventoryItem
-
+	var updateItems []*repository.PersistReconciliationItem
+	var updateTransactions []*models.InventoryTransaction
 	for _, item := range activeItems {
 		actualQty, exists := actualQuantities[item.ID]
 		if !exists {
@@ -168,51 +168,59 @@ func (s *inventoryService) ReconcileInventory(ctx context.Context, req dto.Confi
 				fmt.Sprintf("no quantity specified for inventory item %d", item.ID), nil)
 		}
 
-		// Validate that requested quantity doesn't exceed available quantity
+		if actualQty == item.Quantity {
+			continue
+		}
+
 		if actualQty > item.Quantity {
+			// Validate that requested quantity doesn't exceed available quantity
 			return pkg.NewAppError(pkg.ErrorCodeValidation,
 				fmt.Sprintf("requested quantity %d exceeds available quantity %d for inventory item %d",
 					actualQty, item.Quantity, item.ID), nil)
 		}
 
 		totalToConsume := item.Quantity - actualQty
+		var consumingTxnID uint
 		txnCount := len(item.ActivePurchaseTransactions)
-		currentConsumingIdx := 0
-		for totalToConsume > 0 && currentConsumingIdx < txnCount {
-			txn := item.ActivePurchaseTransactions[currentConsumingIdx]
-
+		idx := 0
+		for totalToConsume > 0 && idx < txnCount {
+			txn := item.ActivePurchaseTransactions[idx]
 			txnUnconsumedQty := txn.Quantity - txn.ConsumedQuantity
-			if txnUnconsumedQty == 0 {
-				if currentConsumingIdx == txnCount-1 {
-					// no txn left to consume
-					break
-				}
 
-				// move to next transaction for consuming if there's still txn
-				currentConsumingIdx++
+			if txnUnconsumedQty == 0 {
+				idx++
 				continue
 			}
 
+			// create sell transaction
 			sellQty := min(totalToConsume, txnUnconsumedQty)
-			if sellQty > 0 {
-				sellTransaction := &models.InventoryTransaction{
-					InventoryItemID:      item.ID,
-					TransactionType:      models.InventoryTransactionTypeSell,
-					Price:                txn.Price, // Use same price as purchase
-					Quantity:             sellQty,
-					CounterTransactionID: &txn.ID,
-				}
-				sellTransactions = append(sellTransactions, sellTransaction)
-				txn.ConsumedQuantity += sellQty
+			sellTransaction := &models.InventoryTransaction{
+				InventoryItemID:      item.ID,
+				TransactionType:      models.InventoryTransactionTypeSell,
+				Price:                txn.Price, // Use same price as purchase
+				Quantity:             sellQty,
+				CounterTransactionID: &txn.ID,
 			}
+			sellTransactions = append(sellTransactions, sellTransaction)
+
+			txn.ConsumedQuantity += sellQty
+			updateTransactions = append(updateTransactions, txn)
+
+			consumingTxnID = txn.ID
+			totalToConsume -= sellQty
 		}
 
+		updateItems = append(updateItems, &repository.PersistReconciliationItem{
+			InventoryItem:    item,
+			OriginalQuantity: item.Quantity,
+		})
+
 		item.Quantity = actualQty
-		item.ConsumingTransactionID = item.ActivePurchaseTransactions[currentConsumingIdx].ID
+		item.ConsumingTransactionID = consumingTxnID
 	}
 
 	// Step 3: Persist data
-	if err := s.inventoryItemRepo.PersistReconciliation(ctx, updatedItems, sellTransactions); err != nil {
+	if err := s.inventoryItemRepo.PersistReconciliation(ctx, updateItems, updateTransactions, sellTransactions); err != nil {
 		return fmt.Errorf("failed to create sell transactions and update inventory items: %w", err)
 	}
 	return nil

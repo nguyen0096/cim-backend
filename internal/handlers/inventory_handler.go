@@ -226,7 +226,7 @@ func (h *InventoryHandler) DisposeInventoryItems(c echo.Context) error {
 // @Security BearerAuth
 // @Router /inventories/confirm [put]
 func (h *InventoryHandler) ReconcileInventory(c echo.Context) error {
-	var req dto.ConfirmInventoryRequest
+	var req dto.ReconcileInventoryRequest
 
 	if err := c.Bind(&req); err != nil {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid request body"})

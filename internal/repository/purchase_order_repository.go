@@ -185,9 +185,8 @@ func (r *purchaseOrderRepository) ReceiveInventory(ctx context.Context, req dto.
 				p.unit as product_unit
 			`).
 			Joins(`LEFT JOIN inventory_items ii ON poi.product_id = ii.product_id
-					AND poi.supplier_id = ii.supplier_id
 					AND ii.status = ?
-			`, models.InventoryStatusActive).
+			`, models.InventoryItemStatusActive).
 			Joins(`JOIN products p ON poi.product_id = p.id`).
 			Where("poi.purchase_order_id = ?", req.PurchaseOrderID).
 			Scan(&poiData).Error
@@ -242,14 +241,13 @@ func (r *purchaseOrderRepository) ReceiveInventory(ctx context.Context, req dto.
 				transaction.InventoryItem = &models.InventoryItem{
 					InventoryID: *po.InventoryID,
 					ProductID:   *poItem.ProductID,
-					SupplierID:  *poItem.SupplierID,
-					Unit:        poItem.ProductUnit,
 					Quantity:    dtoItem.ReceivedQuantity,
 					Status:      models.InventoryItemStatusActive,
 				}
 				newInventoryItems = append(newInventoryItems, transaction.InventoryItem)
 			}
 
+			transaction.SupplierID = poItem.SupplierID
 			transactions = append(transactions, transaction)
 		}
 

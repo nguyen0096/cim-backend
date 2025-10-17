@@ -81,23 +81,23 @@ func TestGetActiveItemsByInventoryIDs(t *testing.T) {
 	// Create inventory items (ConsumingTransactionID will be set after transactions are created)
 	inventoryItems := []models.InventoryItem{
 		{
-			InventoryID: inventories[0].ID, ProductID: products[0].ID, SupplierID: suppliers[0].ID, Unit: "piece", Quantity: 9, Status: models.InventoryItemStatusActive,
+			InventoryID: inventories[0].ID, ProductID: products[0].ID, Quantity: 9, Status: models.InventoryItemStatusActive,
 			// ConsumingTransactionID will be set to transaction 2's ID after creation
 		},
 		{
-			InventoryID: inventories[0].ID, ProductID: products[1].ID, SupplierID: suppliers[0].ID, Unit: "piece", Quantity: 15, Status: models.InventoryItemStatusActive,
+			InventoryID: inventories[0].ID, ProductID: products[1].ID, Quantity: 15, Status: models.InventoryItemStatusActive,
 			// ConsumingTransactionID will be set to transaction 4's ID after creation
 		},
 		{
-			InventoryID: inventories[1].ID, ProductID: products[2].ID, SupplierID: suppliers[0].ID, Unit: "piece", Quantity: 45, Status: models.InventoryItemStatusActive,
+			InventoryID: inventories[1].ID, ProductID: products[2].ID, Quantity: 45, Status: models.InventoryItemStatusActive,
 			// ConsumingTransactionID is zero value (0) - should return all transactions
 		},
 		{
-			InventoryID: inventories[1].ID, ProductID: products[3].ID, SupplierID: suppliers[0].ID, Unit: "piece", Quantity: 25, Status: models.InventoryItemStatusActive,
+			InventoryID: inventories[1].ID, ProductID: products[3].ID, Quantity: 25, Status: models.InventoryItemStatusActive,
 			// ConsumingTransactionID will be set to transaction 9's ID after creation
 		},
 		{
-			InventoryID: inventories[0].ID, ProductID: products[4].ID, SupplierID: suppliers[1].ID, Unit: "piece", Quantity: 0, Status: models.InventoryItemStatusActive,
+			InventoryID: inventories[0].ID, ProductID: products[4].ID, Quantity: 0, Status: models.InventoryItemStatusActive,
 			// Inactive item (quantity 0)
 		},
 	}
@@ -111,34 +111,34 @@ func TestGetActiveItemsByInventoryIDs(t *testing.T) {
 	transactions := []models.InventoryTransaction{
 		// Purchase transactions for inventory item 1 (MacBook Pro) - 3 transactions
 		// Transaction 0: Fully consumed (not included in active transactions)
-		{Base: models.Base{CreatedAt: now.AddDate(0, 0, -30), UpdatedAt: now.AddDate(0, 0, -30)}, InventoryItemID: inventoryItems[0].ID, TransactionType: models.InventoryTransactionTypePurchase, Price: 2999.99, Quantity: 5},
+		{Base: models.Base{CreatedAt: now.AddDate(0, 0, -30), UpdatedAt: now.AddDate(0, 0, -30)}, InventoryItemID: inventoryItems[0].ID, SupplierID: &suppliers[0].ID, TransactionType: models.InventoryTransactionTypePurchase, Price: 2999.99, Quantity: 5},
 		// Transaction 1: Currently being consumed (ConsumingTransactionID will point here)
-		{Base: models.Base{CreatedAt: now.AddDate(0, 0, -20), UpdatedAt: now.AddDate(0, 0, -20)}, InventoryItemID: inventoryItems[0].ID, TransactionType: models.InventoryTransactionTypePurchase, Price: 2999.99, Quantity: 3},
+		{Base: models.Base{CreatedAt: now.AddDate(0, 0, -20), UpdatedAt: now.AddDate(0, 0, -20)}, InventoryItemID: inventoryItems[0].ID, SupplierID: &suppliers[0].ID, TransactionType: models.InventoryTransactionTypePurchase, Price: 2999.99, Quantity: 3},
 		// Transaction 2: Not yet consumed
-		{Base: models.Base{CreatedAt: now.AddDate(0, 0, -10), UpdatedAt: now.AddDate(0, 0, -10)}, InventoryItemID: inventoryItems[0].ID, TransactionType: models.InventoryTransactionTypePurchase, Price: 2999.99, Quantity: 2},
+		{Base: models.Base{CreatedAt: now.AddDate(0, 0, -10), UpdatedAt: now.AddDate(0, 0, -10)}, InventoryItemID: inventoryItems[0].ID, SupplierID: &suppliers[0].ID, TransactionType: models.InventoryTransactionTypePurchase, Price: 2999.99, Quantity: 2},
 
 		// Purchase transactions for inventory item 2 (LG Monitor) - 2 transactions
 		// Transaction 3: Currently being consumed (ConsumingTransactionID will point here)
-		{Base: models.Base{CreatedAt: now.AddDate(0, 0, -25), UpdatedAt: now.AddDate(0, 0, -25)}, InventoryItemID: inventoryItems[1].ID, TransactionType: models.InventoryTransactionTypePurchase, Price: 599.99, Quantity: 10},
+		{Base: models.Base{CreatedAt: now.AddDate(0, 0, -25), UpdatedAt: now.AddDate(0, 0, -25)}, InventoryItemID: inventoryItems[1].ID, SupplierID: &suppliers[0].ID, TransactionType: models.InventoryTransactionTypePurchase, Price: 599.99, Quantity: 10},
 		// Transaction 4: Not yet consumed
-		{Base: models.Base{CreatedAt: now.AddDate(0, 0, -15), UpdatedAt: now.AddDate(0, 0, -15)}, InventoryItemID: inventoryItems[1].ID, TransactionType: models.InventoryTransactionTypePurchase, Price: 599.99, Quantity: 5},
+		{Base: models.Base{CreatedAt: now.AddDate(0, 0, -15), UpdatedAt: now.AddDate(0, 0, -15)}, InventoryItemID: inventoryItems[1].ID, SupplierID: &suppliers[0].ID, TransactionType: models.InventoryTransactionTypePurchase, Price: 599.99, Quantity: 5},
 
 		// Purchase transactions for inventory item 3 (Keychron Keyboard) - 3 transactions
 		// All transactions are active (ConsumingTransactionID = 0)
-		{Base: models.Base{CreatedAt: now.AddDate(0, 0, -40), UpdatedAt: now.AddDate(0, 0, -40)}, InventoryItemID: inventoryItems[2].ID, TransactionType: models.InventoryTransactionTypePurchase, Price: 89.99, Quantity: 20},
-		{Base: models.Base{CreatedAt: now.AddDate(0, 0, -30), UpdatedAt: now.AddDate(0, 0, -30)}, InventoryItemID: inventoryItems[2].ID, TransactionType: models.InventoryTransactionTypePurchase, Price: 89.99, Quantity: 15},
-		{Base: models.Base{CreatedAt: now.AddDate(0, 0, -20), UpdatedAt: now.AddDate(0, 0, -20)}, InventoryItemID: inventoryItems[2].ID, TransactionType: models.InventoryTransactionTypePurchase, Price: 89.99, Quantity: 10},
+		{Base: models.Base{CreatedAt: now.AddDate(0, 0, -40), UpdatedAt: now.AddDate(0, 0, -40)}, InventoryItemID: inventoryItems[2].ID, SupplierID: &suppliers[0].ID, TransactionType: models.InventoryTransactionTypePurchase, Price: 89.99, Quantity: 20},
+		{Base: models.Base{CreatedAt: now.AddDate(0, 0, -30), UpdatedAt: now.AddDate(0, 0, -30)}, InventoryItemID: inventoryItems[2].ID, SupplierID: &suppliers[0].ID, TransactionType: models.InventoryTransactionTypePurchase, Price: 89.99, Quantity: 15},
+		{Base: models.Base{CreatedAt: now.AddDate(0, 0, -20), UpdatedAt: now.AddDate(0, 0, -20)}, InventoryItemID: inventoryItems[2].ID, SupplierID: &suppliers[0].ID, TransactionType: models.InventoryTransactionTypePurchase, Price: 89.99, Quantity: 10},
 
 		// Purchase transactions for inventory item 4 (Logitech Mouse) - 3 transactions
 		// Transaction 8: Fully consumed (not included in active transactions)
-		{Base: models.Base{CreatedAt: now.AddDate(0, 0, -35), UpdatedAt: now.AddDate(0, 0, -35)}, InventoryItemID: inventoryItems[3].ID, TransactionType: models.InventoryTransactionTypePurchase, Price: 99.99, Quantity: 10},
+		{Base: models.Base{CreatedAt: now.AddDate(0, 0, -35), UpdatedAt: now.AddDate(0, 0, -35)}, InventoryItemID: inventoryItems[3].ID, SupplierID: &suppliers[0].ID, TransactionType: models.InventoryTransactionTypePurchase, Price: 99.99, Quantity: 10},
 		// Transaction 9: Currently being consumed (ConsumingTransactionID will point here)
-		{Base: models.Base{CreatedAt: now.AddDate(0, 0, -25), UpdatedAt: now.AddDate(0, 0, -25)}, InventoryItemID: inventoryItems[3].ID, TransactionType: models.InventoryTransactionTypePurchase, Price: 99.99, Quantity: 8},
+		{Base: models.Base{CreatedAt: now.AddDate(0, 0, -25), UpdatedAt: now.AddDate(0, 0, -25)}, InventoryItemID: inventoryItems[3].ID, SupplierID: &suppliers[0].ID, TransactionType: models.InventoryTransactionTypePurchase, Price: 99.99, Quantity: 8},
 		// Transaction 10: Not yet consumed
-		{Base: models.Base{CreatedAt: now.AddDate(0, 0, -15), UpdatedAt: now.AddDate(0, 0, -15)}, InventoryItemID: inventoryItems[3].ID, TransactionType: models.InventoryTransactionTypePurchase, Price: 99.99, Quantity: 7},
+		{Base: models.Base{CreatedAt: now.AddDate(0, 0, -15), UpdatedAt: now.AddDate(0, 0, -15)}, InventoryItemID: inventoryItems[3].ID, SupplierID: &suppliers[0].ID, TransactionType: models.InventoryTransactionTypePurchase, Price: 99.99, Quantity: 7},
 
 		// Purchase transaction for inventory item 5 (Herman Miller Chair) - 1 transaction (inactive)
-		{Base: models.Base{CreatedAt: now.AddDate(0, 0, -20), UpdatedAt: now.AddDate(0, 0, -20)}, InventoryItemID: inventoryItems[4].ID, TransactionType: models.InventoryTransactionTypePurchase, Price: 1395.00, Quantity: 3},
+		{Base: models.Base{CreatedAt: now.AddDate(0, 0, -20), UpdatedAt: now.AddDate(0, 0, -20)}, InventoryItemID: inventoryItems[4].ID, SupplierID: &suppliers[1].ID, TransactionType: models.InventoryTransactionTypePurchase, Price: 1395.00, Quantity: 3},
 	}
 	err = db.WithContext(ctx).Create(&transactions).Error
 	require.NoError(t, err, "Failed to create inventory transactions")
@@ -196,7 +196,7 @@ func TestGetActiveItemsByInventoryIDs(t *testing.T) {
 		// Test with Main Warehouse A (inventory ID 1)
 		// Expected: 2 active items (MacBook Pro with quantity 9, LG Monitor with quantity 15)
 		// Herman Miller Chair has quantity 0, so it should be excluded
-		items, err := repo.GetActiveItemsByInventoryIDs(ctx, []uint{inventories[0].ID})
+		items, err := repo.GetActiveInventoryItemsByProductIDs(ctx, []uint{inventories[0].ID}, []uint{products[0].ID, products[1].ID, products[4].ID})
 
 		require.NoError(t, err)
 		assert.Len(t, items, 2, "Should return 2 active items for Main Warehouse A")
@@ -211,14 +211,14 @@ func TestGetActiveItemsByInventoryIDs(t *testing.T) {
 		for _, item := range items {
 			assert.NotNil(t, item.Inventory, "Inventory should be preloaded")
 			assert.NotNil(t, item.Product, "Product should be preloaded")
-			assert.NotNil(t, item.Supplier, "Supplier should be preloaded")
 		}
 	})
 
 	t.Run("should return active items for multiple inventory IDs", func(t *testing.T) {
 		// Test with Main Warehouse A and Secondary Warehouse B
 		// Expected: 4 active items total (2 from each inventory)
-		items, err := repo.GetActiveItemsByInventoryIDs(ctx, []uint{inventories[0].ID, inventories[1].ID})
+		productIDsToQuery := []uint{products[0].ID, products[1].ID, products[2].ID, products[3].ID, products[4].ID}
+		items, err := repo.GetActiveInventoryItems(ctx, productIDsToQuery)
 
 		require.NoError(t, err)
 		assert.Len(t, items, 4, "Should return 4 active items for both inventories")
@@ -231,14 +231,14 @@ func TestGetActiveItemsByInventoryIDs(t *testing.T) {
 	})
 
 	t.Run("should return empty result for non-existent inventory ID", func(t *testing.T) {
-		items, err := repo.GetActiveItemsByInventoryIDs(ctx, []uint{999, 999})
+		items, err := repo.GetActiveInventoryItemsByProductIDs(ctx, []uint{999}, []uint{products[0].ID})
 
 		require.NoError(t, err)
 		assert.Len(t, items, 0, "Should return empty result for non-existent inventory ID")
 	})
 
 	t.Run("should return empty result for empty inventory IDs list", func(t *testing.T) {
-		items, err := repo.GetActiveItemsByInventoryIDs(ctx, []uint{})
+		items, err := repo.GetActiveInventoryItemsByProductIDs(ctx, []uint{}, []uint{products[0].ID})
 
 		require.NoError(t, err)
 		assert.Len(t, items, 0, "Should return empty result for empty inventory IDs list")
@@ -248,7 +248,7 @@ func TestGetActiveItemsByInventoryIDs(t *testing.T) {
 		// Test with Main Warehouse A - MacBook Pro item
 		// MacBook Pro has ConsumingTransactionID set to transaction 1's ID
 		// Should return transactions with ID >= transaction 1's ID (transactions 1 and 2)
-		items, err := repo.GetActiveItemsByInventoryIDs(ctx, []uint{inventories[0].ID})
+		items, err := repo.GetActiveInventoryItemsByProductIDs(ctx, []uint{inventories[0].ID}, []uint{products[0].ID, products[1].ID})
 
 		require.NoError(t, err)
 		require.Len(t, items, 2, "Should return 2 active items")
@@ -276,7 +276,7 @@ func TestGetActiveItemsByInventoryIDs(t *testing.T) {
 	t.Run("should preload all purchase transactions for item with zero ConsumingTransactionID", func(t *testing.T) {
 		// Should return all purchase transactions when ConsumingTransactionID is 0
 
-		items, err := repo.GetActiveItemsByInventoryIDs(ctx, []uint{inventories[1].ID})
+		items, err := repo.GetActiveInventoryItemsByProductIDs(ctx, []uint{inventories[1].ID}, []uint{products[2].ID, products[3].ID})
 
 		require.NoError(t, err)
 		require.Len(t, items, 2, "Should return 2 active items")
@@ -307,7 +307,7 @@ func TestGetActiveItemsByInventoryIDs(t *testing.T) {
 		invalidDB, _ := gorm.Open(nil, nil)
 		closedRepo := NewInventoryItemRepository(invalidDB)
 
-		items, err := closedRepo.GetActiveItemsByInventoryIDs(ctx, []uint{1})
+		items, err := closedRepo.GetActiveInventoryItemsByProductIDs(ctx, []uint{1}, []uint{products[0].ID})
 
 		// Note: This test may not always produce an error due to GORM's behavior
 		// The main purpose is to ensure the error handling code path is covered
@@ -322,7 +322,7 @@ func TestGetActiveItemsByInventoryIDs(t *testing.T) {
 	})
 
 	t.Run("should verify transaction ordering by CreatedAt", func(t *testing.T) {
-		items, err := repo.GetActiveItemsByInventoryIDs(ctx, []uint{inventories[1].ID})
+		items, err := repo.GetActiveInventoryItemsByProductIDs(ctx, []uint{inventories[1].ID}, []uint{products[2].ID, products[3].ID})
 
 		require.NoError(t, err)
 		require.Len(t, items, 2, "Should return 2 active items")
@@ -348,7 +348,7 @@ func TestGetActiveItemsByInventoryIDs(t *testing.T) {
 	})
 
 	t.Run("should exclude inactive items (quantity = 0)", func(t *testing.T) {
-		items, err := repo.GetActiveItemsByInventoryIDs(ctx, []uint{inventories[0].ID})
+		items, err := repo.GetActiveInventoryItemsByProductIDs(ctx, []uint{inventories[0].ID}, []uint{products[0].ID, products[1].ID, products[4].ID})
 
 		require.NoError(t, err)
 		assert.Len(t, items, 2, "Should return only 2 active items, excluding the inactive one")
@@ -410,16 +410,16 @@ func TestPersistReconciliation(t *testing.T) {
 	// Create inventory items
 	inventoryItems := []models.InventoryItem{
 		{
-			InventoryID: inventories[0].ID, ProductID: products[0].ID, SupplierID: suppliers[0].ID,
-			Unit: "piece", Quantity: 10, Status: models.InventoryItemStatusActive,
+			InventoryID: inventories[0].ID, ProductID: products[0].ID,
+			Quantity: 10, Status: models.InventoryItemStatusActive,
 		},
 		{
-			InventoryID: inventories[0].ID, ProductID: products[1].ID, SupplierID: suppliers[0].ID,
-			Unit: "piece", Quantity: 20, Status: models.InventoryItemStatusActive,
+			InventoryID: inventories[0].ID, ProductID: products[1].ID,
+			Quantity: 20, Status: models.InventoryItemStatusActive,
 		},
 		{
-			InventoryID: inventories[1].ID, ProductID: products[2].ID, SupplierID: suppliers[1].ID,
-			Unit: "piece", Quantity: 5, Status: models.InventoryItemStatusActive,
+			InventoryID: inventories[1].ID, ProductID: products[2].ID,
+			Quantity: 5, Status: models.InventoryItemStatusActive,
 		},
 	}
 	err = db.WithContext(ctx).Create(&inventoryItems).Error
@@ -461,13 +461,13 @@ func TestPersistReconciliation(t *testing.T) {
 		updatedItems := []*models.InventoryItem{
 			{
 				Base:        models.Base{ID: inventoryItems[0].ID},
-				InventoryID: inventories[0].ID, ProductID: products[0].ID, SupplierID: suppliers[0].ID,
-				Unit: "piece", Quantity: 10, Status: models.InventoryItemStatusActive, // Current quantity in DB
+				InventoryID: inventories[0].ID, ProductID: products[0].ID,
+				Quantity: 10, Status: models.InventoryItemStatusActive, // Current quantity in DB
 			},
 			{
 				Base:        models.Base{ID: inventoryItems[1].ID},
-				InventoryID: inventories[0].ID, ProductID: products[1].ID, SupplierID: suppliers[0].ID,
-				Unit: "piece", Quantity: 20, Status: models.InventoryItemStatusActive, // Current quantity in DB
+				InventoryID: inventories[0].ID, ProductID: products[1].ID,
+				Quantity: 20, Status: models.InventoryItemStatusActive, // Current quantity in DB
 			},
 		}
 
@@ -522,8 +522,8 @@ func TestPersistReconciliation(t *testing.T) {
 		updatedItems := []*models.InventoryItem{
 			{
 				Base:        models.Base{ID: 99999}, // Non-existent ID
-				InventoryID: inventories[0].ID, ProductID: products[0].ID, SupplierID: suppliers[0].ID,
-				Unit: "piece", Quantity: 8, Status: models.InventoryItemStatusActive,
+				InventoryID: inventories[0].ID, ProductID: products[0].ID,
+				Quantity: 8, Status: models.InventoryItemStatusActive,
 			},
 		}
 
@@ -546,8 +546,8 @@ func TestPersistReconciliation(t *testing.T) {
 		updatedItems := []*models.InventoryItem{
 			{
 				Base:        models.Base{ID: inventoryItems[0].ID},
-				InventoryID: inventories[0].ID, ProductID: products[0].ID, SupplierID: suppliers[0].ID,
-				Unit: "piece", Quantity: 8, Status: models.InventoryItemStatusActive,
+				InventoryID: inventories[0].ID, ProductID: products[0].ID,
+				Quantity: 8, Status: models.InventoryItemStatusActive,
 			},
 		}
 
@@ -581,8 +581,8 @@ func TestPersistReconciliation(t *testing.T) {
 		updatedItems := []*models.InventoryItem{
 			{
 				Base:        models.Base{ID: inventoryItems[0].ID},
-				InventoryID: inventories[0].ID, ProductID: products[0].ID, SupplierID: suppliers[0].ID,
-				Unit: "piece", Quantity: 10, Status: models.InventoryItemStatusActive, // Current quantity in DB
+				InventoryID: inventories[0].ID, ProductID: products[0].ID,
+				Quantity: 10, Status: models.InventoryItemStatusActive, // Current quantity in DB
 			},
 		}
 
@@ -637,8 +637,8 @@ func TestPersistReconciliation(t *testing.T) {
 		updatedItems := []*models.InventoryItem{
 			{
 				Base:        models.Base{ID: 99999}, // Non-existent ID
-				InventoryID: inventories[0].ID, ProductID: products[0].ID, SupplierID: suppliers[0].ID,
-				Unit: "piece", Quantity: 8, Status: models.InventoryItemStatusActive,
+				InventoryID: inventories[0].ID, ProductID: products[0].ID,
+				Quantity: 8, Status: models.InventoryItemStatusActive,
 			},
 		}
 
@@ -686,18 +686,18 @@ func TestPersistReconciliation(t *testing.T) {
 		updatedItems := []*models.InventoryItem{
 			{
 				Base:        models.Base{ID: inventoryItems[0].ID},
-				InventoryID: inventories[0].ID, ProductID: products[0].ID, SupplierID: suppliers[0].ID,
-				Unit: "piece", Quantity: 10, Status: models.InventoryItemStatusActive, // Current quantity in DB
+				InventoryID: inventories[0].ID, ProductID: products[0].ID,
+				Quantity: 10, Status: models.InventoryItemStatusActive, // Current quantity in DB
 			},
 			{
 				Base:        models.Base{ID: inventoryItems[1].ID},
-				InventoryID: inventories[0].ID, ProductID: products[1].ID, SupplierID: suppliers[0].ID,
-				Unit: "piece", Quantity: 20, Status: models.InventoryItemStatusActive, // Current quantity in DB
+				InventoryID: inventories[0].ID, ProductID: products[1].ID,
+				Quantity: 20, Status: models.InventoryItemStatusActive, // Current quantity in DB
 			},
 			{
 				Base:        models.Base{ID: inventoryItems[2].ID},
-				InventoryID: inventories[1].ID, ProductID: products[2].ID, SupplierID: suppliers[1].ID,
-				Unit: "piece", Quantity: 5, Status: models.InventoryItemStatusActive, // Current quantity in DB
+				InventoryID: inventories[1].ID, ProductID: products[2].ID,
+				Quantity: 5, Status: models.InventoryItemStatusActive, // Current quantity in DB
 			},
 		}
 

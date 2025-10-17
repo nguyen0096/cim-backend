@@ -15,6 +15,11 @@ type InventoryItemFilters struct {
 	ProductType string
 }
 
+type PersistReconciliationItem struct {
+	*models.InventoryItem
+	OriginalQuantity int
+}
+
 type InventoryItemRepository interface {
 	Create(ctx context.Context, item *models.InventoryItem) error
 	GetByID(ctx context.Context, id uint) (*models.InventoryItem, error)
@@ -29,8 +34,11 @@ type InventoryItemRepository interface {
 
 	// v1
 	Update(ctx context.Context, items []*models.InventoryItem, transactions []*models.InventoryTransaction) error
-	GetActiveItemsByInventoryIDs(ctx context.Context, inventoryIDs []uint) ([]*models.InventoryItem, error)
-	PersistReconciliation(ctx context.Context, items []*models.InventoryItem, sellTransactions []*models.InventoryTransaction) error
+	GetActiveInventoryItems(ctx context.Context, ids []uint) ([]*models.InventoryItem, error)
+	PersistReconciliation(ctx context.Context,
+		reconcileItems []*PersistReconciliationItem,
+		updateTransactions []*models.InventoryTransaction,
+		sellTransactions []*models.InventoryTransaction) error
 }
 
 type inventoryItemRepository struct {
@@ -167,16 +175,16 @@ func (r *inventoryItemRepository) Update(
 	return r.db.WithContext(ctx).Save(items).Error
 }
 
-// GetActiveItemsByInventoryIDs returns active inventory items for the given inventory IDs
-func (r *inventoryItemRepository) GetActiveItemsByInventoryIDs(ctx context.Context, inventoryIDs []uint) ([]*models.InventoryItem, error) {
+// GetActiveInventoryItemsByProductIDs returns active inventory items for the given inventory IDs
+func (r *inventoryItemRepository) GetActiveInventoryItems(ctx context.Context, ids []uint) ([]*models.InventoryItem, error) {
 	var items []*models.InventoryItem
 	return items, r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		err := tx.
 			Preload("Inventory").
 			Preload("Product").
-			Preload("Supplier").
-			Where("inventory_id IN ?", inventoryIDs).
+			Where("id IN ?", ids).
 			Where("quantity > 0").
+			Where("status = ?", models.InventoryItemStatusActive).
 			Find(&items).Error
 		if err != nil {
 			return fmt.Errorf("failed to get active inventory items by inventory IDs: %w", err)
@@ -219,11 +227,14 @@ func (r *inventoryItemRepository) GetActiveItemsByInventoryIDs(ctx context.Conte
 }
 
 // PersistReconciliation persists inventory items and sell transactions with transaction safety
-func (r *inventoryItemRepository) PersistReconciliation(ctx context.Context, items []*models.InventoryItem, sellTransactions []*models.InventoryTransaction) error {
+func (r *inventoryItemRepository) PersistReconciliation(ctx context.Context,
+	reItems []*PersistReconciliationItem,
+	updateTransactions []*models.InventoryTransaction,
+	sellTransactions []*models.InventoryTransaction) error {
 	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		// Step 1: Fetch current inventory items with FOR UPDATE to prevent concurrent modifications
-		itemIDs := make([]uint, len(items))
-		for i, item := range items {
+		itemIDs := make([]uint, len(reItems))
+		for i, item := range reItems {
 			itemIDs[i] = item.ID
 		}
 
@@ -242,24 +253,35 @@ func (r *inventoryItemRepository) PersistReconciliation(ctx context.Context, ite
 		}
 
 		// Step 2: Validate that no quantities have been changed by other transactions
-		for _, updatedItem := range items {
-			currentItem, exists := currentItemMap[updatedItem.ID]
+		for _, reItem := range reItems {
+			currentItem, exists := currentItemMap[reItem.ID]
 			if !exists {
-				return fmt.Errorf("inventory item with ID %d not found", updatedItem.ID)
+				return fmt.Errorf("inventory item with ID %d not found", reItem.ID)
 			}
 
 			// Check if quantity has been modified by another transaction
-			if currentItem.Quantity != updatedItem.Quantity {
+			if currentItem.Quantity != reItem.OriginalQuantity {
 				return fmt.Errorf("inventory item %d quantity has been modified by another transaction. Current: %d, Expected: %d",
-					updatedItem.ID, currentItem.Quantity, updatedItem.Quantity)
+					reItem.ID, currentItem.Quantity, reItem.Quantity)
 			}
 		}
 
 		// Step 3: Persist updated inventory items
-		if len(items) > 0 {
-			err = tx.Save(items).Error
+		if len(reItems) > 0 {
+			updateItems := make([]*models.InventoryItem, len(reItems))
+			for i, item := range reItems {
+				updateItems[i] = item.InventoryItem
+			}
+			err = tx.Save(updateItems).Error
 			if err != nil {
 				return fmt.Errorf("failed to persist inventory items: %w", err)
+			}
+		}
+
+		if len(updateTransactions) > 0 {
+			err = tx.Save(updateTransactions).Error
+			if err != nil {
+				return fmt.Errorf("failed to persist update transactions: %w", err)
 			}
 		}
 

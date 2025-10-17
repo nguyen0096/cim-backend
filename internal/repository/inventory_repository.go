@@ -105,21 +105,21 @@ func (r *inventoryRepository) GetLastPurchasePrices(ctx context.Context) ([]*dto
 		Table("inventory_transactions AS it").
 		Select(`
 			ii.product_id,
-			ii.supplier_id,
+			it.supplier_id,
 			it.price AS last_price,
 			it.created_at AS last_purchase_date
 		`).
 		Joins("INNER JOIN inventory_items AS ii ON it.inventory_item_id = ii.id").
 		Joins("INNER JOIN products AS p ON ii.product_id = p.id").
-		Joins("INNER JOIN suppliers AS s ON ii.supplier_id = s.id").
+		Joins("INNER JOIN suppliers AS s ON it.supplier_id = s.id").
 		Joins(`INNER JOIN (
-			SELECT ii2.product_id, ii2.supplier_id, MAX(it2.created_at) AS max_created_at
+			SELECT ii2.product_id, it2.supplier_id, MAX(it2.created_at) AS max_created_at
 			FROM inventory_transactions AS it2
 			INNER JOIN inventory_items AS ii2 ON it2.inventory_item_id = ii2.id
 			WHERE it2.transaction_type = ?
-			GROUP BY ii2.product_id, ii2.supplier_id
+			GROUP BY ii2.product_id, it2.supplier_id
 		) AS latest ON ii.product_id = latest.product_id
-			AND ii.supplier_id = latest.supplier_id
+			AND it.supplier_id = latest.supplier_id
 			AND it.created_at = latest.max_created_at`, models.InventoryTransactionTypePurchase).
 		Where("it.transaction_type = ?", models.InventoryTransactionTypePurchase).
 		Where("p.status = ?", "active").

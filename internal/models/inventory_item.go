@@ -13,8 +13,6 @@ const (
 	InventoryItemStatusInactive InventoryItemStatus = "inactive"
 )
 
-// @todo: add unique key: inventory_id + product_id + supplier_id + deleted_at
-
 // InventoryItem represents an item in an inventory
 type InventoryItem struct {
 	Base
@@ -22,9 +20,6 @@ type InventoryItem struct {
 	Inventory                  *Inventory              `json:"inventory,omitempty" gorm:"foreignKey:InventoryID" validate:"-"`
 	ProductID                  uint                    `json:"product_id" gorm:"index:idx_inventory_items_unique,unique;not null"`
 	Product                    *Product                `json:"product,omitempty" gorm:"foreignKey:ProductID" validate:"-"`
-	SupplierID                 uint                    `json:"supplier_id"`
-	Supplier                   *Supplier               `json:"supplier,omitempty" gorm:"foreignKey:SupplierID" validate:"-"`
-	Unit                       string                  `json:"unit" gorm:"type:varchar(20)"`
 	Quantity                   int                     `json:"quantity" gorm:"default:0"`
 	Status                     InventoryItemStatus     `json:"status" gorm:"default:active"`
 	ConsumingTransactionID     uint                    `json:"consuming_transaction_id" validate:"-"`
@@ -36,8 +31,13 @@ type InventoryItem struct {
 // it's expected that ConsumingTransactionID points to the oldest transaction ID that
 // is currently being consumed (still has un-consumed quantity).
 func (ii *InventoryItem) ValidateActivePurchaseTransactions() error {
-	if len(ii.ActivePurchaseTransactions) == 0 {
-		return pkg.NewAppError(pkg.ErrorCodeValidation, fmt.Sprintf("no active purchase transactions found for inventory item %d", ii.ID), nil)
+	if ii.Quantity == 0 && len(ii.ActivePurchaseTransactions) == 0 {
+		return nil
+	}
+
+	if ii.Quantity != 0 && len(ii.ActivePurchaseTransactions) == 0 ||
+		ii.Quantity == 0 && len(ii.ActivePurchaseTransactions) != 0 {
+		return pkg.NewAppError(pkg.ErrorCodeValidation, fmt.Sprintf("inventory item %d has invalid quantity and active purchase transactions", ii.ID), nil)
 	}
 
 	if ii.ConsumingTransactionID != 0 &&
