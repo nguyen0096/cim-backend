@@ -9,7 +9,7 @@ type ReconcileInventoryRequest struct {
 // InventoryItemQuantity represents a single inventory item disposal
 type ReconcileItem struct {
 	InventoryItemID uint `json:"inventory_item_id" validate:"required"`
-	ActualQuantity  int  `json:"actual_quantity" validate:"required,min=1"`
+	ActualQuantity  *int `json:"actual_quantity" validate:"required,min=0"`
 	PrevQuantity    int  `json:"prev_quantity" validate:"required,min=1"`
 }
 

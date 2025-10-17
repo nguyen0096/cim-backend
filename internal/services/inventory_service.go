@@ -203,6 +203,10 @@ func (s *inventoryService) ReconcileInventory(ctx context.Context, req dto.Recon
 	// Validate prevQuantity matches current quantity and calculate quantities to consume
 	quantitiesToConsume := make(map[uint]int)
 	for _, reqItem := range req.Items {
+		if reqItem.ActualQuantity == nil {
+			return nil, pkg.ErrInvalidRequestBody(fmt.Errorf("actual quantity is required for inventory item %d", reqItem.InventoryItemID))
+		}
+
 		var item *models.InventoryItem
 		for _, activeItem := range activeItems {
 			if activeItem.ID == reqItem.InventoryItemID {
@@ -221,14 +225,14 @@ func (s *inventoryService) ReconcileInventory(ctx context.Context, req dto.Recon
 		}
 
 		// Validate that actual quantity doesn't exceed previous quantity
-		if reqItem.ActualQuantity > reqItem.PrevQuantity {
+		if *reqItem.ActualQuantity > reqItem.PrevQuantity {
 			return nil, pkg.NewAppError(pkg.ErrorCodeValidation,
 				fmt.Sprintf("actual quantity %d exceeds previous quantity %d for inventory item %d",
 					reqItem.ActualQuantity, reqItem.PrevQuantity, reqItem.InventoryItemID), nil)
 		}
 
 		// Calculate consume quantity: prevQuantity - actualQuantity
-		quantitiesToConsume[reqItem.InventoryItemID] = reqItem.PrevQuantity - reqItem.ActualQuantity
+		quantitiesToConsume[reqItem.InventoryItemID] = reqItem.PrevQuantity - *reqItem.ActualQuantity
 	}
 
 	// Create sell transaction creator
