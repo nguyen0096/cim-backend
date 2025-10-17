@@ -75,9 +75,10 @@ func (s *inventoryService) RemoveInventory(ctx context.Context, productID uint, 
 // transactionCreator is a function that creates a new transaction for consuming inventory
 type transactionCreator func(item *models.InventoryItem, purchaseTxn *models.InventoryTransaction, quantity int) *models.InventoryTransaction
 
-// consume is the common logic for consuming inventory items
-// It accepts a map of item IDs to quantities to consume and a transaction creator function
-func (s *inventoryService) consume(
+// consumeFIFO is the common logic for consuming inventory items
+// It accepts a map of item IDs to quantities to consumeFIFO and a transaction creator function.
+// FIFO (First In, First Out) is used to consume inventory items.
+func (s *inventoryService) consumeFIFO(
 	ctx context.Context,
 	itemIDs []uint,
 	quantitiesToConsume map[uint]int,
@@ -241,7 +242,7 @@ func (s *inventoryService) ReconcileInventory(ctx context.Context, req dto.Recon
 		}
 	}
 
-	return s.consume(ctx, itemIDs, quantitiesToConsume, sellTransactionCreator)
+	return s.consumeFIFO(ctx, itemIDs, quantitiesToConsume, sellTransactionCreator)
 }
 
 // DisposeInventory disposes inventory by creating disposal transactions for specified quantities
@@ -300,7 +301,7 @@ func (s *inventoryService) DisposeInventory(ctx context.Context, req dto.Dispose
 		}
 	}
 
-	return s.consume(ctx, itemIDs, quantitiesToConsume, disposeTransactionCreator)
+	return s.consumeFIFO(ctx, itemIDs, quantitiesToConsume, disposeTransactionCreator)
 }
 
 // GetLastPurchasePrices retrieves the last purchase transaction price for each product_id + supplier_id combination
