@@ -1,0 +1,1 @@
+CREATE COLLATION vi_vn (provider = icu, locale = 'vi_vn', deterministic = true);

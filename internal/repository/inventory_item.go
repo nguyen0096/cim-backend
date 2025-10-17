@@ -4,15 +4,33 @@ import (
 	"cim-backend/internal/models"
 	"context"
 	"fmt"
+	"strings"
 
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
+)
+
+type InventoryItemSortField string
+
+const (
+	InventoryItemSortFieldUpdatedAt   InventoryItemSortField = "inventory_items.updated_at"
+	InventoryItemSortFieldCreatedAt   InventoryItemSortField = "inventory_items.created_at"
+	InventoryItemSortFieldQuantity    InventoryItemSortField = "inventory_items.quantity"
+	InventoryItemSortFieldProductName InventoryItemSortField = "products.name"
+)
+
+var (
+	sortFieldCollationLookup = map[InventoryItemSortField]string{
+		InventoryItemSortFieldProductName: "vi_vn",
+	}
 )
 
 // InventoryItemFilters represents filters for inventory items
 type InventoryItemFilters struct {
 	Status      string
 	ProductType string
+	Sort        string
+	Order       string
 }
 
 type PersistReconciliationItem struct {
@@ -25,16 +43,16 @@ type InventoryItemRepository interface {
 	GetByID(ctx context.Context, id uint) (*models.InventoryItem, error)
 	Delete(ctx context.Context, id uint) error
 	List(ctx context.Context, limit, offset int) ([]models.InventoryItem, error)
-	GetByInventoryIDWithFilters(ctx context.Context, inventoryID uint, filters InventoryItemFilters, limit, offset int) ([]models.InventoryItem, error)
 	GetByProductID(ctx context.Context, productID uint) (*models.InventoryItem, error)
 	GetLowStockItems(ctx context.Context, limit, offset int) ([]models.InventoryItem, error)
 	Count(ctx context.Context) (int64, error)
-	CountByInventoryIDWithFilters(ctx context.Context, inventoryID uint, filters InventoryItemFilters) (int64, error)
 	CountLowStockItems(ctx context.Context) (int64, error)
 
 	// v1
-	Update(ctx context.Context, items []*models.InventoryItem, transactions []*models.InventoryTransaction) error
+	GetByInventoryIDWithFilters(ctx context.Context, inventoryID uint, filters InventoryItemFilters, limit, offset int) ([]models.InventoryItem, error)
+	CountByInventoryIDWithFilters(ctx context.Context, inventoryID uint, filters InventoryItemFilters) (int64, error)
 	GetActiveInventoryItems(ctx context.Context, ids []uint) ([]*models.InventoryItem, error)
+	Update(ctx context.Context, items []*models.InventoryItem, transactions []*models.InventoryTransaction) error
 	PersistConsumption(ctx context.Context,
 		reconcileItems []*PersistReconciliationItem,
 		updateTransactions []*models.InventoryTransaction,
@@ -93,10 +111,29 @@ func (r *inventoryItemRepository) GetByInventoryIDWithFilters(ctx context.Contex
 		query = query.Where("inventory_items.status = ?", filters.Status)
 	}
 
+	// Determine if we need to join products table
+	needsProductJoin := filters.ProductType != "" || filters.Sort == string(InventoryItemSortFieldProductName)
+
 	// Apply product_type filter by joining with products table
-	if filters.ProductType != "" {
-		query = query.Joins("JOIN products ON products.id = inventory_items.product_id").
-			Where("products.product_type = ?", filters.ProductType)
+	if needsProductJoin {
+		query = query.Joins("JOIN products ON products.id = inventory_items.product_id")
+		if filters.ProductType != "" {
+			query = query.Where("products.product_type = ?", filters.ProductType)
+		}
+	}
+
+	// Apply sorting
+	if filters.Sort != "" && filters.Order != "" {
+		// apply collation to the sort field if defined
+		collation := sortFieldCollationLookup[InventoryItemSortField(filters.Sort)]
+		orderClauseParts := []string{filters.Sort}
+		if collation != "" {
+			orderClauseParts = append(orderClauseParts, fmt.Sprintf("COLLATE \"%s\"", collation))
+		}
+		orderClauseParts = append(orderClauseParts, filters.Order)
+
+		orderClause := strings.Join(orderClauseParts, " ")
+		query = query.Order(orderClause)
 	}
 
 	err := query.
@@ -208,7 +245,7 @@ func (r *inventoryItemRepository) GetActiveInventoryItems(ctx context.Context, i
 			Where("inventory_transactions.inventory_item_id IN ?", itemIDs).
 			Where("inventory_transactions.transaction_type = ?", models.InventoryTransactionTypePurchase).
 			Where("inventory_transactions.id >= COALESCE(inventory_items.consuming_transaction_id, 0)").
-			Order("inventory_transactions.created_at ASC"). // @todo: add Order test
+			Order("inventory_transactions.created_at ASC").
 			Find(&transactions).Error
 		if err != nil {
 			return fmt.Errorf("failed to get active purchase transactions: %w", err)

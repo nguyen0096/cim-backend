@@ -3,8 +3,8 @@ package handlers
 import (
 	"cim-backend/internal/models"
 	"cim-backend/internal/services"
+	"cim-backend/internal/services/dto"
 	"cim-backend/pkg"
-	"fmt"
 	"net/http"
 	"strconv"
 
@@ -223,7 +223,7 @@ func (h *InventoryItemHandler) ListInventoryItems(c echo.Context) error {
 
 // GetInventoryItemsByInventoryID lists inventory items for a specific inventory
 // @Summary Get inventory items by inventory ID
-// @Description List inventory items for a specific inventory with pagination
+// @Description List inventory items for a specific inventory with pagination and sorting
 // @Tags inventory-items
 // @Accept json
 // @Produce json
@@ -232,6 +232,8 @@ func (h *InventoryItemHandler) ListInventoryItems(c echo.Context) error {
 // @Param limit query int false "Items per page" default(20)
 // @Param status query string false "Filter by status (active/inactive)"
 // @Param product_type query string false "Filter by product type"
+// @Param sort query string false "Sort by field (updated_at, created_at, quantity, product_name)" default(updated_at) Enums(updated_at, created_at, quantity, product_name)
+// @Param order query string false "Sort order (asc/desc)" default(desc) Enums(asc, desc)
 // @Success 200 {object} map[string]interface{}
 // @Failure 400 {object} map[string]string
 // @Failure 404 {object} map[string]string
@@ -244,26 +246,43 @@ func (h *InventoryItemHandler) GetInventoryItemsByInventoryID(c echo.Context) er
 		return err
 	}
 
-	// Parse query parameters
-	limit, _ := strconv.Atoi(c.QueryParam("limit"))
-	page, _ := strconv.Atoi(c.QueryParam("page"))
-	status := c.QueryParam("status")
+	// Parse query parameters into ListParams
+	var params models.ListParams
+	if err := c.Bind(&params); err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid request parameters"})
+	}
+
+	// Get product_type from query params (not in ListParams by default)
 	productType := c.QueryParam("product_type")
-	fmt.Println("productType", productType)
 
-	// Set defaults
-	if limit == 0 {
-		limit = 20
-	}
-	if page == 0 {
-		page = 1
+	// Set default sort field to updated_at if not provided
+	if params.Sort == "" {
+		params.Sort = string(dto.InventoryItemSortFieldUpdatedAt)
 	}
 
-	// Calculate offset
-	offset := (page - 1) * limit
+	// Validate sort field against allowed values
+	validSortFields := dto.GetInventoryItemSortFields()
+	isValidSort := false
+	for _, field := range validSortFields {
+		if params.Sort == field {
+			isValidSort = true
+			break
+		}
+	}
+	if !isValidSort {
+		params.Sort = string(dto.InventoryItemSortFieldUpdatedAt)
+	}
 
-	// Get inventory items with filters (empty filters will return all results)
-	items, err := h.inventoryItemService.GetInventoryItemsByInventoryIDWithFilters(c.Request().Context(), inventoryID, status, productType, limit, offset)
+	// Set default order to desc if not provided or invalid
+	if params.Order != "asc" && params.Order != "desc" {
+		params.Order = "desc"
+	}
+
+	// Validate and set defaults for pagination
+	params.ValidateAndSetDefaults()
+
+	// Get inventory items with filters
+	items, err := h.inventoryItemService.GetInventoryItemsByInventoryIDWithFilters(c.Request().Context(), inventoryID, productType, params)
 	if err != nil {
 		if appErr, ok := err.(*pkg.AppError); ok {
 			return c.JSON(appErr.HTTPStatus(), map[string]string{"error": appErr.Error()})
@@ -271,22 +290,13 @@ func (h *InventoryItemHandler) GetInventoryItemsByInventoryID(c echo.Context) er
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to fetch inventory items"})
 	}
 
-	total, err := h.inventoryItemService.CountInventoryItemsByInventoryIDWithFilters(c.Request().Context(), inventoryID, status, productType)
+	total, err := h.inventoryItemService.CountInventoryItemsByInventoryIDWithFilters(c.Request().Context(), inventoryID, productType, params)
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to count inventory items"})
 	}
 
-	// Calculate total pages
-	totalPages := int((total + int64(limit) - 1) / int64(limit))
-
-	// Create response
-	response := map[string]interface{}{
-		"data":       items,
-		"total":      total,
-		"page":       page,
-		"limit":      limit,
-		"totalPages": totalPages,
-	}
+	// Create paginated response
+	response := models.NewPaginationResult(items, total, params.Page, params.Limit)
 
 	return c.JSON(http.StatusOK, response)
 }

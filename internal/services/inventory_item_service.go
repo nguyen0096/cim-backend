@@ -3,6 +3,7 @@ package services
 import (
 	"cim-backend/internal/models"
 	"cim-backend/internal/repository"
+	"cim-backend/internal/services/dto"
 	"cim-backend/pkg"
 	"context"
 	"fmt"
@@ -15,12 +16,12 @@ type InventoryItemService interface {
 	UpdateInventoryItem(ctx context.Context, item *models.InventoryItem) error
 	DeleteInventoryItem(ctx context.Context, id uint) error
 	ListInventoryItems(ctx context.Context, limit, offset int) ([]models.InventoryItem, error)
-	GetInventoryItemsByInventoryIDWithFilters(ctx context.Context, inventoryID uint, status, productType string, limit, offset int) ([]models.InventoryItem, error)
+	GetInventoryItemsByInventoryIDWithFilters(ctx context.Context, inventoryID uint, productType string, params models.ListParams) ([]models.InventoryItem, error)
 	GetInventoryItemByProductID(ctx context.Context, productID uint) (*models.InventoryItem, error)
 	GetLowStockItems(ctx context.Context, limit, offset int) ([]models.InventoryItem, error)
 	AdjustInventoryItemQuantity(ctx context.Context, id uint, quantity int, notes string) error
 	CountInventoryItems(ctx context.Context) (int64, error)
-	CountInventoryItemsByInventoryIDWithFilters(ctx context.Context, inventoryID uint, status, productType string) (int64, error)
+	CountInventoryItemsByInventoryIDWithFilters(ctx context.Context, inventoryID uint, productType string, params models.ListParams) (int64, error)
 	CountLowStockItems(ctx context.Context) (int64, error)
 }
 
@@ -144,8 +145,25 @@ func (s *inventoryItemService) ListInventoryItems(ctx context.Context, limit, of
 	return items, nil
 }
 
+// mapInventoryItemSortField maps DTO sort field to repository sort field
+func mapInventoryItemSortField(sortField string) string {
+	switch dto.InventoryItemSortField(sortField) {
+	case dto.InventoryItemSortFieldUpdatedAt:
+		return string(repository.InventoryItemSortFieldUpdatedAt)
+	case dto.InventoryItemSortFieldCreatedAt:
+		return string(repository.InventoryItemSortFieldCreatedAt)
+	case dto.InventoryItemSortFieldQuantity:
+		return string(repository.InventoryItemSortFieldQuantity)
+	case dto.InventoryItemSortFieldProductName:
+		return string(repository.InventoryItemSortFieldProductName)
+	default:
+		// Default to updated_at if invalid
+		return string(repository.InventoryItemSortFieldUpdatedAt)
+	}
+}
+
 // GetInventoryItemsByInventoryIDWithFilters retrieves inventory items by inventory ID with filters
-func (s *inventoryItemService) GetInventoryItemsByInventoryIDWithFilters(ctx context.Context, inventoryID uint, status, productType string, limit, offset int) ([]models.InventoryItem, error) {
+func (s *inventoryItemService) GetInventoryItemsByInventoryIDWithFilters(ctx context.Context, inventoryID uint, productType string, params models.ListParams) ([]models.InventoryItem, error) {
 	// Validate that inventory exists
 	inventory, err := s.inventoryRepo.GetByID(ctx, inventoryID)
 	if err != nil {
@@ -155,12 +173,17 @@ func (s *inventoryItemService) GetInventoryItemsByInventoryIDWithFilters(ctx con
 		return nil, pkg.NewAppError(pkg.ErrorCodeNotFound, "inventory not found", nil)
 	}
 
+	// Map DTO sort field to repository sort field
+	mappedSortField := mapInventoryItemSortField(params.Sort)
+
 	filters := repository.InventoryItemFilters{
-		Status:      status,
+		Status:      params.Status,
 		ProductType: productType,
+		Sort:        mappedSortField,
+		Order:       params.Order,
 	}
 
-	items, err := s.inventoryItemRepo.GetByInventoryIDWithFilters(ctx, inventoryID, filters, limit, offset)
+	items, err := s.inventoryItemRepo.GetByInventoryIDWithFilters(ctx, inventoryID, filters, params.Limit, params.GetOffset())
 	if err != nil {
 		return nil, fmt.Errorf("failed to get inventory items by inventory ID with filters: %w", err)
 	}
@@ -216,9 +239,9 @@ func (s *inventoryItemService) CountInventoryItems(ctx context.Context) (int64, 
 }
 
 // CountInventoryItemsByInventoryIDWithFilters counts inventory items by inventory ID with filters
-func (s *inventoryItemService) CountInventoryItemsByInventoryIDWithFilters(ctx context.Context, inventoryID uint, status, productType string) (int64, error) {
+func (s *inventoryItemService) CountInventoryItemsByInventoryIDWithFilters(ctx context.Context, inventoryID uint, productType string, params models.ListParams) (int64, error) {
 	filters := repository.InventoryItemFilters{
-		Status:      status,
+		Status:      params.Status,
 		ProductType: productType,
 	}
 
