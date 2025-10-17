@@ -74,12 +74,6 @@ jobs:
           make linux_64
           chmod +x ./out/*
 
-      - name: Upload linux_64 binary as artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: linux_64
-          path: out/main_linux_64
-
   docker-build:
     runs-on: ubuntu-latest
     needs: build
@@ -97,19 +91,18 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Download linux_64 binary
-        uses: actions/download-artifact@v4
-        with:
-          name: linux_64
-          path: ./out/
-
       - name: Get necessary files
         run: |
-          echo "${{ secrets.FIREBASE_SERVICE_ACCOUNT }}" | base64 -d > ./firebase-service-account.json
-          echo "${{ secrets.ENV_FILE }}" | base64 -d > ./.env
-          echo "${{ vars.RBAC_MODEL_CONF }}" | base64 -d > ./rbac_model.conf
-          echo "${{ vars.RBAC_POLICY_CSV }}" | base64 -d > ./rbac_policy.csv
-
+          echo "$FIREBASE_SERVICE_ACCOUNT" | base64 -d > ./firebase-service-account.json
+          echo "$ENV_FILE" | base64 -d > ./.env
+          echo "$RBAC_MODEL_CONF" | base64 -d > ./rbac_model.conf
+          echo "$RBAC_POLICY_CSV" | base64 -d > ./rbac_policy.csv
+        shell: bash
+        env:
+          RBAC_MODEL_CONF: ${{ env.RBAC_MODEL_CONF }}
+          RBAC_POLICY_CSV: ${{ env.RBAC_POLICY_CSV }}
+          ENV_FILE: ${{ env.ENV_FILE }}
+          FIREBASE_SERVICE_ACCOUNT: ${{ env.FIREBASE_SERVICE_ACCOUNT }}
       - name: Build and push Docker image
         uses: docker/build-push-action@v5
         with:
