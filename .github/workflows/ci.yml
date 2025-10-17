@@ -105,10 +105,10 @@ jobs:
 
       - name: Get necessary files
         run: |
-          echo ${{ secrets.FIREBASE_SERVICE_ACCOUNT }} > ./firebase-service-account.json
-          echo ${{ secrets.ENV_FILE }} > ./.env
-          echo ${{ vars.RBAC_MODEL_CONF }} > ./rbac_model.conf
-          echo ${{ vars.RBAC_POLICY_CSV }} > ./rbac_policy.csv
+          echo "${{ secrets.FIREBASE_SERVICE_ACCOUNT }}" | base64 -d > ./firebase-service-account.json
+          echo "${{ secrets.ENV_FILE }}" | base64 -d > ./.env
+          echo "${{ vars.RBAC_MODEL_CONF }}" | base64 -d > ./rbac_model.conf
+          echo "${{ vars.RBAC_POLICY_CSV }}" | base64 -d > ./rbac_policy.csv
 
       - name: Build and push Docker image
         uses: docker/build-push-action@v5
