@@ -106,7 +106,7 @@ jobs:
       - name: Get necessary files
         run: |
           echo ${{ secrets.FIREBASE_SERVICE_ACCOUNT }} > ./firebase-service-account.json
-          echo ${{ secrets.ENV_FILE }} > ./env.env
+          echo ${{ secrets.ENV_FILE }} > ./.env
           echo ${{ env.RBAC_MODEL_CONF }} > ./rbac_model.conf
           echo ${{ env.RBAC_POLICY_CSV }} > ./rbac_policy.csv
 
