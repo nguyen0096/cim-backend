@@ -71,9 +71,7 @@ jobs:
       - name: Build application
         run: |
           go mod download
-          make windows_64 & make windows_32 \
-          & make linux_64 & make linux_32 \
-          & make darwin & make arm
+          make linux_64
           chmod +x ./out/*
 
       - name: Upload linux_64 binary as artifact
