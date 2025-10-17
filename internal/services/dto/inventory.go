@@ -2,20 +2,28 @@ package dto
 
 // ReconcileInventoryRequest represents the request for confirming inventory
 type ReconcileInventoryRequest struct {
-	InventoryID uint                    `json:"inventory_id" validate:"required" param:"id"`
-	Items       []InventoryItemQuantity `json:"items" validate:"required,min=1,dive"`
-}
-
-// DisposeItemsRequest represents the request for disposing inventory items
-type DisposeItemsRequest struct {
-	InventoryID uint                    `json:"inventory_id" validate:"required" param:"id"`
-	Items       []InventoryItemQuantity `json:"items" validate:"required,min=1,dive"`
+	InventoryID uint            `json:"inventory_id" validate:"required" param:"id"`
+	Items       []ReconcileItem `json:"items" validate:"required,min=1,dive"`
 }
 
 // InventoryItemQuantity represents a single inventory item disposal
-type InventoryItemQuantity struct {
+type ReconcileItem struct {
+	InventoryItemID uint `json:"inventory_item_id" validate:"required"`
+	ActualQuantity  int  `json:"actual_quantity" validate:"required,min=1"`
+	PrevQuantity    int  `json:"prev_quantity" validate:"required,min=1"`
+}
+
+// DisposeInventoryRequest represents the request for disposing inventory items
+type DisposeInventoryRequest struct {
+	InventoryID uint          `json:"inventory_id" validate:"required" param:"id"`
+	Items       []DisposeItem `json:"items" validate:"required,min=1,dive"`
+}
+
+// InventoryItemQuantity represents a single inventory item disposal
+type DisposeItem struct {
 	InventoryItemID uint `json:"inventory_item_id" validate:"required"`
 	Quantity        int  `json:"quantity" validate:"required,min=1"`
+	PrevQuantity    int  `json:"prev_quantity" validate:"required,min=1"`
 }
 
 // LastPurchasePriceResponse represents the last purchase price for a product-supplier combination

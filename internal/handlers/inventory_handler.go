@@ -189,7 +189,7 @@ func (h *InventoryHandler) GetInventorySummary(c echo.Context) error {
 // @Security BearerAuth
 // @Router /inventories/dispose [put]
 func (h *InventoryHandler) DisposeInventoryItems(c echo.Context) error {
-	var req dto.DisposeItemsRequest
+	var req dto.DisposeInventoryRequest
 
 	if err := c.Bind(&req); err != nil {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid request body"})
@@ -199,7 +199,7 @@ func (h *InventoryHandler) DisposeInventoryItems(c echo.Context) error {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid request body"})
 	}
 
-	disposedItems, err := h.inventoryService.DisposeItems(c.Request().Context(), req)
+	disposedItems, err := h.inventoryService.DisposeInventory(c.Request().Context(), req)
 	if err != nil {
 		return fmt.Errorf("failed to dispose inventory items: %w", err)
 	}
@@ -229,19 +229,19 @@ func (h *InventoryHandler) ReconcileInventory(c echo.Context) error {
 	var req dto.ReconcileInventoryRequest
 
 	if err := c.Bind(&req); err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid request body"})
+		return pkg.ErrInvalidRequestBody(err)
 	}
 
 	if err := pkg.Validator.Struct(req); err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid request body"})
+		return pkg.ErrValidation(err.Error(), err)
 	}
 
-	err := h.inventoryService.ReconcileInventory(c.Request().Context(), req)
+	ivtrItems, err := h.inventoryService.ReconcileInventory(c.Request().Context(), req)
 	if err != nil {
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to confirm inventory items"})
+		return fmt.Errorf("failed to reconcile inventory: %w", err)
 	}
 
-	return c.JSON(http.StatusNoContent, nil)
+	return c.JSON(http.StatusOK, ivtrItems)
 }
 
 // GetLastPurchasePrices retrieves the last purchase transaction price

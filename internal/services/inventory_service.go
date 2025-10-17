@@ -20,8 +20,8 @@ type InventoryService interface {
 	RemoveInventory(ctx context.Context, productID uint, quantity int, referenceID uint, referenceType, notes string) error
 
 	// v1
-	ReconcileInventory(ctx context.Context, req dto.ReconcileInventoryRequest) error
-	DisposeItems(ctx context.Context, req dto.DisposeItemsRequest) ([]*models.InventoryItem, error)
+	ReconcileInventory(ctx context.Context, req dto.ReconcileInventoryRequest) ([]*models.InventoryItem, error)
+	DisposeInventory(ctx context.Context, req dto.DisposeInventoryRequest) ([]*models.InventoryItem, error)
 	GetLastPurchasePrices(ctx context.Context) (dto.LastPurchasePriceMap, error)
 }
 
@@ -72,117 +72,76 @@ func (s *inventoryService) RemoveInventory(ctx context.Context, productID uint, 
 	return s.inventoryRepo.RemoveInventory(ctx, productID, quantity, referenceID, referenceType)
 }
 
-// DisposeInventoryItems disposes multiple inventory items by reducing their quantities
-func (s *inventoryService) DisposeItems(ctx context.Context, req dto.DisposeItemsRequest) ([]*models.InventoryItem, error) {
-	// Get inventory with preloaded inventory items
-	inventory, err := s.inventoryRepo.GetByID(ctx, req.InventoryID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get inventory: %w", err)
-	}
-	if inventory == nil {
-		return nil, pkg.NewAppError(pkg.ErrorCodeNotFound, "inventory not found", nil)
-	}
+// transactionCreator is a function that creates a new transaction for consuming inventory
+type transactionCreator func(item *models.InventoryItem, purchaseTxn *models.InventoryTransaction, quantity int) *models.InventoryTransaction
 
-	// Build a map of inventory item ID -> inventory item pointer for quick lookup
-	itemMap := make(map[uint]*models.InventoryItem)
-	for i := range inventory.Items {
-		itemMap[inventory.Items[i].ID] = inventory.Items[i]
-	}
-
-	var updatedItems []*models.InventoryItem
-	var inventoryTransactions []*models.InventoryTransaction
-
-	// Process each item in the disposal request
-	for _, disposalItem := range req.Items {
-		// Find the inventory item in the map
-		item, exists := itemMap[disposalItem.InventoryItemID]
-		if !exists {
-			return nil, pkg.NewAppError(pkg.ErrorCodeNotFound, fmt.Sprintf("inventory item %d not found", disposalItem.InventoryItemID), nil)
-		}
-
-		// Check if there's sufficient quantity to dispose
-		if item.Quantity < disposalItem.Quantity {
-			return nil, pkg.NewAppError(pkg.ErrorCodeValidation, fmt.Sprintf("insufficient quantity for inventory item %d. Available: %d, Requested: %d", disposalItem.InventoryItemID, item.Quantity, disposalItem.Quantity), nil)
-		}
-
-		// Reduce the quantity in memory
-		item.Quantity -= disposalItem.Quantity
-
-		// Add to updated items list
-		updatedItems = append(updatedItems, item)
-
-		// Create inventory transaction record
-		transaction := models.InventoryTransaction{
-			InventoryItemID: item.ID,
-			TransactionType: models.InventoryTransactionTypeDisposal,
-			Quantity:        -disposalItem.Quantity, // Negative for disposal
-		}
-		inventoryTransactions = append(inventoryTransactions, &transaction)
-	}
-
-	// Batch update inventory items and create transactions
-	if err := s.inventoryItemRepo.Update(ctx, updatedItems, inventoryTransactions); err != nil {
-		return nil, fmt.Errorf("failed to update inventory items and create transactions: %w", err)
-	}
-
-	return updatedItems, nil
-}
-
-func (s *inventoryService) ReconcileInventory(ctx context.Context, req dto.ReconcileInventoryRequest) error {
-	itemIDs := make([]uint, len(req.Items))
-	for i, item := range req.Items {
-		itemIDs[i] = item.InventoryItemID
-	}
-
+// consume is the common logic for consuming inventory items
+// It accepts a map of item IDs to quantities to consume and a transaction creator function
+func (s *inventoryService) consume(
+	ctx context.Context,
+	itemIDs []uint,
+	quantitiesToConsume map[uint]int,
+	createTransaction transactionCreator,
+) ([]*models.InventoryItem, error) {
 	// Step 1: Query data and validate
 	activeItems, err := s.inventoryItemRepo.GetActiveInventoryItems(ctx, itemIDs)
 	if err != nil {
-		return fmt.Errorf("failed to get active inventory items: %w", err)
+		return nil, fmt.Errorf("failed to get active inventory items: %w", err)
 	}
 
 	if len(activeItems) == 0 {
-		return pkg.NewAppError(pkg.ErrorCodeNotFound, "no active inventory items found", nil)
+		return nil, pkg.NewAppError(pkg.ErrorCodeNotFound, "no active inventory items found", nil)
 	}
 
-	// Validate transaction quantities against inventory item quantities
+	// Step 2: Validation - validate transaction quantities against inventory item quantities
 	for _, item := range activeItems {
 		if err := item.ValidateActivePurchaseTransactions(); err != nil {
-			return fmt.Errorf("validation failed for inventory item %d: %w", item.ID, err)
+			return nil, fmt.Errorf("validation failed for inventory item %d: %w", item.ID, err)
 		}
 	}
 
-	// Step 2: Create sell transactions for each inventory item
-	// based on user-provided quantities
-	actualQuantities := make(map[uint]int)
-	for _, reqItem := range req.Items {
-		actualQuantities[reqItem.InventoryItemID] = reqItem.Quantity
+	// Step 3: Validate quantities to consume
+	for itemID, qtyToConsume := range quantitiesToConsume {
+		var item *models.InventoryItem
+		for _, i := range activeItems {
+			if i.ID == itemID {
+				item = i
+				break
+			}
+		}
+		if item == nil {
+			return nil, pkg.NewAppError(pkg.ErrorCodeNotFound,
+				fmt.Sprintf("inventory item %d not found in active items", itemID), nil)
+		}
+
+		if qtyToConsume > item.Quantity {
+			return nil, pkg.NewAppError(pkg.ErrorCodeValidation,
+				fmt.Sprintf("quantity to consume %d exceeds available quantity %d for inventory item %d",
+					qtyToConsume, item.Quantity, itemID), nil)
+		}
 	}
 
-	var sellTransactions []*models.InventoryTransaction
+	// Step 4: Create consumption transactions for each inventory item
+	var newTransactions []*models.InventoryTransaction
 	var updateItems []*repository.PersistReconciliationItem
 	var updateTransactions []*models.InventoryTransaction
+
 	for _, item := range activeItems {
-		actualQty, exists := actualQuantities[item.ID]
+		qtyToConsume, exists := quantitiesToConsume[item.ID]
 		if !exists {
-			return pkg.NewAppError(pkg.ErrorCodeValidation,
+			return nil, pkg.NewAppError(pkg.ErrorCodeValidation,
 				fmt.Sprintf("no quantity specified for inventory item %d", item.ID), nil)
 		}
 
-		if actualQty == item.Quantity {
+		if qtyToConsume == 0 {
 			continue
 		}
 
-		if actualQty > item.Quantity {
-			// Validate that requested quantity doesn't exceed available quantity
-			return pkg.NewAppError(pkg.ErrorCodeValidation,
-				fmt.Sprintf("requested quantity %d exceeds available quantity %d for inventory item %d",
-					actualQty, item.Quantity, item.ID), nil)
-		}
-
-		totalToConsume := item.Quantity - actualQty
+		totalToConsume := qtyToConsume
 		var consumingTxnID uint
 		txnCount := len(item.ActivePurchaseTransactions)
 		idx := 0
+
 		for totalToConsume > 0 && idx < txnCount {
 			txn := item.ActivePurchaseTransactions[idx]
 			txnUnconsumedQty := txn.Quantity - txn.ConsumedQuantity
@@ -192,22 +151,17 @@ func (s *inventoryService) ReconcileInventory(ctx context.Context, req dto.Recon
 				continue
 			}
 
-			// create sell transaction
-			sellQty := min(totalToConsume, txnUnconsumedQty)
-			sellTransaction := &models.InventoryTransaction{
-				InventoryItemID:      item.ID,
-				TransactionType:      models.InventoryTransactionTypeSell,
-				Price:                txn.Price, // Use same price as purchase
-				Quantity:             sellQty,
-				CounterTransactionID: &txn.ID,
-			}
-			sellTransactions = append(sellTransactions, sellTransaction)
+			// Create consumption transaction using the provided creator function
+			consumeQty := min(totalToConsume, txnUnconsumedQty)
+			transaction := createTransaction(item, txn, consumeQty)
+			newTransactions = append(newTransactions, transaction)
 
-			txn.ConsumedQuantity += sellQty
+			txn.ConsumedQuantity += consumeQty
 			updateTransactions = append(updateTransactions, txn)
 
 			consumingTxnID = txn.ID
-			totalToConsume -= sellQty
+			totalToConsume -= consumeQty
+			idx++
 		}
 
 		updateItems = append(updateItems, &repository.PersistReconciliationItem{
@@ -215,15 +169,138 @@ func (s *inventoryService) ReconcileInventory(ctx context.Context, req dto.Recon
 			OriginalQuantity: item.Quantity,
 		})
 
-		item.Quantity = actualQty
+		item.Quantity -= qtyToConsume
 		item.ConsumingTransactionID = consumingTxnID
 	}
 
-	// Step 3: Persist data
-	if err := s.inventoryItemRepo.PersistReconciliation(ctx, updateItems, updateTransactions, sellTransactions); err != nil {
-		return fmt.Errorf("failed to create sell transactions and update inventory items: %w", err)
+	// Step 5: Persist data
+	if err := s.inventoryItemRepo.PersistConsumption(ctx, updateItems, updateTransactions, newTransactions); err != nil {
+		return nil, fmt.Errorf("failed to persist consumption transactions and update inventory items: %w", err)
 	}
-	return nil
+
+	ivtrItems := make([]*models.InventoryItem, len(updateItems))
+	for i, item := range updateItems {
+		ivtrItems[i] = item.InventoryItem
+	}
+	return ivtrItems, nil
+}
+
+// ReconcileInventory reconciles inventory by creating sell transactions for the difference between previous and actual quantities
+func (s *inventoryService) ReconcileInventory(ctx context.Context, req dto.ReconcileInventoryRequest) ([]*models.InventoryItem, error) {
+	// Prepare item IDs
+	itemIDs := make([]uint, len(req.Items))
+	for i, item := range req.Items {
+		itemIDs[i] = item.InventoryItemID
+	}
+
+	// Get active items to calculate quantities to consume
+	activeItems, err := s.inventoryItemRepo.GetActiveInventoryItems(ctx, itemIDs)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get active inventory items: %w", err)
+	}
+
+	// Validate prevQuantity matches current quantity and calculate quantities to consume
+	quantitiesToConsume := make(map[uint]int)
+	for _, reqItem := range req.Items {
+		var item *models.InventoryItem
+		for _, activeItem := range activeItems {
+			if activeItem.ID == reqItem.InventoryItemID {
+				item = activeItem
+				break
+			}
+		}
+		if item == nil {
+			return nil, pkg.NewAppError(pkg.ErrorCodeNotFound,
+				fmt.Sprintf("inventory item %d not found", reqItem.InventoryItemID), nil)
+		}
+
+		// Optimistic locking: validate that current quantity matches what frontend saw
+		if item.Quantity != reqItem.PrevQuantity {
+			return nil, pkg.ErrOptimisticLockConflict("inventory item", reqItem.InventoryItemID, reqItem.PrevQuantity, item.Quantity)
+		}
+
+		// Validate that actual quantity doesn't exceed previous quantity
+		if reqItem.ActualQuantity > reqItem.PrevQuantity {
+			return nil, pkg.NewAppError(pkg.ErrorCodeValidation,
+				fmt.Sprintf("actual quantity %d exceeds previous quantity %d for inventory item %d",
+					reqItem.ActualQuantity, reqItem.PrevQuantity, reqItem.InventoryItemID), nil)
+		}
+
+		// Calculate consume quantity: prevQuantity - actualQuantity
+		quantitiesToConsume[reqItem.InventoryItemID] = reqItem.PrevQuantity - reqItem.ActualQuantity
+	}
+
+	// Create sell transaction creator
+	sellTransactionCreator := func(item *models.InventoryItem, purchaseTxn *models.InventoryTransaction, quantity int) *models.InventoryTransaction {
+		return &models.InventoryTransaction{
+			InventoryItemID:      item.ID,
+			TransactionType:      models.InventoryTransactionTypeSell,
+			Price:                purchaseTxn.Price,
+			Quantity:             quantity,
+			CounterTransactionID: &purchaseTxn.ID,
+		}
+	}
+
+	return s.consume(ctx, itemIDs, quantitiesToConsume, sellTransactionCreator)
+}
+
+// DisposeInventory disposes inventory by creating disposal transactions for specified quantities
+func (s *inventoryService) DisposeInventory(ctx context.Context, req dto.DisposeInventoryRequest) ([]*models.InventoryItem, error) {
+	// Prepare item IDs
+	itemIDs := make([]uint, len(req.Items))
+	for i, item := range req.Items {
+		itemIDs[i] = item.InventoryItemID
+	}
+
+	// Get active items to validate prevQuantity
+	activeItems, err := s.inventoryItemRepo.GetActiveInventoryItems(ctx, itemIDs)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get active inventory items: %w", err)
+	}
+
+	// Validate prevQuantity matches current quantity and prepare quantities to consume
+	quantitiesToConsume := make(map[uint]int)
+	for _, reqItem := range req.Items {
+		var item *models.InventoryItem
+		for _, activeItem := range activeItems {
+			if activeItem.ID == reqItem.InventoryItemID {
+				item = activeItem
+				break
+			}
+		}
+		if item == nil {
+			return nil, pkg.NewAppError(pkg.ErrorCodeNotFound,
+				fmt.Sprintf("inventory item %d not found", reqItem.InventoryItemID), nil)
+		}
+
+		// Optimistic locking: validate that current quantity matches what frontend saw
+		if item.Quantity != reqItem.PrevQuantity {
+			return nil, pkg.ErrOptimisticLockConflict("inventory item", reqItem.InventoryItemID, reqItem.PrevQuantity, item.Quantity)
+		}
+
+		// Validate that dispose quantity doesn't exceed previous quantity
+		if reqItem.Quantity > reqItem.PrevQuantity {
+			return nil, pkg.NewAppError(pkg.ErrorCodeValidation,
+				fmt.Sprintf("dispose quantity %d exceeds previous quantity %d for inventory item %d",
+					reqItem.Quantity, reqItem.PrevQuantity, reqItem.InventoryItemID), nil)
+		}
+
+		// For dispose, quantity is already the consume quantity
+		quantitiesToConsume[reqItem.InventoryItemID] = reqItem.Quantity
+	}
+
+	// Create disposal transaction creator
+	disposeTransactionCreator := func(item *models.InventoryItem, purchaseTxn *models.InventoryTransaction, quantity int) *models.InventoryTransaction {
+		return &models.InventoryTransaction{
+			InventoryItemID:      item.ID,
+			TransactionType:      models.InventoryTransactionTypeDisposal,
+			Price:                purchaseTxn.Price,
+			Quantity:             quantity,
+			CounterTransactionID: &purchaseTxn.ID,
+		}
+	}
+
+	return s.consume(ctx, itemIDs, quantitiesToConsume, disposeTransactionCreator)
 }
 
 // GetLastPurchasePrices retrieves the last purchase transaction price for each product_id + supplier_id combination

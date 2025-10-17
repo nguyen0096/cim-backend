@@ -16,6 +16,7 @@ const (
 	ErrorCodeForbidden          ErrorCode = 4 // forbidden
 	ErrorCodeValidation         ErrorCode = 5 // validation
 	ErrorCodeDuplicate          ErrorCode = 6 // duplicate
+	ErrorCodeConflict           ErrorCode = 9 // conflict
 
 	// Purchase Order Error Codes
 	ErrorCodePurchaseOrderNoItems ErrorCode = 7 // purchase-order-no-items
@@ -50,7 +51,7 @@ func (e *AppError) HTTPStatus() int {
 		return http.StatusUnauthorized
 	case ErrorCodeForbidden:
 		return http.StatusForbidden
-	case ErrorCodeDuplicate:
+	case ErrorCodeDuplicate, ErrorCodeConflict:
 		return http.StatusConflict
 	case ErrorCodeInternal:
 		fallthrough

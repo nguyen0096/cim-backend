@@ -56,3 +56,10 @@ func ErrPurchaseOrderNoItems() *AppError {
 func ErrBadInventoryItemState(message string, cause error) *AppError {
 	return NewAppError(ErrorCodeBadInventoryItemState, message, cause)
 }
+
+// ErrOptimisticLockConflict creates an error for optimistic locking conflicts
+func ErrOptimisticLockConflict(resourceType string, resourceID uint, expectedValue, actualValue int) *AppError {
+	message := fmt.Sprintf("%s %d quantity has changed (expected: %d, current: %d). Please refresh and try again.",
+		resourceType, resourceID, expectedValue, actualValue)
+	return NewAppError(ErrorCodeConflict, message, nil)
+}

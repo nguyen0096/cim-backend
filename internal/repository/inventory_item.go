@@ -35,7 +35,7 @@ type InventoryItemRepository interface {
 	// v1
 	Update(ctx context.Context, items []*models.InventoryItem, transactions []*models.InventoryTransaction) error
 	GetActiveInventoryItems(ctx context.Context, ids []uint) ([]*models.InventoryItem, error)
-	PersistReconciliation(ctx context.Context,
+	PersistConsumption(ctx context.Context,
 		reconcileItems []*PersistReconciliationItem,
 		updateTransactions []*models.InventoryTransaction,
 		sellTransactions []*models.InventoryTransaction) error
@@ -226,11 +226,11 @@ func (r *inventoryItemRepository) GetActiveInventoryItems(ctx context.Context, i
 	})
 }
 
-// PersistReconciliation persists inventory items and sell transactions with transaction safety
-func (r *inventoryItemRepository) PersistReconciliation(ctx context.Context,
+// PersistConsumption persists inventory items and insert new transactions with transaction safety
+func (r *inventoryItemRepository) PersistConsumption(ctx context.Context,
 	reItems []*PersistReconciliationItem,
 	updateTransactions []*models.InventoryTransaction,
-	sellTransactions []*models.InventoryTransaction) error {
+	newTransactions []*models.InventoryTransaction) error {
 	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		// Step 1: Fetch current inventory items with FOR UPDATE to prevent concurrent modifications
 		itemIDs := make([]uint, len(reItems))
@@ -286,8 +286,8 @@ func (r *inventoryItemRepository) PersistReconciliation(ctx context.Context,
 		}
 
 		// Step 4: Persist sell transactions
-		if len(sellTransactions) > 0 {
-			err = tx.Create(sellTransactions).Error
+		if len(newTransactions) > 0 {
+			err = tx.Create(newTransactions).Error
 			if err != nil {
 				return fmt.Errorf("failed to persist sell transactions: %w", err)
 			}
