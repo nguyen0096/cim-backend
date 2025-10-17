@@ -1,9 +1,9 @@
 services:
   postgres:
     image: postgres:15-alpine
-    container_name: import_export_postgres
+    container_name: cim_postgres
     environment:
-      POSTGRES_DB: import_export_db
+      POSTGRES_DB: cim_db
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: password
     ports:
@@ -11,13 +11,13 @@ services:
     volumes:
       - ./docker/db:/docker-entrypoint-initdb.d
     networks:
-      - import_export_network
+      - cim_network
 
   app:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: import_export_backend
+    container_name: cim_backend
     env_file:
       - .env
     ports:
@@ -25,22 +25,22 @@ services:
     depends_on:
       - postgres
     networks:
-      - import_export_network
+      - cim_network
     volumes:
       - ./uploads:/app/uploads
 
   pgweb:
     image: sosedoff/pgweb:latest
-    container_name: import_export_pgweb
+    container_name: cim_pgweb
     environment:
-      DATABASE_URL: postgres://postgres:password@postgres:5432/import_export_db?sslmode=disable
+      DATABASE_URL: postgres://postgres:password@postgres:5432/cim_db?sslmode=disable
     ports:
       - "8081:8081"
     depends_on:
       - postgres
     networks:
-      - import_export_network
+      - cim_network
 
 networks:
-  import_export_network:
+  cim_network:
     driver: bridge

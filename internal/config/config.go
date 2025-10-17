@@ -60,7 +60,7 @@ func Load() *Config {
 		},
 		Firebase: FirebaseConfig{
 			ServiceAccountPath: getEnv("FIREBASE_SERVICE_ACCOUNT_PATH", "./firebase-service-account.json"),
-			ProjectID:          getEnv("FIREBASE_PROJECT_ID", ""),
+			ProjectID:          getEnv("FIREBASE_PROJECT_ID", "cafeteria-inventory-management"),
 		},
 		Excel: ExcelConfig{
 			MaxRows: getEnvAsInt("EXCEL_MAX_ROWS", 10000),

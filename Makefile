@@ -95,3 +95,28 @@ help:
 
 generate:
 	go generate ./...
+
+
+windows_64:
+	echo "Windows x64: Build binary"
+	CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -a -installsuffix cgo -o out/main_windows_64.exe .
+
+windows_32:
+	echo "Windows x32: Build binary"
+	CGO_ENABLED=0 GOOS=windows GOARCH=386 go build -a -installsuffix cgo -o out/main_windows_32.exe .
+
+linux_64:
+	echo "Linux x64: Build binary"
+	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -a -installsuffix cgo -o out/main_linux_64 .
+
+linux_32:
+	echo "Linux x32: Build binary"
+	CGO_ENABLED=0 GOOS=linux GOARCH=386 go build -a -installsuffix cgo -o out/main_linux_32 .
+
+darwin:
+	echo "Darwin: Build binary"
+	CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build -a -installsuffix cgo -o out/main_darwin .
+
+arm:
+	echo "ARM: Build binary"
+	CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -a -installsuffix cgo -o out/main_arm .

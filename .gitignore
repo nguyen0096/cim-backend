@@ -50,3 +50,6 @@ __debug_bin*
 protogenes
 protogengo
 .npmrc
+
+# Firebase service account file (contains sensitive credentials)
+firebase-service-account.json

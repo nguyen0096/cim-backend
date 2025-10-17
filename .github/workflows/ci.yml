@@ -59,7 +59,6 @@ jobs:
 
   build:
     runs-on: ubuntu-latest
-    needs: test
 
     steps:
       - uses: actions/checkout@v4
@@ -72,14 +71,55 @@ jobs:
       - name: Build application
         run: |
           go mod download
-          CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o main .
+          make windows_64 & make windows_32 \
+          & make linux_64 & make linux_32 \
+          & make darwin & make arm
+          chmod +x ./out/*
 
-      - name: Test Docker build
-        run: |
-          docker build -t cim-backend .
-
-      - name: Upload build artifacts
+      - name: Upload linux_64 binary as artifact
         uses: actions/upload-artifact@v3
         with:
-          name: cim-backend
-          path: main
+          name: linux_64
+          path: out/main_linux_64
+
+  docker-build:
+    runs-on: ubuntu-latest
+    needs: build
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Download linux_64 binary
+        uses: actions/download-artifact@v3
+        with:
+          name: linux_64
+          path: ./out/
+
+      - name: Get necessary files
+        run: |
+          echo ${{ secrets.FIREBASE_SERVICE_ACCOUNT }} > ./firebase-service-account.json
+          echo ${{ secrets.ENV_FILE }} > ./env.env
+          echo ${{ env.RBAC_MODEL_CONF }} > ./rbac_model.conf
+          echo ${{ env.RBAC_POLICY_CSV }} > ./rbac_policy.csv
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Dockerfile
+          platforms: linux/amd64
+          push: true
+          tags: |
+            ghcr.io/${{ github.repository_owner }}/cim-backend:latest
+            ghcr.io/${{ github.repository_owner }}/cim-backend:${{ github.sha }}
+            ghcr.io/${{ github.repository_owner }}/cim-backend:${{ github.ref_name }}

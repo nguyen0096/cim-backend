@@ -3,7 +3,6 @@ package auth
 import (
 	"fmt"
 	"os"
-	"path/filepath"
 
 	"github.com/casbin/casbin/v2"
 	gormadapter "github.com/casbin/gorm-adapter/v3"
@@ -21,12 +20,10 @@ type CasbinService struct {
 // NewCasbinService creates a new Casbin service with PostgreSQL adapter
 func NewCasbinService(db *gorm.DB) (*CasbinService, error) {
 	// Get the path to the model file
-	modelPath := filepath.Join("internal", "auth", "rbac_model.conf")
-	localPolicyPath := filepath.Join("internal", "auth", "rbac_policy.csv")
-	fileAdapter := fileadapter.NewAdapter(localPolicyPath)
+	fileAdapter := fileadapter.NewAdapter("rbac_policy.csv")
 
 	// Initialize Casbin enforcer
-	enforcer, err := casbin.NewEnforcer(modelPath, fileAdapter)
+	enforcer, err := casbin.NewEnforcer("rbac_model.conf", fileAdapter)
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize casbin enforcer: %w", err)
 	}

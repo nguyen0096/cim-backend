@@ -29,6 +29,11 @@ WORKDIR /root/
 # Copy the binary from builder stage
 COPY --from=builder /app/main .
 
+COPY --from=builder /app/firebase-service-account.json .
+COPY --from=builder /app/.env .
+COPY --from=builder /app/rbac_model.conf .
+COPY --from=builder /app/rbac_policy.csv .
+
 # Create uploads directory
 RUN mkdir -p uploads
 
