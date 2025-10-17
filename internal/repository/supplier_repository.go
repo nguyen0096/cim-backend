@@ -106,7 +106,7 @@ func (r *supplierRepository) Restore(ctx context.Context, id uint) error {
 
 func (r *supplierRepository) List(ctx context.Context, limit, offset int, sortBy, sortOrder, status string) ([]models.Supplier, error) {
 	var suppliers []models.Supplier
-	query := r.db.WithContext(ctx).Preload("Products")
+	query := r.db.WithContext(ctx)
 
 	// Apply status filter
 	if status != "" {
