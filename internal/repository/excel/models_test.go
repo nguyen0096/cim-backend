@@ -798,7 +798,7 @@ func TestNewFile(t *testing.T) {
 				// For the trimming test, we expect the trimmed values
 				if tt.name == "should trim values and create file successfully" {
 					assert.Equal(t, "test.xlsx", file.FilePath)
-					assert.Equal(t, "sheet1", file.SheetConfigs[0].InternalID)
+					assert.Equal(t, SheetInternalID("sheet1"), file.SheetConfigs[0].InternalID)
 					assert.Equal(t, "SHEET_{MM}", string(file.SheetConfigs[0].NamePattern))
 				} else {
 					assert.Equal(t, tt.config.FilePath, file.FilePath)
