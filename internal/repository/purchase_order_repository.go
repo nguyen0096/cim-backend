@@ -291,7 +291,11 @@ func (r *purchaseOrderRepository) ReceiveInventory(ctx context.Context, req dto.
 		}
 
 		err = tx.Model(&models.PurchaseOrder{}).
-			Where("id = ?", po.ID).Update("status", po.Status).Error
+			Where("id = ?", po.ID).Updates(map[string]any{
+			"status":             po.Status,
+			"confirmed_at":       time.Now(),
+			"confirmation_notes": req.ConfirmationNotes,
+		}).Error
 		if err != nil {
 			return fmt.Errorf("failed to update purchase order status: %w", err)
 		}

@@ -160,7 +160,7 @@ func (h *PurchaseOrderHandler) UpdatePurchaseOrderStatus(c echo.Context) error {
 			break
 		}
 	}
-	
+
 	if !isAllowed {
 		return c.JSON(http.StatusForbidden, map[string]string{
 			"error": fmt.Sprintf("Access denied: %s role cannot change purchase order status to %s", userRole, req.Status),
@@ -276,7 +276,15 @@ func (h *PurchaseOrderHandler) ReceiveInventory(c echo.Context) error {
 		return pkg.ErrValidation("validation failed", err)
 	}
 
-	po, err := h.purchaseOrderService.ReceiveInventory(c.Request().Context(), req)
+	reqCtx := c.Request().Context()
+	userRole, _ := reqCtx.Value(pkg.AuthContextKeyUserRole).(string)
+	if !pkg.HasPermission(reqCtx, "purchase-orders", "confirm") && !pkg.HasPermission(reqCtx, "purchase-orders", "update") {
+		return c.JSON(http.StatusForbidden, map[string]string{
+			"error": fmt.Sprintf("Access denied: %s role cannot confirm or update purchase order delivery status", userRole),
+		})
+	}
+
+	po, err := h.purchaseOrderService.ReceiveInventory(reqCtx, req)
 	if err != nil {
 		return fmt.Errorf("failed to update purchase order delivery status: %w", err)
 	}
