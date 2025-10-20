@@ -22,12 +22,12 @@ type ProductService interface {
 	RestoreProduct(ctx context.Context, id uint) error
 	GetProductsBySupplier(ctx context.Context, supplierID uint) ([]models.Product, error)
 	SearchProducts(ctx context.Context, query string, sortBy, sortOrder string) ([]models.Product, error)
-	SearchProductsWithPagination(ctx context.Context, query string, limit, offset int, sortBy, sortOrder, status, productType string) ([]models.Product, error)
-	CountProducts(ctx context.Context, status, productType string) (int64, error)
-	CountSearchProducts(ctx context.Context, query string, status, productType string) (int64, error)
+	SearchProductsWithPagination(ctx context.Context, query string, limit, offset int, sortBy, sortOrder, status, productType string, supplierID uint) ([]models.Product, error)
+	CountProducts(ctx context.Context, status, productType string, supplierID uint) (int64, error)
+	CountSearchProducts(ctx context.Context, query string, status, productType string, supplierID uint) (int64, error)
 
 	// v1
-	ListProducts(ctx context.Context, limit, offset int, sortBy, sortOrder, status, productType string) ([]models.Product, error)
+	ListProducts(ctx context.Context, limit, offset int, sortBy, sortOrder, status, productType string, supplierID uint) ([]models.Product, error)
 	ImportProductsFromCSV(ctx context.Context, csvReader io.Reader) (int, error)
 	ImportProductsFromExcel(ctx context.Context, excelReader io.Reader) (int, error)
 }
@@ -69,8 +69,8 @@ func (s *productService) RestoreProduct(ctx context.Context, id uint) error {
 	return s.productRepo.Restore(ctx, id)
 }
 
-func (s *productService) ListProducts(ctx context.Context, limit, offset int, sortBy, sortOrder, status, productType string) ([]models.Product, error) {
-	return s.productRepo.List(ctx, limit, offset, sortBy, sortOrder, status, productType)
+func (s *productService) ListProducts(ctx context.Context, limit, offset int, sortBy, sortOrder, status, productType string, supplierID uint) ([]models.Product, error) {
+	return s.productRepo.List(ctx, limit, offset, sortBy, sortOrder, status, productType, supplierID)
 }
 
 func (s *productService) GetProductsBySupplier(ctx context.Context, supplierID uint) ([]models.Product, error) {
@@ -81,16 +81,16 @@ func (s *productService) SearchProducts(ctx context.Context, query string, sortB
 	return s.productRepo.Search(ctx, query, sortBy, sortOrder)
 }
 
-func (s *productService) SearchProductsWithPagination(ctx context.Context, query string, limit, offset int, sortBy, sortOrder, status, productType string) ([]models.Product, error) {
-	return s.productRepo.SearchWithPagination(ctx, query, limit, offset, sortBy, sortOrder, status, productType)
+func (s *productService) SearchProductsWithPagination(ctx context.Context, query string, limit, offset int, sortBy, sortOrder, status, productType string, supplierID uint) ([]models.Product, error) {
+	return s.productRepo.SearchWithPagination(ctx, query, limit, offset, sortBy, sortOrder, status, productType, supplierID)
 }
 
-func (s *productService) CountProducts(ctx context.Context, status, productType string) (int64, error) {
-	return s.productRepo.Count(ctx, status, productType)
+func (s *productService) CountProducts(ctx context.Context, status, productType string, supplierID uint) (int64, error) {
+	return s.productRepo.Count(ctx, status, productType, supplierID)
 }
 
-func (s *productService) CountSearchProducts(ctx context.Context, query string, status, productType string) (int64, error) {
-	return s.productRepo.CountSearch(ctx, query, status, productType)
+func (s *productService) CountSearchProducts(ctx context.Context, query string, status, productType string, supplierID uint) (int64, error) {
+	return s.productRepo.CountSearch(ctx, query, status, productType, supplierID)
 }
 
 // ImportProductsFromCSV imports products with suppliers from a CSV file

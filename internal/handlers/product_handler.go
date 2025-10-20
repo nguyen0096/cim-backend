@@ -22,6 +22,7 @@ type ProductListRequest struct {
 	Order       string `query:"order"`
 	Status      string `query:"status"`
 	ProductType string `query:"product_type"`
+	SupplierID  uint   `query:"supplier_id"`
 }
 
 // ProductSearchRequest represents the query parameters for searching products
@@ -103,6 +104,7 @@ func (h *ProductHandler) getRequestLogger(c echo.Context, operation string) *log
 // @Param order query string false "Sort order (asc/desc)" default("desc")
 // @Param status query string false "Filter by status (active/inactive)" default("active")
 // @Param product_type query string false "Filter by product type (electronics, clothing, food, etc.)"
+// @Param supplier_id query int false "Filter by supplier ID"
 // @Success 200 {object} map[string]interface{} "List of products with pagination info"
 // @Failure 500 {object} map[string]interface{} "Internal server error"
 // @Security BearerAuth
@@ -132,16 +134,17 @@ func (h *ProductHandler) GetProducts(c echo.Context) error {
 		"sort_order":   request.Order,
 		"status":       request.Status,
 		"product_type": request.ProductType,
+		"supplier_id":  request.SupplierID,
 	}).Info("Getting products with pagination")
 
 	// Get products and total count
-	products, err := h.productService.ListProducts(c.Request().Context(), request.Limit, offset, request.Sort, request.Order, request.Status, request.ProductType)
+	products, err := h.productService.ListProducts(c.Request().Context(), request.Limit, offset, request.Sort, request.Order, request.Status, request.ProductType, request.SupplierID)
 	if err != nil {
 		logger.WithError(err).Error("Failed to fetch products from service")
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to fetch products"})
 	}
 
-	total, err := h.productService.CountProducts(c.Request().Context(), request.Status, request.ProductType)
+	total, err := h.productService.CountProducts(c.Request().Context(), request.Status, request.ProductType, request.SupplierID)
 	if err != nil {
 		logger.WithError(err).Error("Failed to count products")
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to count products"})
@@ -183,6 +186,7 @@ func (h *ProductHandler) GetProducts(c echo.Context) error {
 // @Param order query string false "Sort order (asc/desc)" default("desc")
 // @Param status query string false "Filter by status (active/inactive)" default("active")
 // @Param product_type query string false "Filter by product type (electronics, clothing, food, etc.)"
+// @Param supplier_id query int false "Filter by supplier ID"
 // @Success 200 {object} map[string]interface{} "Search results with pagination info"
 // @Failure 400 {object} map[string]interface{} "Bad request"
 // @Failure 500 {object} map[string]interface{} "Internal server error"
@@ -220,16 +224,17 @@ func (h *ProductHandler) SearchProducts(c echo.Context) error {
 		"sort_order":   request.Order,
 		"status":       request.Status,
 		"product_type": request.ProductType,
+		"supplier_id":  request.SupplierID,
 	}).Info("Searching products")
 
 	// Get products and total count
-	products, err := h.productService.SearchProductsWithPagination(c.Request().Context(), request.Query, request.Limit, offset, request.Sort, request.Order, request.Status, request.ProductType)
+	products, err := h.productService.SearchProductsWithPagination(c.Request().Context(), request.Query, request.Limit, offset, request.Sort, request.Order, request.Status, request.ProductType, request.SupplierID)
 	if err != nil {
 		logger.WithError(err).WithField("query", request.Query).Error("Failed to search products")
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to search products"})
 	}
 
-	total, err := h.productService.CountSearchProducts(c.Request().Context(), request.Query, request.Status, request.ProductType)
+	total, err := h.productService.CountSearchProducts(c.Request().Context(), request.Query, request.Status, request.ProductType, request.SupplierID)
 	if err != nil {
 		logger.WithError(err).WithField("query", request.Query).Error("Failed to count search results")
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to count search results"})
