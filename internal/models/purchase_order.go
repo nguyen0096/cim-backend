@@ -15,6 +15,14 @@ const (
 	PurchaseOrderStatusCancelled          PurchaseOrderStatus = "cancelled"
 )
 
+var AllPurchaseOrderStatuses = []PurchaseOrderStatus{
+	PurchaseOrderStatusOrderPlaced,
+	PurchaseOrderStatusPartiallyDelivered,
+	PurchaseOrderStatusFullyDelivered,
+	PurchaseOrderStatusCompleted,
+	PurchaseOrderStatusCancelled,
+}
+
 // PurchaseOrder represents a purchase order
 // @Description Purchase order entity with items and status tracking
 type PurchaseOrder struct {

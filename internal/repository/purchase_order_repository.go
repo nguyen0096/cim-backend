@@ -6,6 +6,7 @@ import (
 	"cim-backend/pkg"
 	"context"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -92,9 +93,21 @@ func (r *purchaseOrderRepository) List(ctx context.Context, params models.ListPa
 		}
 	}
 
-	// Apply status filter
+	statuses := models.AllPurchaseOrderStatuses
+
 	if params.Status != "" {
-		baseQuery = baseQuery.Where("status = ?", params.Status)
+		statuses = []models.PurchaseOrderStatus{models.PurchaseOrderStatus(params.Status)}
+	}
+
+	if !pkg.HasPermission(ctx, "purchase-orders", "view_status_completed") {
+		statuses = slices.DeleteFunc(statuses, func(status models.PurchaseOrderStatus) bool {
+			return status == models.PurchaseOrderStatusCompleted
+		})
+	}
+
+	// Apply status filter
+	if len(statuses) > 0 {
+		baseQuery = baseQuery.Where("status IN ?", statuses)
 	}
 
 	// Apply same search filter for data
