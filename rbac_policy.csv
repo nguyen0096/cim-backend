@@ -50,6 +50,7 @@ p, accountant, purchase-orders, view, allow
 p, accountant, purchase-orders, create, allow
 p, accountant, purchase-orders, update, allow
 p, accountant, purchase-orders, delete, allow
+
 p, accountant, purchase-order-items, view, allow
 p, accountant, purchase-order-items, create, allow
 p, accountant, purchase-order-items, update, allow
@@ -63,6 +64,7 @@ p, accountant, permissions, view, allow
 
 p, staff, purchase-orders, view, allow
 p, staff, purchase-orders, confirm, allow
+p, staff, purchase-orders, cancel, allow
 p, staff, purchase-order-items, view, allow
 p, staff, purchase-order-items, create, allow
 p, staff, purchase-order-items, update, allow

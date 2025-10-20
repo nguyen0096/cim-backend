@@ -145,15 +145,29 @@ func (h *PurchaseOrderHandler) UpdatePurchaseOrderStatus(c echo.Context) error {
 		return pkg.ErrValidation("validation failed", err)
 	}
 
-	userRole, _ := c.Get(pkg.AuthContextKeyUserRole).(string)
+	reqCtx := c.Request().Context()
+	userRole, _ := reqCtx.Value(pkg.AuthContextKeyUserRole).(string)
 
-	if !pkg.HasPermission(c.Request().Context(), "purchase-orders", "update") {
+	statusToActionsMap := map[string][]string{
+		"cancelled": []string{"update", "cancel"},
+		"completed": []string{"update", "confirm"},
+	}
+	allowedActions := statusToActionsMap[req.Status]
+	isAllowed := false
+	for _, action := range allowedActions {
+		if pkg.HasPermission(reqCtx, "purchase-orders", action) {
+			isAllowed = true
+			break
+		}
+	}
+	
+	if !isAllowed {
 		return c.JSON(http.StatusForbidden, map[string]string{
-			"error": fmt.Sprintf("Access denied: %s role cannot confirm purchase orders", userRole),
+			"error": fmt.Sprintf("Access denied: %s role cannot change purchase order status to %s", userRole, req.Status),
 		})
 	}
 
-	if err := h.purchaseOrderService.UpdatePurchaseOrderStatus(c.Request().Context(), id, models.PurchaseOrderStatus(req.Status)); err != nil {
+	if err := h.purchaseOrderService.UpdatePurchaseOrderStatus(reqCtx, id, models.PurchaseOrderStatus(req.Status)); err != nil {
 		return fmt.Errorf("failed to update purchase order status: %w", err)
 	}
 
