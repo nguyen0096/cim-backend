@@ -52,7 +52,7 @@ func Load() *Config {
 			Port:     getEnv("DB_PORT", "5432"),
 			User:     getEnv("DB_USER", "postgres"),
 			Password: getEnv("DB_PASSWORD", "password"),
-			DBName:   getEnv("DB_NAME", "import_export_db"),
+			DBName:   getEnv("DB_NAME", "cim_db"),
 		},
 		Server: ServerConfig{
 			Host: getEnv("SERVER_HOST", "0.0.0.0"),
