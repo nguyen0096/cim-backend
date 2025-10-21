@@ -39,6 +39,7 @@ func rollbackMigrations() error {
 
 	// Drop tables in reverse order to respect foreign key constraints
 	tables := []interface{}{
+		&models.InventorySubmission{},
 		&models.PurchaseOrderItem{},
 		&models.PurchaseOrder{},
 		&models.Inventory{},

@@ -177,12 +177,12 @@ func (h *InventoryHandler) GetInventorySummary(c echo.Context) error {
 
 // DisposeInventoryItem disposes multiple inventory items
 // @Summary Dispose inventory items
-// @Description Dispose multiple inventory items by reducing their quantities
+// @Description Creates a pending submission to dispose multiple inventory items
 // @Tags inventory-items
 // @Accept json
 // @Produce json
-// @Param disposal body dto.DisposeInventoryRequest true "Disposal data"
-// @Success 200 {object} map[string]interface{}
+// @Param disposal body dto.DisposeItemsRequest true "Disposal data"
+// @Success 200 {object} models.InventorySubmission
 // @Failure 400 {object} map[string]string
 // @Failure 404 {object} map[string]string
 // @Failure 500 {object} map[string]string
@@ -199,27 +199,22 @@ func (h *InventoryHandler) DisposeInventoryItems(c echo.Context) error {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid request body"})
 	}
 
-	disposedItems, err := h.inventoryService.DisposeInventory(c.Request().Context(), req)
+	submission, err := h.inventoryService.CreateDisposeSubmission(c.Request().Context(), req)
 	if err != nil {
-		return fmt.Errorf("failed to dispose inventory items: %w", err)
+		return fmt.Errorf("failed to create dispose submission: %w", err)
 	}
 
-	response := map[string]interface{}{
-		"message": "Inventory items disposed successfully",
-		"items":   disposedItems,
-	}
-
-	return c.JSON(http.StatusOK, response)
+	return c.JSON(http.StatusOK, submission)
 }
 
 // ReconcileInventory confirms the actual inventory count for multiple items
 // @Summary Confirm inventory items
-// @Description Confirm the actual inventory count for multiple inventory items
+// @Description Creates a pending submission to confirm the actual inventory count for multiple inventory items
 // @Tags inventory-items
 // @Accept json
 // @Produce json
-// @Param confirmation body dto.ReconcileInventoryRequest true "Confirmation data"
-// @Success 204
+// @Param confirmation body dto.ConfirmInventoryRequest true "Confirmation data"
+// @Success 200 {object} models.InventorySubmission
 // @Failure 400 {object} map[string]string
 // @Failure 404 {object} map[string]string
 // @Failure 500 {object} map[string]string
@@ -236,12 +231,74 @@ func (h *InventoryHandler) ReconcileInventory(c echo.Context) error {
 		return pkg.ErrValidation(err.Error(), err)
 	}
 
-	ivtrItems, err := h.inventoryService.ReconcileInventory(c.Request().Context(), req)
+	submission, err := h.inventoryService.CreateReconcileSubmission(c.Request().Context(), req)
 	if err != nil {
-		return fmt.Errorf("failed to reconcile inventory: %w", err)
+		return fmt.Errorf("failed to create reconcile submission: %w", err)
 	}
 
-	return c.JSON(http.StatusOK, ivtrItems)
+	return c.JSON(http.StatusOK, submission)
+}
+
+// GetPendingSubmissions retrieves all pending submissions for an inventory
+// @Summary Get pending submissions
+// @Description Get all pending inventory submissions with simplified item info (product name and quantity), optionally filtered by inventory ID
+// @Tags inventories
+// @Accept json
+// @Produce json
+// @Param inventory_id query int false "Inventory ID to filter by"
+// @Success 200 {array} dto.PendingSubmissionResponse
+// @Failure 500 {object} map[string]string
+// @Security BearerAuth
+// @Router /inventories/submissions/pending [get]
+func (h *InventoryHandler) GetPendingSubmissions(c echo.Context) error {
+	inventoryID := uint(0)
+	if id := c.QueryParam("inventory_id"); id != "" {
+		parsedID, err := strconv.Atoi(id)
+		if err != nil {
+			return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid inventory_id"})
+		}
+		inventoryID = uint(parsedID)
+	}
+
+	submissions, err := h.inventoryService.GetPendingSubmissions(c.Request().Context(), inventoryID)
+	if err != nil {
+		return fmt.Errorf("failed to get pending submissions: %w", err)
+	}
+
+	return c.JSON(http.StatusOK, submissions)
+}
+
+// ProcessSubmission approves or rejects a pending inventory submission
+// @Summary Process submission (approve/reject)
+// @Description Approve or reject a pending inventory submission. Approve will execute the inventory operation, reject will mark as rejected.
+// @Tags inventories
+// @Accept json
+// @Produce json
+// @Param id path int true "Submission ID"
+// @Param request body dto.ProcessSubmissionRequest true "Process request"
+// @Success 200 {object} models.InventorySubmission
+// @Failure 400 {object} map[string]string
+// @Failure 403 {object} map[string]string
+// @Failure 404 {object} map[string]string
+// @Failure 500 {object} map[string]string
+// @Security BearerAuth
+// @Router /inventories/submissions/{id}/process [post]
+func (h *InventoryHandler) ProcessSubmission(c echo.Context) error {
+	var req dto.ProcessSubmissionRequest
+	if err := c.Bind(&req); err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid request body"})
+	}
+
+	if err := c.Validate(&req); err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
+	}
+
+	submission, err := h.inventoryService.ApproveSubmission(c.Request().Context(), req)
+	if err != nil {
+		return fmt.Errorf("failed to approve submission: %w", err)
+	}
+
+	return c.JSON(http.StatusOK, submission)
 }
 
 // GetLastPurchasePrices retrieves the last purchase transaction price

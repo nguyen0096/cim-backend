@@ -1,5 +1,7 @@
 package dto
 
+import "cim-backend/internal/models"
+
 // ReconcileInventoryRequest represents the request for confirming inventory
 type ReconcileInventoryRequest struct {
 	InventoryID uint            `json:"inventory_id" validate:"required" param:"id"`
@@ -8,9 +10,10 @@ type ReconcileInventoryRequest struct {
 
 // InventoryItemQuantity represents a single inventory item disposal
 type ReconcileItem struct {
-	InventoryItemID uint `json:"inventory_item_id" validate:"required"`
-	ActualQuantity  *int `json:"actual_quantity" validate:"required,min=0"`
-	PrevQuantity    int  `json:"prev_quantity" validate:"required,min=1"`
+	InventoryItemID uint                  `json:"inventory_item_id" validate:"required"`
+	InventoryItem   *models.InventoryItem `json:"inventory_item,omitempty" validate:"-"`
+	ActualQuantity  *int                  `json:"actual_quantity" validate:"required,min=0"`
+	PrevQuantity    int                   `json:"prev_quantity,omitempty" validate:"required,min=1"`
 }
 
 // DisposeInventoryRequest represents the request for disposing inventory items
@@ -21,18 +24,18 @@ type DisposeInventoryRequest struct {
 
 // InventoryItemQuantity represents a single inventory item disposal
 type DisposeItem struct {
-	InventoryItemID uint `json:"inventory_item_id" validate:"required"`
-	Quantity        int  `json:"quantity" validate:"required,min=1"`
-	PrevQuantity    int  `json:"prev_quantity" validate:"required,min=1"`
+	InventoryItemID uint                  `json:"inventory_item_id" validate:"required"`
+	InventoryItem   *models.InventoryItem `json:"inventory_item,omitempty" validate:"-"`
+	Quantity        int                   `json:"quantity" validate:"required,min=1"`
+	PrevQuantity    int                   `json:"prev_quantity,omitempty" validate:"required,min=1"`
 }
 
-// LastPurchasePriceResponse represents the last purchase price for a product-supplier combination
-type LastPurchasePriceResponse struct {
-	ProductID        uint    `json:"product_id"`
-	SupplierID       uint    `json:"supplier_id"`
-	LastPrice        float64 `json:"last_price"`
-	LastPurchaseDate string  `json:"last_purchase_date"`
+// ReconcileSubmissionPayload represents the payload for a reconcile submission
+type ReconcileSubmissionPayload struct {
+	Items []ReconcileItem `json:"items"`
 }
 
-// LastPurchasePriceMap represents nested map of product_id -> supplier_id -> last_price
-type LastPurchasePriceMap map[uint]map[uint]float64
+// DisposeSubmissionPayload represents the payload for a dispose submission
+type DisposeSubmissionPayload struct {
+	Items []DisposeItem `json:"items"`
+}

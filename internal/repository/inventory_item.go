@@ -52,6 +52,7 @@ type InventoryItemRepository interface {
 	GetByInventoryIDWithFilters(ctx context.Context, inventoryID uint, filters InventoryItemFilters, limit, offset int) ([]models.InventoryItem, error)
 	CountByInventoryIDWithFilters(ctx context.Context, inventoryID uint, filters InventoryItemFilters) (int64, error)
 	GetActiveInventoryItems(ctx context.Context, ids []uint) ([]*models.InventoryItem, error)
+	GetByIDs(ctx context.Context, ids []uint) ([]*models.InventoryItem, error)
 	Update(ctx context.Context, items []*models.InventoryItem, transactions []*models.InventoryTransaction) error
 	PersistConsumption(ctx context.Context,
 		reconcileItems []*PersistReconciliationItem,
@@ -261,6 +262,25 @@ func (r *inventoryItemRepository) GetActiveInventoryItems(ctx context.Context, i
 
 		return nil
 	})
+}
+
+// GetByIDs retrieves inventory items by IDs
+func (r *inventoryItemRepository) GetByIDs(ctx context.Context, ids []uint) ([]*models.InventoryItem, error) {
+	if len(ids) == 0 {
+		return []*models.InventoryItem{}, nil
+	}
+
+	var items []*models.InventoryItem
+	err := r.db.WithContext(ctx).
+		Preload("Inventory").
+		Preload("Product").
+		Where("id IN ?", ids).
+		Find(&items).Error
+	if err != nil {
+		return nil, fmt.Errorf("failed to get inventory items by IDs: %w", err)
+	}
+
+	return items, nil
 }
 
 // PersistConsumption persists inventory items and insert new transactions with transaction safety

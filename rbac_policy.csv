@@ -11,6 +11,10 @@ p, admin, inventories, view, allow
 p, admin, inventories, create, allow
 p, admin, inventories, update, allow
 p, admin, inventories, delete, allow
+p, admin, inventory-submissions, create, allow
+p, admin, inventory-submissions, update, allow
+p, admin, inventory-submissions, delete, allow
+p, admin, inventory-submissions, approve, allow
 p, admin, inventory-items, view, allow
 p, admin, inventory-items, create, allow
 p, admin, inventory-items, update, allow
@@ -81,6 +85,7 @@ p, staff, purchase-order-items, view, allow
 p, staff, purchase-order-items, create, allow
 p, staff, purchase-order-items, update, allow
 p, staff, purchase-order-items, delete, allow
+p, staff, inventories, view, allow
 p, staff, permissions, view, allow
 p, staff, payment-receipt-forms, view, allow
 p, staff, payment-receipt-forms, submit, allow

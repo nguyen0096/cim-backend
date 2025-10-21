@@ -16,3 +16,14 @@ type UpdatePurchaseOrderDeliveryStatusRequest struct {
 	} `json:"items" validate:"required,min=1,dive"`
 	ConfirmationNotes string `json:"confirmation_notes"`
 }
+
+// LastPurchasePriceResponse represents the last purchase price for a product-supplier combination
+type LastPurchasePriceResponse struct {
+	ProductID        uint    `json:"product_id"`
+	SupplierID       uint    `json:"supplier_id"`
+	LastPrice        float64 `json:"last_price"`
+	LastPurchaseDate string  `json:"last_purchase_date"`
+}
+
+// LastPurchasePriceMap represents nested map of product_id -> supplier_id -> last_price
+type LastPurchasePriceMap map[uint]map[uint]float64

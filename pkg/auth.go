@@ -5,11 +5,19 @@ import (
 	"fmt"
 )
 
-const AuthContextKeyUserID = "user_id"
-const AuthContextKeyUserEmail = "user_email"
-const AuthContextKeyUserName = "user_name"
-const AuthContextKeyUserRole = "user_role"
-const AuthContextKeyUserPermissions = "user_permissions"
+const (
+	AuthContextKeyUserID          = "user_id"
+	AuthContextKeyUserEmail       = "user_email"
+	AuthContextKeyUserName        = "user_name"
+	AuthContextKeyUserRole        = "user_role"
+	AuthContextKeyUserPermissions = "user_permissions"
+
+	// RBAC resources
+	RBACResourceInventorySubmissions = "inventory-submissions"
+
+	// RBAC actions
+	RBACActionApprove = "approve"
+)
 
 // GetUserEmailFromContext gets the user email from the context
 func GetUserEmailFromContext(ctx context.Context) (string, error) {
