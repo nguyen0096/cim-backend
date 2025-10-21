@@ -48,6 +48,7 @@ func rollbackMigrations() error {
 		&models.Supplier{},
 		&models.Settings{},
 		&models.User{},
+		&models.PaymentReceiptForm{},
 	}
 
 	for _, table := range tables {

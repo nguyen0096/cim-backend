@@ -15,15 +15,16 @@ import (
 func AuthMiddleware(firebaseAuth *auth.FirebaseAuthService) echo.MiddlewareFunc {
 	return func(next echo.HandlerFunc) echo.HandlerFunc {
 		return func(c echo.Context) error {
-			authHeader := c.Request().Header.Get("Authorization")
-			if authHeader == "" {
+			requestToken := c.Request().URL.Query().Get("token")
+			if requestToken == "" {
+				requestToken = c.Request().Header.Get("Authorization")
+			}
+
+			if requestToken == "" {
 				return c.JSON(http.StatusUnauthorized, map[string]string{"error": "Authorization header required"})
 			}
 
-			tokenString := strings.TrimPrefix(authHeader, "Bearer ")
-			if tokenString == authHeader {
-				return c.JSON(http.StatusUnauthorized, map[string]string{"error": "Bearer token required"})
-			}
+			tokenString := strings.TrimPrefix(requestToken, "Bearer ")
 
 			// Verify Firebase ID token
 			ctx := context.Background()

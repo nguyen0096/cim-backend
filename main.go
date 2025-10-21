@@ -77,6 +77,7 @@ func main() {
 	inventoryItemRepo := repository.NewInventoryItemRepository(db)
 	purchaseOrderRepo := repository.NewPurchaseOrderRepository(db)
 	settingsRepo := repository.NewSettingsRepository(db)
+	paymentReceiptFormRepo := repository.NewPaymentReceiptFormRepository(db)
 
 	// Initialize services
 	userService := services.NewUserService(userRepo, casbinService)
@@ -87,6 +88,7 @@ func main() {
 	excelService := services.NewExcelService(productRepo, inventoryRepo)
 	settingsService := services.NewSettingsService(settingsRepo)
 	purchaseOrderService := services.NewPurchaseOrderService(purchaseOrderRepo, inventoryService, excelService, settingsService, db, logger)
+	paymentReceiptFormService := services.NewPaymentReceiptFormService(paymentReceiptFormRepo)
 
 	// Initialize handlers
 	userHandler := handlers.NewUserHandler(userService, firebaseAuth)
@@ -97,6 +99,7 @@ func main() {
 	purchaseOrderHandler := handlers.NewPurchaseOrderHandler(purchaseOrderRepo, purchaseOrderService, logger)
 	excelHandler := handlers.NewExcelHandler(excelService)
 	settingsHandler := handlers.NewSettingsHandler(settingsService)
+	paymentReceiptFormHandler := handlers.NewPaymentReceiptFormHandler(paymentReceiptFormService)
 
 	// Initialize Echo
 	e := echo.New()
@@ -201,6 +204,15 @@ func main() {
 	purchaseOrders.POST("", purchaseOrderHandler.CreatePurchaseOrder)
 	purchaseOrders.PUT("/:id/receive", purchaseOrderHandler.ReceiveInventory)
 	purchaseOrders.PUT("/:id/status", purchaseOrderHandler.UpdatePurchaseOrderStatus)
+
+	// Payment Receipt Form routes
+	paymentReceiptForms := api.Group("/payment-receipt-forms")
+	paymentReceiptForms.GET("", paymentReceiptFormHandler.ListPaymentReceiptForms)
+	paymentReceiptForms.POST("", paymentReceiptFormHandler.CreatePaymentReceiptForm)
+	paymentReceiptForms.GET("/:id", paymentReceiptFormHandler.GetPaymentReceiptForm)
+	paymentReceiptForms.PUT("/:id", paymentReceiptFormHandler.UpdatePaymentReceiptForm)
+	paymentReceiptForms.DELETE("/:id", paymentReceiptFormHandler.DeletePaymentReceiptForm)
+	paymentReceiptForms.GET("/pending", paymentReceiptFormHandler.GetLatestPendingPaymentReceiptForm)
 
 	// Excel routes
 	excel := api.Group("/excel")

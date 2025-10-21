@@ -26,6 +26,9 @@ p, admin, purchase-order-items, update, allow
 p, admin, purchase-order-items, delete, allow
 
 p, admin, purchase-orders, view_status_completed, allow
+p, admin, payment-receipt-forms, view, allow
+p, admin, payment-receipt-forms, create, allow
+p, admin, payment-receipt-forms, submit, allow
 
 p, admin, excel, view, allow
 p, admin, excel, create, allow
@@ -67,6 +70,9 @@ p, accountant, prices, view, allow
 p, accountant, permissions, view, allow
 
 p, accountant, purchase-orders, view_status_completed, allow
+p, accountant, payment-receipt-forms, view, allow
+p, accountant, payment-receipt-forms, create, allow
+p, accountant, payment-receipt-forms, submit, allow
 
 p, staff, purchase-orders, view, allow
 p, staff, purchase-orders, confirm, allow
@@ -76,6 +82,12 @@ p, staff, purchase-order-items, create, allow
 p, staff, purchase-order-items, update, allow
 p, staff, purchase-order-items, delete, allow
 p, staff, permissions, view, allow
+p, staff, payment-receipt-forms, view, allow
+p, staff, payment-receipt-forms, submit, allow
+
+
+p, public_user, payment-receipt-forms, view, allow
+p, public_user, payment-receipt-forms, submit, allow
 
 g, demoAdminUid0000000000000000, admin
 g, demoAccountantUid00000000000, accountant

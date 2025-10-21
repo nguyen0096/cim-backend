@@ -35,5 +35,6 @@ func Migrate(db *gorm.DB) error {
 		&models.PurchaseOrder{},
 		&models.PurchaseOrderItem{},
 		&models.Settings{},
+		&models.PaymentReceiptForm{},
 	)
 }
