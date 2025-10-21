@@ -68,24 +68,24 @@ func TestPaymentReceiptFormService_CreatePaymentReceiptForm(t *testing.T) {
 		{
 			name: "should create payment receipt form successfully when all required fields are provided and no pending form exists",
 			payload: &dto.PaymentReceiptFormPayload{
-				FullName:       "John Doe",
-				Date:           "2024-01-15",
-				Department:     "Finance",
-				PaymentDetails: "Office supplies",
-				TotalAmount:    100.50,
-				AmountInWords:  "One hundred and fifty cents",
+				FullName:      "John Doe",
+				Date:          "2024-01-15",
+				Department:    "Finance",
+				Details:       "Office supplies",
+				TotalAmount:   100.50,
+				AmountInWords: "One hundred and fifty cents",
 			},
 			expectError: false,
 		},
 		{
 			name: "should return validation error when full name is empty",
 			payload: &dto.PaymentReceiptFormPayload{
-				FullName:       "",
-				Date:           "2024-01-15",
-				Department:     "Finance",
-				PaymentDetails: "Office supplies",
-				TotalAmount:    100.50,
-				AmountInWords:  "One hundred and fifty cents",
+				FullName:      "",
+				Date:          "2024-01-15",
+				Department:    "Finance",
+				Details:       "Office supplies",
+				TotalAmount:   100.50,
+				AmountInWords: "One hundred and fifty cents",
 			},
 			expectError: true,
 			errorCode:   pkg.ErrorCodeValidation,
@@ -93,12 +93,12 @@ func TestPaymentReceiptFormService_CreatePaymentReceiptForm(t *testing.T) {
 		{
 			name: "should return validation error when department is empty",
 			payload: &dto.PaymentReceiptFormPayload{
-				FullName:       "John Doe",
-				Date:           "2024-01-15",
-				Department:     "",
-				PaymentDetails: "Office supplies",
-				TotalAmount:    100.50,
-				AmountInWords:  "One hundred and fifty cents",
+				FullName:      "John Doe",
+				Date:          "2024-01-15",
+				Department:    "",
+				Details:       "Office supplies",
+				TotalAmount:   100.50,
+				AmountInWords: "One hundred and fifty cents",
 			},
 			expectError: true,
 			errorCode:   pkg.ErrorCodeValidation,
@@ -106,12 +106,12 @@ func TestPaymentReceiptFormService_CreatePaymentReceiptForm(t *testing.T) {
 		{
 			name: "should return validation error when date format is invalid",
 			payload: &dto.PaymentReceiptFormPayload{
-				FullName:       "John Doe",
-				Date:           "invalid-date",
-				Department:     "Finance",
-				PaymentDetails: "Office supplies",
-				TotalAmount:    100.50,
-				AmountInWords:  "One hundred and fifty cents",
+				FullName:      "John Doe",
+				Date:          "invalid-date",
+				Department:    "Finance",
+				Details:       "Office supplies",
+				TotalAmount:   100.50,
+				AmountInWords: "One hundred and fifty cents",
 			},
 			expectError: true,
 			errorCode:   pkg.ErrorCodeValidation,
@@ -119,12 +119,12 @@ func TestPaymentReceiptFormService_CreatePaymentReceiptForm(t *testing.T) {
 		{
 			name: "should return validation error when total amount is zero or negative",
 			payload: &dto.PaymentReceiptFormPayload{
-				FullName:       "John Doe",
-				Date:           "2024-01-15",
-				Department:     "Finance",
-				PaymentDetails: "Office supplies",
-				TotalAmount:    0,
-				AmountInWords:  "Zero",
+				FullName:      "John Doe",
+				Date:          "2024-01-15",
+				Department:    "Finance",
+				Details:       "Office supplies",
+				TotalAmount:   0,
+				AmountInWords: "Zero",
 			},
 			expectError: true,
 			errorCode:   pkg.ErrorCodeValidation,
@@ -132,12 +132,12 @@ func TestPaymentReceiptFormService_CreatePaymentReceiptForm(t *testing.T) {
 		{
 			name: "should return validation error when there is already a pending form",
 			payload: &dto.PaymentReceiptFormPayload{
-				FullName:       "John Doe",
-				Date:           "2024-01-15",
-				Department:     "Finance",
-				PaymentDetails: "Office supplies",
-				TotalAmount:    100.50,
-				AmountInWords:  "One hundred and fifty cents",
+				FullName:      "John Doe",
+				Date:          "2024-01-15",
+				Department:    "Finance",
+				Details:       "Office supplies",
+				TotalAmount:   100.50,
+				AmountInWords: "One hundred and fifty cents",
 			},
 			expectError: true,
 			errorCode:   pkg.ErrorCodeValidation,
@@ -166,7 +166,7 @@ func TestPaymentReceiptFormService_CreatePaymentReceiptForm(t *testing.T) {
 				mockRepo.On("Create", mock.Anything, mock.MatchedBy(func(form *models.PaymentReceiptForm) bool {
 					return form.FullName == tt.payload.FullName &&
 						form.Department == tt.payload.Department &&
-						form.Details == tt.payload.PaymentDetails &&
+						form.Details == tt.payload.Details &&
 						form.TotalAmount == tt.payload.TotalAmount
 				})).Return(nil)
 			}
@@ -186,7 +186,7 @@ func TestPaymentReceiptFormService_CreatePaymentReceiptForm(t *testing.T) {
 				assert.NotNil(t, result)
 				assert.Equal(t, tt.payload.FullName, result.FullName)
 				assert.Equal(t, tt.payload.Department, result.Department)
-				assert.Equal(t, tt.payload.PaymentDetails, result.Details)
+				assert.Equal(t, tt.payload.Details, result.Details)
 				assert.Equal(t, tt.payload.TotalAmount, result.TotalAmount)
 				mockRepo.AssertExpectations(t)
 			}

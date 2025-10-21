@@ -11,11 +11,13 @@ const (
 
 type PaymentReceiptForm struct {
 	Base
-	Location    string                   `json:"location" gorm:"not null"`
-	Date        time.Time                `json:"date" gorm:"not null"`
-	FullName    string                   `json:"full_name" gorm:"not null"`
-	Department  string                   `json:"department" gorm:"not null"`
-	Details     string                   `json:"details"`
-	TotalAmount float64                  `json:"total_amount" gorm:"not null;check:total_amount > 0"`
-	Status      PaymentReceiptFormStatus `json:"status" gorm:"default:pending;check:status IN ('pending', 'submitted')"`
+	PurchaseOrderID uint                     `json:"purchase_order_id" gorm:"not null"`
+	PurchaseOrder   *PurchaseOrder           `json:"purchase_order,omitempty" gorm:"foreignKey:PurchaseOrderID"`
+	Location        string                   `json:"location"`
+	Date            time.Time                `json:"date"`
+	FullName        string                   `json:"full_name"`
+	Department      string                   `json:"department"`
+	Details         string                   `json:"details"`
+	TotalAmount     float64                  `json:"total_amount"`
+	Status          PaymentReceiptFormStatus `json:"status" gorm:"default:pending;check:status IN ('pending', 'submitted')"`
 }

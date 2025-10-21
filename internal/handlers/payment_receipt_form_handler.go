@@ -9,21 +9,122 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"sync"
 	"time"
 
 	"github.com/labstack/echo/v4"
+	"github.com/sirupsen/logrus"
 )
+
+// NotificationMessage represents a message to be sent to connected clients
+type NotificationMessage struct {
+	Type      string      `json:"type"`
+	Data      interface{} `json:"data"`
+	Timestamp time.Time   `json:"timestamp"`
+}
+
+// ClientConnection represents a connected SSE client
+type ClientConnection struct {
+	ID       string
+	Context  echo.Context
+	SendChan chan NotificationMessage
+}
+
+func (c *ClientConnection) Close() {
+	c.Context.NoContent(http.StatusGone)
+}
 
 type PaymentReceiptFormHandler struct {
 	paymentReceiptFormService services.PaymentReceiptFormService
-	formID                    chan uint
+	logger                    *logrus.Logger
+	// Notification system
+	clients   sync.Map
+	broadcast chan NotificationMessage
 }
 
 // NewPaymentReceiptFormHandler creates a new payment receipt form handler
-func NewPaymentReceiptFormHandler(paymentReceiptFormService services.PaymentReceiptFormService) *PaymentReceiptFormHandler {
-	return &PaymentReceiptFormHandler{
+func NewPaymentReceiptFormHandler(paymentReceiptFormService services.PaymentReceiptFormService, logger *logrus.Logger) *PaymentReceiptFormHandler {
+	handler := &PaymentReceiptFormHandler{
 		paymentReceiptFormService: paymentReceiptFormService,
-		formID:                    make(chan uint, 1),
+		logger:                    logger,
+		broadcast:                 make(chan NotificationMessage),
+	}
+
+	// Start the notification hub
+	go handler.runNotificationHub()
+
+	return handler
+}
+
+func (h *PaymentReceiptFormHandler) registerClient(client *ClientConnection) {
+	h.clients.Store(client.ID, client)
+	h.logger.WithFields(logrus.Fields{
+		"client_id":         client.ID,
+		"total_connections": h.getConnectionCount(),
+	}).Info("Client connected")
+}
+
+func (h *PaymentReceiptFormHandler) unregisterClient(clientID string) {
+	if client, ok := h.clients.LoadAndDelete(clientID); ok {
+		client.(*ClientConnection).Close()
+	}
+
+	h.logger.WithFields(logrus.Fields{
+		"client_id":         clientID,
+		"total_connections": h.getConnectionCount(),
+	}).Info("Client disconnected")
+}
+
+func (h *PaymentReceiptFormHandler) getClientConnection(clientID string) *ClientConnection {
+	client, ok := h.clients.Load(clientID)
+	if !ok {
+		return nil
+	}
+	return client.(*ClientConnection)
+}
+
+// getConnectionCount returns the number of active connections
+func (h *PaymentReceiptFormHandler) getConnectionCount() int {
+	count := 0
+	h.clients.Range(func(key, value interface{}) bool {
+		count++
+		return true
+	})
+	return count
+}
+
+// getAllClients returns all active client connections
+func (h *PaymentReceiptFormHandler) getAllClients() []*ClientConnection {
+	var clients []*ClientConnection
+	h.clients.Range(func(key, value interface{}) bool {
+		clients = append(clients, value.(*ClientConnection))
+		return true
+	})
+	return clients
+}
+
+// runNotificationHub manages client connections and broadcasts messages
+func (h *PaymentReceiptFormHandler) runNotificationHub() {
+	for {
+		select {
+		case message := <-h.broadcast:
+			connectionCount := h.getConnectionCount()
+			h.logger.WithFields(logrus.Fields{
+				"message_type":      message.Type,
+				"total_connections": connectionCount,
+			}).Info("Broadcasting message to connected clients")
+
+			h.clients.Range(func(key, value interface{}) bool {
+				client := value.(*ClientConnection)
+				select {
+				case client.SendChan <- message:
+				default:
+					// Client channel is full, skip this client
+					h.logger.WithField("client_id", client.ID).Warn("Client channel full, skipping message")
+				}
+				return true
+			})
+		}
 	}
 }
 
@@ -36,6 +137,7 @@ func NewPaymentReceiptFormHandler(paymentReceiptFormService services.PaymentRece
 // @Param paymentReceiptForm body dto.PaymentReceiptFormPayload true "Payment receipt form data"
 // @Success 201 {object} models.PaymentReceiptForm
 // @Failure 400 {object} map[string]string
+// @Failure 409 {object} map[string]string
 // @Failure 500 {object} map[string]string
 // @Security BearerAuth
 // @Router /payment-receipt-forms [post]
@@ -45,8 +147,13 @@ func (h *PaymentReceiptFormHandler) CreatePaymentReceiptForm(c echo.Context) err
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid request body"})
 	}
 
-	if len(h.formID) >= 1 {
-		return c.JSON(http.StatusTooManyRequests, map[string]string{"error": "Too many requests"})
+	// Check if there's already a pending form
+	pendingForm, err := h.paymentReceiptFormService.GetLatestPendingPaymentReceiptForm(c.Request().Context())
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to check for pending forms"})
+	}
+	if pendingForm != nil {
+		return c.JSON(http.StatusConflict, map[string]string{"error": "There is already a pending payment receipt form. Please complete or cancel the existing form before creating a new one."})
 	}
 
 	form, err := h.paymentReceiptFormService.CreatePaymentReceiptForm(c.Request().Context(), &payload)
@@ -57,7 +164,30 @@ func (h *PaymentReceiptFormHandler) CreatePaymentReceiptForm(c echo.Context) err
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to create payment receipt form"})
 	}
 
-	h.formID <- form.ID
+	// Send notification to all connected clients
+	notification := NotificationMessage{
+		Type: "form_created",
+		Data: map[string]interface{}{
+			"form_id":    form.ID,
+			"full_name":  form.FullName,
+			"department": form.Department,
+			"status":     form.Status,
+		},
+		Timestamp: time.Now().UTC(),
+	}
+
+	// Broadcast to all connected clients
+	select {
+	case h.broadcast <- notification:
+		h.logger.WithFields(logrus.Fields{
+			"form_id":    form.ID,
+			"full_name":  form.FullName,
+			"department": form.Department,
+		}).Info("Form created and notification queued for broadcast")
+	default:
+		// Broadcast channel is full, continue without blocking
+		h.logger.Warn("Broadcast channel full, notification not sent")
+	}
 
 	return c.JSON(http.StatusCreated, form)
 }
@@ -243,26 +373,54 @@ func (h *PaymentReceiptFormHandler) GetLatestPendingPaymentReceiptForm(c echo.Co
 	c.Response().Header().Set("Content-Type", "text/event-stream")
 	c.Response().Header().Set("Cache-Control", "no-cache")
 	c.Response().Header().Set("Connection", "keep-alive")
-	c.Response().Header().Set("Access-Control-Allow-Origin", "*")
 	c.Response().Header().Set("Access-Control-Allow-Headers", "Cache-Control")
 
+	// Create a unique client ID
+	clientID, err := pkg.GetUserIDFromContext(c.Request().Context())
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to get user ID"})
+	}
+
+	client := h.getClientConnection(clientID)
+	if client != nil {
+		h.logger.WithField("client_id", clientID).Info("Another connection has been made, closing old connection")
+		h.unregisterClient(clientID)
+	}
+
+	// Create client connection
+	client = &ClientConnection{
+		ID:       clientID,
+		Context:  c,
+		SendChan: make(chan NotificationMessage, 10),
+	}
+
+	h.registerClient(client)
+	defer h.unregisterClient(clientID)
+
 	// Create tickers for different purposes
-	keepAliveTicker := time.NewTicker(30 * time.Second)
+	keepAliveTicker := time.NewTicker(5 * time.Second)
 	defer keepAliveTicker.Stop()
 
-	// Create a channel to handle client disconnect
-	clientDisconnect := c.Request().Context().Done()
+	// Send initial pending form if exists
+	if err := h.sendInitialPendingForm(c); err != nil {
+		h.logger.WithFields(logrus.Fields{
+			"client_id": clientID,
+			"error":     err.Error(),
+		}).Error("Failed to send initial pending form")
+		return fmt.Errorf("failed to send initial pending form: %w", err)
+	}
 
 	// Keep connection alive and send updates
 	for {
 		select {
-		case <-clientDisconnect:
+		case <-c.Request().Context().Done():
 			// Client disconnected
+			h.logger.WithField("client_id", clientID).Info("SSE client disconnected")
 			return nil
-		case formID := <-h.formID:
-			// Send periodic updates
-			if err := h.sendPendingFormUpdate(c, formID); err != nil {
-				return fmt.Errorf("failed to send pending form update: %w", err)
+		case notification := <-client.SendChan:
+			// Send notification to client
+			if err := h.sendNotificationToClient(c, notification); err != nil {
+				return fmt.Errorf("failed to send notification: %w", err)
 			}
 		case <-keepAliveTicker.C:
 			// Send keep-alive to maintain connection
@@ -313,4 +471,46 @@ func (h *PaymentReceiptFormHandler) SendKeepAlive(c echo.Context) error {
 		"timestamp": time.Now().UTC().Format(time.RFC3339),
 	}
 	return h.sendSSEEvent(c, "keep_alive", keepAliveData)
+}
+
+// sendInitialPendingForm sends the current pending form if it exists
+func (h *PaymentReceiptFormHandler) sendInitialPendingForm(c echo.Context) error {
+	form, err := h.paymentReceiptFormService.GetLatestPendingPaymentReceiptForm(c.Request().Context())
+	if err != nil {
+		// Send error event
+		errorData := map[string]interface{}{
+			"status":  "error",
+			"message": "Failed to get latest pending form",
+			"error":   err.Error(),
+		}
+		return h.sendSSEEvent(c, "error", errorData)
+	}
+
+	if form != nil {
+		// Send pending form data
+		eventData := map[string]interface{}{
+			"status":    "pending_form",
+			"data":      form,
+			"timestamp": time.Now().UTC().Format(time.RFC3339),
+		}
+		return h.sendSSEEvent(c, "pending_form_update", eventData)
+	} else {
+		// No pending form
+		eventData := map[string]interface{}{
+			"status":    "no_pending_form",
+			"message":   "No pending payment receipt form found",
+			"timestamp": time.Now().UTC().Format(time.RFC3339),
+		}
+		return h.sendSSEEvent(c, "pending_form_update", eventData)
+	}
+}
+
+// sendNotificationToClient sends a notification to the client via SSE
+func (h *PaymentReceiptFormHandler) sendNotificationToClient(c echo.Context, notification NotificationMessage) error {
+	eventData := map[string]interface{}{
+		"status":    notification.Type,
+		"data":      notification.Data,
+		"timestamp": notification.Timestamp.Format(time.RFC3339),
+	}
+	return h.sendSSEEvent(c, "notification", eventData)
 }

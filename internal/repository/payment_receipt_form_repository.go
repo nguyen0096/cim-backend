@@ -34,7 +34,7 @@ func NewPaymentReceiptFormRepository(db *gorm.DB) PaymentReceiptFormRepository {
 // Create creates a new payment receipt form
 func (r *paymentReceiptFormRepository) Create(ctx context.Context, form *models.PaymentReceiptForm) error {
 	if err := r.db.WithContext(ctx).Create(form).Error; err != nil {
-		return fmt.Errorf("failed to create payment receipt form: %w", err)
+		return pkg.NewAppError(pkg.ErrorCodeInternal, "Failed to create payment receipt form", err)
 	}
 	return nil
 }

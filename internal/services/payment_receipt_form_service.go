@@ -33,45 +33,14 @@ func NewPaymentReceiptFormService(paymentReceiptFormRepo repository.PaymentRecei
 
 // CreatePaymentReceiptForm creates a new payment receipt form
 func (s *paymentReceiptFormService) CreatePaymentReceiptForm(ctx context.Context, payload *dto.PaymentReceiptFormPayload) (*models.PaymentReceiptForm, error) {
-	// Check if there's already a pending form
-	existingPendingForm, err := s.paymentReceiptFormRepo.GetLatestPendingForm(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("failed to check for existing pending form: %w", err)
-	}
-	if existingPendingForm != nil {
-		return nil, pkg.NewAppError(pkg.ErrorCodeValidation, "Cannot create new payment receipt form. There is already a pending form that needs to be submitted first", nil)
-	}
-
 	// Convert payload to model
-	formModel, err := payload.ToPaymentReceiptForm()
+	form, err := payload.ToPaymentReceiptForm()
 	if err != nil {
 		return nil, pkg.NewAppError(pkg.ErrorCodeValidation, "Invalid date format. Use YYYY-MM-DD", nil)
 	}
 
-	// Validate required fields
-	if formModel.FullName == "" {
-		return nil, pkg.NewAppError(pkg.ErrorCodeValidation, "Full name is required", nil)
-	}
-	if formModel.Department == "" {
-		return nil, pkg.NewAppError(pkg.ErrorCodeValidation, "Department is required", nil)
-	}
-	if formModel.TotalAmount <= 0 {
-		return nil, pkg.NewAppError(pkg.ErrorCodeValidation, "Total amount must be greater than 0", nil)
-	}
-
-	// Create the form in the database
-	form := &models.PaymentReceiptForm{
-		FullName:    formModel.FullName,
-		Date:        formModel.Date,
-		Department:  formModel.Department,
-		Details:     formModel.Details,
-		TotalAmount: formModel.TotalAmount,
-		Status:      formModel.Status,
-		Location:    "Default Location", // Set a default location as it's required by the model
-	}
-
 	if err := s.paymentReceiptFormRepo.Create(ctx, form); err != nil {
-		return nil, fmt.Errorf("failed to create payment receipt form: %w", err)
+		return nil, pkg.NewAppError(pkg.ErrorCodeInternal, "Failed to create payment receipt form", err)
 	}
 
 	return form, nil
