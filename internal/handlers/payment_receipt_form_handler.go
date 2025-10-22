@@ -277,7 +277,7 @@ func (h *PaymentReceiptFormHandler) ListPaymentReceiptForms(c echo.Context) erro
 	return c.JSON(http.StatusOK, response)
 }
 
-// UpdatePaymentReceiptForm updates a payment receipt form
+// SubmitPaymentReceiptForm updates a payment receipt form
 // @Summary Update payment receipt form
 // @Description Update a payment receipt form by ID
 // @Tags payment-receipt-forms
@@ -291,7 +291,7 @@ func (h *PaymentReceiptFormHandler) ListPaymentReceiptForms(c echo.Context) erro
 // @Failure 500 {object} map[string]string
 // @Security BearerAuth
 // @Router /payment-receipt-forms/{id} [put]
-func (h *PaymentReceiptFormHandler) UpdatePaymentReceiptForm(c echo.Context) error {
+func (h *PaymentReceiptFormHandler) SubmitPaymentReceiptForm(c echo.Context) error {
 	idStr := c.Param("id")
 	id, err := strconv.ParseUint(idStr, 10, 32)
 	if err != nil {
@@ -310,7 +310,7 @@ func (h *PaymentReceiptFormHandler) UpdatePaymentReceiptForm(c echo.Context) err
 
 	form.ID = uint(id)
 
-	if err := h.paymentReceiptFormService.UpdatePaymentReceiptForm(c.Request().Context(), form); err != nil {
+	if err := h.paymentReceiptFormService.SubmitPaymentReceiptForm(c.Request().Context(), form); err != nil {
 		if appErr, ok := err.(*pkg.AppError); ok {
 			return c.JSON(appErr.HTTPStatus(), map[string]string{"error": appErr.Message})
 		}
@@ -318,6 +318,66 @@ func (h *PaymentReceiptFormHandler) UpdatePaymentReceiptForm(c echo.Context) err
 	}
 
 	return c.JSON(http.StatusOK, form)
+}
+
+// ApprovePaymentReceiptForm approves a payment receipt form
+// @Summary Approve payment receipt form
+// @Description Approve a payment receipt form by ID
+// @Tags payment-receipt-forms
+// @Accept json
+// @Produce json
+// @Param id path int true "Payment receipt form ID"
+// @Success 200 {object} map[string]string
+// @Failure 400 {object} map[string]string
+// @Failure 404 {object} map[string]string
+// @Failure 500 {object} map[string]string
+// @Security BearerAuth
+// @Router /payment-receipt-forms/{id}/approve [put]
+func (h *PaymentReceiptFormHandler) ApprovePaymentReceiptForm(c echo.Context) error {
+	idStr := c.Param("id")
+	id, err := strconv.ParseUint(idStr, 10, 32)
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid ID format"})
+	}
+
+	if err := h.paymentReceiptFormService.ApprovePaymentReceiptForm(c.Request().Context(), uint(id)); err != nil {
+		if appErr, ok := err.(*pkg.AppError); ok {
+			return c.JSON(appErr.HTTPStatus(), map[string]string{"error": appErr.Message})
+		}
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to approve payment receipt form"})
+	}
+
+	return c.JSON(http.StatusOK, map[string]string{"message": "Payment receipt form approved successfully"})
+}
+
+// RejectPaymentReceiptForm rejects a payment receipt form
+// @Summary Reject payment receipt form
+// @Description Reject a payment receipt form by ID
+// @Tags payment-receipt-forms
+// @Accept json
+// @Produce json
+// @Param id path int true "Payment receipt form ID"
+// @Success 200 {object} map[string]string
+// @Failure 400 {object} map[string]string
+// @Failure 404 {object} map[string]string
+// @Failure 500 {object} map[string]string
+// @Security BearerAuth
+// @Router /payment-receipt-forms/{id}/reject [put]
+func (h *PaymentReceiptFormHandler) RejectPaymentReceiptForm(c echo.Context) error {
+	idStr := c.Param("id")
+	id, err := strconv.ParseUint(idStr, 10, 32)
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid ID format"})
+	}
+
+	if err := h.paymentReceiptFormService.RejectPaymentReceiptForm(c.Request().Context(), uint(id)); err != nil {
+		if appErr, ok := err.(*pkg.AppError); ok {
+			return c.JSON(appErr.HTTPStatus(), map[string]string{"error": appErr.Message})
+		}
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to reject payment receipt form"})
+	}
+
+	return c.JSON(http.StatusOK, map[string]string{"message": "Payment receipt form rejected successfully"})
 }
 
 // DeletePaymentReceiptForm deletes a payment receipt form

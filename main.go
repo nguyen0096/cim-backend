@@ -213,7 +213,9 @@ func main() {
 	paymentReceiptForms.GET("", paymentReceiptFormHandler.ListPaymentReceiptForms)
 	paymentReceiptForms.POST("", paymentReceiptFormHandler.CreatePaymentReceiptForm)
 	paymentReceiptForms.GET("/:id", paymentReceiptFormHandler.GetPaymentReceiptForm)
-	paymentReceiptForms.PUT("/:id", paymentReceiptFormHandler.UpdatePaymentReceiptForm)
+	paymentReceiptForms.POST("/:id/submit", paymentReceiptFormHandler.SubmitPaymentReceiptForm)
+	paymentReceiptForms.PUT("/:id/approve", paymentReceiptFormHandler.ApprovePaymentReceiptForm)
+	paymentReceiptForms.PUT("/:id/reject", paymentReceiptFormHandler.RejectPaymentReceiptForm)
 	paymentReceiptForms.DELETE("/:id", paymentReceiptFormHandler.DeletePaymentReceiptForm)
 	paymentReceiptForms.GET("/pending", paymentReceiptFormHandler.LatestPendingPaymentReceiptFormStream)
 

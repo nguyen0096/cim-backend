@@ -14,7 +14,9 @@ type PaymentReceiptFormService interface {
 	CreatePaymentReceiptForm(ctx context.Context, payload *dto.PaymentReceiptFormPayload) (*models.PaymentReceiptForm, error)
 	GetPaymentReceiptForm(ctx context.Context, id uint) (*models.PaymentReceiptForm, error)
 	ListPaymentReceiptForms(ctx context.Context, req *dto.PaymentReceiptFormListRequest) ([]models.PaymentReceiptForm, int64, error)
-	UpdatePaymentReceiptForm(ctx context.Context, form *models.PaymentReceiptForm) error
+	SubmitPaymentReceiptForm(ctx context.Context, form *models.PaymentReceiptForm) error
+	ApprovePaymentReceiptForm(ctx context.Context, id uint) error
+	RejectPaymentReceiptForm(ctx context.Context, id uint) error
 	DeletePaymentReceiptForm(ctx context.Context, id uint) error
 	SearchPaymentReceiptForms(ctx context.Context, query string, req *dto.PaymentReceiptFormListRequest) ([]models.PaymentReceiptForm, int64, error)
 	LatestPendingPaymentReceiptFormStream(ctx context.Context, purchaseOrderID uint) (*models.PaymentReceiptForm, error)
@@ -65,8 +67,8 @@ func (s *paymentReceiptFormService) ListPaymentReceiptForms(ctx context.Context,
 	return forms, total, nil
 }
 
-// UpdatePaymentReceiptForm updates a payment receipt form
-func (s *paymentReceiptFormService) UpdatePaymentReceiptForm(ctx context.Context, form *models.PaymentReceiptForm) error {
+// SubmitPaymentReceiptForm updates a payment receipt form
+func (s *paymentReceiptFormService) SubmitPaymentReceiptForm(ctx context.Context, form *models.PaymentReceiptForm) error {
 	// Validate required fields
 	if form.FullName == "" {
 		return pkg.NewAppError(pkg.ErrorCodeValidation, "Full name is required", nil)
@@ -78,8 +80,58 @@ func (s *paymentReceiptFormService) UpdatePaymentReceiptForm(ctx context.Context
 		return pkg.NewAppError(pkg.ErrorCodeValidation, "Total amount must be greater than 0", nil)
 	}
 
+	form.Status = models.PaymentReceiptFormStatusSubmitted
+
 	if err := s.paymentReceiptFormRepo.Update(ctx, form); err != nil {
 		return fmt.Errorf("failed to update payment receipt form: %w", err)
+	}
+
+	return nil
+}
+
+// ApprovePaymentReceiptForm approves a payment receipt form
+func (s *paymentReceiptFormService) ApprovePaymentReceiptForm(ctx context.Context, id uint) error {
+	// Get the form to check if it exists and current status
+	form, err := s.paymentReceiptFormRepo.GetByID(ctx, id)
+	if err != nil {
+		return fmt.Errorf("failed to approve payment receipt form: %w", err)
+	}
+
+	// Validate that the form can be approved
+	if form.Status == models.PaymentReceiptFormStatusApproved {
+		return pkg.NewAppError(pkg.ErrorCodeValidation, "Payment receipt form is already approved", nil)
+	}
+	if form.Status == models.PaymentReceiptFormStatusRejected {
+		return pkg.NewAppError(pkg.ErrorCodeValidation, "Cannot approve a rejected payment receipt form", nil)
+	}
+
+	// Update status to approved
+	if err := s.paymentReceiptFormRepo.UpdateStatus(ctx, id, models.PaymentReceiptFormStatusApproved); err != nil {
+		return fmt.Errorf("failed to approve payment receipt form: %w", err)
+	}
+
+	return nil
+}
+
+// RejectPaymentReceiptForm rejects a payment receipt form
+func (s *paymentReceiptFormService) RejectPaymentReceiptForm(ctx context.Context, id uint) error {
+	// Get the form to check if it exists and current status
+	form, err := s.paymentReceiptFormRepo.GetByID(ctx, id)
+	if err != nil {
+		return fmt.Errorf("failed to reject payment receipt form: %w", err)
+	}
+
+	// Validate that the form can be rejected
+	if form.Status == models.PaymentReceiptFormStatusRejected {
+		return pkg.NewAppError(pkg.ErrorCodeValidation, "Payment receipt form is already rejected", nil)
+	}
+	if form.Status == models.PaymentReceiptFormStatusApproved {
+		return pkg.NewAppError(pkg.ErrorCodeValidation, "Cannot reject an approved payment receipt form", nil)
+	}
+
+	// Update status to rejected
+	if err := s.paymentReceiptFormRepo.UpdateStatus(ctx, id, models.PaymentReceiptFormStatusRejected); err != nil {
+		return fmt.Errorf("failed to reject payment receipt form: %w", err)
 	}
 
 	return nil

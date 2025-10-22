@@ -16,6 +16,7 @@ type PaymentReceiptFormRepository interface {
 	GetByID(ctx context.Context, id uint) (*models.PaymentReceiptForm, error)
 	List(ctx context.Context, req *dto.PaymentReceiptFormListRequest) ([]models.PaymentReceiptForm, int64, error)
 	Update(ctx context.Context, form *models.PaymentReceiptForm) error
+	UpdateStatus(ctx context.Context, id uint, status models.PaymentReceiptFormStatus) error
 	Delete(ctx context.Context, id uint) error
 	Search(ctx context.Context, query string, req *dto.PaymentReceiptFormListRequest) ([]models.PaymentReceiptForm, int64, error)
 	GetLatestPaymentReceiptForm(ctx context.Context, purchaseOrderID uint, status models.PaymentReceiptFormStatus) (*models.PaymentReceiptForm, error)
@@ -100,6 +101,17 @@ func (r *paymentReceiptFormRepository) Update(ctx context.Context, form *models.
 		Where("id = ?", form.ID).
 		Updates(form).Error; err != nil {
 		return pkg.NewAppError(pkg.ErrorCodeInternal, "Failed to update payment receipt form", err)
+	}
+	return nil
+}
+
+// UpdateStatus updates the status of a payment receipt form
+func (r *paymentReceiptFormRepository) UpdateStatus(ctx context.Context, id uint, status models.PaymentReceiptFormStatus) error {
+	if err := r.db.WithContext(ctx).
+		Model(&models.PaymentReceiptForm{}).
+		Where("id = ?", id).
+		Update("status", status).Error; err != nil {
+		return fmt.Errorf("failed to update payment receipt form status: %w", err)
 	}
 	return nil
 }
