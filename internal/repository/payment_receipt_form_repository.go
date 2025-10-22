@@ -58,7 +58,7 @@ func (r *paymentReceiptFormRepository) List(ctx context.Context, req *dto.Paymen
 	var forms []models.PaymentReceiptForm
 	var total int64
 
-	query := r.db.WithContext(ctx).Model(&models.PaymentReceiptForm{})
+	query := r.db.WithContext(ctx).Model(&models.PaymentReceiptForm{}).Preload("PurchaseOrder")
 
 	// Apply purchase order filter if provided
 	if req.PurchaseOrderID != 0 {
