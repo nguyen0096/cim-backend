@@ -26,7 +26,7 @@ type DisposeInventoryRequest struct {
 type DisposeItem struct {
 	InventoryItemID uint                  `json:"inventory_item_id" validate:"required"`
 	InventoryItem   *models.InventoryItem `json:"inventory_item,omitempty" validate:"-"`
-	Quantity        int                   `json:"quantity" validate:"required,min=1"`
+	Quantity        *int                  `json:"quantity" validate:"required,min=1"`
 	PrevQuantity    int                   `json:"prev_quantity,omitempty" validate:"required,min=1"`
 }
 

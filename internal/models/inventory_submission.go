@@ -1,5 +1,7 @@
 package models
 
+import "encoding/json"
+
 type InventorySubmissionStatus string
 
 const (
@@ -34,8 +36,10 @@ const (
 type InventorySubmission struct {
 	Base
 	InventoryID      uint                              `json:"inventory_id"`
+	Inventory        *Inventory                        `json:"inventory,omitempty" gorm:"foreignKey:InventoryID"`
 	SubmissionType   InventorySubmissionType           `json:"submission_type" gorm:"not null"`
 	ProcessingStatus InventorySubmissionStatus         `json:"processing_status" gorm:"default:pending"`
 	ApprovalStatus   InventorySubmissionApprovalStatus `json:"approval_status" gorm:"default:pending"`
-	Payload          any                               `json:"payload" gorm:"serializer:json"`
+	Payload          json.RawMessage                   `json:"payload" gorm:"serializer:json"`
+	Reason           string                            `json:"reason,omitempty"`
 }

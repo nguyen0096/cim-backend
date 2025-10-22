@@ -6,6 +6,7 @@ import (
 	"cim-backend/internal/services/dto"
 	"cim-backend/pkg"
 	"context"
+	"encoding/json"
 	"fmt"
 )
 
@@ -23,7 +24,7 @@ type InventoryService interface {
 	CreateReconcileSubmission(ctx context.Context, req dto.ReconcileInventoryRequest) (*models.InventorySubmission, error)
 	CreateDisposeSubmission(ctx context.Context, req dto.DisposeInventoryRequest) (*models.InventorySubmission, error)
 	GetPendingSubmissions(ctx context.Context, inventoryID uint) ([]dto.PendingSubmissionResponse, error)
-	ApproveSubmission(ctx context.Context, req dto.ProcessSubmissionRequest) (*models.InventorySubmission, error)
+	ProcessSubmission(ctx context.Context, req dto.ProcessSubmissionRequest) (*models.InventorySubmission, error)
 	GetLastPurchasePrices(ctx context.Context) (dto.LastPurchasePriceMap, error)
 }
 
@@ -193,51 +194,31 @@ func (s *inventoryService) consumeFIFO(
 
 // reconcileInventory reconciles inventory by creating sell transactions for the difference between previous and actual quantities
 func (s *inventoryService) reconcileInventory(ctx context.Context, req dto.ReconcileInventoryRequest) error {
-	// Prepare item IDs
 	itemIDs := make([]uint, len(req.Items))
 	for i, item := range req.Items {
 		itemIDs[i] = item.InventoryItemID
 	}
 
-	// Get active items to calculate quantities to consume
 	activeItems, err := s.inventoryItemRepo.GetActiveInventoryItems(ctx, itemIDs)
 	if err != nil {
 		return fmt.Errorf("failed to get active inventory items: %w", err)
 	}
+	activeItemMap := make(map[uint]*models.InventoryItem)
+	for _, item := range activeItems {
+		activeItemMap[item.ID] = item
+	}
 
-	// Validate prevQuantity matches current quantity and calculate quantities to consume
 	quantitiesToConsume := make(map[uint]int)
 	for _, reqItem := range req.Items {
 		if reqItem.ActualQuantity == nil {
 			return pkg.ErrInvalidRequestBody(fmt.Errorf("actual quantity is required for inventory item %d", reqItem.InventoryItemID))
 		}
-
-		var item *models.InventoryItem
-		for _, activeItem := range activeItems {
-			if activeItem.ID == reqItem.InventoryItemID {
-				item = activeItem
-				break
-			}
-		}
-		if item == nil {
+		item, exists := activeItemMap[reqItem.InventoryItemID]
+		if !exists {
 			return pkg.NewAppError(pkg.ErrorCodeNotFound,
 				fmt.Sprintf("inventory item %d not found", reqItem.InventoryItemID), nil)
 		}
-
-		// Optimistic locking: validate that current quantity matches what frontend saw
-		if item.Quantity != reqItem.PrevQuantity {
-			return pkg.ErrOptimisticLockConflict("inventory item", reqItem.InventoryItemID, reqItem.PrevQuantity, item.Quantity)
-		}
-
-		// Validate that actual quantity doesn't exceed previous quantity
-		if *reqItem.ActualQuantity > reqItem.PrevQuantity {
-			return pkg.NewAppError(pkg.ErrorCodeValidation,
-				fmt.Sprintf("actual quantity %d exceeds previous quantity %d for inventory item %d",
-					reqItem.ActualQuantity, reqItem.PrevQuantity, reqItem.InventoryItemID), nil)
-		}
-
-		// Calculate consume quantity: prevQuantity - actualQuantity
-		quantitiesToConsume[reqItem.InventoryItemID] = reqItem.PrevQuantity - *reqItem.ActualQuantity
+		quantitiesToConsume[reqItem.InventoryItemID] = item.Quantity - *reqItem.ActualQuantity
 	}
 
 	// Create sell transaction creator
@@ -255,7 +236,6 @@ func (s *inventoryService) reconcileInventory(ctx context.Context, req dto.Recon
 	if err != nil {
 		return fmt.Errorf("failed to consume FIFO: %w", err)
 	}
-
 	return nil
 }
 
@@ -297,7 +277,7 @@ func (s *inventoryService) CreateReconcileSubmission(ctx context.Context, req dt
 		}
 
 		// Validate that actual quantity doesn't exceed previous quantity
-		if *reqItem.ActualQuantity > reqItem.PrevQuantity {
+		if *reqItem.ActualQuantity > item.Quantity {
 			return nil, pkg.NewAppError(pkg.ErrorCodeValidation,
 				fmt.Sprintf("actual quantity %d exceeds previous quantity %d for inventory item %d",
 					reqItem.ActualQuantity, reqItem.PrevQuantity, reqItem.InventoryItemID), nil)
@@ -314,61 +294,41 @@ func (s *inventoryService) CreateReconcileSubmission(ctx context.Context, req dt
 		}
 	}
 
+	// Marshal payload to json.RawMessage
+	payloadBytes, err := json.Marshal(dto.ReconcileSubmissionPayload{
+		Items: submissionItems,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal payload: %w", err)
+	}
+
 	// Create inventory submission with pending status
 	submission := &models.InventorySubmission{
 		InventoryID:      req.InventoryID,
 		SubmissionType:   models.InventorySubmissionTypeReconcile,
 		ProcessingStatus: models.InventorySubmissionStatusPending,
-		Payload: dto.ReconcileSubmissionPayload{
-			Items: submissionItems,
-		},
+		Payload:          json.RawMessage(payloadBytes),
 	}
 
 	if err := s.inventorySubmissionRepo.Create(ctx, submission); err != nil {
 		return nil, fmt.Errorf("failed to create reconcile submission: %w", err)
 	}
-
 	return submission, nil
 }
 
 // disposeInventory disposes inventory by creating disposal transactions for specified quantities
 func (s *inventoryService) disposeInventory(ctx context.Context, req dto.DisposeInventoryRequest) error {
-	// Prepare item IDs
 	itemIDs := make([]uint, len(req.Items))
 	for i, item := range req.Items {
 		itemIDs[i] = item.InventoryItemID
 	}
 
-	// Get active items to validate prevQuantity
-	activeItems, err := s.inventoryItemRepo.GetActiveInventoryItems(ctx, itemIDs)
-	if err != nil {
-		return fmt.Errorf("failed to get active inventory items: %w", err)
-	}
-
-	// Validate prevQuantity matches current quantity and prepare quantities to consume
 	quantitiesToConsume := make(map[uint]int)
 	for _, reqItem := range req.Items {
-		var item *models.InventoryItem
-		for _, activeItem := range activeItems {
-			if activeItem.ID == reqItem.InventoryItemID {
-				item = activeItem
-				break
-			}
+		if reqItem.Quantity == nil {
+			return pkg.ErrInvalidRequestBody(fmt.Errorf("quantity is required for inventory item %d", reqItem.InventoryItemID))
 		}
-		if item == nil {
-			return pkg.NewAppError(pkg.ErrorCodeNotFound,
-				fmt.Sprintf("inventory item %d not found", reqItem.InventoryItemID), nil)
-		}
-
-		// Validate that dispose quantity doesn't exceed previous quantity
-		if reqItem.Quantity > reqItem.PrevQuantity {
-			return pkg.NewAppError(pkg.ErrorCodeValidation,
-				fmt.Sprintf("dispose quantity %d exceeds previous quantity %d for inventory item %d",
-					reqItem.Quantity, reqItem.PrevQuantity, reqItem.InventoryItemID), nil)
-		}
-
-		// For dispose, quantity is already the consume quantity
-		quantitiesToConsume[reqItem.InventoryItemID] = reqItem.Quantity
+		quantitiesToConsume[reqItem.InventoryItemID] = *reqItem.Quantity
 	}
 
 	// Create disposal transaction creator
@@ -382,11 +342,10 @@ func (s *inventoryService) disposeInventory(ctx context.Context, req dto.Dispose
 		}
 	}
 
-	_, err = s.consumeFIFO(ctx, itemIDs, quantitiesToConsume, disposeTransactionCreator)
+	_, err := s.consumeFIFO(ctx, itemIDs, quantitiesToConsume, disposeTransactionCreator)
 	if err != nil {
 		return fmt.Errorf("failed to consume FIFO: %w", err)
 	}
-
 	return nil
 }
 
@@ -403,17 +362,19 @@ func (s *inventoryService) CreateDisposeSubmission(ctx context.Context, req dto.
 	if err != nil {
 		return nil, fmt.Errorf("failed to get active inventory items: %w", err)
 	}
+	activeItemMap := make(map[uint]*models.InventoryItem)
+	for _, item := range activeItems {
+		activeItemMap[item.ID] = item
+	}
 
 	// Validate prevQuantity matches current quantity
 	for _, reqItem := range req.Items {
-		var item *models.InventoryItem
-		for _, activeItem := range activeItems {
-			if activeItem.ID == reqItem.InventoryItemID {
-				item = activeItem
-				break
-			}
+		if reqItem.Quantity == nil {
+			return nil, pkg.ErrInvalidRequestBody(fmt.Errorf("quantity is required for inventory item %d", reqItem.InventoryItemID))
 		}
-		if item == nil {
+
+		item, exists := activeItemMap[reqItem.InventoryItemID]
+		if !exists {
 			return nil, pkg.NewAppError(pkg.ErrorCodeNotFound,
 				fmt.Sprintf("inventory item %d not found", reqItem.InventoryItemID), nil)
 		}
@@ -424,7 +385,7 @@ func (s *inventoryService) CreateDisposeSubmission(ctx context.Context, req dto.
 		}
 
 		// Validate that dispose quantity doesn't exceed previous quantity
-		if reqItem.Quantity > reqItem.PrevQuantity {
+		if *reqItem.Quantity > item.Quantity {
 			return nil, pkg.NewAppError(pkg.ErrorCodeValidation,
 				fmt.Sprintf("dispose quantity %d exceeds previous quantity %d for inventory item %d",
 					reqItem.Quantity, reqItem.PrevQuantity, reqItem.InventoryItemID), nil)
@@ -441,73 +402,78 @@ func (s *inventoryService) CreateDisposeSubmission(ctx context.Context, req dto.
 		}
 	}
 
+	// Marshal payload to json.RawMessage
+	payloadBytes, err := json.Marshal(dto.DisposeSubmissionPayload{
+		Items: submissionItems,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal payload: %w", err)
+	}
+
 	// Create inventory submission with pending status
 	submission := &models.InventorySubmission{
 		InventoryID:      req.InventoryID,
 		SubmissionType:   models.InventorySubmissionTypeDispose,
 		ProcessingStatus: models.InventorySubmissionStatusPending,
-		Payload: dto.DisposeSubmissionPayload{
-			Items: submissionItems,
-		},
+		Payload:          json.RawMessage(payloadBytes),
 	}
 
 	if err := s.inventorySubmissionRepo.Create(ctx, submission); err != nil {
 		return nil, fmt.Errorf("failed to create dispose submission: %w", err)
 	}
-
 	return submission, nil
 }
 
 // extractInventoryItemIDsFromPayload extracts inventory item IDs from a payload's items array
-func extractInventoryItemIDsFromPayload(payload any) []uint {
+func extractInventoryItemIDsFromPayload(payload json.RawMessage) []uint {
 	var itemIDs []uint
-	if items, ok := payload.(map[string]interface{})["items"].([]interface{}); ok {
-		for _, item := range items {
-			if itemMap, ok := item.(map[string]interface{}); ok {
-				if itemID, ok := itemMap["inventory_item_id"].(float64); ok {
-					itemIDs = append(itemIDs, uint(itemID))
-				}
-			}
-		}
+
+	// Try to unmarshal as a generic payload structure
+	var genericPayload struct {
+		Items []struct {
+			InventoryItemID uint `json:"inventory_item_id"`
+		} `json:"items"`
 	}
+
+	if err := json.Unmarshal(payload, &genericPayload); err != nil {
+		return itemIDs
+	}
+
+	for _, item := range genericPayload.Items {
+		itemIDs = append(itemIDs, item.InventoryItemID)
+	}
+
 	return itemIDs
 }
 
 // buildSimplifiedItems builds simplified item summaries from payload
-func buildSimplifiedItems(payload any, itemsMap map[uint]*models.InventoryItem) []dto.PendingSubmissionItemSummary {
-	payloadMap, ok := payload.(map[string]interface{})
-	if !ok {
+func buildSimplifiedItems(payload json.RawMessage, itemsMap map[uint]*models.InventoryItem) []dto.PendingSubmissionItemSummary {
+	// Try to unmarshal as a generic payload structure that works for both reconcile and dispose
+	var genericPayload struct {
+		Items []struct {
+			InventoryItemID uint `json:"inventory_item_id"`
+			ActualQuantity  *int `json:"actual_quantity,omitempty"` // For reconcile
+			Quantity        int  `json:"quantity,omitempty"`        // For dispose
+		} `json:"items"`
+	}
+
+	if err := json.Unmarshal(payload, &genericPayload); err != nil {
 		return []dto.PendingSubmissionItemSummary{}
 	}
 
-	items, ok := payloadMap["items"].([]interface{})
-	if !ok {
-		return []dto.PendingSubmissionItemSummary{}
-	}
-
-	summaries := make([]dto.PendingSubmissionItemSummary, 0, len(items))
-	for _, item := range items {
-		itemMap, ok := item.(map[string]interface{})
-		if !ok {
-			continue
-		}
-
-		inventoryItemID, ok := itemMap["inventory_item_id"].(float64)
-		if !ok {
-			continue
-		}
-
-		inventoryItem, exists := itemsMap[uint(inventoryItemID)]
+	summaries := make([]dto.PendingSubmissionItemSummary, 0, len(genericPayload.Items))
+	for _, item := range genericPayload.Items {
+		inventoryItem, exists := itemsMap[item.InventoryItemID]
 		if !exists || inventoryItem.Product == nil {
 			continue
 		}
 
 		// Extract quantity based on submission type (actual_quantity for reconcile, quantity for dispose)
 		var quantity int
-		if actualQty, ok := itemMap["actual_quantity"].(float64); ok {
-			quantity = int(actualQty)
-		} else if qty, ok := itemMap["quantity"].(float64); ok {
-			quantity = int(qty)
+		if item.ActualQuantity != nil {
+			quantity = *item.ActualQuantity
+		} else {
+			quantity = item.Quantity
 		}
 
 		summaries = append(summaries, dto.PendingSubmissionItemSummary{
@@ -564,9 +530,12 @@ func (s *inventoryService) GetPendingSubmissions(ctx context.Context, inventoryI
 		responses[i] = dto.PendingSubmissionResponse{
 			ID:             submission.ID,
 			InventoryID:    submission.InventoryID,
-			SubmissionType: string(submission.SubmissionType),
-			Status:         string(submission.ProcessingStatus),
+			Inventory:      submission.Inventory,
+			SubmissionType: submission.SubmissionType,
+			Status:         submission.ProcessingStatus,
+			ApprovalStatus: submission.ApprovalStatus,
 			Items:          buildSimplifiedItems(submission.Payload, itemsMap),
+			Reason:         submission.Reason,
 			CreatedBy:      submission.CreatedBy,
 			CreatedAt:      submission.CreatedAt.Format(pkg.DateTimeFormat),
 			UpdatedBy:      submission.UpdatedBy,
@@ -577,8 +546,8 @@ func (s *inventoryService) GetPendingSubmissions(ctx context.Context, inventoryI
 	return responses, nil
 }
 
-// ApproveSubmission approves or rejects a pending inventory submission
-func (s *inventoryService) ApproveSubmission(ctx context.Context, req dto.ProcessSubmissionRequest) (*models.InventorySubmission, error) {
+// ProcessSubmission approves or rejects a pending inventory submission
+func (s *inventoryService) ProcessSubmission(ctx context.Context, req dto.ProcessSubmissionRequest) (*models.InventorySubmission, error) {
 	// Check permissions
 	if !pkg.HasPermission(ctx, pkg.RBACResourceInventorySubmissions, pkg.RBACActionApprove) {
 		return nil, pkg.NewAppError(pkg.ErrorCodeForbidden, "user does not have permission to approve inventory submissions", nil)
@@ -608,11 +577,12 @@ func (s *inventoryService) ApproveSubmission(ctx context.Context, req dto.Proces
 			fmt.Sprintf("invalid action: %s", req.Action), nil)
 	}
 
-	// Step 1: Persist approval status first
-	if err := s.inventorySubmissionRepo.UpdateApprovalStatus(ctx, submission.ID, approvalStatus); err != nil {
+	// Step 1: Persist approval status and reason first
+	if err := s.inventorySubmissionRepo.UpdateApprovalStatus(ctx, submission.ID, approvalStatus, req.Reason); err != nil {
 		return nil, fmt.Errorf("failed to update approval status: %w", err)
 	}
 	submission.ApprovalStatus = approvalStatus
+	submission.Reason = req.Reason
 
 	// Step 2: Process submission only if approved
 	if approvalStatus == models.InventorySubmissionApprovalStatusApproved {
@@ -639,16 +609,22 @@ func (s *inventoryService) ApproveSubmission(ctx context.Context, req dto.Proces
 func (s *inventoryService) processSubmission(ctx context.Context, submission *models.InventorySubmission) error {
 	switch submission.SubmissionType {
 	case models.InventorySubmissionTypeReconcile:
-		items := submission.Payload.(dto.ReconcileSubmissionPayload).Items
+		var payload dto.ReconcileSubmissionPayload
+		if err := json.Unmarshal(submission.Payload, &payload); err != nil {
+			return fmt.Errorf("failed to unmarshal reconcile payload: %w", err)
+		}
 		return s.reconcileInventory(ctx, dto.ReconcileInventoryRequest{
 			InventoryID: submission.InventoryID,
-			Items:       items,
+			Items:       payload.Items,
 		})
 	case models.InventorySubmissionTypeDispose:
-		items := submission.Payload.(dto.DisposeSubmissionPayload).Items
+		var payload dto.DisposeSubmissionPayload
+		if err := json.Unmarshal(submission.Payload, &payload); err != nil {
+			return fmt.Errorf("failed to unmarshal dispose payload: %w", err)
+		}
 		return s.disposeInventory(ctx, dto.DisposeInventoryRequest{
 			InventoryID: submission.InventoryID,
-			Items:       items,
+			Items:       payload.Items,
 		})
 	default:
 		return pkg.NewAppError(pkg.ErrorCodeValidation,

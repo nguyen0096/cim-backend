@@ -12,7 +12,7 @@ type InventorySubmissionRepository interface {
 	Create(ctx context.Context, submission *models.InventorySubmission) error
 	GetPendingSubmissions(ctx context.Context, inventoryID uint) ([]models.InventorySubmission, error)
 	GetByID(ctx context.Context, id uint) (*models.InventorySubmission, error)
-	UpdateApprovalStatus(ctx context.Context, id uint, status models.InventorySubmissionApprovalStatus) error
+	UpdateApprovalStatus(ctx context.Context, id uint, status models.InventorySubmissionApprovalStatus, reason string) error
 	UpdateProcessingStatus(ctx context.Context, id uint, status models.InventorySubmissionStatus) error
 }
 
@@ -34,14 +34,14 @@ func (r *inventorySubmissionRepository) Create(ctx context.Context, submission *
 func (r *inventorySubmissionRepository) GetPendingSubmissions(ctx context.Context, inventoryID uint) ([]models.InventorySubmission, error) {
 	var submissions []models.InventorySubmission
 	query := r.db.WithContext(ctx).
-		Where("processing_status = ?", models.InventorySubmissionStatusPending).
+		Where("approval_status = ?", models.InventorySubmissionApprovalStatusPending).
 		Order("created_at DESC")
 
 	if inventoryID > 0 {
 		query = query.Where("inventory_id = ?", inventoryID)
 	}
 
-	err := query.Find(&submissions).Error
+	err := query.Preload("Inventory").Find(&submissions).Error
 	return submissions, err
 }
 
@@ -55,12 +55,16 @@ func (r *inventorySubmissionRepository) GetByID(ctx context.Context, id uint) (*
 	return &submission, nil
 }
 
-// UpdateApprovalStatus updates the approval status of a submission
-func (r *inventorySubmissionRepository) UpdateApprovalStatus(ctx context.Context, id uint, status models.InventorySubmissionApprovalStatus) error {
+// UpdateApprovalStatus updates the approval status and reason of a submission
+func (r *inventorySubmissionRepository) UpdateApprovalStatus(ctx context.Context, id uint, status models.InventorySubmissionApprovalStatus, reason string) error {
+	updates := map[string]interface{}{
+		"approval_status": status,
+		"reason":          reason,
+	}
 	return r.db.WithContext(ctx).
 		Model(&models.InventorySubmission{}).
 		Where("id = ?", id).
-		Update("approval_status", status).Error
+		Updates(updates).Error
 }
 
 // UpdateProcessingStatus updates the processing status of a submission

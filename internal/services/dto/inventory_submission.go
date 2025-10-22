@@ -1,16 +1,23 @@
 package dto
 
+import (
+	"cim-backend/internal/models"
+)
+
 // PendingSubmissionResponse represents a simplified pending submission
 type PendingSubmissionResponse struct {
-	ID             uint                           `json:"id"`
-	InventoryID    uint                           `json:"inventory_id"`
-	SubmissionType string                         `json:"submission_type"`
-	Status         string                         `json:"status"`
-	Items          []PendingSubmissionItemSummary `json:"items"`
-	CreatedBy      string                         `json:"created_by"`
-	CreatedAt      string                         `json:"created_at"`
-	UpdatedBy      string                         `json:"updated_by"`
-	UpdatedAt      string                         `json:"updated_at"`
+	ID             uint                                     `json:"id"`
+	InventoryID    uint                                     `json:"inventory_id"`
+	Inventory      *models.Inventory                        `json:"inventory,omitempty"`
+	SubmissionType models.InventorySubmissionType           `json:"submission_type"`
+	Status         models.InventorySubmissionStatus         `json:"processing_status"`
+	ApprovalStatus models.InventorySubmissionApprovalStatus `json:"approval_status"`
+	Items          []PendingSubmissionItemSummary           `json:"items"`
+	Reason         string                                   `json:"reason,omitempty"`
+	CreatedBy      string                                   `json:"created_by"`
+	CreatedAt      string                                   `json:"created_at"`
+	UpdatedBy      string                                   `json:"updated_by"`
+	UpdatedAt      string                                   `json:"updated_at"`
 }
 
 // PendingSubmissionItemSummary represents a simplified item in pending submission

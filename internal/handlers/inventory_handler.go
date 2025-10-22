@@ -286,14 +286,14 @@ func (h *InventoryHandler) GetPendingSubmissions(c echo.Context) error {
 func (h *InventoryHandler) ProcessSubmission(c echo.Context) error {
 	var req dto.ProcessSubmissionRequest
 	if err := c.Bind(&req); err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid request body"})
+		return pkg.ErrInvalidRequestBody(err)
 	}
 
-	if err := c.Validate(&req); err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
+	if err := pkg.Validator.Struct(req); err != nil {
+		return pkg.ErrValidation("failed to validate request", err)
 	}
 
-	submission, err := h.inventoryService.ApproveSubmission(c.Request().Context(), req)
+	submission, err := h.inventoryService.ProcessSubmission(c.Request().Context(), req)
 	if err != nil {
 		return fmt.Errorf("failed to approve submission: %w", err)
 	}
