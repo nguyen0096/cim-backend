@@ -76,8 +76,8 @@ func (s *paymentReceiptFormService) SubmitPaymentReceiptForm(ctx context.Context
 	if form.Department == "" {
 		return pkg.NewAppError(pkg.ErrorCodeValidation, "Department is required", nil)
 	}
-	if form.TotalAmount <= 0 {
-		return pkg.NewAppError(pkg.ErrorCodeValidation, "Total amount must be greater than 0", nil)
+	if form.TotalAmount < 0 {
+		return pkg.NewAppError(pkg.ErrorCodeValidation, "Total amount must be greater than or equal to 0", nil)
 	}
 
 	form.Status = models.PaymentReceiptFormStatusSubmitted
