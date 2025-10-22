@@ -17,7 +17,7 @@ type PaymentReceiptFormRepository interface {
 	Update(ctx context.Context, form *models.PaymentReceiptForm) error
 	Delete(ctx context.Context, id uint) error
 	Search(ctx context.Context, query string, params models.ListParams) ([]models.PaymentReceiptForm, int64, error)
-	GetLatestPendingForm(ctx context.Context) (*models.PaymentReceiptForm, error)
+	GetLatestPaymentReceiptForm(ctx context.Context, purchaseOrderID uint, status models.PaymentReceiptFormStatus) (*models.PaymentReceiptForm, error)
 }
 
 type paymentReceiptFormRepository struct {
@@ -76,8 +76,12 @@ func (r *paymentReceiptFormRepository) List(ctx context.Context, params models.L
 
 // Update updates a payment receipt form
 func (r *paymentReceiptFormRepository) Update(ctx context.Context, form *models.PaymentReceiptForm) error {
-	if err := r.db.WithContext(ctx).Save(form).Error; err != nil {
-		return fmt.Errorf("failed to update payment receipt form: %w", err)
+	if err := r.db.WithContext(ctx).
+		Model(form).
+		Select("full_name", "date", "department", "details", "total_amount", "status").
+		Where("id = ?", form.ID).
+		Updates(form).Error; err != nil {
+		return pkg.NewAppError(pkg.ErrorCodeInternal, "Failed to update payment receipt form", err)
 	}
 	return nil
 }
@@ -116,12 +120,15 @@ func (r *paymentReceiptFormRepository) Search(ctx context.Context, query string,
 }
 
 // GetLatestPendingForm retrieves the latest payment receipt form in pending status
-func (r *paymentReceiptFormRepository) GetLatestPendingForm(ctx context.Context) (*models.PaymentReceiptForm, error) {
+func (r *paymentReceiptFormRepository) GetLatestPaymentReceiptForm(ctx context.Context, purchaseOrderID uint, status models.PaymentReceiptFormStatus) (*models.PaymentReceiptForm, error) {
 	var form models.PaymentReceiptForm
-	if err := r.db.WithContext(ctx).
-		Where("status = ?", models.PaymentReceiptFormStatusPending).
-		Order("created_at DESC").
-		First(&form).Error; err != nil {
+	query := r.db.WithContext(ctx).
+		Where("status = ?", status).
+		Order("created_at DESC")
+	if purchaseOrderID != 0 {
+		query = query.Where("purchase_order_id = ?", purchaseOrderID)
+	}
+	if err := query.First(&form).Error; err != nil {
 		if err == gorm.ErrRecordNotFound {
 			return nil, nil
 		}

@@ -8,13 +8,14 @@ import (
 
 // PaymentReceiptFormPayload represents the payload for creating a payment receipt form
 type PaymentReceiptFormPayload struct {
-	PurchaseOrderID uint    `json:"purchase_order_id"`
-	FullName        string  `json:"full_name"`
-	Date            string  `json:"date"`
-	Department      string  `json:"department"`
-	Details         string  `json:"details"`
-	TotalAmount     float64 `json:"total_amount"`
-	AmountInWords   string  `json:"amount_in_words"`
+	PurchaseOrderID uint                            `json:"purchase_order_id"`
+	FullName        string                          `json:"full_name"`
+	Date            string                          `json:"date"`
+	Department      string                          `json:"department"`
+	Details         string                          `json:"details"`
+	TotalAmount     float64                         `json:"total_amount"`
+	AmountInWords   string                          `json:"amount_in_words"`
+	Status          models.PaymentReceiptFormStatus `json:"status" validate:"required,oneof=pending submitted approved rejected"`
 }
 
 // ToPaymentReceiptForm converts the payload to a PaymentReceiptForm model
@@ -25,7 +26,7 @@ func (p *PaymentReceiptFormPayload) ToPaymentReceiptForm() (*models.PaymentRecei
 		Department:      p.Department,
 		Details:         p.Details,
 		TotalAmount:     p.TotalAmount,
-		Status:          models.PaymentReceiptFormStatusPending,
+		Status:          p.Status,
 	}
 
 	date, err := time.Parse("2006-01-02", p.Date)
