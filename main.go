@@ -215,7 +215,7 @@ func main() {
 	paymentReceiptForms.GET("/:id", paymentReceiptFormHandler.GetPaymentReceiptForm)
 	paymentReceiptForms.PUT("/:id", paymentReceiptFormHandler.UpdatePaymentReceiptForm)
 	paymentReceiptForms.DELETE("/:id", paymentReceiptFormHandler.DeletePaymentReceiptForm)
-	paymentReceiptForms.GET("/pending", paymentReceiptFormHandler.GetLatestPendingPaymentReceiptForm)
+	paymentReceiptForms.GET("/pending", paymentReceiptFormHandler.LatestPendingPaymentReceiptFormStream)
 
 	// Excel routes
 	excel := api.Group("/excel")

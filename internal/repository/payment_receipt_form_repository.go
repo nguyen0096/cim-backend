@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"cim-backend/internal/models"
+	"cim-backend/internal/services/dto"
 	"cim-backend/pkg"
 
 	"gorm.io/gorm"
@@ -13,10 +14,10 @@ import (
 type PaymentReceiptFormRepository interface {
 	Create(ctx context.Context, form *models.PaymentReceiptForm) error
 	GetByID(ctx context.Context, id uint) (*models.PaymentReceiptForm, error)
-	List(ctx context.Context, params models.ListParams) ([]models.PaymentReceiptForm, int64, error)
+	List(ctx context.Context, req *dto.PaymentReceiptFormListRequest) ([]models.PaymentReceiptForm, int64, error)
 	Update(ctx context.Context, form *models.PaymentReceiptForm) error
 	Delete(ctx context.Context, id uint) error
-	Search(ctx context.Context, query string, params models.ListParams) ([]models.PaymentReceiptForm, int64, error)
+	Search(ctx context.Context, query string, req *dto.PaymentReceiptFormListRequest) ([]models.PaymentReceiptForm, int64, error)
 	GetLatestPaymentReceiptForm(ctx context.Context, purchaseOrderID uint, status models.PaymentReceiptFormStatus) (*models.PaymentReceiptForm, error)
 }
 
@@ -52,11 +53,21 @@ func (r *paymentReceiptFormRepository) GetByID(ctx context.Context, id uint) (*m
 }
 
 // List retrieves a paginated list of payment receipt forms
-func (r *paymentReceiptFormRepository) List(ctx context.Context, params models.ListParams) ([]models.PaymentReceiptForm, int64, error) {
+func (r *paymentReceiptFormRepository) List(ctx context.Context, req *dto.PaymentReceiptFormListRequest) ([]models.PaymentReceiptForm, int64, error) {
 	var forms []models.PaymentReceiptForm
 	var total int64
 
 	query := r.db.WithContext(ctx).Model(&models.PaymentReceiptForm{})
+
+	// Apply purchase order filter if provided
+	if req.PurchaseOrderID != 0 {
+		query = query.Where("purchase_order_id = ?", req.PurchaseOrderID)
+	}
+
+	// Apply status filter if provided
+	if len(req.Statuses) > 0 {
+		query = query.Where("status IN ?", req.Statuses)
+	}
 
 	// Count total records
 	if err := query.Count(&total).Error; err != nil {
@@ -64,10 +75,17 @@ func (r *paymentReceiptFormRepository) List(ctx context.Context, params models.L
 	}
 
 	// Apply pagination and sorting
-	offset := params.GetOffset()
-	orderBy := fmt.Sprintf("%s %s", params.Sort, params.Order)
+	offset := req.GetOffset()
+	if req.Sort != "" {
+		if req.Order == "" {
+			req.Order = "asc"
+		}
+		query = query.Order(req.Sort + " " + req.Order)
+	} else {
+		query = query.Order("created_at desc")
+	}
 
-	if err := query.Order(orderBy).Offset(offset).Limit(params.Limit).Find(&forms).Error; err != nil {
+	if err := query.Offset(offset).Limit(req.Limit).Find(&forms).Error; err != nil {
 		return nil, 0, fmt.Errorf("failed to list payment receipt forms: %w", err)
 	}
 
@@ -95,7 +113,7 @@ func (r *paymentReceiptFormRepository) Delete(ctx context.Context, id uint) erro
 }
 
 // Search searches payment receipt forms with pagination
-func (r *paymentReceiptFormRepository) Search(ctx context.Context, query string, params models.ListParams) ([]models.PaymentReceiptForm, int64, error) {
+func (r *paymentReceiptFormRepository) Search(ctx context.Context, query string, req *dto.PaymentReceiptFormListRequest) ([]models.PaymentReceiptForm, int64, error) {
 	var forms []models.PaymentReceiptForm
 	var total int64
 
@@ -103,16 +121,35 @@ func (r *paymentReceiptFormRepository) Search(ctx context.Context, query string,
 		Where("full_name ILIKE ? OR department ILIKE ? OR details ILIKE ? OR location ILIKE ?",
 			"%"+query+"%", "%"+query+"%", "%"+query+"%", "%"+query+"%")
 
+	// Apply purchase order filter if provided
+	if req.PurchaseOrderID != 0 {
+		searchQuery = searchQuery.Where("purchase_order_id = ?", req.PurchaseOrderID)
+	}
+
+	// Apply status filter if provided
+	if len(req.Statuses) > 0 {
+		searchQuery = searchQuery.Where("status IN ?", req.Statuses)
+	}
+
 	// Count total records
 	if err := searchQuery.Count(&total).Error; err != nil {
 		return nil, 0, fmt.Errorf("failed to count search results: %w", err)
 	}
 
 	// Apply pagination and sorting
-	offset := params.GetOffset()
-	orderBy := fmt.Sprintf("%s %s", params.Sort, params.Order)
+	offset := req.GetOffset()
 
-	if err := searchQuery.Order(orderBy).Offset(offset).Limit(params.Limit).Find(&forms).Error; err != nil {
+	// Apply sorting
+	if req.Sort != "" {
+		if req.Order == "" {
+			req.Order = "asc"
+		}
+		searchQuery = searchQuery.Order(req.Sort + " " + req.Order)
+	} else {
+		searchQuery = searchQuery.Order("created_at desc")
+	}
+
+	if err := searchQuery.Offset(offset).Limit(req.Limit).Find(&forms).Error; err != nil {
 		return nil, 0, fmt.Errorf("failed to search payment receipt forms: %w", err)
 	}
 

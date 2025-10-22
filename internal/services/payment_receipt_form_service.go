@@ -13,11 +13,11 @@ import (
 type PaymentReceiptFormService interface {
 	CreatePaymentReceiptForm(ctx context.Context, payload *dto.PaymentReceiptFormPayload) (*models.PaymentReceiptForm, error)
 	GetPaymentReceiptForm(ctx context.Context, id uint) (*models.PaymentReceiptForm, error)
-	ListPaymentReceiptForms(ctx context.Context, params models.ListParams) ([]models.PaymentReceiptForm, int64, error)
+	ListPaymentReceiptForms(ctx context.Context, req *dto.PaymentReceiptFormListRequest) ([]models.PaymentReceiptForm, int64, error)
 	UpdatePaymentReceiptForm(ctx context.Context, form *models.PaymentReceiptForm) error
 	DeletePaymentReceiptForm(ctx context.Context, id uint) error
-	SearchPaymentReceiptForms(ctx context.Context, query string, params models.ListParams) ([]models.PaymentReceiptForm, int64, error)
-	GetLatestPendingPaymentReceiptForm(ctx context.Context, purchaseOrderID uint) (*models.PaymentReceiptForm, error)
+	SearchPaymentReceiptForms(ctx context.Context, query string, req *dto.PaymentReceiptFormListRequest) ([]models.PaymentReceiptForm, int64, error)
+	LatestPendingPaymentReceiptFormStream(ctx context.Context, purchaseOrderID uint) (*models.PaymentReceiptForm, error)
 }
 
 type paymentReceiptFormService struct {
@@ -57,8 +57,8 @@ func (s *paymentReceiptFormService) GetPaymentReceiptForm(ctx context.Context, i
 }
 
 // ListPaymentReceiptForms retrieves a paginated list of payment receipt forms
-func (s *paymentReceiptFormService) ListPaymentReceiptForms(ctx context.Context, params models.ListParams) ([]models.PaymentReceiptForm, int64, error) {
-	forms, total, err := s.paymentReceiptFormRepo.List(ctx, params)
+func (s *paymentReceiptFormService) ListPaymentReceiptForms(ctx context.Context, req *dto.PaymentReceiptFormListRequest) ([]models.PaymentReceiptForm, int64, error) {
+	forms, total, err := s.paymentReceiptFormRepo.List(ctx, req)
 	if err != nil {
 		return nil, 0, fmt.Errorf("failed to list payment receipt forms: %w", err)
 	}
@@ -101,16 +101,16 @@ func (s *paymentReceiptFormService) DeletePaymentReceiptForm(ctx context.Context
 }
 
 // SearchPaymentReceiptForms searches payment receipt forms with pagination
-func (s *paymentReceiptFormService) SearchPaymentReceiptForms(ctx context.Context, query string, params models.ListParams) ([]models.PaymentReceiptForm, int64, error) {
-	forms, total, err := s.paymentReceiptFormRepo.Search(ctx, query, params)
+func (s *paymentReceiptFormService) SearchPaymentReceiptForms(ctx context.Context, query string, req *dto.PaymentReceiptFormListRequest) ([]models.PaymentReceiptForm, int64, error) {
+	forms, total, err := s.paymentReceiptFormRepo.Search(ctx, query, req)
 	if err != nil {
 		return nil, 0, fmt.Errorf("failed to search payment receipt forms: %w", err)
 	}
 	return forms, total, nil
 }
 
-// GetLatestPendingPaymentReceiptForm retrieves the latest payment receipt form in pending status
-func (s *paymentReceiptFormService) GetLatestPendingPaymentReceiptForm(ctx context.Context, purchaseOrderID uint) (*models.PaymentReceiptForm, error) {
+// LatestPendingPaymentReceiptFormStream retrieves the latest payment receipt form in pending status
+func (s *paymentReceiptFormService) LatestPendingPaymentReceiptFormStream(ctx context.Context, purchaseOrderID uint) (*models.PaymentReceiptForm, error) {
 	form, err := s.paymentReceiptFormRepo.GetLatestPaymentReceiptForm(ctx, purchaseOrderID, models.PaymentReceiptFormStatusPending)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get latest pending payment receipt form: %w", err)

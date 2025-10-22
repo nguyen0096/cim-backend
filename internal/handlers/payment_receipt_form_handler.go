@@ -148,7 +148,7 @@ func (h *PaymentReceiptFormHandler) CreatePaymentReceiptForm(c echo.Context) err
 	}
 
 	// Check if there's already a pending form
-	pendingForm, err := h.paymentReceiptFormService.GetLatestPendingPaymentReceiptForm(c.Request().Context(), payload.PurchaseOrderID)
+	pendingForm, err := h.paymentReceiptFormService.LatestPendingPaymentReceiptFormStream(c.Request().Context(), payload.PurchaseOrderID)
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to check for pending forms"})
 	}
@@ -235,6 +235,8 @@ func (h *PaymentReceiptFormHandler) GetPaymentReceiptForm(c echo.Context) error 
 // @Param page query int false "Page number (default: 1, minimum: 1)"
 // @Param limit query int false "Number of items per page (default: 20, minimum: 1, maximum: 100)"
 // @Param q query string false "Search term for full name, department, details, or location"
+// @Param purchase_order_id query int false "Filter by purchase order ID"
+// @Param statuses query []string false "Filter by statuses (pending, submitted, approved, rejected)"
 // @Param sort query string false "Sort field (full_name, department, total_amount, date, created_at, updated_at)"
 // @Param order query string false "Sort direction (asc, desc, default: asc)"
 // @Success 200 {object} models.PaginatedResponse[models.PaymentReceiptForm]
@@ -244,13 +246,13 @@ func (h *PaymentReceiptFormHandler) GetPaymentReceiptForm(c echo.Context) error 
 // @Router /payment-receipt-forms [get]
 func (h *PaymentReceiptFormHandler) ListPaymentReceiptForms(c echo.Context) error {
 	// Parse pagination parameters
-	var params models.ListParams
-	if err := c.Bind(&params); err != nil {
+	var req dto.PaymentReceiptFormListRequest
+	if err := c.Bind(&req); err != nil {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid query parameters"})
 	}
 
 	// Validate and set defaults
-	params.ValidateAndSetDefaults()
+	req.ValidateAndSetDefaults()
 
 	// Get search query
 	query := c.QueryParam("q")
@@ -260,9 +262,9 @@ func (h *PaymentReceiptFormHandler) ListPaymentReceiptForms(c echo.Context) erro
 	var err error
 
 	if query != "" {
-		forms, total, err = h.paymentReceiptFormService.SearchPaymentReceiptForms(c.Request().Context(), query, params)
+		forms, total, err = h.paymentReceiptFormService.SearchPaymentReceiptForms(c.Request().Context(), query, &req)
 	} else {
-		forms, total, err = h.paymentReceiptFormService.ListPaymentReceiptForms(c.Request().Context(), params)
+		forms, total, err = h.paymentReceiptFormService.ListPaymentReceiptForms(c.Request().Context(), &req)
 	}
 
 	if err != nil {
@@ -270,7 +272,7 @@ func (h *PaymentReceiptFormHandler) ListPaymentReceiptForms(c echo.Context) erro
 	}
 
 	// Create paginated response
-	response := models.NewPaginationResult(forms, total, params.Page, params.Limit)
+	response := models.NewPaginationResult(forms, total, req.Page, req.Limit)
 
 	return c.JSON(http.StatusOK, response)
 }
@@ -348,7 +350,7 @@ func (h *PaymentReceiptFormHandler) DeletePaymentReceiptForm(c echo.Context) err
 	return c.NoContent(http.StatusNoContent)
 }
 
-// GetLatestPendingPaymentReceiptForm streams the latest payment receipt form in pending status using Server-Sent Events
+// LatestPendingPaymentReceiptFormStream streams the latest payment receipt form in pending status using Server-Sent Events
 // @Summary Get latest pending payment receipt form (SSE)
 // @Description Stream the latest payment receipt form in pending status using Server-Sent Events. The connection will remain open and send updates when the pending form changes. Events are sent every 5 seconds with keep-alive every 30 seconds.
 // @Tags payment-receipt-forms
@@ -372,7 +374,7 @@ func (h *PaymentReceiptFormHandler) DeletePaymentReceiptForm(c echo.Context) err
 //
 //	event: error
 //	data: {"error":"Error messzage","status":"error","timestamp":"2024-01-15T10:30:00Z"}
-func (h *PaymentReceiptFormHandler) GetLatestPendingPaymentReceiptForm(c echo.Context) error {
+func (h *PaymentReceiptFormHandler) LatestPendingPaymentReceiptFormStream(c echo.Context) error {
 	// Set SSE headers
 	c.Response().Header().Set("Content-Type", "text/event-stream")
 	c.Response().Header().Set("Cache-Control", "no-cache")
@@ -467,7 +469,7 @@ func (h *PaymentReceiptFormHandler) SendKeepAlive(c echo.Context) error {
 
 // sendInitialPendingForm sends the current pending form if it exists
 func (h *PaymentReceiptFormHandler) sendInitialPendingForm(c echo.Context) error {
-	form, err := h.paymentReceiptFormService.GetLatestPendingPaymentReceiptForm(c.Request().Context(), 0)
+	form, err := h.paymentReceiptFormService.LatestPendingPaymentReceiptFormStream(c.Request().Context(), 0)
 	if err != nil {
 		// Send error event
 		errorData := map[string]interface{}{

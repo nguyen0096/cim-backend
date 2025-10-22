@@ -6,6 +6,12 @@ import (
 	"cim-backend/internal/models"
 )
 
+type PaymentReceiptFormListRequest struct {
+	models.ListParams
+	PurchaseOrderID uint                              `json:"purchase_order_id" query:"purchase_order_id"`
+	Statuses        []models.PaymentReceiptFormStatus `json:"statuses" query:"statuses"`
+}
+
 // PaymentReceiptFormPayload represents the payload for creating a payment receipt form
 type PaymentReceiptFormPayload struct {
 	PurchaseOrderID uint                            `json:"purchase_order_id"`

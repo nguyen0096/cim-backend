@@ -194,7 +194,7 @@ func TestPaymentReceiptFormService_CreatePaymentReceiptForm(t *testing.T) {
 	}
 }
 
-func TestPaymentReceiptFormService_GetLatestPendingPaymentReceiptForm(t *testing.T) {
+func TestPaymentReceiptFormService_LatestPendingPaymentReceiptFormStream(t *testing.T) {
 	tests := []struct {
 		name        string
 		expectError bool
@@ -233,7 +233,7 @@ func TestPaymentReceiptFormService_GetLatestPendingPaymentReceiptForm(t *testing
 			}
 
 			// Act
-			result, err := service.GetLatestPendingPaymentReceiptForm(context.Background())
+			result, err := service.LatestPendingPaymentReceiptFormStream(context.Background())
 
 			// Assert
 			if tt.expectError {
