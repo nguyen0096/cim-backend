@@ -1,9 +1,9 @@
 package data
 
 import (
+	"cim-backend/database"
 	"cim-backend/internal/auth"
 	"cim-backend/internal/config"
-	"cim-backend/internal/database"
 	"cim-backend/internal/models"
 	"cim-backend/internal/repository"
 	"cim-backend/internal/services"

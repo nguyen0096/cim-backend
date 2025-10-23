@@ -1,8 +1,8 @@
 package main
 
 import (
+	"cim-backend/database"
 	"cim-backend/internal/config"
-	"cim-backend/internal/database"
 	"cim-backend/internal/models"
 	"fmt"
 )

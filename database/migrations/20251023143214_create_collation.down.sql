@@ -1,0 +1,2 @@
+DROP COLLATION IF EXISTS vi_vn;
+

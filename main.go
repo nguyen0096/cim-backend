@@ -1,9 +1,9 @@
 package main
 
 import (
+	"cim-backend/database"
 	"cim-backend/internal/auth"
 	"cim-backend/internal/config"
-	"cim-backend/internal/database"
 	"cim-backend/internal/handlers"
 	"cim-backend/internal/middleware"
 	"cim-backend/internal/repository"
