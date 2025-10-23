@@ -13,7 +13,7 @@ type User struct {
 	UID       string         `json:"uid" gorm:"uniqueIndex"` // Firebase UID
 	Email     string         `json:"email" gorm:"uniqueIndex;not null"`
 	Name      string         `json:"name"`
-	Role      UserRole       `json:"role" gorm:"default:'staff'"`                                                    // admin, accountant, staff
+	Role      UserRole       `json:"role" gorm:"default:'staff'"`                                                    // admin, accountant, staff, bot_form
 	Status    string         `json:"status" gorm:"default:active;check:status IN ('active', 'pending', 'inactive')"` // active, pending, inactive
 	CreatedAt time.Time      `json:"created_at"`
 	UpdatedAt time.Time      `json:"updated_at"`
@@ -27,12 +27,13 @@ const (
 	RoleAdmin      UserRole = "admin"
 	RoleAccountant UserRole = "accountant"
 	RoleStaff      UserRole = "staff"
+	RoleBotForm  UserRole = "bot_form"
 )
 
 // IsValidRole checks if the role is valid
 func (r UserRole) IsValidRole() bool {
 	switch r {
-	case RoleAdmin, RoleAccountant, RoleStaff:
+	case RoleAdmin, RoleAccountant, RoleStaff, RoleBotForm:
 		return true
 	default:
 		return false

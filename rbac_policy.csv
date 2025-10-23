@@ -30,6 +30,7 @@ p, admin, purchase-order-items, update, allow
 p, admin, purchase-order-items, delete, allow
 
 p, admin, purchase-orders, view_status_completed, allow
+p, admin, payment-receipt-forms, view_page, allow
 p, admin, payment-receipt-forms, view, allow
 p, admin, payment-receipt-forms, create, allow
 p, admin, payment-receipt-forms, update, allow
@@ -38,6 +39,7 @@ p, admin, excel, view, allow
 p, admin, excel, create, allow
 p, admin, excel, update, allow
 p, admin, excel, delete, allow
+p, admin, settings, view_page, allow
 p, admin, settings, view, allow
 p, admin, settings, create, allow
 p, admin, settings, update, allow
@@ -67,6 +69,7 @@ p, accountant, purchase-order-items, create, allow
 p, accountant, purchase-order-items, update, allow
 p, accountant, purchase-order-items, delete, allow
 p, accountant, excel, view, allow
+p, accountant, settings, view_page, allow
 p, accountant, settings, view, allow
 p, accountant, settings, create, allow
 p, accountant, settings, update, allow
@@ -86,14 +89,15 @@ p, staff, purchase-order-items, create, allow
 p, staff, purchase-order-items, update, allow
 p, staff, purchase-order-items, delete, allow
 p, staff, inventories, view, allow
+p, staff, inventory-items, view, allow
 p, staff, permissions, view, allow
+p, staff, settings, view, allow
 
-p, staff, payment-receipt-forms, view, allow
 p, staff, payment-receipt-forms, update, allow
 
-
-p, public_user, payment-receipt-forms, view, allow
-p, public_user, payment-receipt-forms, update, allow
+p, bot_form, payment-receipt-forms, update, allow
+p, bot_form, payment-receipt-forms, submit, allow
+p, bot_form, permissions, view, allow
 
 g, demoAdminUid0000000000000000, admin
 g, demoAccountantUid00000000000, accountant

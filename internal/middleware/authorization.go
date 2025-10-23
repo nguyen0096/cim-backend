@@ -66,6 +66,16 @@ func AuthorizationMiddleware(casbinService *auth.CasbinService, userService *ser
 						// Continue anyway, this is not critical for authorization
 					}
 				}
+
+				if roles, err := casbinService.GetRolesForUser(userUID); err == nil && len(roles) == 0 {
+					if err := casbinService.AddRoleForUser(userUID, string(user.Role)); err != nil {
+						fmt.Printf("Error adding role to user: %v\n", err)
+						// Continue anyway, this is not critical for authorization
+					}
+				} else if err != nil {
+					fmt.Printf("Error getting roles for user: %v\n", err)
+					// Continue anyway, this is not critical for authorization
+				}
 			}
 
 			// Extract resource and action from the request
@@ -120,19 +130,18 @@ func extractResourceAndAction(c echo.Context) (string, string) {
 	// Remove API prefix
 	path = strings.TrimPrefix(path, "/api/v1")
 
-	// Map HTTP methods to actions
-	action := methodToAction(method)
-	if action == "" {
-		return "", ""
-	}
-
 	// Extract resource from path
 	resource := pathToResource(path)
 	if resource == "" {
 		return "", ""
 	}
 
-	return resource, action
+	switch {
+	case resource == "payment-receipt-forms" && strings.HasSuffix(path, "/pending"):
+		return "payment-receipt-forms", "submit"
+	default:
+		return resource, methodToAction(method)
+	}
 }
 
 // methodToAction maps HTTP methods to Casbin actions

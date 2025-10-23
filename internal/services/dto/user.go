@@ -6,7 +6,7 @@ type CreateUserRequest struct {
 	Email  string `json:"email" validate:"required,email" example:"user@example.com"`
 	Name   string `json:"name" example:"John Doe"`
 	Status string `json:"status" validate:"required,oneof=active pending inactive" example:"active"`
-	Role   string `json:"role" validate:"required,oneof=admin accountant staff" example:"staff"`
+	Role   string `json:"role" validate:"required,oneof=admin accountant staff bot_form" example:"staff"`
 }
 
 // CreateUserResponse represents the response for creating a new user
@@ -23,6 +23,6 @@ type CreateUserResponse struct {
 // UpdateUserRequest represents the request for updating a user
 type UpdateUserRequest struct {
 	Name   string `json:"name" example:"John Doe"`
-	Role   string `json:"role" validate:"required,oneof=admin accountant staff" example:"staff"`
+	Role   string `json:"role" validate:"required,oneof=admin accountant staff bot_form" example:"staff"`
 	Status string `json:"status" validate:"required,oneof=active pending inactive" example:"active"`
 }
