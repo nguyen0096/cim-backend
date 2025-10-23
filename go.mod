@@ -19,6 +19,7 @@ require (
 	github.com/xuri/excelize/v2 v2.8.0
 	google.golang.org/api v0.169.0
 	gorm.io/datatypes v1.2.7
+	gorm.io/driver/postgres v1.6.0
 	gorm.io/gorm v1.30.0
 )
 
@@ -131,7 +132,6 @@ require (
 	gopkg.in/yaml.v2 v2.4.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 	gorm.io/driver/mysql v1.5.7 // indirect
-	gorm.io/driver/postgres v1.6.0 // indirect
 	gorm.io/driver/sqlserver v1.6.0 // indirect
 	gorm.io/plugin/dbresolver v1.6.0 // indirect
 	modernc.org/libc v1.22.2 // indirect
