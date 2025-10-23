@@ -130,7 +130,7 @@ func (h *PaymentReceiptFormHandler) runNotificationHub() {
 
 // CreatePaymentReceiptForm creates a new payment receipt form
 // @Summary Create payment receipt form
-// @Description Create a new payment receipt form
+// @Description Create a new payment receipt form with auto-generated form number if not provided
 // @Tags payment-receipt-forms
 // @Accept json
 // @Produce json
@@ -248,7 +248,7 @@ func (h *PaymentReceiptFormHandler) ListPaymentReceiptForms(c echo.Context) erro
 	// Parse pagination parameters
 	var req dto.PaymentReceiptFormListRequest
 	if err := c.Bind(&req); err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid query parameters"})
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid query parameters", "details": err.Error()})
 	}
 
 	// Validate and set defaults

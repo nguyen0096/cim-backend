@@ -13,6 +13,7 @@ const (
 
 type PaymentReceiptForm struct {
 	Base
+	FormNumber      string                   `json:"form_number" gorm:"unique;not null"`
 	PurchaseOrderID uint                     `json:"purchase_order_id" gorm:"not null"`
 	PurchaseOrder   *PurchaseOrder           `json:"purchase_order,omitempty" gorm:"foreignKey:PurchaseOrderID"`
 	Location        string                   `json:"location"`

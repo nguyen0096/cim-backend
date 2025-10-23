@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"cim-backend/internal/models"
 	"cim-backend/internal/services/dto"
@@ -73,6 +74,16 @@ func (r *paymentReceiptFormRepository) List(ctx context.Context, req *dto.Paymen
 	// Count total records
 	if err := query.Count(&total).Error; err != nil {
 		return nil, 0, fmt.Errorf("failed to count payment receipt forms: %w", err)
+	}
+
+	if req.Date != "" {
+		date, err := time.Parse("2006-01-02", req.Date)
+		if err != nil {
+			return nil, 0, fmt.Errorf("invalid date format, expected YYYY-MM-DD: %w", err)
+		}
+		startOfDay := date.Truncate(24 * time.Hour)
+		endOfDay := startOfDay.Add(24 * time.Hour)
+		query = query.Where("date >= ? AND date < ?", startOfDay, endOfDay)
 	}
 
 	// Apply pagination and sorting

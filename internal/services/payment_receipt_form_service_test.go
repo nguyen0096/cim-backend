@@ -30,8 +30,8 @@ func (m *MockPaymentReceiptFormRepository) GetByID(ctx context.Context, id uint)
 	return args.Get(0).(*models.PaymentReceiptForm), args.Error(1)
 }
 
-func (m *MockPaymentReceiptFormRepository) List(ctx context.Context, params models.ListParams) ([]models.PaymentReceiptForm, int64, error) {
-	args := m.Called(ctx, params)
+func (m *MockPaymentReceiptFormRepository) List(ctx context.Context, req *dto.PaymentReceiptFormListRequest) ([]models.PaymentReceiptForm, int64, error) {
+	args := m.Called(ctx, req)
 	return args.Get(0).([]models.PaymentReceiptForm), args.Get(1).(int64), args.Error(2)
 }
 
@@ -45,13 +45,18 @@ func (m *MockPaymentReceiptFormRepository) Delete(ctx context.Context, id uint) 
 	return args.Error(0)
 }
 
-func (m *MockPaymentReceiptFormRepository) Search(ctx context.Context, query string, params models.ListParams) ([]models.PaymentReceiptForm, int64, error) {
-	args := m.Called(ctx, query, params)
+func (m *MockPaymentReceiptFormRepository) Search(ctx context.Context, query string, req *dto.PaymentReceiptFormListRequest) ([]models.PaymentReceiptForm, int64, error) {
+	args := m.Called(ctx, query, req)
 	return args.Get(0).([]models.PaymentReceiptForm), args.Get(1).(int64), args.Error(2)
 }
 
-func (m *MockPaymentReceiptFormRepository) GetLatestPendingForm(ctx context.Context) (*models.PaymentReceiptForm, error) {
-	args := m.Called(ctx)
+func (m *MockPaymentReceiptFormRepository) UpdateStatus(ctx context.Context, id uint, status models.PaymentReceiptFormStatus) error {
+	args := m.Called(ctx, id, status)
+	return args.Error(0)
+}
+
+func (m *MockPaymentReceiptFormRepository) GetLatestPaymentReceiptForm(ctx context.Context, purchaseOrderID uint, status models.PaymentReceiptFormStatus) (*models.PaymentReceiptForm, error) {
+	args := m.Called(ctx, purchaseOrderID, status)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
 	}
@@ -68,6 +73,7 @@ func TestPaymentReceiptFormService_CreatePaymentReceiptForm(t *testing.T) {
 		{
 			name: "should create payment receipt form successfully when all required fields are provided and no pending form exists",
 			payload: &dto.PaymentReceiptFormPayload{
+				FormNumber:    "20240115-001",
 				FullName:      "John Doe",
 				Date:          "2024-01-15",
 				Department:    "Finance",
@@ -78,8 +84,9 @@ func TestPaymentReceiptFormService_CreatePaymentReceiptForm(t *testing.T) {
 			expectError: false,
 		},
 		{
-			name: "should return validation error when full name is empty",
+			name: "should create payment receipt form even when full name is empty (validation happens during submission)",
 			payload: &dto.PaymentReceiptFormPayload{
+				FormNumber:    "20240115-002",
 				FullName:      "",
 				Date:          "2024-01-15",
 				Department:    "Finance",
@@ -87,12 +94,12 @@ func TestPaymentReceiptFormService_CreatePaymentReceiptForm(t *testing.T) {
 				TotalAmount:   100.50,
 				AmountInWords: "One hundred and fifty cents",
 			},
-			expectError: true,
-			errorCode:   pkg.ErrorCodeValidation,
+			expectError: false,
 		},
 		{
-			name: "should return validation error when department is empty",
+			name: "should create payment receipt form even when department is empty (validation happens during submission)",
 			payload: &dto.PaymentReceiptFormPayload{
+				FormNumber:    "20240115-003",
 				FullName:      "John Doe",
 				Date:          "2024-01-15",
 				Department:    "",
@@ -100,12 +107,12 @@ func TestPaymentReceiptFormService_CreatePaymentReceiptForm(t *testing.T) {
 				TotalAmount:   100.50,
 				AmountInWords: "One hundred and fifty cents",
 			},
-			expectError: true,
-			errorCode:   pkg.ErrorCodeValidation,
+			expectError: false,
 		},
 		{
 			name: "should return validation error when date format is invalid",
 			payload: &dto.PaymentReceiptFormPayload{
+				FormNumber:    "20240115-004",
 				FullName:      "John Doe",
 				Date:          "invalid-date",
 				Department:    "Finance",
@@ -117,8 +124,9 @@ func TestPaymentReceiptFormService_CreatePaymentReceiptForm(t *testing.T) {
 			errorCode:   pkg.ErrorCodeValidation,
 		},
 		{
-			name: "should return validation error when total amount is zero or negative",
+			name: "should create payment receipt form even when total amount is zero (validation happens during submission)",
 			payload: &dto.PaymentReceiptFormPayload{
+				FormNumber:    "20240115-005",
 				FullName:      "John Doe",
 				Date:          "2024-01-15",
 				Department:    "Finance",
@@ -126,12 +134,12 @@ func TestPaymentReceiptFormService_CreatePaymentReceiptForm(t *testing.T) {
 				TotalAmount:   0,
 				AmountInWords: "Zero",
 			},
-			expectError: true,
-			errorCode:   pkg.ErrorCodeValidation,
+			expectError: false,
 		},
 		{
-			name: "should return validation error when there is already a pending form",
+			name: "should create payment receipt form successfully (no pending form validation in create)",
 			payload: &dto.PaymentReceiptFormPayload{
+				FormNumber:    "20240115-006",
 				FullName:      "John Doe",
 				Date:          "2024-01-15",
 				Department:    "Finance",
@@ -139,8 +147,20 @@ func TestPaymentReceiptFormService_CreatePaymentReceiptForm(t *testing.T) {
 				TotalAmount:   100.50,
 				AmountInWords: "One hundred and fifty cents",
 			},
-			expectError: true,
-			errorCode:   pkg.ErrorCodeValidation,
+			expectError: false,
+		},
+		{
+			name: "should create payment receipt form with provided form number",
+			payload: &dto.PaymentReceiptFormPayload{
+				FormNumber:    "20240115-001", // Provide form number to avoid auto-generation
+				FullName:      "John Doe",
+				Date:          "2024-01-15",
+				Department:    "Finance",
+				Details:       "Office supplies",
+				TotalAmount:   100.50,
+				AmountInWords: "One hundred and fifty cents",
+			},
+			expectError: false,
 		},
 	}
 
@@ -148,19 +168,7 @@ func TestPaymentReceiptFormService_CreatePaymentReceiptForm(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			// Arrange
 			mockRepo := new(MockPaymentReceiptFormRepository)
-			service := NewPaymentReceiptFormService(mockRepo)
-
-			// Mock GetLatestPendingForm call
-			if tt.name == "should return validation error when there is already a pending form" {
-				// When there's a pending form, return a mock form
-				mockRepo.On("GetLatestPendingForm", mock.Anything).Return(&models.PaymentReceiptForm{
-					FullName: "Existing User",
-					Status:   models.PaymentReceiptFormStatusPending,
-				}, nil)
-			} else {
-				// When there's no pending form, return nil
-				mockRepo.On("GetLatestPendingForm", mock.Anything).Return(nil, nil)
-			}
+			service := NewPaymentReceiptFormService(mockRepo, nil)
 
 			if !tt.expectError {
 				mockRepo.On("Create", mock.Anything, mock.MatchedBy(func(form *models.PaymentReceiptForm) bool {
@@ -224,16 +232,16 @@ func TestPaymentReceiptFormService_LatestPendingPaymentReceiptFormStream(t *test
 		t.Run(tt.name, func(t *testing.T) {
 			// Arrange
 			mockRepo := new(MockPaymentReceiptFormRepository)
-			service := NewPaymentReceiptFormService(mockRepo)
+			service := NewPaymentReceiptFormService(mockRepo, nil)
 
 			if tt.expectError {
-				mockRepo.On("GetLatestPendingForm", mock.Anything).Return(nil, pkg.NewAppError(tt.errorCode, "No pending payment receipt form found", nil))
+				mockRepo.On("GetLatestPaymentReceiptForm", mock.Anything, uint(0), models.PaymentReceiptFormStatusPending).Return(nil, pkg.NewAppError(tt.errorCode, "No pending payment receipt form found", nil))
 			} else {
-				mockRepo.On("GetLatestPendingForm", mock.Anything).Return(tt.mockForm, nil)
+				mockRepo.On("GetLatestPaymentReceiptForm", mock.Anything, uint(0), models.PaymentReceiptFormStatusPending).Return(tt.mockForm, nil)
 			}
 
 			// Act
-			result, err := service.LatestPendingPaymentReceiptFormStream(context.Background())
+			result, err := service.LatestPendingPaymentReceiptFormStream(context.Background(), 0)
 
 			// Assert
 			if tt.expectError {
@@ -256,7 +264,7 @@ func TestPaymentReceiptFormService_LatestPendingPaymentReceiptFormStream(t *test
 func TestPaymentReceiptFormService_GetPaymentReceiptForm(t *testing.T) {
 	// Arrange
 	mockRepo := new(MockPaymentReceiptFormRepository)
-	service := NewPaymentReceiptFormService(mockRepo)
+	service := NewPaymentReceiptFormService(mockRepo, nil)
 
 	expectedForm := &models.PaymentReceiptForm{
 		FullName:    "John Doe",
@@ -280,7 +288,7 @@ func TestPaymentReceiptFormService_GetPaymentReceiptForm(t *testing.T) {
 func TestPaymentReceiptFormService_ListPaymentReceiptForms(t *testing.T) {
 	// Arrange
 	mockRepo := new(MockPaymentReceiptFormRepository)
-	service := NewPaymentReceiptFormService(mockRepo)
+	service := NewPaymentReceiptFormService(mockRepo, nil)
 
 	expectedForms := []models.PaymentReceiptForm{
 		{
@@ -292,7 +300,9 @@ func TestPaymentReceiptFormService_ListPaymentReceiptForms(t *testing.T) {
 		},
 	}
 	expectedTotal := int64(1)
-	params := models.ListParams{Page: 1, Limit: 20}
+	params := &dto.PaymentReceiptFormListRequest{
+		ListParams: models.ListParams{Page: 1, Limit: 20},
+	}
 
 	mockRepo.On("List", mock.Anything, params).Return(expectedForms, expectedTotal, nil)
 

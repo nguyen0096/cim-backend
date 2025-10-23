@@ -8,6 +8,8 @@ import (
 	"cim-backend/internal/repository"
 	"cim-backend/internal/services/dto"
 	"cim-backend/pkg"
+
+	"gorm.io/gorm"
 )
 
 type PaymentReceiptFormService interface {
@@ -24,17 +26,47 @@ type PaymentReceiptFormService interface {
 
 type paymentReceiptFormService struct {
 	paymentReceiptFormRepo repository.PaymentReceiptFormRepository
+	db                     *gorm.DB
 }
 
 // NewPaymentReceiptFormService creates a new payment receipt form service
-func NewPaymentReceiptFormService(paymentReceiptFormRepo repository.PaymentReceiptFormRepository) PaymentReceiptFormService {
+func NewPaymentReceiptFormService(paymentReceiptFormRepo repository.PaymentReceiptFormRepository, db *gorm.DB) PaymentReceiptFormService {
 	return &paymentReceiptFormService{
 		paymentReceiptFormRepo: paymentReceiptFormRepo,
+		db:                     db,
 	}
+}
+
+// generateNextFormNumber generates the next available form number in date-increment format
+func (s *paymentReceiptFormService) generateNextFormNumber(ctx context.Context) (string, error) {
+	// Count all existing forms to get the next increment number
+	var count int64
+	err := s.db.WithContext(ctx).
+		Model(&models.PaymentReceiptForm{}).
+		Count(&count).Error
+
+	if err != nil {
+		return "", fmt.Errorf("failed to generate form number: %w", err)
+	}
+
+	// Generate form number: date-increment (e.g., 20240115-001)
+	increment := count + 1
+	formNumber := fmt.Sprintf("%s-%05d", pkg.GetTodayDate().Format("20060102"), increment)
+
+	return formNumber, nil
 }
 
 // CreatePaymentReceiptForm creates a new payment receipt form
 func (s *paymentReceiptFormService) CreatePaymentReceiptForm(ctx context.Context, payload *dto.PaymentReceiptFormPayload) (*models.PaymentReceiptForm, error) {
+	// Generate form number if not provided
+	if payload.FormNumber == "" {
+		formNumber, err := s.generateNextFormNumber(ctx)
+		if err != nil {
+			return nil, pkg.NewAppError(pkg.ErrorCodeInternal, "Failed to generate form number", err)
+		}
+		payload.FormNumber = formNumber
+	}
+
 	// Convert payload to model
 	payload.Status = models.PaymentReceiptFormStatusPending
 	form, err := payload.ToPaymentReceiptForm()
