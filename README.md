@@ -42,40 +42,4 @@ make lint
 make docker-build
 make docker-run
 make docker-logs
-
-# Protobuf
-make proto-install  # Install protobuf tools
-buf lint # Lint protobuf
-buf generate # Generate protobuf
 ```
-
-## API Contract (Protobuf)
-
-This project uses Protocol Buffers with **Buf** to define the API contract. All service definitions and data models are available in the `proto/` directory.
-
-**Quick Start:**
-
-1. Install Buf CLI:
-
-   ```bash
-   make buf-install
-   ```
-
-2. Compile protobuf files:
-
-   ```bash
-   make proto
-   ```
-
-3. Lint and format:
-   ```bash
-   make buf-lint
-   make buf-format
-   ```
-
-**Configuration Files:**
-
-- `buf.yaml` - Lint and breaking change detection
-- `buf.gen.yaml` - Code generation settings
-
-For detailed documentation, see [docs/PROTOBUF.md](docs/PROTOBUF.md)

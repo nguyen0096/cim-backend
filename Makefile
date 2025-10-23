@@ -48,20 +48,9 @@ dev-setup:
 	sleep 10
 	go run main.go
 
-# Production setup
-prod-setup:
-	docker-compose -f docker-compose.yml -f docker-compose.prod.yml up -d
-
 # Generate API documentation
 docs:
 	swag init -g main.go
-
-# Install protobuf tools
-proto-install:
-	@echo "Installing protobuf compiler and plugins..."
-	go install github.com/bufbuild/buf/cmd/buf@latest
-	go install google.golang.org/protobuf/cmd/protoc-gen-go@latest
-	@echo "Protobuf tools installed successfully!"
 
 # Test API with sample data
 test-api:
@@ -69,7 +58,7 @@ test-api:
 
 # Seed database with mock data
 seed-db:
-	go run cmd/util/*.go seed
+	go run cmd/util seed
 
 # Help
 help:
@@ -91,32 +80,6 @@ help:
 	@echo "  docs           - Generate API documentation"
 	@echo "  test-api       - Test API with sample data"
 	@echo "  seed-db        - Seed database with mock data"
-	@echo "  proto-install  - Install protobuf compiler tools"
 
 generate:
 	go generate ./...
-
-
-windows_64:
-	echo "Windows x64: Build binary"
-	CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -a -installsuffix cgo -o out/main_windows_64.exe .
-
-windows_32:
-	echo "Windows x32: Build binary"
-	CGO_ENABLED=0 GOOS=windows GOARCH=386 go build -a -installsuffix cgo -o out/main_windows_32.exe .
-
-linux_64:
-	echo "Linux x64: Build binary"
-	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -a -installsuffix cgo -o out/main_linux_64 .
-
-linux_32:
-	echo "Linux x32: Build binary"
-	CGO_ENABLED=0 GOOS=linux GOARCH=386 go build -a -installsuffix cgo -o out/main_linux_32 .
-
-darwin:
-	echo "Darwin: Build binary"
-	CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build -a -installsuffix cgo -o out/main_darwin .
-
-arm:
-	echo "ARM: Build binary"
-	CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -a -installsuffix cgo -o out/main_arm .
