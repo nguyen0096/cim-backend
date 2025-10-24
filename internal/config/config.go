@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"strconv"
+	"strings"
 
 	"github.com/joho/godotenv"
 )
@@ -25,8 +26,9 @@ type DatabaseConfig struct {
 }
 
 type ServerConfig struct {
-	Host string
-	Port string
+	Host               string
+	Port               string
+	CORSAllowedOrigins []string
 }
 
 type JWTConfig struct {
@@ -60,8 +62,9 @@ func Load() *Config {
 			DBName:   getEnv("DB_NAME", "cim_db"),
 		},
 		Server: ServerConfig{
-			Host: getEnv("SERVER_HOST", "0.0.0.0"),
-			Port: getEnv("SERVER_PORT", "8080"),
+			Host:               getEnv("SERVER_HOST", "0.0.0.0"),
+			Port:               getEnv("SERVER_PORT", "8080"),
+			CORSAllowedOrigins: getEnvAsSlice("CORS_ALLOWED_ORIGINS", []string{""}),
 		},
 		Firebase: FirebaseConfig{
 			ServiceAccountPath: getEnv("FIREBASE_SERVICE_ACCOUNT_PATH", "./firebase-service-account.json"),
@@ -89,6 +92,20 @@ func getEnvAsInt(key string, defaultValue int) int {
 		if intValue, err := strconv.Atoi(value); err == nil {
 			return intValue
 		}
+	}
+	return defaultValue
+}
+
+func getEnvAsSlice(key string, defaultValue []string) []string {
+	if value := os.Getenv(key); value != "" {
+		parts := strings.Split(value, ",")
+		result := make([]string, 0, len(parts))
+		for _, part := range parts {
+			if trimmed := strings.TrimSpace(part); trimmed != "" {
+				result = append(result, trimmed)
+			}
+		}
+		return result
 	}
 	return defaultValue
 }
