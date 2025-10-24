@@ -8,11 +8,12 @@ import (
 )
 
 type Config struct {
-	Database DatabaseConfig
-	Server   ServerConfig
-	JWT      JWTConfig
-	Firebase FirebaseConfig
-	Excel    ExcelConfig
+	Database  DatabaseConfig
+	Server    ServerConfig
+	JWT       JWTConfig
+	Firebase  FirebaseConfig
+	Excel     ExcelConfig
+	Migration MigrationConfig
 }
 
 type DatabaseConfig struct {
@@ -42,6 +43,10 @@ type ExcelConfig struct {
 	MaxCols int
 }
 
+type MigrationConfig struct {
+	Directory string
+}
+
 func Load() *Config {
 	// Load .env file if it exists
 	godotenv.Load()
@@ -65,6 +70,9 @@ func Load() *Config {
 		Excel: ExcelConfig{
 			MaxRows: getEnvAsInt("EXCEL_MAX_ROWS", 10000),
 			MaxCols: getEnvAsInt("EXCEL_MAX_COLS", 50),
+		},
+		Migration: MigrationConfig{
+			Directory: getEnv("MIGRATION_DIR", "database/migrations"),
 		},
 	}
 }

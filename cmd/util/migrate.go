@@ -3,11 +3,10 @@ package main
 import (
 	"cim-backend/database"
 	"cim-backend/internal/config"
-	"cim-backend/internal/models"
 	"fmt"
 )
 
-// runMigrations runs database migrations without starting the web server
+// runMigrations runs database migrations up (applies migrations)
 func runMigrations() error {
 	// Load configuration
 	cfg := config.Load()
@@ -18,15 +17,15 @@ func runMigrations() error {
 		return fmt.Errorf("failed to initialize database: %w", err)
 	}
 
-	// Run migrations
-	if err := database.Migrate(db); err != nil {
+	// Run migrations up
+	if err := database.MigrateUp(db, cfg.Migration.Directory); err != nil {
 		return fmt.Errorf("failed to run migrations: %w", err)
 	}
 
 	return nil
 }
 
-// rollbackMigrations drops all database tables (complete rollback)
+// rollbackMigrations rolls back database migrations (down one step)
 func rollbackMigrations() error {
 	// Load configuration
 	cfg := config.Load()
@@ -37,25 +36,9 @@ func rollbackMigrations() error {
 		return fmt.Errorf("failed to initialize database: %w", err)
 	}
 
-	// Drop tables in reverse order to respect foreign key constraints
-	tables := []interface{}{
-		&models.InventorySubmission{},
-		&models.PurchaseOrderItem{},
-		&models.PurchaseOrder{},
-		&models.Inventory{},
-		&models.InventoryItem{},
-		&models.InventoryTransaction{},
-		&models.Product{},
-		&models.Supplier{},
-		&models.Settings{},
-		&models.User{},
-		&models.PaymentReceiptForm{},
-	}
-
-	for _, table := range tables {
-		if err := db.Migrator().DropTable(table); err != nil {
-			return fmt.Errorf("failed to drop table: %w", err)
-		}
+	// Run migrations down
+	if err := database.MigrateDown(db, cfg.Migration.Directory); err != nil {
+		return fmt.Errorf("failed to rollback migrations: %w", err)
 	}
 
 	return nil

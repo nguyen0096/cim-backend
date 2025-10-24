@@ -28,33 +28,10 @@ func Initialize(cfg config.DatabaseConfig) (*gorm.DB, error) {
 	return db, nil
 }
 
-// Migrate runs SQL migrations from migration directory and then GORM auto migrations
-func Migrate(db *gorm.DB) error {
-	// Get underlying SQL DB
-	sqlDB, err := db.DB()
-	if err != nil {
-		return fmt.Errorf("failed to get database instance: %w", err)
-	}
-
-	// Create postgres driver instance
-	driver, err := migratePostgres.WithInstance(sqlDB, &migratePostgres.Config{})
-	if err != nil {
-		return fmt.Errorf("failed to create migration driver: %w", err)
-	}
-
-	// Create migrate instance
-	m, err := migrate.NewWithDatabaseInstance(
-		"file://internal/database/migration",
-		"postgres",
-		driver,
-	)
-	if err != nil {
-		return fmt.Errorf("failed to create migration instance: %w", err)
-	}
-
-	// Run migrations
-	if err := m.Up(); err != nil && err != migrate.ErrNoChange {
-		return fmt.Errorf("failed to run migrations: %w", err)
+// MigrateUp runs SQL migrations from migration directory (up) and then GORM auto migrations
+func MigrateUp(db *gorm.DB, migrationDir string) error {
+	if err := runSQLMigration(db, migrationDir, "up"); err != nil {
+		return err
 	}
 
 	// Run GORM auto migrations
@@ -71,4 +48,55 @@ func Migrate(db *gorm.DB) error {
 		&models.PaymentReceiptForm{},
 		&models.InventorySubmission{},
 	)
+}
+
+// MigrateDown rolls back SQL migrations from migration directory (down one step)
+func MigrateDown(db *gorm.DB, migrationDir string) error {
+	return runSQLMigration(db, migrationDir, "down")
+}
+
+// Migrate runs SQL migrations from migration directory and then GORM auto migrations (for backward compatibility)
+func Migrate(db *gorm.DB) error {
+	return MigrateUp(db, "database/migrations")
+}
+
+// runSQLMigration runs SQL migrations in the specified direction
+func runSQLMigration(db *gorm.DB, migrationDir, direction string) error {
+	// Get underlying SQL DB
+	sqlDB, err := db.DB()
+	if err != nil {
+		return fmt.Errorf("failed to get database instance: %w", err)
+	}
+
+	// Create postgres driver instance
+	driver, err := migratePostgres.WithInstance(sqlDB, &migratePostgres.Config{})
+	if err != nil {
+		return fmt.Errorf("failed to create migration driver: %w", err)
+	}
+
+	// Create migrate instance with file:// prefix
+	m, err := migrate.NewWithDatabaseInstance(
+		fmt.Sprintf("file://%s", migrationDir),
+		"postgres",
+		driver,
+	)
+	if err != nil {
+		return fmt.Errorf("failed to create migration instance: %w", err)
+	}
+
+	// Run migrations based on direction
+	switch direction {
+	case "up":
+		if err := m.Up(); err != nil && err != migrate.ErrNoChange {
+			return fmt.Errorf("failed to run migrations up: %w", err)
+		}
+	case "down":
+		if err := m.Down(); err != nil && err != migrate.ErrNoChange {
+			return fmt.Errorf("failed to run migrations down: %w", err)
+		}
+	default:
+		return fmt.Errorf("invalid migration direction: %s (must be 'up' or 'down')", direction)
+	}
+
+	return nil
 }
