@@ -10,6 +10,8 @@ import (
 	"crypto/rand"
 	"encoding/json"
 	"fmt"
+	"os"
+	"strings"
 	"time"
 
 	"github.com/sirupsen/logrus"
@@ -173,7 +175,7 @@ func (s *purchaseOrderService) UpdatePurchaseOrderStatus(ctx context.Context, id
 	}
 
 	if status == models.PurchaseOrderStatusCompleted {
-		go s.handleRevenueExpenseAsync(context.Background(), id)
+		go s.handleRevenueExpenseAsyncBySettings(context.Background(), id)
 	}
 
 	s.logger.WithFields(logrus.Fields{
@@ -433,8 +435,68 @@ func (s *purchaseOrderService) UpdatePurchaseOrderItemStatus(ctx context.Context
 	return result, nil
 }
 
+// handleRevenueExpenseAsyncBySettings determines the file type from settings and calls the appropriate async handler
+func (s *purchaseOrderService) handleRevenueExpenseAsyncBySettings(ctx context.Context, purchaseOrderID uint) {
+	// Get settings to determine file type
+	settings, err := s.settingsService.GetSetting(ctx, config.RevenueExpenseExcelSettingsKey)
+	if err != nil {
+		s.logger.WithFields(logrus.Fields{
+			"operation":         "handleRevenueExpenseAsyncBySettings",
+			"purchase_order_id": purchaseOrderID,
+			"error":             err,
+		}).Error("Failed to get revenue expense settings")
+		return
+	}
+
+	if settings == nil {
+		s.logger.WithFields(logrus.Fields{
+			"operation":         "handleRevenueExpenseAsyncBySettings",
+			"purchase_order_id": purchaseOrderID,
+		}).Error("Revenue expense settings not configured")
+		return
+	}
+
+	var settingsValue map[string]interface{}
+	if err := json.Unmarshal([]byte(settings.Value), &settingsValue); err != nil {
+		s.logger.WithFields(logrus.Fields{
+			"operation":         "handleRevenueExpenseAsyncBySettings",
+			"purchase_order_id": purchaseOrderID,
+			"error":             err,
+		}).Error("Failed to parse revenue expense settings")
+		return
+	}
+
+	filePath, ok := settingsValue["filePath"].(string)
+	if !ok || filePath == "" {
+		s.logger.WithFields(logrus.Fields{
+			"operation":         "handleRevenueExpenseAsyncBySettings",
+			"purchase_order_id": purchaseOrderID,
+		}).Error("filePath not found in revenue expense settings")
+		return
+	}
+
+	// Detect if filePath is a Google Sheets URL or local file path
+	isGoogleSheets := strings.Contains(filePath, "docs.google.com/spreadsheets")
+
+	if isGoogleSheets {
+		s.logger.WithFields(logrus.Fields{
+			"operation":         "handleRevenueExpenseAsyncBySettings",
+			"purchase_order_id": purchaseOrderID,
+			"file_type":         "google_sheets",
+		}).Info("Detected Google Sheets, calling handleRevenueExpenseGoogleSheetsAsync")
+		s.handleRevenueExpenseGoogleSheetsAsync(ctx, purchaseOrderID, settingsValue)
+	} else {
+		s.logger.WithFields(logrus.Fields{
+			"operation":         "handleRevenueExpenseAsyncBySettings",
+			"purchase_order_id": purchaseOrderID,
+			"file_type":         "local_file",
+		}).Info("Detected local file, calling handleRevenueExpenseAsync")
+		s.handleRevenueExpenseAsync(ctx, purchaseOrderID, settingsValue)
+	}
+}
+
 // handleRevenueExpenseAsync handles revenue expense excel file operations asynchronously
-func (s *purchaseOrderService) handleRevenueExpenseAsync(ctx context.Context, purchaseOrderID uint) {
+func (s *purchaseOrderService) handleRevenueExpenseAsync(ctx context.Context, purchaseOrderID uint, settingsValue map[string]interface{}) {
 	startTime := time.Now()
 
 	purchaseOrder, err := s.purchaseOrderRepo.GetByID(purchaseOrderID)
@@ -454,13 +516,20 @@ func (s *purchaseOrderService) handleRevenueExpenseAsync(ctx context.Context, pu
 	logger.Info("Starting async revenue expense processing")
 
 	// Get and validate settings
-	filePath, sheetName, err := s.getRevenueExpenseSettings(ctx)
-	if err != nil {
-		duration := time.Since(startTime)
-		logger.WithFields(logrus.Fields{
-			"duration_ms": duration.Milliseconds(),
-			"error":       err,
-		}).Error("Failed to get revenue expense settings")
+	filePath, ok := settingsValue["filePath"].(string)
+	if !ok || filePath == "" {
+		s.logger.WithFields(logrus.Fields{
+			"operation":         "handleRevenueExpenseAsync",
+			"purchase_order_id": purchaseOrderID,
+		}).Error("filePath not found in revenue expense settings")
+		return
+	}
+	sheetName, ok := settingsValue["sheetName"].(string)
+	if !ok || sheetName == "" {
+		s.logger.WithFields(logrus.Fields{
+			"operation":         "handleRevenueExpenseAsync",
+			"purchase_order_id": purchaseOrderID,
+		}).Error("sheetName not found in revenue expense settings")
 		return
 	}
 
@@ -495,33 +564,113 @@ func (s *purchaseOrderService) handleRevenueExpenseAsync(ctx context.Context, pu
 	}).Info("Successfully added expense to revenue expense excel file")
 }
 
-// getRevenueExpenseSettings retrieves and validates revenue expense excel settings
-func (s *purchaseOrderService) getRevenueExpenseSettings(ctx context.Context) (string, string, error) {
-	settings, err := s.settingsService.GetSetting(ctx, config.RevenueExpenseExcelSettingsKey)
+// handleRevenueExpenseGoogleSheetsAsync handles revenue expense Google Sheets operations asynchronously
+func (s *purchaseOrderService) handleRevenueExpenseGoogleSheetsAsync(ctx context.Context, purchaseOrderID uint, settingsValue map[string]interface{}) {
+	startTime := time.Now()
+
+	purchaseOrder, err := s.purchaseOrderRepo.GetByID(purchaseOrderID)
 	if err != nil {
-		return "", "", fmt.Errorf("failed to get revenue expense excel settings: %w", err)
+		s.logger.WithFields(logrus.Fields{
+			"operation":         "handleRevenueExpenseGoogleSheetsAsync",
+			"purchase_order_id": purchaseOrderID,
+			"error":             err,
+		}).Error("Failed to get purchase order")
+		return
 	}
 
-	if settings == nil {
-		return "", "", fmt.Errorf("revenue expense excel settings not configured")
-	}
-
-	var settingsValue map[string]interface{}
-	if err := json.Unmarshal([]byte(settings.Value), &settingsValue); err != nil {
-		return "", "", fmt.Errorf("failed to parse revenue expense excel settings: %w", err)
-	}
+	logger := s.logger.WithFields(logrus.Fields{
+		"operation":         "handleRevenueExpenseGoogleSheetsAsync",
+		"purchase_order_id": purchaseOrder.ID,
+		"order_number":      purchaseOrder.OrderNumber,
+	})
+	logger.Info("Starting async Google Sheets revenue expense processing")
 
 	filePath, ok := settingsValue["filePath"].(string)
 	if !ok || filePath == "" {
-		return "", "", fmt.Errorf("file path not found in revenue expense excel settings")
+		s.logger.WithFields(logrus.Fields{
+			"operation":         "handleRevenueExpenseGoogleSheetsAsync",
+			"purchase_order_id": purchaseOrderID,
+		}).Error("filePath not found in revenue expense settings")
+		return
 	}
+
+	spreadsheetID := extractSpreadsheetID(filePath)
 
 	sheetName, ok := settingsValue["sheetName"].(string)
 	if !ok || sheetName == "" {
-		return "", "", fmt.Errorf("sheet name not found in revenue expense excel settings")
+		s.logger.WithFields(logrus.Fields{
+			"operation":         "handleRevenueExpenseGoogleSheetsAsync",
+			"purchase_order_id": purchaseOrderID,
+		}).Error("sheetName not found in revenue expense settings")
+		return
 	}
 
-	return filePath, sheetName, nil
+	// Get service account file path from environment variable
+	serviceAccountFilePath := os.Getenv("GOOGLE_SERVICE_ACCOUNT")
+	if serviceAccountFilePath == "" {
+		duration := time.Since(startTime)
+		logger.WithFields(logrus.Fields{
+			"duration_ms": duration.Milliseconds(),
+		}).Error("Service account file path not configured in environment")
+		return
+	}
+
+	// Initialize Google Sheets repository
+	if err := s.excelService.InitializeRevenueExpenseGoogleSheets(ctx, serviceAccountFilePath, spreadsheetID); err != nil {
+		duration := time.Since(startTime)
+		logger.WithFields(logrus.Fields{
+			"spreadsheet_id": spreadsheetID,
+			"sheet_name":     sheetName,
+			"duration_ms":    duration.Milliseconds(),
+			"error":          err,
+		}).Error("Failed to initialize revenue expense Google Sheets")
+		return
+	}
+
+	// Create expense data and add to Google Sheets
+	expensesData, cellColors := s.createExpenseData(purchaseOrder.Items)
+	if err := s.excelService.AddExpensesToGoogleSheets(ctx, sheetName, expensesData, cellColors); err != nil {
+		duration := time.Since(startTime)
+		logger.WithFields(logrus.Fields{
+			"spreadsheet_id": spreadsheetID,
+			"sheet_name":     sheetName,
+			"duration_ms":    duration.Milliseconds(),
+			"error":          err,
+		}).Error("Failed to add expense to revenue expense Google Sheets")
+		return
+	}
+
+	duration := time.Since(startTime)
+	logger.WithFields(logrus.Fields{
+		"duration_ms":    duration.Milliseconds(),
+		"spreadsheet_id": spreadsheetID,
+		"sheet_name":     sheetName,
+	}).Info("Successfully added expense to revenue expense Google Sheets")
+}
+
+// extractSpreadsheetID extracts the spreadsheet ID from a URL or returns the input if it's already an ID
+func extractSpreadsheetID(input string) string {
+	// Check if input contains Google Sheets URL pattern
+	if strings.Contains(input, "docs.google.com/spreadsheets") {
+		// Extract ID from URL pattern: https://docs.google.com/spreadsheets/d/{SPREADSHEET_ID}/...
+		parts := strings.Split(input, "/spreadsheets/d/")
+		if len(parts) > 1 {
+			idPart := parts[1]
+			// Remove everything after the ID (like /edit, #gid=0, etc.)
+			if idx := strings.Index(idPart, "/"); idx != -1 {
+				idPart = idPart[:idx]
+			}
+			if idx := strings.Index(idPart, "#"); idx != -1 {
+				idPart = idPart[:idx]
+			}
+			if idx := strings.Index(idPart, "?"); idx != -1 {
+				idPart = idPart[:idx]
+			}
+			return strings.TrimSpace(idPart)
+		}
+	}
+	// Return as-is if not a URL
+	return input
 }
 
 // createExpenseData creates expense data and cell colors from purchase order items

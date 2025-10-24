@@ -1,3 +1,4 @@
 .env
 .npmrc
 firebase-service-account.json
+google-service-account.json

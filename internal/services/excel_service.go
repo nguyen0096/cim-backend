@@ -4,6 +4,7 @@ import (
 	"cim-backend/internal/models"
 	"cim-backend/internal/repository"
 	"cim-backend/internal/repository/excel"
+	"cim-backend/internal/repository/googlesheets"
 	"context"
 
 	"github.com/xuri/excelize/v2"
@@ -151,19 +152,25 @@ type ExcelService interface {
 	AddExpenses(ctx context.Context, sheetName string, expensesData []map[string]interface{}, cellColors []string) error
 	GetRevenueExpenseSchema(ctx context.Context) *models.FileMetadata
 	VerifyFileAndSheet(ctx context.Context, filePath string, sheetName string) error
+	// Revenue/Expense Google Sheets operations
+	InitializeRevenueExpenseGoogleSheets(ctx context.Context, serviceAccountFilePath string, spreadsheetID string) error
+	AddExpensesToGoogleSheets(ctx context.Context, sheetName string, expensesData []map[string]interface{}, cellColors []string) error
+	VerifyGoogleSheetAndSheet(ctx context.Context, serviceAccountFilePath string, spreadsheetID string, sheetName string) error
 }
 
 type excelService struct {
-	productRepo             repository.ProductRepository
-	inventoryRepo           repository.InventoryRepository
-	revenueExpenseExcelRepo excel.RevenueExpenseExcelRepository
+	productRepo                    repository.ProductRepository
+	inventoryRepo                  repository.InventoryRepository
+	revenueExpenseExcelRepo        excel.RevenueExpenseExcelRepository
+	revenueExpenseGoogleSheetsRepo googlesheets.RevenueExpenseGoogleSheetsRepository
 }
 
 func NewExcelService(productRepo repository.ProductRepository, inventoryRepo repository.InventoryRepository) ExcelService {
 	return &excelService{
-		productRepo:             productRepo,
-		inventoryRepo:           inventoryRepo,
-		revenueExpenseExcelRepo: excel.NewRevenueExpenseExcelRepository(),
+		productRepo:                    productRepo,
+		inventoryRepo:                  inventoryRepo,
+		revenueExpenseExcelRepo:        excel.NewRevenueExpenseExcelRepository(),
+		revenueExpenseGoogleSheetsRepo: googlesheets.NewRevenueExpenseGoogleSheetsRepository(),
 	}
 }
 
@@ -376,4 +383,19 @@ func (s *excelService) GetRevenueExpenseSchema(ctx context.Context) *models.File
 // VerifyFileAndSheet verifies that the filepath and sheetname exist
 func (s *excelService) VerifyFileAndSheet(ctx context.Context, filePath string, sheetName string) error {
 	return s.revenueExpenseExcelRepo.VerifyFileAndSheet(ctx, filePath, sheetName)
+}
+
+// InitializeRevenueExpenseGoogleSheets initializes the Google Sheets repository for revenue/expense tracking
+func (s *excelService) InitializeRevenueExpenseGoogleSheets(ctx context.Context, serviceAccountFilePath string, spreadsheetID string) error {
+	return s.revenueExpenseGoogleSheetsRepo.InitializeWithSpreadsheet(ctx, serviceAccountFilePath, spreadsheetID)
+}
+
+// AddExpensesToGoogleSheets adds expense entries to the Google Sheets
+func (s *excelService) AddExpensesToGoogleSheets(ctx context.Context, sheetName string, expensesData []map[string]interface{}, cellColors []string) error {
+	return s.revenueExpenseGoogleSheetsRepo.AddExpenses(ctx, sheetName, expensesData, cellColors)
+}
+
+// VerifyGoogleSheetAndSheet verifies that the spreadsheet ID and sheet name exist
+func (s *excelService) VerifyGoogleSheetAndSheet(ctx context.Context, serviceAccountFilePath string, spreadsheetID string, sheetName string) error {
+	return s.revenueExpenseGoogleSheetsRepo.VerifySpreadsheetAndSheet(ctx, serviceAccountFilePath, spreadsheetID, sheetName)
 }

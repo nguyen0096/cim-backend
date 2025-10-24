@@ -2,7 +2,10 @@ package handlers
 
 import (
 	"cim-backend/internal/services"
+	"cim-backend/pkg"
 	"net/http"
+	"os"
+	"strings"
 
 	"github.com/labstack/echo/v4"
 	"github.com/xuri/excelize/v2"
@@ -111,9 +114,9 @@ func (h *ExcelHandler) GetInventoryTemplate(c echo.Context) error {
 	return c.Blob(http.StatusOK, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", buffer.Bytes())
 }
 
-// VerifyFileAndSheet verifies that the filepath and sheetname exist
-// @Summary Verify Excel file and sheet
-// @Description Verifies that the specified filepath and sheetname exist and are valid
+// VerifyFileAndSheet verifies that the file (local or Google Sheets) and sheetname exist
+// @Summary Verify file and sheet
+// @Description Verifies that the specified file (local Excel or Google Sheets URL) and sheetname exist and are valid
 // @Tags excel
 // @Accept json
 // @Produce json
@@ -142,9 +145,42 @@ func (h *ExcelHandler) VerifyFileAndSheet(c echo.Context) error {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Sheet name is required"})
 	}
 
-	if err := h.excelService.VerifyFileAndSheet(c.Request().Context(), request.FilePath, request.SheetName); err != nil {
-		return c.JSON(http.StatusNotFound, map[string]string{"error": "File or sheet verification failed: " + err.Error()})
-	}
+	// Detect if filepath is a Google Sheets URL or local file path
+	isGoogleSheets := strings.Contains(request.FilePath, "docs.google.com/spreadsheets")
 
-	return c.JSON(http.StatusOK, map[string]string{"message": "File and sheet verification successful"})
+	if isGoogleSheets {
+		// Handle Google Sheets verification
+		spreadsheetID, err := pkg.ExtractSpreadsheetID(request.FilePath)
+		if err != nil {
+			return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid Google Sheets URL: " + err.Error()})
+		}
+
+		// Get service account file path from environment variable
+		serviceAccountFilePath := os.Getenv("GOOGLE_SERVICE_ACCOUNT")
+		if serviceAccountFilePath == "" {
+			return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Service account file path not configured"})
+		}
+
+		// Verify the spreadsheet and sheet
+		if err := h.excelService.VerifyGoogleSheetAndSheet(c.Request().Context(), serviceAccountFilePath, spreadsheetID, request.SheetName); err != nil {
+			return c.JSON(http.StatusNotFound, map[string]string{"error": "Google Sheets verification failed: " + err.Error()})
+		}
+
+		return c.JSON(http.StatusOK, map[string]string{
+			"message":       "Google Sheets verification successful",
+			"spreadsheetID": spreadsheetID,
+			"type":          "google_sheets",
+		})
+	} else {
+		// Handle local file verification
+		if err := h.excelService.VerifyFileAndSheet(c.Request().Context(), request.FilePath, request.SheetName); err != nil {
+			return c.JSON(http.StatusNotFound, map[string]string{"error": "Local file verification failed: " + err.Error()})
+		}
+
+		return c.JSON(http.StatusOK, map[string]string{
+			"message":  "Local file verification successful",
+			"filepath": request.FilePath,
+			"type":     "local_file",
+		})
+	}
 }

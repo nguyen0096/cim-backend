@@ -46,3 +46,4 @@ __debug_bin*
 
 # Firebase service account file (contains sensitive credentials)
 firebase-service-account.json
+google-service-account.json
