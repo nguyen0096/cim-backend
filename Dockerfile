@@ -31,6 +31,7 @@ COPY --from=builder /app/main .
 
 COPY --from=builder /app/rbac_model.conf .
 COPY --from=builder /app/rbac_policy.csv .
+COPY --from=builder /app/database/migrations ./database/migrations
 
 # Create uploads directory
 RUN mkdir -p uploads
