@@ -188,18 +188,25 @@ func (r *purchaseOrderRepository) ReceiveInventory(ctx context.Context, req dto.
 			*models.PurchaseOrderItem
 			InventoryItemID *uint
 			ProductUnit     string
+			Product         *models.Product `gorm:"embedded;embeddedPrefix:product_"`
 		}
 
 		var poiData []POIData
 		err := tx.Table("purchase_order_items poi").
 			Select(`
-				poi.*,
-				ii.id as inventory_item_id,
-				p.unit as product_unit
-			`).
+			poi.*,
+			ii.id as inventory_item_id,
+			p.unit as product_unit,
+			p.id as product_id,
+			p.name as product_name,
+			p.description as product_description,
+			p.product_type as product_product_type,
+			p.unit as product_unit,
+			p.status as product_status
+		`).
 			Joins(`LEFT JOIN inventory_items ii ON poi.product_id = ii.product_id
-					AND ii.status = ?
-			`, models.InventoryItemStatusActive).
+				AND ii.status = ?
+		`, models.InventoryItemStatusActive).
 			Joins(`JOIN products p ON poi.product_id = p.id`).
 			Where("poi.purchase_order_id = ?", req.PurchaseOrderID).
 			Scan(&poiData).Error
@@ -268,6 +275,7 @@ func (r *purchaseOrderRepository) ReceiveInventory(ctx context.Context, req dto.
 		// PurchaseOrder field for updating status.
 		poItems := make([]*models.PurchaseOrderItem, 0, len(poiData))
 		for _, data := range poiData {
+			data.PurchaseOrderItem.Product = data.Product
 			poItems = append(poItems, data.PurchaseOrderItem)
 		}
 		po.Items = poItems
