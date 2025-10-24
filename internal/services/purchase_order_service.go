@@ -34,12 +34,19 @@ type PurchaseOrderService interface {
 }
 
 type purchaseOrderService struct {
-	purchaseOrderRepo repository.PurchaseOrderRepository
-	inventoryService  InventoryService
-	excelService      ExcelService
-	settingsService   SettingsService
-	db                *gorm.DB
-	logger            *logrus.Logger
+	purchaseOrderRepo          repository.PurchaseOrderRepository
+	inventoryService           InventoryService
+	excelService               ExcelService
+	settingsService            SettingsService
+	db                         *gorm.DB
+	logger                     *logrus.Logger
+	revenueExpenseRequestQueue chan revenueExpenseRequest
+}
+
+// revenueExpenseRequest represents a queued request to process revenue expense
+type revenueExpenseRequest struct {
+	ctx             context.Context
+	purchaseOrderID uint
 }
 
 func NewPurchaseOrderService(
@@ -50,14 +57,26 @@ func NewPurchaseOrderService(
 	db *gorm.DB,
 	logger *logrus.Logger,
 ) PurchaseOrderService {
-	return &purchaseOrderService{
-		purchaseOrderRepo: purchaseOrderRepo,
-		inventoryService:  inventoryService,
-		excelService:      excelService,
-		settingsService:   settingsService,
-		db:                db,
-		logger:            logger,
+	// Create a buffered channel to queue revenue expense requests
+	// Buffer size of 100 allows queuing up to 100 requests without blocking
+	requestQueue := make(chan revenueExpenseRequest, 100)
+
+	service := &purchaseOrderService{
+		purchaseOrderRepo:          purchaseOrderRepo,
+		inventoryService:           inventoryService,
+		excelService:               excelService,
+		settingsService:            settingsService,
+		db:                         db,
+		logger:                     logger,
+		revenueExpenseRequestQueue: requestQueue,
 	}
+
+	// Start the worker goroutine to process revenue expense requests serially
+	go service.revenueExpenseWorker()
+
+	logger.Info("Purchase order service initialized with revenue expense worker")
+
+	return service
 }
 
 // generatePurchaseOrderNumber generates a unique purchase order number
@@ -175,7 +194,8 @@ func (s *purchaseOrderService) UpdatePurchaseOrderStatus(ctx context.Context, id
 	}
 
 	if status == models.PurchaseOrderStatusCompleted {
-		go s.handleRevenueExpenseAsyncBySettings(context.Background(), id)
+		// Queue the revenue expense request for serial processing
+		go s.queueRevenueExpenseRequest(context.Background(), id)
 	}
 
 	s.logger.WithFields(logrus.Fields{
@@ -433,6 +453,115 @@ func (s *purchaseOrderService) UpdatePurchaseOrderItemStatus(ctx context.Context
 	}).Info("Successfully updated purchase order item status")
 
 	return result, nil
+}
+
+// revenueExpenseWorker processes revenue expense requests from the queue serially
+func (s *purchaseOrderService) revenueExpenseWorker() {
+	s.logger.Info("Revenue expense worker started")
+
+	for req := range s.revenueExpenseRequestQueue {
+		s.logger.WithFields(logrus.Fields{
+			"operation":         "revenueExpenseWorker",
+			"purchase_order_id": req.purchaseOrderID,
+			"queue_length":      len(s.revenueExpenseRequestQueue),
+		}).Info("Processing revenue expense request from queue")
+
+		// Process the request with retry mechanism
+		s.handleRevenueExpenseAsyncBySettingsWithRetry(req.ctx, req.purchaseOrderID)
+	}
+
+	s.logger.Warn("Revenue expense worker stopped - channel closed")
+}
+
+// queueRevenueExpenseRequest queues a revenue expense request for serial processing
+func (s *purchaseOrderService) queueRevenueExpenseRequest(ctx context.Context, purchaseOrderID uint) {
+	req := revenueExpenseRequest{
+		ctx:             ctx,
+		purchaseOrderID: purchaseOrderID,
+	}
+
+	s.revenueExpenseRequestQueue <- req
+}
+
+// handleRevenueExpenseAsyncBySettingsWithRetry wraps the async handler with retry mechanism
+func (s *purchaseOrderService) handleRevenueExpenseAsyncBySettingsWithRetry(ctx context.Context, purchaseOrderID uint) {
+	const (
+		maxRetries    = 3
+		initialDelay  = 10 * time.Second
+		maxDelay      = 60 * time.Second
+		backoffFactor = 2.0
+	)
+
+	var lastErr error
+	delay := initialDelay
+
+	for attempt := 1; attempt <= maxRetries; attempt++ {
+		// Recover from panics to prevent goroutine crashes
+		func() {
+			defer func() {
+				if r := recover(); r != nil {
+					lastErr = fmt.Errorf("panic recovered: %v", r)
+					s.logger.WithFields(logrus.Fields{
+						"operation":         "handleRevenueExpenseAsyncBySettingsWithRetry",
+						"purchase_order_id": purchaseOrderID,
+						"attempt":           attempt,
+						"max_retries":       maxRetries,
+						"panic":             r,
+					}).Error("Panic occurred in revenue expense handler")
+				}
+			}()
+
+			s.logger.WithFields(logrus.Fields{
+				"operation":         "handleRevenueExpenseAsyncBySettingsWithRetry",
+				"purchase_order_id": purchaseOrderID,
+				"attempt":           attempt,
+				"max_retries":       maxRetries,
+			}).Info("Attempting to process revenue expense")
+
+			s.handleRevenueExpenseAsyncBySettings(ctx, purchaseOrderID)
+			lastErr = nil // Success - clear any previous error
+		}()
+
+		// If successful, exit
+		if lastErr == nil {
+			s.logger.WithFields(logrus.Fields{
+				"operation":         "handleRevenueExpenseAsyncBySettingsWithRetry",
+				"purchase_order_id": purchaseOrderID,
+				"attempt":           attempt,
+			}).Info("Successfully processed revenue expense")
+			return
+		}
+
+		// If this was the last attempt, log final failure
+		if attempt == maxRetries {
+			s.logger.WithFields(logrus.Fields{
+				"operation":         "handleRevenueExpenseAsyncBySettingsWithRetry",
+				"purchase_order_id": purchaseOrderID,
+				"attempts":          attempt,
+				"error":             lastErr,
+			}).Error("Failed to process revenue expense after all retry attempts")
+			return
+		}
+
+		// Log retry attempt with delay
+		s.logger.WithFields(logrus.Fields{
+			"operation":         "handleRevenueExpenseAsyncBySettingsWithRetry",
+			"purchase_order_id": purchaseOrderID,
+			"attempt":           attempt,
+			"next_attempt":      attempt + 1,
+			"delay_seconds":     delay.Seconds(),
+			"error":             lastErr,
+		}).Warn("Retrying revenue expense processing after failure")
+
+		// Wait before retrying with exponential backoff
+		time.Sleep(delay)
+
+		// Increase delay for next retry with exponential backoff
+		delay = time.Duration(float64(delay) * backoffFactor)
+		if delay > maxDelay {
+			delay = maxDelay
+		}
+	}
 }
 
 // handleRevenueExpenseAsyncBySettings determines the file type from settings and calls the appropriate async handler

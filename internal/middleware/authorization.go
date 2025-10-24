@@ -137,7 +137,7 @@ func extractResourceAndAction(c echo.Context) (string, string) {
 	}
 
 	switch {
-	case resource == "payment-receipt-forms" && strings.HasSuffix(path, "/pending"):
+	case resource == "payment-receipt-forms" && (strings.HasSuffix(path, "/submit") || strings.HasSuffix(path, "/pending")):
 		return "payment-receipt-forms", "submit"
 	default:
 		return resource, methodToAction(method)

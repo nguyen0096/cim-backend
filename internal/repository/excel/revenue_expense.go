@@ -73,31 +73,41 @@ func (r *revenueExpenseExcelRepository) AddExpenses(ctx context.Context, sheetNa
 	}
 
 	// Prepare date and row information
-	today := pkg.GetTodayDate()
-	isTodayExists, detectedDateFormat := FindLastTransactionDateInfo(rows, headerRow, today)
 	targetRow := len(rows) + 1
-
 	ordinalNumber := 1
 
 	// Add transaction date row if needed
-	if !isTodayExists {
-		if err := r.AddTransactionDateRow(file, sheetName, targetRow, today, detectedDateFormat); err != nil {
-			return fmt.Errorf("failed to add transaction date row: %w", err)
-		}
-		targetRow++
-	} else {
-		// find the ordinal number in the last row
-		lastRow, _, err := r.FindLastTransactionRow(rows)
-		if err != nil {
-			return fmt.Errorf("failed to find last transaction row: %w", err)
-		}
-		// convert the ordinal number to int
-		ordinalNumber, err = strconv.Atoi(lastRow[1])
-		if err != nil {
-			return fmt.Errorf("failed to convert ordinal number to int: %w", err)
-		}
-		ordinalNumber++
+	// today := pkg.GetTodayDate()
+	// isTodayExists, detectedDateFormat := FindLastTransactionDateInfo(rows, headerRow, today)
+	// if !isTodayExists {
+	// 	if err := r.AddTransactionDateRow(file, sheetName, targetRow, today, detectedDateFormat); err != nil {
+	// 		return fmt.Errorf("failed to add transaction date row: %w", err)
+	// 	}
+	// 	targetRow++
+	// } else {
+	// 	// find the ordinal number in the last row
+	// 	lastRow, _, err := r.FindLastTransactionRow(rows)
+	// 	if err != nil {
+	// 		return fmt.Errorf("failed to find last transaction row: %w", err)
+	// 	}
+	// 	// convert the ordinal number to int
+	// 	ordinalNumber, err = strconv.Atoi(lastRow[1])
+	// 	if err != nil {
+	// 		return fmt.Errorf("failed to convert ordinal number to int: %w", err)
+	// 	}
+	// 	ordinalNumber++
+	// }
+
+	lastRow, _, err := r.FindLastTransactionRow(rows)
+	if err != nil {
+		return fmt.Errorf("failed to find last transaction row: %w", err)
 	}
+	// convert the ordinal number to int
+	ordinalNumber, err = strconv.Atoi(lastRow[1])
+	if err != nil {
+		return fmt.Errorf("failed to convert ordinal number to int: %w", err)
+	}
+	ordinalNumber++
 
 	// Add all expense data rows
 	for i, expenseData := range expensesData {
