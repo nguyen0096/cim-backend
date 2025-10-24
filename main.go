@@ -86,8 +86,8 @@ func main() {
 	productService := services.NewProductService(productRepo, supplierRepo)
 	inventoryService := services.NewInventoryService(inventoryRepo, inventoryItemRepo, inventorySubmissionRepo, productRepo)
 	inventoryItemService := services.NewInventoryItemService(inventoryItemRepo, inventoryRepo, productRepo)
-	excelService := services.NewExcelService(productRepo, inventoryRepo)
 	settingsService := services.NewSettingsService(settingsRepo)
+	excelService := services.NewExcelService(productRepo, inventoryRepo, settingsService)
 	purchaseOrderService := services.NewPurchaseOrderService(purchaseOrderRepo, inventoryService, excelService, settingsService, db, logger)
 	paymentReceiptFormService := services.NewPaymentReceiptFormService(paymentReceiptFormRepo, db)
 
@@ -101,6 +101,7 @@ func main() {
 	excelHandler := handlers.NewExcelHandler(excelService)
 	settingsHandler := handlers.NewSettingsHandler(settingsService)
 	paymentReceiptFormHandler := handlers.NewPaymentReceiptFormHandler(paymentReceiptFormService, logger)
+	revenueExpenseHandler := handlers.NewRevenueExpenseHandler(excelService)
 
 	// Initialize Echo
 	e := echo.New()
@@ -233,6 +234,10 @@ func main() {
 	settings.GET("/:key", settingsHandler.GetSetting)
 	settings.POST("/:key", settingsHandler.SetSetting)
 	settings.DELETE("/:key", settingsHandler.DeleteSetting)
+
+	// Revenue Expense routes
+	revenueExpenses := api.Group("/revenue-expenses")
+	revenueExpenses.POST("/finalize", revenueExpenseHandler.FinalizeRevenueExpense)
 
 	// Reports routes
 	reports := api.Group("/reports")

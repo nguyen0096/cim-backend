@@ -18,6 +18,7 @@ type RevenueExpenseGoogleSheetsRepository interface {
 	GetLastTransactionDate(ctx context.Context, sheetName string) (time.Time, error)
 	GetSchema(ctx context.Context) *models.FileMetadata
 	VerifySpreadsheetAndSheet(ctx context.Context, serviceAccountFilePath string, spreadsheetID string, sheetName string) error
+	AddNewDateRow(ctx context.Context, sheetName string, date time.Time) error
 	Close() error
 	ForceCacheRefresh()
 }
@@ -158,6 +159,37 @@ func (r *revenueExpenseGoogleSheetsRepository) GetLastExpense(ctx context.Contex
 // GetLastTransactionDate retrieves the date of the most recent transaction from the Google Sheets
 func (r *revenueExpenseGoogleSheetsRepository) GetLastTransactionDate(ctx context.Context, sheetName string) (time.Time, error) {
 	return r.BaseGoogleSheetsRepository.GetLastTransactionDate(ctx, sheetName)
+}
+
+// AddNewDateRow adds a new row with the specified date to the Google Sheets
+func (r *revenueExpenseGoogleSheetsRepository) AddNewDateRow(ctx context.Context, sheetName string, date time.Time) error {
+	// Get sheet data
+	_, rows, err := r.GetSheetData(sheetName)
+	if err != nil {
+		return fmt.Errorf("failed to get sheet data: %w", err)
+	}
+
+	// Find header row
+	headerRow := r.FindHeaderRow(rows)
+	if headerRow < 0 || headerRow >= len(rows) {
+		return fmt.Errorf("no header row found")
+	}
+
+	// Get the date format from the last date row
+	_, detectedDateFormat := FindLastTransactionDateInfo(rows, headerRow, date)
+
+	// Calculate the target row (append at the end)
+	targetRow := len(rows) + 1
+
+	// Add the date row
+	if err := r.AddTransactionDateRow(sheetName, targetRow, date, detectedDateFormat); err != nil {
+		return fmt.Errorf("failed to add transaction date row: %w", err)
+	}
+
+	// Invalidate cache after saving to ensure next read gets fresh data
+	r.ForceCacheRefresh()
+
+	return nil
 }
 
 // GetSchema returns the Google Sheets schema

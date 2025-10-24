@@ -35,6 +35,8 @@ p, admin, payment-receipt-forms, view, allow
 p, admin, payment-receipt-forms, create, allow
 p, admin, payment-receipt-forms, update, allow
 
+p, admin, revenue-expenses, create, allow
+
 p, admin, excel, view, allow
 p, admin, excel, create, allow
 p, admin, excel, update, allow

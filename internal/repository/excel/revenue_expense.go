@@ -22,6 +22,7 @@ type RevenueExpenseExcelRepository interface {
 	GetLastTransactionDate(ctx context.Context, sheetName string) (time.Time, error)
 	GetSchema(ctx context.Context) *models.FileMetadata
 	VerifyFileAndSheet(ctx context.Context, filePath string, sheetName string) error
+	AddNewDateRow(ctx context.Context, sheetName string, date time.Time) error
 	Close() error
 	ForceCacheRefresh()
 
@@ -207,6 +208,42 @@ func (r *revenueExpenseExcelRepository) GetFileAndSheetData(sheetName string) (*
 // GetLastTransactionDate retrieves the date of the most recent transaction from the Excel file
 func (r *revenueExpenseExcelRepository) GetLastTransactionDate(ctx context.Context, sheetName string) (time.Time, error) {
 	return r.BaseExcelRepository.GetLastTransactionDate(ctx, sheetName)
+}
+
+// AddNewDateRow adds a new row with the specified date to the Excel file
+func (r *revenueExpenseExcelRepository) AddNewDateRow(ctx context.Context, sheetName string, date time.Time) error {
+	// Get file and sheet data
+	file, _, rows, err := r.GetFileAndSheetData(sheetName)
+	if err != nil {
+		return fmt.Errorf("failed to get file and sheet data: %w", err)
+	}
+
+	// Find header row
+	headerRow := r.FindHeaderRow(rows)
+	if headerRow < 0 || headerRow >= len(rows) {
+		return fmt.Errorf("no header row found")
+	}
+
+	// Get the date format from the last date row
+	_, detectedDateFormat := FindLastTransactionDateInfo(rows, headerRow, date)
+
+	// Calculate the target row (append at the end)
+	targetRow := len(rows) + 1
+
+	// Add the date row
+	if err := r.AddTransactionDateRow(file, sheetName, targetRow, date, detectedDateFormat); err != nil {
+		return fmt.Errorf("failed to add transaction date row: %w", err)
+	}
+
+	// Save the file
+	if err := file.Save(); err != nil {
+		return fmt.Errorf("failed to save file: %w", err)
+	}
+
+	// Invalidate cache after saving to ensure next read gets fresh data
+	r.ForceCacheRefresh()
+
+	return nil
 }
 
 // GetSchema returns the Excel file schema
