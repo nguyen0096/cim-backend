@@ -20,7 +20,7 @@ type InventoryRepository interface {
 	// v1
 	GetByID(ctx context.Context, id uint) (*models.Inventory, error)
 	GetTransactionsByInventoryItemIDs(ctx context.Context, inventoryItemIDs []uint) ([]models.InventoryTransaction, error)
-	GetLastPurchasePrices(ctx context.Context) ([]*dto.LastPurchasePriceResponse, error)
+	GetLastPurchasePrices(ctx context.Context, supplierID uint, limit uint) ([]*dto.LastPurchasePriceResponse, error)
 }
 
 type inventoryRepository struct {
@@ -97,35 +97,57 @@ func (r *inventoryRepository) GetTransactionsByInventoryItemIDs(ctx context.Cont
 	return transactions, err
 }
 
-// GetLastPurchasePrices retrieves the last purchase transaction price for each product_id + supplier_id combination
-func (r *inventoryRepository) GetLastPurchasePrices(ctx context.Context) ([]*dto.LastPurchasePriceResponse, error) {
+// GetLastPurchasePrices retrieves the most recent purchase transaction prices for each product_id + supplier_id combination
+func (r *inventoryRepository) GetLastPurchasePrices(ctx context.Context, supplierID uint, limit uint) ([]*dto.LastPurchasePriceResponse, error) {
 	var results []*dto.LastPurchasePriceResponse
 
-	err := r.db.WithContext(ctx).
+	// First subquery: get the latest created_at for each distinct price per product-supplier pair
+	distinctPricesSubquery := r.db.WithContext(ctx).
 		Table("inventory_transactions AS it").
 		Select(`
 			ii.product_id,
 			it.supplier_id,
-			it.price AS last_price,
-			it.created_at AS last_purchase_date
+			it.price,
+			MAX(it.created_at) AS latest_created_at
 		`).
 		Joins("INNER JOIN inventory_items AS ii ON it.inventory_item_id = ii.id").
 		Joins("INNER JOIN products AS p ON ii.product_id = p.id").
 		Joins("INNER JOIN suppliers AS s ON it.supplier_id = s.id").
-		Joins(`INNER JOIN (
-			SELECT ii2.product_id, it2.supplier_id, MAX(it2.created_at) AS max_created_at
-			FROM inventory_transactions AS it2
-			INNER JOIN inventory_items AS ii2 ON it2.inventory_item_id = ii2.id
-			WHERE it2.transaction_type = ?
-			GROUP BY ii2.product_id, it2.supplier_id
-		) AS latest ON ii.product_id = latest.product_id
-			AND it.supplier_id = latest.supplier_id
-			AND it.created_at = latest.max_created_at`, models.InventoryTransactionTypePurchase).
 		Where("it.transaction_type = ?", models.InventoryTransactionTypePurchase).
 		Where("p.status = ?", "active").
-		Where("s.status = ?", "active").
-		Scan(&results).Error
+		Where("s.status = ?", "active")
 
+	// Filter by supplier_id if provided
+	if supplierID > 0 {
+		distinctPricesSubquery = distinctPricesSubquery.Where("it.supplier_id = ?", supplierID)
+	}
+
+	distinctPricesSubquery = distinctPricesSubquery.Group("ii.product_id, it.supplier_id, it.price")
+
+	// Second subquery: rank distinct prices by their latest occurrence
+	rankedSubquery := r.db.WithContext(ctx).
+		Table("(?) AS distinct_prices", distinctPricesSubquery).
+		Select(`
+			product_id,
+			supplier_id,
+			price,
+			latest_created_at,
+			ROW_NUMBER() OVER (PARTITION BY product_id, supplier_id ORDER BY latest_created_at DESC) AS rn
+		`)
+
+	// Main query: select only top N distinct prices per product-supplier pair
+	query := r.db.WithContext(ctx).
+		Table("(?) AS ranked", rankedSubquery).
+		Select(`
+			product_id,
+			supplier_id,
+			price AS last_price,
+			latest_created_at AS last_purchase_date
+		`).
+		Where("rn <= ?", limit).
+		Order("product_id, supplier_id, latest_created_at DESC")
+
+	err := query.Scan(&results).Error
 	if err != nil {
 		return nil, fmt.Errorf("failed to get last purchase prices: %w", err)
 	}

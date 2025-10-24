@@ -25,7 +25,7 @@ type InventoryService interface {
 	CreateDisposeSubmission(ctx context.Context, req dto.DisposeInventoryRequest) (*models.InventorySubmission, error)
 	GetPendingSubmissions(ctx context.Context, inventoryID uint) ([]dto.PendingSubmissionResponse, error)
 	ProcessSubmission(ctx context.Context, req dto.ProcessSubmissionRequest) (*models.InventorySubmission, error)
-	GetLastPurchasePrices(ctx context.Context) (dto.LastPurchasePriceMap, error)
+	GetLastPurchasePrices(ctx context.Context, supplierID uint) (dto.LastPurchasePriceMap, error)
 }
 
 type inventoryService struct {
@@ -632,20 +632,29 @@ func (s *inventoryService) processSubmission(ctx context.Context, submission *mo
 	}
 }
 
-// GetLastPurchasePrices retrieves the last purchase transaction price for each product_id + supplier_id combination
-func (s *inventoryService) GetLastPurchasePrices(ctx context.Context) (dto.LastPurchasePriceMap, error) {
-	prices, err := s.inventoryRepo.GetLastPurchasePrices(ctx)
+// GetLastPurchasePrices retrieves the most recent purchase transaction prices for each product_id + supplier_id combination
+func (s *inventoryService) GetLastPurchasePrices(ctx context.Context, supplierID uint) (dto.LastPurchasePriceMap, error) {
+	prices, err := s.inventoryRepo.GetLastPurchasePrices(ctx, supplierID, 2)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get last purchase prices: %w", err)
 	}
 
-	// Transform array into nested map: product_id -> supplier_id -> last_price
+	// Transform array into nested map: product_id -> supplier_id -> []PriceHistory
 	priceMap := make(dto.LastPurchasePriceMap)
 	for _, price := range prices {
 		if priceMap[price.ProductID] == nil {
-			priceMap[price.ProductID] = make(map[uint]float64)
+			priceMap[price.ProductID] = make(map[uint][]dto.PriceHistory)
 		}
-		priceMap[price.ProductID][price.SupplierID] = price.LastPrice
+
+		priceHistory := dto.PriceHistory{
+			Price:        price.LastPrice,
+			PurchaseDate: price.LastPurchaseDate,
+		}
+
+		priceMap[price.ProductID][price.SupplierID] = append(
+			priceMap[price.ProductID][price.SupplierID],
+			priceHistory,
+		)
 	}
 
 	return priceMap, nil

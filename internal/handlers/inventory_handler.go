@@ -181,7 +181,7 @@ func (h *InventoryHandler) GetInventorySummary(c echo.Context) error {
 // @Tags inventory-items
 // @Accept json
 // @Produce json
-// @Param disposal body dto.DisposeItemsRequest true "Disposal data"
+// @Param disposal body dto.DisposeInventoryRequest true "Disposal data"
 // @Success 200 {object} models.InventorySubmission
 // @Failure 400 {object} map[string]string
 // @Failure 404 {object} map[string]string
@@ -213,7 +213,7 @@ func (h *InventoryHandler) DisposeInventoryItems(c echo.Context) error {
 // @Tags inventory-items
 // @Accept json
 // @Produce json
-// @Param confirmation body dto.ConfirmInventoryRequest true "Confirmation data"
+// @Param confirmation body dto.ReconcileInventoryRequest true "Confirmation data"
 // @Success 200 {object} models.InventorySubmission
 // @Failure 400 {object} map[string]string
 // @Failure 404 {object} map[string]string
@@ -301,19 +301,29 @@ func (h *InventoryHandler) ProcessSubmission(c echo.Context) error {
 	return c.JSON(http.StatusOK, submission)
 }
 
-// GetLastPurchasePrices retrieves the last purchase transaction price
+// GetLastPurchasePrices retrieves the 2 most recent purchase transaction prices
 // for each Supplier Product.
-// @Summary Get last purchase prices
-// @Description Get the last purchase transaction price for each Supplier Product as a nested map (product_id -> supplier_id -> price)
+// @Summary Get 2 latest purchase prices
+// @Description Get the 2 most recent purchase transaction prices for each Supplier Product as a nested map (product_id -> supplier_id -> []PriceHistory). Optionally filter by supplier_id.
 // @Tags inventories
 // @Accept json
 // @Produce json
+// @Param supplier_id query int false "Supplier ID to filter by"
 // @Success 200 {object} dto.LastPurchasePriceMap
+// @Failure 400 {object} map[string]string
 // @Failure 500 {object} map[string]string
 // @Security BearerAuth
 // @Router /inventories/last-purchase-prices [get]
 func (h *InventoryHandler) GetLastPurchasePrices(c echo.Context) error {
-	prices, err := h.inventoryService.GetLastPurchasePrices(c.Request().Context())
+	var supplierID uint
+	if id := c.QueryParam("supplier_id"); id != "" {
+		parsedID, err := strconv.Atoi(id)
+		if err == nil {
+			supplierID = uint(parsedID)
+		}
+	}
+
+	prices, err := h.inventoryService.GetLastPurchasePrices(c.Request().Context(), supplierID)
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to get last purchase prices"})
 	}
