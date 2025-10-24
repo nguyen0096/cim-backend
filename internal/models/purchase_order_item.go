@@ -12,11 +12,11 @@ const (
 // PurchaseOrderItem represents an item in a purchase order
 type PurchaseOrderItem struct {
 	Base
-	PurchaseOrderID  *uint                   `json:"purchase_order_id"`
+	PurchaseOrderID  *uint                   `json:"purchase_order_id" gorm:"uniqueIndex:idx_product_supplier_po"`
 	PurchaseOrder    *PurchaseOrder          `json:"purchase_order,omitempty" gorm:"foreignKey:PurchaseOrderID"`
-	ProductID        *uint                   `json:"product_id" gorm:"not null" validate:"required"`
+	ProductID        *uint                   `json:"product_id" gorm:"not null;uniqueIndex:idx_product_supplier_po" validate:"required"`
 	Product          *Product                `json:"product,omitempty" gorm:"foreignKey:ProductID"`
-	SupplierID       *uint                   `json:"supplier_id" gorm:"not null" validate:"required"`
+	SupplierID       *uint                   `json:"supplier_id" gorm:"not null;uniqueIndex:idx_product_supplier_po" validate:"required"`
 	Supplier         *Supplier               `json:"supplier,omitempty" gorm:"foreignKey:SupplierID"`
 	UnitPrice        float64                 `json:"unit_price" gorm:"type:decimal(13,2)" validate:"min=0"`
 	Quantity         int                     `json:"quantity" gorm:"not null" validate:"required,min=1"`

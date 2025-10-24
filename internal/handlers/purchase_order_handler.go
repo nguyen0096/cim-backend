@@ -113,6 +113,52 @@ func (h *PurchaseOrderHandler) CreatePurchaseOrder(c echo.Context) error {
 	return c.JSON(http.StatusCreated, purchaseOrder)
 }
 
+// UpdatePurchaseOrder godoc
+// @Summary Update a purchase order
+// @Description Update a purchase order's inventory, notes, and items while preserving received quantities
+// @Tags purchase-orders
+// @Accept json
+// @Produce json
+// @Param id path int true "Purchase Order ID"
+// @Param purchase_order body dto.UpdatePurchaseOrderRequest true "Purchase order update data"
+// @Success 200 {object} models.PurchaseOrder "Successfully updated purchase order"
+// @Failure 400 {object} map[string]string "Invalid request body or validation failed"
+// @Failure 404 {object} map[string]string "Purchase order not found"
+// @Failure 422 {object} map[string]string "Cannot edit completed or cancelled purchase order"
+// @Failure 500 {object} map[string]string "Failed to update purchase order"
+// @Router /api/purchase-orders/{id} [put]
+// @Security BearerAuth
+func (h *PurchaseOrderHandler) UpdatePurchaseOrder(c echo.Context) error {
+	logger := h.getRequestLogger(c, "UpdatePurchaseOrder")
+
+	// Extract purchase order ID from path
+	id, err := pkg.ExtractIDParam(c)
+	if err != nil {
+		return err
+	}
+
+	// Parse request body
+	var req dto.UpdatePurchaseOrderRequest
+	if err := c.Bind(&req); err != nil {
+		return pkg.ErrInvalidRequestBody(err)
+	}
+
+	// Validate request
+	validate := validator.New()
+	if err := validate.Struct(req); err != nil {
+		logger.WithError(err).Error("Validation failed")
+		return pkg.ErrValidation("validation failed", err)
+	}
+
+	// Update purchase order
+	po, err := h.purchaseOrderService.UpdatePurchaseOrder(c.Request().Context(), id, req)
+	if err != nil {
+		return pkg.ErrInternal("Failed to update purchase order", err)
+	}
+
+	return c.JSON(http.StatusOK, po)
+}
+
 func (h *PurchaseOrderHandler) GetPurchaseOrder(c echo.Context) error {
 	id, err := pkg.ExtractIDParam(c)
 	if err != nil {

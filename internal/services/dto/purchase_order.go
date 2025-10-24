@@ -27,3 +27,18 @@ type LastPurchasePriceResponse struct {
 
 // LastPurchasePriceMap represents nested map of product_id -> supplier_id -> last_price
 type LastPurchasePriceMap map[uint]map[uint]float64
+
+// UpdatePurchaseOrderRequest represents the request to update a purchase order
+type UpdatePurchaseOrderRequest struct {
+	InventoryID *uint                            `json:"inventory_id" validate:"required"`
+	Notes       string                           `json:"notes"`
+	Items       []UpdatePurchaseOrderItemRequest `json:"items" validate:"required,min=1,dive"`
+}
+
+// UpdatePurchaseOrderItemRequest represents an item in the update purchase order request
+type UpdatePurchaseOrderItemRequest struct {
+	SupplierID *uint   `json:"supplier_id" validate:"required"`
+	ProductID  *uint   `json:"product_id" validate:"required"`
+	Quantity   int     `json:"quantity" validate:"required,min=1"`
+	UnitPrice  float64 `json:"unit_price" validate:"min=0"`
+}

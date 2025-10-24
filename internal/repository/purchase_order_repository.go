@@ -25,6 +25,7 @@ type PurchaseOrderRepository interface {
 
 	// v1
 	GetByID(id uint) (*models.PurchaseOrder, error)
+	UpdatePurchaseOrder(ctx context.Context, id uint, req dto.UpdatePurchaseOrderRequest) (*models.PurchaseOrder, error)
 	ReceiveInventory(ctx context.Context, req dto.UpdatePurchaseOrderDeliveryStatusRequest) (*models.PurchaseOrder, error)
 }
 
@@ -278,11 +279,6 @@ func (r *purchaseOrderRepository) ReceiveInventory(ctx context.Context, req dto.
 			data.PurchaseOrderItem.Product = data.Product
 			poItems = append(poItems, data.PurchaseOrderItem)
 		}
-		po.Items = poItems
-		err = po.UpdateStatus()
-		if err != nil {
-			return fmt.Errorf("failed to calculate purchase order status: %w", err)
-		}
 
 		// Persist data
 		if len(newInventoryItems) > 0 {
@@ -311,13 +307,16 @@ func (r *purchaseOrderRepository) ReceiveInventory(ctx context.Context, req dto.
 			return fmt.Errorf("failed to save purchase order items: %w", err)
 		}
 
-		err = tx.Model(&models.PurchaseOrder{}).
-			Where("id = ?", po.ID).Updates(map[string]any{
-			"status":             po.Status,
-			"confirmed_at":       time.Now(),
-			"confirmation_notes": req.ConfirmationNotes,
-		}).Error
+		po.Items = poItems
+		now := time.Now()
+		po.ConfirmedAt = &now
+		po.ConfirmationNotes = req.ConfirmationNotes
+		err = po.UpdateStatus()
 		if err != nil {
+			return fmt.Errorf("failed to calculate purchase order status: %w", err)
+		}
+
+		if err := tx.Save(po).Error; err != nil {
 			return fmt.Errorf("failed to update purchase order status: %w", err)
 		}
 
@@ -338,4 +337,119 @@ func (r *purchaseOrderRepository) increaseQuantityInventoryItems(db *gorm.DB, de
 			SET quantity = ii.quantity + payload.delta
 		FROM payload WHERE ii.id = payload.id;
 	`, valuesStr)).Error
+}
+
+// UpdatePurchaseOrder updates a purchase order and its items while preserving ReceivedQuantity
+func (r *purchaseOrderRepository) UpdatePurchaseOrder(ctx context.Context, id uint, req dto.UpdatePurchaseOrderRequest) (*models.PurchaseOrder, error) {
+	var po *models.PurchaseOrder
+	return po, r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		// Fetch existing purchase order with items
+		if err := tx.Preload("Items").First(&po, id).Error; err != nil {
+			if err == gorm.ErrRecordNotFound {
+				return pkg.NewAppError(pkg.ErrorCodeNotFound, fmt.Sprintf("purchase order with ID %d not found", id), nil)
+			}
+			return fmt.Errorf("failed to fetch purchase order: %w", err)
+		}
+
+		// Check if purchase order can be edited (not completed or cancelled)
+		if po.Status == models.PurchaseOrderStatusCompleted || po.Status == models.PurchaseOrderStatusCancelled {
+			return pkg.NewAppError(pkg.ErrorCodeValidation,
+				fmt.Sprintf("cannot edit purchase order with status %s", po.Status), nil)
+		}
+		// Build a map of existing items by their ID to preserve ReceivedQuantity
+		existingItemsMap := make(map[string]*models.PurchaseOrderItem)
+		for _, item := range po.Items {
+			if item != nil {
+				// Create a unique key based on supplier_id and product_id
+				key := fmt.Sprintf("%d-%d", *item.SupplierID, *item.ProductID)
+				existingItemsMap[key] = item
+			}
+		}
+
+		// Delete purchase order items if not found in the request
+		// Build a map to track requested items by their unique key
+		newItemsKeyMap := make(map[string]struct{}, len(req.Items))
+		for _, itemReq := range req.Items {
+			key := fmt.Sprintf("%d-%d", *itemReq.SupplierID, *itemReq.ProductID)
+			newItemsKeyMap[key] = struct{}{}
+		}
+
+		// Find existing items to delete (i.e., items missing in newItemsKeyMap)
+		var itemsToDeleteIDs []uint
+		for key, existingItem := range existingItemsMap {
+			if _, found := newItemsKeyMap[key]; !found && existingItem != nil {
+				itemsToDeleteIDs = append(itemsToDeleteIDs, existingItem.ID)
+			}
+		}
+
+		// Find existing items and new items to upsert
+		upsertItems := make([]*models.PurchaseOrderItem, 0, len(req.Items))
+		for _, itemReq := range req.Items {
+			key := fmt.Sprintf("%d-%d", *itemReq.SupplierID, *itemReq.ProductID)
+			if existingItem, found := existingItemsMap[key]; found {
+				if existingItem.ReceivedQuantity > itemReq.Quantity {
+					return pkg.NewAppError(
+						pkg.ErrorCodeValidation,
+						fmt.Sprintf("received quantity (%d) for product %d from supplier %d is greater than updated quantity (%d)", existingItem.ReceivedQuantity, *itemReq.ProductID, *itemReq.SupplierID, itemReq.Quantity),
+						nil,
+					)
+				}
+
+				if existingItem.ReceivedQuantity > 0 && existingItem.ReceivedQuantity < itemReq.Quantity {
+					po.Status = models.PurchaseOrderStatusPartiallyDelivered
+				}
+
+				// Only update item if new quantity and unit price are different
+				if existingItem.Quantity == itemReq.Quantity && existingItem.UnitPrice == itemReq.UnitPrice {
+					continue
+				}
+
+				existingItem.Quantity = itemReq.Quantity
+				existingItem.UnitPrice = itemReq.UnitPrice
+				existingItem.UpdateStatus()
+				upsertItems = append(upsertItems, existingItem)
+			} else {
+				if po.Status == models.PurchaseOrderStatusFullyDelivered {
+					po.Status = models.PurchaseOrderStatusPartiallyDelivered
+				}
+				newItem := &models.PurchaseOrderItem{
+					PurchaseOrderID:  &id,
+					ProductID:        itemReq.ProductID,
+					SupplierID:       itemReq.SupplierID,
+					UnitPrice:        itemReq.UnitPrice,
+					Quantity:         itemReq.Quantity,
+					ReceivedQuantity: 0, // Default to 0
+					Status:           models.PurchaseOrderItemStatusAwaitingDelivery,
+				}
+				upsertItems = append(upsertItems, newItem)
+			}
+		}
+
+		// Delete items in one batch if any
+		if len(itemsToDeleteIDs) > 0 {
+			if err := tx.
+				Where("id IN (?)", itemsToDeleteIDs).
+				Delete(&models.PurchaseOrderItem{}).
+				Error; err != nil {
+				return fmt.Errorf("failed to delete removed purchase order items: %w", err)
+			}
+		}
+
+		// Set items to purchase order
+		po.Items = upsertItems
+		po.Notes = req.Notes
+
+		// Update quantity and prices of purchase order items
+		for _, item := range upsertItems {
+			if err := tx.Save(item).Error; err != nil {
+				return fmt.Errorf("failed to save purchase order item: %w", err)
+			}
+		}
+
+		if err := tx.Save(po).Error; err != nil {
+			return fmt.Errorf("failed to save purchase order: %w", err)
+		}
+
+		return nil
+	})
 }

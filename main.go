@@ -206,6 +206,7 @@ func main() {
 	purchaseOrders := api.Group("/purchase-orders")
 	purchaseOrders.GET("", purchaseOrderHandler.ListPurchaseOrders)
 	purchaseOrders.POST("", purchaseOrderHandler.CreatePurchaseOrder)
+	purchaseOrders.PUT("/:id", purchaseOrderHandler.UpdatePurchaseOrder)
 	purchaseOrders.PUT("/:id/receive", purchaseOrderHandler.ReceiveInventory)
 	purchaseOrders.PUT("/:id/status", purchaseOrderHandler.UpdatePurchaseOrderStatus)
 

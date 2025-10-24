@@ -30,6 +30,7 @@ type PurchaseOrderService interface {
 	UpdatePurchaseOrderItemStatus(ctx context.Context, purchaseOrderID, itemID uint, status models.PurchaseOrderItemStatus) (*dto.UpdatePurchaseOrderItemStatusResponse, error)
 
 	// V1
+	UpdatePurchaseOrder(ctx context.Context, id uint, req dto.UpdatePurchaseOrderRequest) (*models.PurchaseOrder, error)
 	ReceiveInventory(ctx context.Context, req dto.UpdatePurchaseOrderDeliveryStatusRequest) (*models.PurchaseOrder, error)
 }
 
@@ -836,6 +837,35 @@ func (s *purchaseOrderService) getHeaderAndColorFromProductType(productType stri
 	}
 
 	return
+}
+
+// UpdatePurchaseOrder updates a purchase order while preserving ReceivedQuantity
+func (s *purchaseOrderService) UpdatePurchaseOrder(ctx context.Context, id uint, req dto.UpdatePurchaseOrderRequest) (*models.PurchaseOrder, error) {
+	s.logger.WithFields(logrus.Fields{
+		"operation":         "UpdatePurchaseOrder",
+		"purchase_order_id": id,
+	}).Info("Updating purchase order")
+
+	po, err := s.purchaseOrderRepo.UpdatePurchaseOrder(ctx, id, req)
+	if err != nil {
+		s.logger.WithFields(logrus.Fields{
+			"operation":         "UpdatePurchaseOrder",
+			"purchase_order_id": id,
+			"error":             err,
+		}).Error("Failed to update purchase order")
+		return nil, err
+	}
+
+	// Calculate total amount based on items
+	po.TotalAmount = po.CalculateTotalAmount()
+
+	s.logger.WithFields(logrus.Fields{
+		"operation":         "UpdatePurchaseOrder",
+		"purchase_order_id": id,
+		"total_amount":      po.TotalAmount,
+	}).Info("Successfully updated purchase order")
+
+	return po, nil
 }
 
 func (s *purchaseOrderService) ReceiveInventory(
