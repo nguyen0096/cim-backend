@@ -116,15 +116,13 @@ func (r *purchaseOrderRepository) List(ctx context.Context, params models.ListPa
 		baseQuery = baseQuery.Where("order_number ILIKE ? OR notes ILIKE ?", "%"+params.Search+"%", "%"+params.Search+"%")
 	}
 
+	baseQuery = baseQuery.Preload("Items").Preload("Items.Product").Preload("Items.Supplier")
+
 	// Check if user has permission to view prices
-	if pkg.HasPermission(ctx, "prices", "view") {
-		// Include all fields with preloads
-		baseQuery = baseQuery.Preload("Items").Preload("Items.Product")
-	} else {
-		// Omit price fields when user doesn't have price view permission
-		baseQuery = baseQuery.Preload("Items", func(db *gorm.DB) *gorm.DB {
+	if !pkg.HasPermission(ctx, "prices", "view") {
+		baseQuery.Preload("Items", func(db *gorm.DB) *gorm.DB {
 			return db.Omit("unit_price")
-		}).Preload("Items.Product")
+		})
 	}
 
 	// Get total count first
