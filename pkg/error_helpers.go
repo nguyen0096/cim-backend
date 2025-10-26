@@ -59,7 +59,28 @@ func ErrBadInventoryItemState(message string, cause error) *AppError {
 
 // ErrOptimisticLockConflict creates an error for optimistic locking conflicts
 func ErrOptimisticLockConflict(resourceType string, resourceID uint, expectedValue, actualValue int) *AppError {
-	message := fmt.Sprintf("%s %d quantity has changed (expected: %d, current: %d). Please refresh and try again.",
+	message := fmt.Sprintf("%s %d quantity has changed (expected: %d, current: %d)",
 		resourceType, resourceID, expectedValue, actualValue)
 	return NewAppError(ErrorCodeConflict, message, nil)
+}
+
+// ErrInventoryItemNotFound creates an error for inventory item not found.
+func ErrInventoryItemNotFound(itemID uint) *AppError {
+	return NewAppError(ErrorCodeNotFound, fmt.Sprintf("inventory item %d not found", itemID), nil)
+}
+
+func ErrReconcileValidationFailed(message string) *AppError {
+	return NewAppError(ErrorCodeReconcileValidationFailed, message, nil)
+}
+
+func ErrDisposeValidationFailed(message string) *AppError {
+	return NewAppError(ErrorCodeDisposeValidationFailed, message, nil)
+}
+
+func ErrTransferValidationFailed(message string) *AppError {
+	return NewAppError(ErrorCodeTransferValidationFailed, message, nil)
+}
+
+func ErrConsumeFIFOFailed(message string) *AppError {
+	return NewAppError(ErrorCodeConsumeFIFOFailed, message, nil)
 }

@@ -3,10 +3,20 @@ package models
 type InventoryTransactionType string
 
 const (
-	InventoryTransactionTypePurchase InventoryTransactionType = "purchase"
-	InventoryTransactionTypeDisposal InventoryTransactionType = "disposal"
-	InventoryTransactionTypeSell     InventoryTransactionType = "sell"
+	InventoryTransactionTypePurchase    InventoryTransactionType = "purchase"
+	InventoryTransactionTypeDisposal    InventoryTransactionType = "disposal"
+	InventoryTransactionTypeSell        InventoryTransactionType = "sell"
+	InventoryTransactionTypeTransferOut InventoryTransactionType = "transfer_out"
+	InventoryTransactionTypeTransferIn  InventoryTransactionType = "transfer_in"
 )
+
+// GetConsumableTransactionTypes returns the transaction types that can be consumed by an inventory item.
+func GetConsumableTransactionTypes() []InventoryTransactionType {
+	return []InventoryTransactionType{
+		InventoryTransactionTypePurchase,
+		InventoryTransactionTypeTransferIn,
+	}
+}
 
 // InventoryTransaction represents an inventory transaction
 type InventoryTransaction struct {
@@ -15,7 +25,7 @@ type InventoryTransaction struct {
 	InventoryItem        *InventoryItem           `json:"inventory_item" gorm:"foreignKey:InventoryItemID"`
 	SupplierID           *uint                    `json:"supplier_id"`
 	Supplier             *Supplier                `json:"supplier,omitempty" gorm:"foreignKey:SupplierID" validate:"-"`
-	TransactionType      InventoryTransactionType `json:"transaction_type" gorm:"not null;check:transaction_type IN ('purchase', 'disposal', 'sell')"`
+	TransactionType      InventoryTransactionType `json:"transaction_type" gorm:"not null;check:transaction_type IN ('purchase', 'disposal', 'sell', 'transfer_out', 'transfer_in')"`
 	Price                float64                  `json:"price" gorm:"not null"`
 	Quantity             int                      `json:"quantity" gorm:"not null"`
 	ConsumedQuantity     int                      `json:"consumed_quantity"`

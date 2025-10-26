@@ -330,3 +330,35 @@ func (h *InventoryHandler) GetLastPurchasePrices(c echo.Context) error {
 
 	return c.JSON(http.StatusOK, prices)
 }
+
+// TransferInventory transfers inventory items from one inventory to another
+// @Summary Transfer inventory items
+// @Description Creates a pending submission to transfer inventory items from source inventory to destination inventory
+// @Tags inventories
+// @Accept json
+// @Produce json
+// @Param transfer body dto.TransferInventoryRequest true "Transfer data"
+// @Success 200 {object} models.InventorySubmission
+// @Failure 400 {object} map[string]string
+// @Failure 404 {object} map[string]string
+// @Failure 500 {object} map[string]string
+// @Security BearerAuth
+// @Router /inventories/transfer [post]
+func (h *InventoryHandler) TransferInventory(c echo.Context) error {
+	var req dto.TransferInventoryRequest
+
+	if err := c.Bind(&req); err != nil {
+		return pkg.ErrInvalidRequestBody(err)
+	}
+
+	if err := pkg.Validator.Struct(req); err != nil {
+		return pkg.ErrValidation("failed to validate request", err)
+	}
+
+	submission, err := h.inventoryService.CreateTransferSubmission(c.Request().Context(), req)
+	if err != nil {
+		return fmt.Errorf("failed to create transfer submission: %w", err)
+	}
+
+	return c.JSON(http.StatusOK, submission)
+}

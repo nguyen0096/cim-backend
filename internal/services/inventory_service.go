@@ -8,6 +8,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+
+	"github.com/labstack/gommon/log"
 )
 
 //go:generate mockery --name=InventoryService --structname=InventoryService --output=./servicemocks --outpkg=servicemocks
@@ -23,6 +25,7 @@ type InventoryService interface {
 	// v1
 	CreateReconcileSubmission(ctx context.Context, req dto.ReconcileInventoryRequest) (*models.InventorySubmission, error)
 	CreateDisposeSubmission(ctx context.Context, req dto.DisposeInventoryRequest) (*models.InventorySubmission, error)
+	CreateTransferSubmission(ctx context.Context, req dto.TransferInventoryRequest) (*models.InventorySubmission, error)
 	GetPendingSubmissions(ctx context.Context, inventoryID uint) ([]dto.PendingSubmissionResponse, error)
 	ProcessSubmission(ctx context.Context, req dto.ProcessSubmissionRequest) (*models.InventorySubmission, error)
 	GetLastPurchasePrices(ctx context.Context, supplierID uint) (dto.LastPurchasePriceMap, error)
@@ -78,37 +81,24 @@ func (s *inventoryService) RemoveInventory(ctx context.Context, productID uint, 
 	return s.inventoryRepo.RemoveInventory(ctx, productID, quantity, referenceID, referenceType)
 }
 
-// transactionCreator is a function that creates a new transaction for consuming inventory
-type transactionCreator func(item *models.InventoryItem, purchaseTxn *models.InventoryTransaction, quantity int) *models.InventoryTransaction
+// consumeHandler is a function that creates a new transaction for consuming inventory
+type consumeHandler func(item *models.InventoryItem, consumeTxn *models.InventoryTransaction, quantity int) []*models.InventoryTransaction
 
 // consumeFIFO is the common logic for consuming inventory items
 // It accepts a map of item IDs to quantities to consumeFIFO and a transaction creator function.
 // FIFO (First In, First Out) is used to consume inventory items.
 func (s *inventoryService) consumeFIFO(
-	ctx context.Context,
-	itemIDs []uint,
-	quantitiesToConsume map[uint]int,
-	createTransaction transactionCreator,
-) ([]*models.InventoryItem, error) {
-	// Step 1: Query data and validate
-	activeItems, err := s.inventoryItemRepo.GetActiveInventoryItems(ctx, itemIDs)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get active inventory items: %w", err)
-	}
-
-	if len(activeItems) == 0 {
-		return nil, pkg.NewAppError(pkg.ErrorCodeNotFound, "no active inventory items found", nil)
-	}
-
-	// Step 2: Validation - validate transaction quantities against inventory item quantities
-	for _, item := range activeItems {
-		if err := item.ValidateActivePurchaseTransactions(); err != nil {
-			return nil, fmt.Errorf("validation failed for inventory item %d: %w", item.ID, err)
-		}
-	}
-
-	// Step 3: Validate quantities to consume
-	for itemID, qtyToConsume := range quantitiesToConsume {
+	ps *processingState,
+	activeItems []*models.InventoryItem,
+	itemConsumeQuantity map[uint]int,
+	consumeHandler consumeHandler,
+) (
+	ivtrItemChanges []*models.InventoryItemChange,
+	txns []*models.InventoryTransaction,
+	err error,
+) {
+	// validate consume quantity
+	for itemID, consumeQty := range itemConsumeQuantity {
 		var item *models.InventoryItem
 		for _, i := range activeItems {
 			if i.ID == itemID {
@@ -117,40 +107,34 @@ func (s *inventoryService) consumeFIFO(
 			}
 		}
 		if item == nil {
-			return nil, pkg.NewAppError(pkg.ErrorCodeNotFound,
-				fmt.Sprintf("inventory item %d not found in active items", itemID), nil)
-		}
-
-		if qtyToConsume > item.Quantity {
-			return nil, pkg.NewAppError(pkg.ErrorCodeValidation,
-				fmt.Sprintf("quantity to consume %d exceeds available quantity %d for inventory item %d",
-					qtyToConsume, item.Quantity, itemID), nil)
-		}
-	}
-
-	// Step 4: Create consumption transactions for each inventory item
-	var newTransactions []*models.InventoryTransaction
-	var updateItems []*repository.PersistReconciliationItem
-	var updateTransactions []*models.InventoryTransaction
-
-	for _, item := range activeItems {
-		qtyToConsume, exists := quantitiesToConsume[item.ID]
-		if !exists {
-			return nil, pkg.NewAppError(pkg.ErrorCodeValidation,
-				fmt.Sprintf("no quantity specified for inventory item %d", item.ID), nil)
-		}
-
-		if qtyToConsume == 0 {
+			ps.addError(pkg.ErrInventoryItemNotFound(itemID))
 			continue
 		}
 
-		totalToConsume := qtyToConsume
+		if consumeQty > item.Quantity {
+			ps.addError(pkg.ErrConsumeFIFOFailed(
+				fmt.Sprintf("quantity to consume %d exceeds available quantity %d for inventory item %d",
+					consumeQty, item.Quantity, itemID)))
+			continue
+		}
+	}
+	if ps.hasAnyErrors() {
+		return nil, nil, ps.addError(fmt.Errorf("failed to validate consume FIFO"))
+	}
+
+	for _, item := range activeItems {
+		consumeQty, ok := itemConsumeQuantity[item.ID]
+		if !ok || consumeQty == 0 {
+			continue
+		}
+
+		toConsume := consumeQty
 		var consumingTxnID uint
-		txnCount := len(item.ActivePurchaseTransactions)
+		txnCount := len(item.ConsumableTransactions)
 		idx := 0
 
-		for totalToConsume > 0 && idx < txnCount {
-			txn := item.ActivePurchaseTransactions[idx]
+		for toConsume > 0 && idx < txnCount {
+			txn := item.ConsumableTransactions[idx]
 			txnUnconsumedQty := txn.Quantity - txn.ConsumedQuantity
 
 			if txnUnconsumedQty == 0 {
@@ -159,116 +143,106 @@ func (s *inventoryService) consumeFIFO(
 			}
 
 			// Create consumption transaction using the provided creator function
-			consumeQty := min(totalToConsume, txnUnconsumedQty)
-			transaction := createTransaction(item, txn, consumeQty)
-			newTransactions = append(newTransactions, transaction)
+			consumeQty := min(toConsume, txnUnconsumedQty)
+			newTxns := consumeHandler(item, txn, consumeQty)
+			txns = append(txns, newTxns...)
 
 			txn.ConsumedQuantity += consumeQty
-			updateTransactions = append(updateTransactions, txn)
+			txns = append(txns, txn)
 
 			consumingTxnID = txn.ID
-			totalToConsume -= consumeQty
+			toConsume -= consumeQty
 			idx++
 		}
 
-		updateItems = append(updateItems, &repository.PersistReconciliationItem{
+		ivtrItemChanges = append(ivtrItemChanges, &models.InventoryItemChange{
 			InventoryItem:    item,
 			OriginalQuantity: item.Quantity,
 		})
 
-		item.Quantity -= qtyToConsume
+		item.Quantity -= consumeQty
 		item.ConsumingTransactionID = consumingTxnID
 	}
 
-	// Step 5: Persist data
-	if err := s.inventoryItemRepo.PersistConsumption(ctx, updateItems, updateTransactions, newTransactions); err != nil {
-		return nil, fmt.Errorf("failed to persist consumption transactions and update inventory items: %w", err)
-	}
-
-	ivtrItems := make([]*models.InventoryItem, len(updateItems))
-	for i, item := range updateItems {
-		ivtrItems[i] = item.InventoryItem
-	}
-	return ivtrItems, nil
+	return ivtrItemChanges, txns, nil
 }
 
 // reconcileInventory reconciles inventory by creating sell transactions for the difference between previous and actual quantities
-func (s *inventoryService) reconcileInventory(ctx context.Context, req dto.ReconcileInventoryRequest) error {
-	itemIDs := make([]uint, len(req.Items))
-	for i, item := range req.Items {
-		itemIDs[i] = item.InventoryItemID
-	}
-
-	activeItems, err := s.inventoryItemRepo.GetActiveInventoryItems(ctx, itemIDs)
+func (s *inventoryService) reconcileInventory(
+	ctx context.Context,
+	ps *processingState,
+	req dto.ReconcileInventoryRequest,
+) error {
+	activeItems, err := s.getActiveInventoryItems(ctx, req.InventoryID, req.GetItemIDs())
 	if err != nil {
-		return fmt.Errorf("failed to get active inventory items: %w", err)
+		return ps.addError(fmt.Errorf("failed to get active inventory items: %w", err))
 	}
-	activeItemMap := make(map[uint]*models.InventoryItem)
-	for _, item := range activeItems {
-		activeItemMap[item.ID] = item
-	}
+	activeItemMap := s.buildItemMap(activeItems)
 
-	quantitiesToConsume := make(map[uint]int)
+	itemConsumeQuantity := make(map[uint]int)
 	for _, reqItem := range req.Items {
 		if reqItem.ActualQuantity == nil {
-			return pkg.ErrInvalidRequestBody(fmt.Errorf("actual quantity is required for inventory item %d", reqItem.InventoryItemID))
+			ps.addError(pkg.ErrInvalidRequestBody(fmt.Errorf("actual quantity is required for inventory item %d", reqItem.InventoryItemID)))
+			continue
 		}
 		item, exists := activeItemMap[reqItem.InventoryItemID]
 		if !exists {
-			return pkg.NewAppError(pkg.ErrorCodeNotFound,
-				fmt.Sprintf("inventory item %d not found", reqItem.InventoryItemID), nil)
+			ps.addError(pkg.ErrInventoryItemNotFound(reqItem.InventoryItemID))
+			continue
 		}
-		quantitiesToConsume[reqItem.InventoryItemID] = item.Quantity - *reqItem.ActualQuantity
+
+		// for reconcile, actual quantity is an absolute value, so we need optimistic locking
+		if item.Quantity != reqItem.PrevQuantity {
+			ps.addError(pkg.ErrOptimisticLockConflict("inventory item", reqItem.InventoryItemID, reqItem.PrevQuantity, item.Quantity))
+			continue
+		}
+
+		itemConsumeQuantity[reqItem.InventoryItemID] = item.Quantity - *reqItem.ActualQuantity
+	}
+	if ps.hasAnyErrors() {
+		return ps.addError(pkg.ErrReconcileValidationFailed("validation failed for reconcile request"))
 	}
 
-	// Create sell transaction creator
-	sellTransactionCreator := func(item *models.InventoryItem, purchaseTxn *models.InventoryTransaction, quantity int) *models.InventoryTransaction {
-		return &models.InventoryTransaction{
-			InventoryItemID:      item.ID,
-			TransactionType:      models.InventoryTransactionTypeSell,
-			Price:                purchaseTxn.Price,
-			Quantity:             quantity,
-			CounterTransactionID: &purchaseTxn.ID,
+	consumeHandler := func(item *models.InventoryItem, consumeTxn *models.InventoryTransaction, quantity int) []*models.InventoryTransaction {
+		return []*models.InventoryTransaction{
+			{
+				InventoryItemID:      item.ID,
+				TransactionType:      models.InventoryTransactionTypeSell,
+				Price:                consumeTxn.Price,
+				Quantity:             quantity,
+				CounterTransactionID: &consumeTxn.ID,
+			},
 		}
 	}
 
-	_, err = s.consumeFIFO(ctx, itemIDs, quantitiesToConsume, sellTransactionCreator)
+	ivtrItemChanges, txns, err := s.consumeFIFO(ps, activeItems, itemConsumeQuantity, consumeHandler)
 	if err != nil {
-		return fmt.Errorf("failed to consume FIFO: %w", err)
+		return ps.addError(fmt.Errorf("failed to consume FIFO: %w", err))
+	}
+
+	if err := s.inventoryItemRepo.SaveInventoryItemChanges(ctx, ivtrItemChanges, txns); err != nil {
+		return ps.addError(fmt.Errorf("failed to save inventory item changes: %w", err))
 	}
 	return nil
 }
 
 // CreateReconcileSubmission creates a submission for reconciling inventory
 func (s *inventoryService) CreateReconcileSubmission(ctx context.Context, req dto.ReconcileInventoryRequest) (*models.InventorySubmission, error) {
-	// Prepare item IDs
-	itemIDs := make([]uint, len(req.Items))
-	for i, item := range req.Items {
-		itemIDs[i] = item.InventoryItemID
-	}
-
-	// Get active items to validate the request
-	activeItems, err := s.inventoryItemRepo.GetActiveInventoryItems(ctx, itemIDs)
+	activeItems, err := s.getActiveInventoryItems(ctx, req.InventoryID, req.GetItemIDs())
 	if err != nil {
 		return nil, fmt.Errorf("failed to get active inventory items: %w", err)
 	}
+	activeItemMap := s.buildItemMap(activeItems)
 
-	// Validate prevQuantity matches current quantity
+	// validation
 	for _, reqItem := range req.Items {
 		if reqItem.ActualQuantity == nil {
 			return nil, pkg.ErrInvalidRequestBody(fmt.Errorf("actual quantity is required for inventory item %d", reqItem.InventoryItemID))
 		}
 
-		var item *models.InventoryItem
-		for _, activeItem := range activeItems {
-			if activeItem.ID == reqItem.InventoryItemID {
-				item = activeItem
-				break
-			}
-		}
-		if item == nil {
-			return nil, pkg.NewAppError(pkg.ErrorCodeNotFound,
-				fmt.Sprintf("inventory item %d not found", reqItem.InventoryItemID), nil)
+		item, exists := activeItemMap[reqItem.InventoryItemID]
+		if !exists {
+			return nil, pkg.ErrInventoryItemNotFound(reqItem.InventoryItemID)
 		}
 
 		// Optimistic locking: validate that current quantity matches what frontend saw
@@ -284,25 +258,11 @@ func (s *inventoryService) CreateReconcileSubmission(ctx context.Context, req dt
 		}
 	}
 
-	// Clear prevQuantity from items before persisting (used only for validation)
-	submissionItems := make([]dto.ReconcileItem, len(req.Items))
-	for i, item := range req.Items {
-		submissionItems[i] = dto.ReconcileItem{
-			InventoryItemID: item.InventoryItemID,
-			ActualQuantity:  item.ActualQuantity,
-			PrevQuantity:    0, // Clear prevQuantity, not needed in DB
-		}
-	}
-
-	// Marshal payload to json.RawMessage
-	payloadBytes, err := json.Marshal(dto.ReconcileSubmissionPayload{
-		Items: submissionItems,
-	})
+	payloadBytes, err := json.Marshal(req)
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal payload: %w", err)
 	}
 
-	// Create inventory submission with pending status
 	submission := &models.InventorySubmission{
 		InventoryID:      req.InventoryID,
 		SubmissionType:   models.InventorySubmissionTypeReconcile,
@@ -317,55 +277,59 @@ func (s *inventoryService) CreateReconcileSubmission(ctx context.Context, req dt
 }
 
 // disposeInventory disposes inventory by creating disposal transactions for specified quantities
-func (s *inventoryService) disposeInventory(ctx context.Context, req dto.DisposeInventoryRequest) error {
-	itemIDs := make([]uint, len(req.Items))
-	for i, item := range req.Items {
-		itemIDs[i] = item.InventoryItemID
+func (s *inventoryService) disposeInventory(
+	ctx context.Context,
+	ps *processingState,
+	req dto.DisposeInventoryRequest,
+) error {
+	activeItems, err := s.getActiveInventoryItems(ctx, req.InventoryID, req.GetItemIDs())
+	if err != nil {
+		return ps.addError(fmt.Errorf("failed to get active inventory items: %w", err))
 	}
 
-	quantitiesToConsume := make(map[uint]int)
+	itemConsumeQuantity := make(map[uint]int)
 	for _, reqItem := range req.Items {
 		if reqItem.Quantity == nil {
-			return pkg.ErrInvalidRequestBody(fmt.Errorf("quantity is required for inventory item %d", reqItem.InventoryItemID))
+			ps.addError(pkg.ErrInvalidRequestBody(fmt.Errorf("quantity is required for inventory item %d", reqItem.InventoryItemID)))
+			continue
 		}
-		quantitiesToConsume[reqItem.InventoryItemID] = *reqItem.Quantity
+		itemConsumeQuantity[reqItem.InventoryItemID] = *reqItem.Quantity
+	}
+	if ps.hasAnyErrors() {
+		return ps.addError(pkg.ErrDisposeValidationFailed("validation failed for dispose request"))
 	}
 
 	// Create disposal transaction creator
-	disposeTransactionCreator := func(item *models.InventoryItem, purchaseTxn *models.InventoryTransaction, quantity int) *models.InventoryTransaction {
-		return &models.InventoryTransaction{
-			InventoryItemID:      item.ID,
-			TransactionType:      models.InventoryTransactionTypeDisposal,
-			Price:                purchaseTxn.Price,
-			Quantity:             quantity,
-			CounterTransactionID: &purchaseTxn.ID,
+	disposeTransactionCreator := func(item *models.InventoryItem, consumeTxn *models.InventoryTransaction, quantity int) []*models.InventoryTransaction {
+		return []*models.InventoryTransaction{
+			{
+				InventoryItemID:      item.ID,
+				TransactionType:      models.InventoryTransactionTypeDisposal,
+				Price:                consumeTxn.Price,
+				Quantity:             quantity,
+				CounterTransactionID: &consumeTxn.ID,
+			},
 		}
 	}
 
-	_, err := s.consumeFIFO(ctx, itemIDs, quantitiesToConsume, disposeTransactionCreator)
+	ivtrItemChanges, txns, err := s.consumeFIFO(ps, activeItems, itemConsumeQuantity, disposeTransactionCreator)
 	if err != nil {
-		return fmt.Errorf("failed to consume FIFO: %w", err)
+		return ps.addError(fmt.Errorf("failed to consume FIFO: %w", err))
+	}
+
+	if err := s.inventoryItemRepo.SaveInventoryItemChanges(ctx, ivtrItemChanges, txns); err != nil {
+		return ps.addError(fmt.Errorf("failed to save inventory item changes: %w", err))
 	}
 	return nil
 }
 
 // CreateDisposeSubmission creates a submission for disposing inventory
 func (s *inventoryService) CreateDisposeSubmission(ctx context.Context, req dto.DisposeInventoryRequest) (*models.InventorySubmission, error) {
-	// Prepare item IDs
-	itemIDs := make([]uint, len(req.Items))
-	for i, item := range req.Items {
-		itemIDs[i] = item.InventoryItemID
-	}
-
-	// Get active items to validate the request
-	activeItems, err := s.inventoryItemRepo.GetActiveInventoryItems(ctx, itemIDs)
+	activeItems, err := s.getActiveInventoryItems(ctx, req.InventoryID, req.GetItemIDs())
 	if err != nil {
 		return nil, fmt.Errorf("failed to get active inventory items: %w", err)
 	}
-	activeItemMap := make(map[uint]*models.InventoryItem)
-	for _, item := range activeItems {
-		activeItemMap[item.ID] = item
-	}
+	activeItemMap := s.buildItemMap(activeItems)
 
 	// Validate prevQuantity matches current quantity
 	for _, reqItem := range req.Items {
@@ -392,25 +356,11 @@ func (s *inventoryService) CreateDisposeSubmission(ctx context.Context, req dto.
 		}
 	}
 
-	// Clear prevQuantity from items before persisting (used only for validation)
-	submissionItems := make([]dto.DisposeItem, len(req.Items))
-	for i, item := range req.Items {
-		submissionItems[i] = dto.DisposeItem{
-			InventoryItemID: item.InventoryItemID,
-			Quantity:        item.Quantity,
-			PrevQuantity:    0, // Clear prevQuantity, not needed in DB
-		}
-	}
-
-	// Marshal payload to json.RawMessage
-	payloadBytes, err := json.Marshal(dto.DisposeSubmissionPayload{
-		Items: submissionItems,
-	})
+	payloadBytes, err := json.Marshal(req)
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal payload: %w", err)
 	}
 
-	// Create inventory submission with pending status
 	submission := &models.InventorySubmission{
 		InventoryID:      req.InventoryID,
 		SubmissionType:   models.InventorySubmissionTypeDispose,
@@ -586,49 +536,43 @@ func (s *inventoryService) ProcessSubmission(ctx context.Context, req dto.Proces
 
 	// Step 2: Process submission only if approved
 	if approvalStatus == models.InventorySubmissionApprovalStatusApproved {
-		if err := s.processSubmission(ctx, submission); err != nil {
-			// Mark processing as failed if execution fails
-			if updateErr := s.inventorySubmissionRepo.UpdateProcessingStatus(ctx, submission.ID, models.InventorySubmissionStatusFailed); updateErr != nil {
-				return nil, fmt.Errorf("failed to process submission and update processing status: %w, update error: %v", err, updateErr)
-			}
-			submission.ProcessingStatus = models.InventorySubmissionStatusFailed
-			return nil, fmt.Errorf("failed to process submission: %w", err)
-		}
-
-		// Update processing status to completed
-		if err := s.inventorySubmissionRepo.UpdateProcessingStatus(ctx, submission.ID, models.InventorySubmissionStatusCompleted); err != nil {
-			return nil, fmt.Errorf("failed to update processing status to completed: %w", err)
-		}
-		submission.ProcessingStatus = models.InventorySubmissionStatusCompleted
+		s.processSubmission(ctx, submission)
 	}
 
 	return submission, nil
 }
 
 // processSubmission executes the actual inventory operation based on submission type
-func (s *inventoryService) processSubmission(ctx context.Context, submission *models.InventorySubmission) error {
+func (s *inventoryService) processSubmission(ctx context.Context, submission *models.InventorySubmission) {
+	ps := newProcessingState(s, submission)
+	defer ps.end(ctx)
+
 	switch submission.SubmissionType {
 	case models.InventorySubmissionTypeReconcile:
-		var payload dto.ReconcileSubmissionPayload
-		if err := json.Unmarshal(submission.Payload, &payload); err != nil {
-			return fmt.Errorf("failed to unmarshal reconcile payload: %w", err)
+		var req dto.ReconcileInventoryRequest
+		if err := json.Unmarshal(submission.Payload, &req); err != nil {
+			ps.addError(fmt.Errorf("failed to unmarshal reconcile payload: %w", err))
+			return
 		}
-		return s.reconcileInventory(ctx, dto.ReconcileInventoryRequest{
-			InventoryID: submission.InventoryID,
-			Items:       payload.Items,
-		})
+		s.reconcileInventory(ctx, ps, req)
 	case models.InventorySubmissionTypeDispose:
-		var payload dto.DisposeSubmissionPayload
-		if err := json.Unmarshal(submission.Payload, &payload); err != nil {
-			return fmt.Errorf("failed to unmarshal dispose payload: %w", err)
+		var req dto.DisposeInventoryRequest
+		if err := json.Unmarshal(submission.Payload, &req); err != nil {
+			ps.addError(fmt.Errorf("failed to unmarshal dispose payload: %w", err))
+			return
 		}
-		return s.disposeInventory(ctx, dto.DisposeInventoryRequest{
-			InventoryID: submission.InventoryID,
-			Items:       payload.Items,
-		})
+		s.disposeInventory(ctx, ps, req)
+	case models.InventorySubmissionTypeTransfer:
+		var req dto.TransferInventoryRequest
+		if err := json.Unmarshal(submission.Payload, &req); err != nil {
+			ps.addError(fmt.Errorf("failed to unmarshal transfer payload: %w", err))
+			return
+		}
+		s.transferInventory(ctx, ps, req)
 	default:
-		return pkg.NewAppError(pkg.ErrorCodeValidation,
-			fmt.Sprintf("unknown submission type: %s", submission.SubmissionType), nil)
+		ps.addError(pkg.NewAppError(pkg.ErrorCodeValidation,
+			fmt.Sprintf("unknown submission type: %s", submission.SubmissionType), nil))
+		return
 	}
 }
 
@@ -658,4 +602,258 @@ func (s *inventoryService) GetLastPurchasePrices(ctx context.Context, supplierID
 	}
 
 	return priceMap, nil
+}
+
+// CreateTransferSubmission creates a submission for transferring inventory items between inventories
+func (s *inventoryService) CreateTransferSubmission(ctx context.Context, req dto.TransferInventoryRequest) (*models.InventorySubmission, error) {
+	if req.SourceInventoryID == req.DestinationInventoryID {
+		return nil, pkg.NewAppError(pkg.ErrorCodeValidation, "source and destination inventories must be different", nil)
+	}
+
+	sourceInventory, err := s.inventoryRepo.GetByID(ctx, req.SourceInventoryID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get source inventory: %w", err)
+	}
+	if sourceInventory == nil {
+		return nil, pkg.NewAppError(pkg.ErrorCodeNotFound, "source inventory not found", nil)
+	}
+
+	destInventory, err := s.inventoryRepo.GetByID(ctx, req.DestinationInventoryID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get destination inventory: %w", err)
+	}
+	if destInventory == nil {
+		return nil, pkg.NewAppError(pkg.ErrorCodeNotFound, "destination inventory not found", nil)
+	}
+
+	srcItems, err := s.getActiveInventoryItems(ctx, req.SourceInventoryID, req.GetItemIDs())
+	if err != nil {
+		return nil, fmt.Errorf("failed to get active inventory items: %w", err)
+	}
+	srcItemMap := s.buildItemMap(srcItems)
+
+	// Validate item quantity
+	for _, reqItem := range req.Items {
+		item, exists := srcItemMap[reqItem.InventoryItemID]
+		if !exists {
+			return nil, pkg.NewAppError(pkg.ErrorCodeNotFound,
+				fmt.Sprintf("inventory item %d not found", reqItem.InventoryItemID), nil)
+		}
+
+		if reqItem.Quantity > item.Quantity {
+			return nil, pkg.NewAppError(pkg.ErrorCodeValidation,
+				fmt.Sprintf("transfer quantity %d exceeds available quantity %d for inventory item %d",
+					reqItem.Quantity, item.Quantity, reqItem.InventoryItemID), nil)
+		}
+	}
+
+	payloadBytes, err := json.Marshal(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal payload: %w", err)
+	}
+
+	// Create inventory submission with pending status
+	submission := &models.InventorySubmission{
+		InventoryID:      req.SourceInventoryID,
+		SubmissionType:   models.InventorySubmissionTypeTransfer,
+		ProcessingStatus: models.InventorySubmissionStatusPending,
+		Payload:          json.RawMessage(payloadBytes),
+	}
+
+	if err := s.inventorySubmissionRepo.Create(ctx, submission); err != nil {
+		return nil, fmt.Errorf("failed to create transfer submission: %w", err)
+	}
+	return submission, nil
+}
+
+// transferInventory transfers inventory items from source to destination inventory
+func (s *inventoryService) transferInventory(
+	ctx context.Context,
+	ps *processingState,
+	req dto.TransferInventoryRequest,
+) error {
+	srcItems, err := s.getActiveInventoryItems(ctx, req.SourceInventoryID, req.GetItemIDs())
+	if err != nil {
+		return ps.addError(fmt.Errorf("failed to get active inventory items: %w", err))
+	}
+	srcItemMap := s.buildItemMap(srcItems)
+
+	itemConsumeQuantity := make(map[uint]int)
+	for _, reqItem := range req.Items {
+		item, exists := srcItemMap[reqItem.InventoryItemID]
+		if !exists {
+			ps.addError(pkg.ErrInventoryItemNotFound(reqItem.InventoryItemID))
+			continue
+		}
+
+		if reqItem.Quantity > item.Quantity {
+			ps.addError(pkg.ErrTransferValidationFailed(fmt.Sprintf("transfer quantity %d exceeds available quantity %d for inventory item %d",
+				reqItem.Quantity, item.Quantity, reqItem.InventoryItemID)))
+			continue
+		}
+
+		itemConsumeQuantity[reqItem.InventoryItemID] = reqItem.Quantity
+	}
+	if ps.hasAnyErrors() {
+		return ps.addError(pkg.ErrTransferValidationFailed("validation failed for transfer request"))
+	}
+
+	destItems, err := s.getActiveInventoryItems(ctx, req.DestinationInventoryID, req.GetItemIDs())
+	if err != nil && !pkg.IsErrorCode(err, pkg.ErrorCodeNotFound) {
+		return ps.addError(fmt.Errorf("failed to get active inventory items: %w", err))
+	}
+	destItemMap := s.buildProductIDMap(destItems) // product_id -> inventory_item
+
+	destIvtrItemChanges := make(map[uint]*models.InventoryItemChange, 0) // product_id -> change
+	transferTransactionCreator := func(item *models.InventoryItem, consumeTxn *models.InventoryTransaction, quantity int) []*models.InventoryTransaction {
+		txns := []*models.InventoryTransaction{
+			{
+				InventoryItemID:      item.ID,
+				TransactionType:      models.InventoryTransactionTypeTransferOut,
+				Price:                consumeTxn.Price,
+				Quantity:             quantity,
+				CounterTransactionID: &consumeTxn.ID,
+			},
+			{
+				TransactionType:      models.InventoryTransactionTypeTransferIn,
+				Price:                consumeTxn.Price,
+				Quantity:             quantity,
+				CounterTransactionID: &consumeTxn.ID,
+			},
+		}
+
+		// if destination change is created, only need to update quantity
+		change, ok := destIvtrItemChanges[item.ProductID]
+		if ok {
+			change.Quantity += quantity
+			s.linkTxnWithInventoryItem(txns[1], change.InventoryItem)
+			return txns
+		}
+
+		// check existing destination item so that we can create new
+		// or udpate existing inventory item
+		destItem, ok := destItemMap[item.ProductID]
+		if !ok {
+			destItem = &models.InventoryItem{
+				InventoryID: req.DestinationInventoryID,
+				ProductID:   item.ProductID,
+				Status:      models.InventoryItemStatusActive,
+			}
+		}
+
+		// create new destination change
+		change = &models.InventoryItemChange{
+			InventoryItem:    destItem,
+			OriginalQuantity: destItem.Quantity,
+		}
+		destIvtrItemChanges[item.ProductID] = change
+
+		change.Quantity += quantity
+		s.linkTxnWithInventoryItem(txns[1], change.InventoryItem)
+		return txns
+	}
+
+	srcIvtrItemChanges, txns, err := s.consumeFIFO(ps, srcItems, itemConsumeQuantity, transferTransactionCreator)
+	if err != nil {
+		return ps.addError(fmt.Errorf("failed to consume FIFO: %w", err))
+	}
+
+	// combine src and dest ivtr item changes
+	ivtrItemChanges := make([]*models.InventoryItemChange, 0, len(srcIvtrItemChanges)+len(destIvtrItemChanges))
+	ivtrItemChanges = append(ivtrItemChanges, srcIvtrItemChanges...)
+	for _, change := range destIvtrItemChanges {
+		ivtrItemChanges = append(ivtrItemChanges, change)
+	}
+
+	if err := s.inventoryItemRepo.SaveInventoryItemChanges(ctx, ivtrItemChanges, txns); err != nil {
+		return ps.addError(fmt.Errorf("failed to save inventory item changes: %w", err))
+	}
+	return nil
+}
+
+func (s *inventoryService) linkTxnWithInventoryItem(txn *models.InventoryTransaction, inventoryItem *models.InventoryItem) {
+	if inventoryItem.ID == 0 {
+		inventoryItem.ID = txn.InventoryItemID
+	}
+	txn.InventoryItem = inventoryItem
+}
+
+// getActiveInventoryItems gets active inventory items by item IDs and validates them.
+func (s *inventoryService) getActiveInventoryItems(ctx context.Context, inventoryID uint, itemIDs []uint) ([]*models.InventoryItem, error) {
+	activeItems, err := s.inventoryItemRepo.GetActiveInventoryItems(ctx, inventoryID, itemIDs)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get active inventory items: %w", err)
+	}
+
+	if len(activeItems) == 0 {
+		return nil, pkg.NewAppError(pkg.ErrorCodeNotFound, "no active inventory items found", nil)
+	}
+
+	for _, item := range activeItems {
+		if err := item.ValidateActivePurchaseTransactions(); err != nil {
+			return nil, fmt.Errorf("validation failed for inventory item %d: %w", item.ID, err)
+		}
+	}
+
+	return activeItems, nil
+}
+
+// buildItemMap builds a map of inventory items by item ID.
+func (s *inventoryService) buildItemMap(items []*models.InventoryItem) map[uint]*models.InventoryItem {
+	itemMap := make(map[uint]*models.InventoryItem)
+	for _, item := range items {
+		if item.ID == 0 {
+			continue
+		}
+		itemMap[item.ID] = item
+	}
+	return itemMap
+}
+
+func (s *inventoryService) buildProductIDMap(items []*models.InventoryItem) map[uint]*models.InventoryItem {
+	productIDMap := make(map[uint]*models.InventoryItem)
+	for _, item := range items {
+		if item.ProductID == 0 {
+			continue
+		}
+		productIDMap[item.ProductID] = item
+	}
+	return productIDMap
+}
+
+func newProcessingState(s *inventoryService, submission *models.InventorySubmission) *processingState {
+	return &processingState{
+		svc:        s,
+		submission: submission,
+		errors:     make([]error, 0),
+	}
+}
+
+// processingState represents a job.
+type processingState struct {
+	svc        *inventoryService
+	submission *models.InventorySubmission
+	errors     []error
+}
+
+func (s *processingState) hasAnyErrors() bool {
+	return len(s.errors) > 0
+}
+
+func (s *processingState) addError(err error) error {
+	s.errors = append(s.errors, err)
+	return err
+}
+
+func (s *processingState) end(ctx context.Context) {
+	if s.hasAnyErrors() {
+		if err := s.svc.inventorySubmissionRepo.FailSubmissionProcessingWithErrors(ctx, s.submission.ID, s.errors); err != nil {
+			log.Error("failed to fail submission processing with errors: %w", err)
+		}
+		return
+	}
+
+	if err := s.svc.inventorySubmissionRepo.UpdateProcessingStatus(ctx, s.submission.ID, models.InventorySubmissionStatusCompleted); err != nil {
+		log.Error("failed to update submission status: %w", err)
+	}
 }

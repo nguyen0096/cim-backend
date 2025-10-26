@@ -174,6 +174,7 @@ func main() {
 	inventories.GET("/last-purchase-prices", inventoryHandler.GetLastPurchasePrices)
 	inventories.GET("/submissions/pending", inventoryHandler.GetPendingSubmissions)
 	inventories.POST("/submissions/:id/process", inventoryHandler.ProcessSubmission)
+	inventories.POST("/transfer", inventoryHandler.TransferInventory)
 	inventories.PUT("/:id/dispose", inventoryHandler.DisposeInventoryItems)
 	inventories.PUT("/:id/reconcile", inventoryHandler.ReconcileInventory)
 

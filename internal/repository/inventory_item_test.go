@@ -6,6 +6,7 @@ import (
 	"cim-backend/internal/models"
 	"cim-backend/pkg"
 	"context"
+	"fmt"
 	"testing"
 	"time"
 
@@ -196,7 +197,7 @@ func TestGetActiveItemsByInventoryIDs(t *testing.T) {
 		// Test with Main Warehouse A (inventory ID 1)
 		// Expected: 2 active items (MacBook Pro with quantity 9, LG Monitor with quantity 15)
 		// Herman Miller Chair has quantity 0, so it should be excluded
-		items, err := repo.GetActiveInventoryItems(ctx, []uint{inventoryItems[0].ID, inventoryItems[1].ID, inventoryItems[4].ID})
+		items, err := repo.GetActiveInventoryItems(ctx, inventories[0].ID, []uint{inventoryItems[0].ID, inventoryItems[1].ID, inventoryItems[4].ID})
 
 		require.NoError(t, err)
 		assert.Len(t, items, 2, "Should return 2 active items for Main Warehouse A")
@@ -214,31 +215,15 @@ func TestGetActiveItemsByInventoryIDs(t *testing.T) {
 		}
 	})
 
-	t.Run("should return active items for multiple inventory IDs", func(t *testing.T) {
-		// Test with Main Warehouse A and Secondary Warehouse B
-		// Expected: 4 active items total (2 from each inventory)
-		itemIDsToQuery := []uint{inventoryItems[0].ID, inventoryItems[1].ID, inventoryItems[2].ID, inventoryItems[3].ID, inventoryItems[4].ID}
-		items, err := repo.GetActiveInventoryItems(ctx, itemIDsToQuery)
-
-		require.NoError(t, err)
-		assert.Len(t, items, 4, "Should return 4 active items for both inventories")
-
-		// Verify all items are active
-		for _, item := range items {
-			assert.Greater(t, item.Quantity, 0, "All returned items should have quantity > 0")
-			assert.Contains(t, []uint{inventories[0].ID, inventories[1].ID}, item.InventoryID, "All items should belong to one of the specified inventories")
-		}
-	})
-
 	t.Run("should return empty result for non-existent inventory ID", func(t *testing.T) {
-		items, err := repo.GetActiveInventoryItems(ctx, []uint{999999})
+		items, err := repo.GetActiveInventoryItems(ctx, inventoryItems[1].ID, []uint{999999})
 
 		require.NoError(t, err)
 		assert.Len(t, items, 0, "Should return empty result for non-existent inventory ID")
 	})
 
 	t.Run("should return empty result for empty inventory IDs list", func(t *testing.T) {
-		items, err := repo.GetActiveInventoryItems(ctx, []uint{})
+		items, err := repo.GetActiveInventoryItems(ctx, inventoryItems[1].ID, []uint{})
 
 		require.NoError(t, err)
 		assert.Len(t, items, 0, "Should return empty result for empty inventory IDs list")
@@ -248,7 +233,7 @@ func TestGetActiveItemsByInventoryIDs(t *testing.T) {
 		// Test with Main Warehouse A - MacBook Pro item
 		// MacBook Pro has ConsumingTransactionID set to transaction 1's ID
 		// Should return transactions with ID >= transaction 1's ID (transactions 1 and 2)
-		items, err := repo.GetActiveInventoryItems(ctx, []uint{inventoryItems[0].ID, inventoryItems[1].ID})
+		items, err := repo.GetActiveInventoryItems(ctx, inventories[0].ID, []uint{inventoryItems[0].ID, inventoryItems[1].ID})
 
 		require.NoError(t, err)
 		require.Len(t, items, 2, "Should return 2 active items")
@@ -264,11 +249,11 @@ func TestGetActiveItemsByInventoryIDs(t *testing.T) {
 		require.NotNil(t, macBookItem, "MacBook Pro item should be found")
 
 		// Verify purchase transactions are preloaded
-		assert.NotNil(t, macBookItem.ActivePurchaseTransactions, "ActivePurchaseTransactions should be preloaded")
-		assert.Len(t, macBookItem.ActivePurchaseTransactions, 2, "Should have 2 purchase transactions (transactions 2 and 3)")
+		assert.NotNil(t, macBookItem.ConsumableTransactions, "ActivePurchaseTransactions should be preloaded")
+		assert.Len(t, macBookItem.ConsumableTransactions, 2, "Should have 2 purchase transactions (transactions 2 and 3)")
 
 		// Verify only purchase transactions are included
-		for _, transaction := range macBookItem.ActivePurchaseTransactions {
+		for _, transaction := range macBookItem.ConsumableTransactions {
 			assert.Equal(t, models.InventoryTransactionTypePurchase, transaction.TransactionType, "Only purchase transactions should be included")
 		}
 	})
@@ -276,7 +261,7 @@ func TestGetActiveItemsByInventoryIDs(t *testing.T) {
 	t.Run("should preload all purchase transactions for item with zero ConsumingTransactionID", func(t *testing.T) {
 		// Should return all purchase transactions when ConsumingTransactionID is 0
 
-		items, err := repo.GetActiveInventoryItems(ctx, []uint{inventoryItems[2].ID, inventoryItems[3].ID})
+		items, err := repo.GetActiveInventoryItems(ctx, inventories[1].ID, []uint{inventoryItems[2].ID, inventoryItems[3].ID})
 
 		require.NoError(t, err)
 		require.Len(t, items, 2, "Should return 2 active items")
@@ -292,11 +277,11 @@ func TestGetActiveItemsByInventoryIDs(t *testing.T) {
 		require.NotNil(t, keyboardItem, "Keychron Keyboard item should be found")
 
 		// Verify all purchase transactions are preloaded
-		assert.NotNil(t, keyboardItem.ActivePurchaseTransactions, "ActivePurchaseTransactions should be preloaded")
-		assert.Len(t, keyboardItem.ActivePurchaseTransactions, 3, "Should have all 3 purchase transactions")
+		assert.NotNil(t, keyboardItem.ConsumableTransactions, "ActivePurchaseTransactions should be preloaded")
+		assert.Len(t, keyboardItem.ConsumableTransactions, 3, "Should have all 3 purchase transactions")
 
 		// Verify only purchase transactions are included
-		for _, transaction := range keyboardItem.ActivePurchaseTransactions {
+		for _, transaction := range keyboardItem.ConsumableTransactions {
 			assert.Equal(t, models.InventoryTransactionTypePurchase, transaction.TransactionType, "Only purchase transactions should be included")
 		}
 	})
@@ -307,7 +292,7 @@ func TestGetActiveItemsByInventoryIDs(t *testing.T) {
 		invalidDB, _ := gorm.Open(nil, nil)
 		closedRepo := NewInventoryItemRepository(invalidDB)
 
-		items, err := closedRepo.GetActiveInventoryItems(ctx, []uint{1})
+		items, err := closedRepo.GetActiveInventoryItems(ctx, inventoryItems[1].ID, []uint{1})
 
 		// Note: This test may not always produce an error due to GORM's behavior
 		// The main purpose is to ensure the error handling code path is covered
@@ -322,7 +307,7 @@ func TestGetActiveItemsByInventoryIDs(t *testing.T) {
 	})
 
 	t.Run("should verify transaction ordering by CreatedAt", func(t *testing.T) {
-		items, err := repo.GetActiveInventoryItems(ctx, []uint{inventoryItems[2].ID, inventoryItems[3].ID})
+		items, err := repo.GetActiveInventoryItems(ctx, inventories[1].ID, []uint{inventoryItems[2].ID, inventoryItems[3].ID})
 
 		require.NoError(t, err)
 		require.Len(t, items, 2, "Should return 2 active items")
@@ -336,19 +321,19 @@ func TestGetActiveItemsByInventoryIDs(t *testing.T) {
 			}
 		}
 		require.NotNil(t, keyboardItem, "Keychron Keyboard item should be found")
-		require.Len(t, keyboardItem.ActivePurchaseTransactions, 3, "Should have 3 purchase transactions")
+		require.Len(t, keyboardItem.ConsumableTransactions, 3, "Should have 3 purchase transactions")
 
 		// Verify transactions are ordered by CreatedAt (oldest first)
-		for i := 1; i < len(keyboardItem.ActivePurchaseTransactions); i++ {
+		for i := 1; i < len(keyboardItem.ConsumableTransactions); i++ {
 			assert.True(t,
-				keyboardItem.ActivePurchaseTransactions[i-1].CreatedAt.Before(keyboardItem.ActivePurchaseTransactions[i].CreatedAt) ||
-					keyboardItem.ActivePurchaseTransactions[i-1].CreatedAt.Equal(keyboardItem.ActivePurchaseTransactions[i].CreatedAt),
+				keyboardItem.ConsumableTransactions[i-1].CreatedAt.Before(keyboardItem.ConsumableTransactions[i].CreatedAt) ||
+					keyboardItem.ConsumableTransactions[i-1].CreatedAt.Equal(keyboardItem.ConsumableTransactions[i].CreatedAt),
 				"Transactions should be ordered by CreatedAt")
 		}
 	})
 
 	t.Run("should exclude inactive items (quantity = 0)", func(t *testing.T) {
-		items, err := repo.GetActiveInventoryItems(ctx, []uint{inventoryItems[0].ID, inventoryItems[1].ID, inventoryItems[4].ID})
+		items, err := repo.GetActiveInventoryItems(ctx, inventories[0].ID, []uint{inventoryItems[0].ID, inventoryItems[1].ID, inventoryItems[4].ID})
 
 		require.NoError(t, err)
 		assert.Len(t, items, 2, "Should return only 2 active items, excluding the inactive one")
@@ -360,10 +345,9 @@ func TestGetActiveItemsByInventoryIDs(t *testing.T) {
 	})
 }
 
-func TestPersistConsumption(t *testing.T) {
+func TestSaveInventoryItemChanges(t *testing.T) {
 	db := setupTestDatabase(t)
 
-	// Create repository
 	repo := NewInventoryItemRepository(db)
 	ctx := pkg.WithUserEmail(context.Background(), "test@example.com")
 
@@ -428,6 +412,52 @@ func TestPersistConsumption(t *testing.T) {
 		createdInventoryItemIDs = append(createdInventoryItemIDs, item.ID)
 	}
 
+	// Create purchase transactions for all test inventory items
+	transactions := []models.InventoryTransaction{
+		// Purchase transactions for inventory item 1 (Test Product 1)
+		{
+			InventoryItemID: inventoryItems[0].ID,
+			SupplierID:      &suppliers[0].ID,
+			TransactionType: models.InventoryTransactionTypePurchase,
+			Price:           50.00,
+			Quantity:        5,
+		},
+		{
+			InventoryItemID: inventoryItems[0].ID,
+			SupplierID:      &suppliers[0].ID,
+			TransactionType: models.InventoryTransactionTypePurchase,
+			Price:           50.00,
+			Quantity:        5,
+		},
+
+		// Purchase transactions for inventory item 2 (Test Product 2)
+		{
+			InventoryItemID: inventoryItems[1].ID,
+			SupplierID:      &suppliers[1].ID,
+			TransactionType: models.InventoryTransactionTypePurchase,
+			Price:           75.00,
+			Quantity:        10,
+		},
+		{
+			InventoryItemID: inventoryItems[1].ID,
+			SupplierID:      &suppliers[1].ID,
+			TransactionType: models.InventoryTransactionTypePurchase,
+			Price:           75.00,
+			Quantity:        10,
+		},
+
+		// Purchase transactions for inventory item 3 (Test Product 3)
+		{
+			InventoryItemID: inventoryItems[2].ID,
+			SupplierID:      &suppliers[0].ID,
+			TransactionType: models.InventoryTransactionTypePurchase,
+			Price:           30.00,
+			Quantity:        5,
+		},
+	}
+	err = db.WithContext(ctx).Create(&transactions).Error
+	require.NoError(t, err, "Failed to create inventory transactions")
+
 	// Setup cleanup to only delete data created by this test
 	t.Cleanup(func() {
 		// Delete inventory transactions created by this test
@@ -456,45 +486,55 @@ func TestPersistConsumption(t *testing.T) {
 		}
 	})
 
-	t.Run("should successfully persist consumption with valid data", func(t *testing.T) {
-		// Prepare inventory items with current quantities (should match database: 10, 20)
-		reconcileItems := []*PersistReconciliationItem{
+	t.Run("should successfully create and update inventory items and transactions with valid data", func(t *testing.T) {
+		newInventoryItem := &models.InventoryItem{
+			InventoryID: inventories[0].ID,
+			ProductID:   products[2].ID,
+			Quantity:    5,
+			Status:      models.InventoryItemStatusActive,
+		}
+
+		changes := []*models.InventoryItemChange{
 			{
 				InventoryItem: &models.InventoryItem{
 					Base:        models.Base{ID: inventoryItems[0].ID},
 					InventoryID: inventories[0].ID, ProductID: products[0].ID,
-					Quantity: 8, Status: models.InventoryItemStatusActive, // New quantity after consumption
+					Quantity: 8, Status: models.InventoryItemStatusActive,
 				},
-				OriginalQuantity: 10, // Current quantity in DB
+				OriginalQuantity: 10,
 			},
 			{
-				InventoryItem: &models.InventoryItem{
-					Base:        models.Base{ID: inventoryItems[1].ID},
-					InventoryID: inventories[0].ID, ProductID: products[1].ID,
-					Quantity: 15, Status: models.InventoryItemStatusActive, // New quantity after consumption
-				},
-				OriginalQuantity: 20, // Current quantity in DB
+				InventoryItem: newInventoryItem,
 			},
 		}
 
-		// Prepare sell transactions
-		sellTransactions := []*models.InventoryTransaction{
+		txns := []*models.InventoryTransaction{
+			// Insert new transactions
 			{
 				InventoryItemID: inventoryItems[0].ID,
 				TransactionType: models.InventoryTransactionTypeSell,
 				Price:           100.0,
 				Quantity:        2,
 			},
+			// Update existing transactions
 			{
-				InventoryItemID: inventoryItems[1].ID,
-				TransactionType: models.InventoryTransactionTypeSell,
-				Price:           200.0,
+				Base:             models.Base{ID: transactions[0].ID},
+				InventoryItemID:  inventoryItems[0].ID,
+				TransactionType:  models.InventoryTransactionTypePurchase,
+				Price:            100.0,
+				Quantity:         3,
+				ConsumedQuantity: 2,
+			},
+			// Insert new transaction for new inventory item
+			{
+				InventoryItem:   newInventoryItem,
+				TransactionType: models.InventoryTransactionTypePurchase,
+				Price:           100.0,
 				Quantity:        5,
 			},
 		}
 
-		// Execute consumption
-		err := repo.PersistConsumption(ctx, reconcileItems, []*models.InventoryTransaction{}, sellTransactions)
+		err := repo.SaveInventoryItemChanges(ctx, changes, txns)
 		require.NoError(t, err, "PersistConsumption should succeed with valid data")
 
 		// Verify inventory items were updated
@@ -503,29 +543,31 @@ func TestPersistConsumption(t *testing.T) {
 		require.NoError(t, err)
 		assert.Equal(t, 8, updatedItem1.Quantity, "First item quantity should be 8")
 
-		var updatedItem2 models.InventoryItem
-		err = db.WithContext(ctx).First(&updatedItem2, inventoryItems[1].ID).Error
+		// Vefiry sell transaction was created
+		var updatedSellTransaction models.InventoryTransaction
+		err = db.WithContext(ctx).First(&updatedSellTransaction, txns[0].ID).Error
 		require.NoError(t, err)
-		assert.Equal(t, 15, updatedItem2.Quantity, "Second item quantity should be 15")
+		assert.Equal(t, 2, updatedSellTransaction.Quantity, "Sell transaction should have Quantity = 2")
+		assert.Equal(t, models.InventoryTransactionTypeSell, updatedSellTransaction.TransactionType, "Should be a sell transaction")
 
-		// Verify sell transactions were created
-		var transactions []models.InventoryTransaction
-		err = db.WithContext(ctx).Where("inventory_item_id IN ? AND transaction_type = ?",
-			[]uint{inventoryItems[0].ID, inventoryItems[1].ID}, models.InventoryTransactionTypeSell).Find(&transactions).Error
+		// Verify purchase transactions were updated
+		var updatedPurchaseTransaction1 models.InventoryTransaction
+		err = db.WithContext(ctx).First(&updatedPurchaseTransaction1, txns[1].ID).Error
 		require.NoError(t, err)
-		assert.Len(t, transactions, 2, "Should have 2 sell transactions")
+		assert.Equal(t, 2, updatedPurchaseTransaction1.ConsumedQuantity, "First purchase transaction should have ConsumedQuantity = 2")
+		assert.Equal(t, models.InventoryTransactionTypePurchase, updatedPurchaseTransaction1.TransactionType, "Should be a purchase transaction")
 
-		// Verify transaction details
-		for _, transaction := range transactions {
-			assert.Equal(t, models.InventoryTransactionTypeSell, transaction.TransactionType)
-			assert.Greater(t, transaction.Price, 0.0)
-			assert.Greater(t, transaction.Quantity, 0)
-		}
+		// Verify purchase transaction for new inventory item was created
+		var updatedPurchaseTransaction2 models.InventoryTransaction
+		err = db.WithContext(ctx).First(&updatedPurchaseTransaction2, txns[2].ID).Error
+		require.NoError(t, err)
+		assert.Equal(t, 0, updatedPurchaseTransaction2.ConsumedQuantity, "New purchase transaction should have ConsumedQuantity = 0")
+		assert.Equal(t, models.InventoryTransactionTypePurchase, updatedPurchaseTransaction2.TransactionType, "Should be a purchase transaction")
 	})
 
 	t.Run("should return error when inventory item not found", func(t *testing.T) {
 		// Prepare updated inventory items with non-existent ID
-		reconcileItems := []*PersistReconciliationItem{
+		reconcileItems := []*models.InventoryItemChange{
 			{
 				InventoryItem: &models.InventoryItem{
 					Base:        models.Base{ID: 99999}, // Non-existent ID
@@ -537,43 +579,47 @@ func TestPersistConsumption(t *testing.T) {
 		}
 
 		// Execute consumption
-		err := repo.PersistConsumption(ctx, reconcileItems, []*models.InventoryTransaction{}, []*models.InventoryTransaction{})
+		err := repo.SaveInventoryItemChanges(ctx, reconcileItems, []*models.InventoryTransaction{})
 		require.Error(t, err, "PersistConsumption should fail with non-existent item ID")
 		assert.Contains(t, err.Error(), "inventory item with ID 99999 not found")
 	})
 
 	t.Run("should return error when quantity has been modified by another transaction", func(t *testing.T) {
-		// First, modify one of the items in the database to simulate concurrent modification
-		err := db.WithContext(ctx).Model(&models.InventoryItem{}).
+		// Get current quantity
+		var originalItem models.InventoryItem
+		err := db.WithContext(ctx).First(&originalItem, inventoryItems[0].ID).Error
+		require.NoError(t, err)
+
+		// Modify quantity - adding 2 to the original quantity
+		err = db.WithContext(ctx).Model(&models.InventoryItem{}).
 			Where("id = ?", inventoryItems[0].ID).
-			Update("quantity", 12).Error
+			Update("quantity", originalItem.Quantity+2).Error
 		require.NoError(t, err, "Failed to modify item quantity")
 
-		// Prepare updated inventory items with the original quantity (expecting it to be 10, but DB now has 12)
-		reconcileItems := []*PersistReconciliationItem{
+		reconcileItems := []*models.InventoryItemChange{
 			{
 				InventoryItem: &models.InventoryItem{
 					Base:        models.Base{ID: inventoryItems[0].ID},
 					InventoryID: inventories[0].ID, ProductID: products[0].ID,
 					Quantity: 8, Status: models.InventoryItemStatusActive,
 				},
-				OriginalQuantity: 10, // We expect 10, but DB has 12
+				OriginalQuantity: originalItem.Quantity,
 			},
 		}
 
 		// Execute consumption
-		err = repo.PersistConsumption(ctx, reconcileItems, []*models.InventoryTransaction{}, []*models.InventoryTransaction{})
+		err = repo.SaveInventoryItemChanges(ctx, reconcileItems, []*models.InventoryTransaction{})
 		require.Error(t, err, "PersistConsumption should fail when quantity has been modified")
-		assert.Contains(t, err.Error(), "quantity has been modified by another transaction")
+		assert.Contains(t, err.Error(), fmt.Sprintf("inventory item %d quantity has changed (expected: %d, current: %d). Please refresh and try again.", inventoryItems[0].ID, originalItem.Quantity, originalItem.Quantity+2))
 	})
 
 	t.Run("should handle empty items and transactions arrays", func(t *testing.T) {
 		// Execute consumption with empty arrays
-		err := repo.PersistConsumption(ctx, []*PersistReconciliationItem{}, []*models.InventoryTransaction{}, []*models.InventoryTransaction{})
+		err := repo.SaveInventoryItemChanges(ctx, []*models.InventoryItemChange{}, []*models.InventoryTransaction{})
 		require.NoError(t, err, "PersistConsumption should succeed with empty arrays")
 
 		// Execute consumption with nil arrays
-		err = repo.PersistConsumption(ctx, nil, nil, nil)
+		err = repo.SaveInventoryItemChanges(ctx, nil, nil)
 		require.NoError(t, err, "PersistConsumption should succeed with nil arrays")
 	})
 
@@ -585,7 +631,7 @@ func TestPersistConsumption(t *testing.T) {
 		require.NoError(t, err, "Failed to reset item quantity")
 
 		// Prepare updated inventory items with new quantity
-		reconcileItems := []*PersistReconciliationItem{
+		reconcileItems := []*models.InventoryItemChange{
 			{
 				InventoryItem: &models.InventoryItem{
 					Base:        models.Base{ID: inventoryItems[0].ID},
@@ -597,7 +643,7 @@ func TestPersistConsumption(t *testing.T) {
 		}
 
 		// Execute consumption with empty transactions
-		err = repo.PersistConsumption(ctx, reconcileItems, []*models.InventoryTransaction{}, []*models.InventoryTransaction{})
+		err = repo.SaveInventoryItemChanges(ctx, reconcileItems, []*models.InventoryTransaction{})
 		require.NoError(t, err, "PersistConsumption should succeed with only items")
 
 		// Verify item was updated
@@ -619,7 +665,7 @@ func TestPersistConsumption(t *testing.T) {
 		}
 
 		// Execute consumption with empty items
-		err := repo.PersistConsumption(ctx, []*PersistReconciliationItem{}, []*models.InventoryTransaction{}, sellTransactions)
+		err := repo.SaveInventoryItemChanges(ctx, []*models.InventoryItemChange{}, sellTransactions)
 		require.NoError(t, err, "PersistConsumption should succeed with only transactions")
 
 		// Verify transaction was created
@@ -651,7 +697,7 @@ func TestPersistConsumption(t *testing.T) {
 		originalQuantity := originalItem.Quantity
 
 		// Prepare data that will cause an error (non-existent item ID)
-		reconcileItems := []*PersistReconciliationItem{
+		reconcileItems := []*models.InventoryItemChange{
 			{
 				InventoryItem: &models.InventoryItem{
 					Base:        models.Base{ID: 99999}, // Non-existent ID
@@ -672,7 +718,7 @@ func TestPersistConsumption(t *testing.T) {
 		}
 
 		// Execute consumption (should fail)
-		err = repo.PersistConsumption(ctx, reconcileItems, []*models.InventoryTransaction{}, sellTransactions)
+		err = repo.SaveInventoryItemChanges(ctx, reconcileItems, sellTransactions)
 		require.Error(t, err, "PersistConsumption should fail")
 
 		// Verify that no changes were made (transaction was rolled back)
@@ -703,7 +749,7 @@ func TestPersistConsumption(t *testing.T) {
 		require.NoError(t, err, "Failed to reset item quantities")
 
 		// Prepare multiple updated inventory items with new quantities after consumption
-		reconcileItems := []*PersistReconciliationItem{
+		reconcileItems := []*models.InventoryItemChange{
 			{
 				InventoryItem: &models.InventoryItem{
 					Base:        models.Base{ID: inventoryItems[0].ID},
@@ -753,7 +799,7 @@ func TestPersistConsumption(t *testing.T) {
 		}
 
 		// Execute consumption
-		err = repo.PersistConsumption(ctx, reconcileItems, []*models.InventoryTransaction{}, sellTransactions)
+		err = repo.SaveInventoryItemChanges(ctx, reconcileItems, sellTransactions)
 		require.NoError(t, err, "PersistConsumption should succeed with multiple items and transactions")
 
 		// Verify all items were updated

@@ -14,6 +14,7 @@ type InventorySubmissionRepository interface {
 	GetByID(ctx context.Context, id uint) (*models.InventorySubmission, error)
 	UpdateApprovalStatus(ctx context.Context, id uint, status models.InventorySubmissionApprovalStatus, reason string) error
 	UpdateProcessingStatus(ctx context.Context, id uint, status models.InventorySubmissionStatus) error
+	FailSubmissionProcessingWithErrors(ctx context.Context, id uint, errors []error) error
 }
 
 type inventorySubmissionRepository struct {
@@ -73,4 +74,17 @@ func (r *inventorySubmissionRepository) UpdateProcessingStatus(ctx context.Conte
 		Model(&models.InventorySubmission{}).
 		Where("id = ?", id).
 		Update("processing_status", status).Error
+}
+
+func (r *inventorySubmissionRepository) FailSubmissionProcessingWithErrors(ctx context.Context, id uint, errors []error) error {
+	errorsJSON, err := models.MarshalErrors(errors)
+	if err != nil {
+		return err
+	}
+
+	return r.db.WithContext(ctx).
+		Model(&models.InventorySubmission{}).
+		Where("id = ?", id).
+		Update("processing_status", models.InventorySubmissionStatusFailed).
+		Update("error", errorsJSON).Error
 }

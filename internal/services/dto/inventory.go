@@ -8,6 +8,14 @@ type ReconcileInventoryRequest struct {
 	Items       []ReconcileItem `json:"items" validate:"required,min=1,dive"`
 }
 
+func (d ReconcileInventoryRequest) GetItemIDs() []uint {
+	itemIDs := make([]uint, len(d.Items))
+	for i, item := range d.Items {
+		itemIDs[i] = item.InventoryItemID
+	}
+	return itemIDs
+}
+
 // InventoryItemQuantity represents a single inventory item disposal
 type ReconcileItem struct {
 	InventoryItemID uint                  `json:"inventory_item_id" validate:"required"`
@@ -22,6 +30,14 @@ type DisposeInventoryRequest struct {
 	Items       []DisposeItem `json:"items" validate:"required,min=1,dive"`
 }
 
+func (d DisposeInventoryRequest) GetItemIDs() []uint {
+	itemIDs := make([]uint, len(d.Items))
+	for i, item := range d.Items {
+		itemIDs[i] = item.InventoryItemID
+	}
+	return itemIDs
+}
+
 // InventoryItemQuantity represents a single inventory item disposal
 type DisposeItem struct {
 	InventoryItemID uint                  `json:"inventory_item_id" validate:"required"`
@@ -30,12 +46,24 @@ type DisposeItem struct {
 	PrevQuantity    int                   `json:"prev_quantity,omitempty" validate:"required,min=1"`
 }
 
-// ReconcileSubmissionPayload represents the payload for a reconcile submission
-type ReconcileSubmissionPayload struct {
-	Items []ReconcileItem `json:"items"`
+// TransferInventoryRequest represents the request for transferring inventory items between inventories
+type TransferInventoryRequest struct {
+	SourceInventoryID      uint           `json:"source_inventory_id" validate:"required"`
+	DestinationInventoryID uint           `json:"destination_inventory_id" validate:"required"`
+	Items                  []TransferItem `json:"items" validate:"required,min=1,dive"`
 }
 
-// DisposeSubmissionPayload represents the payload for a dispose submission
-type DisposeSubmissionPayload struct {
-	Items []DisposeItem `json:"items"`
+func (d TransferInventoryRequest) GetItemIDs() []uint {
+	itemIDs := make([]uint, len(d.Items))
+	for i, item := range d.Items {
+		itemIDs[i] = item.InventoryItemID
+	}
+	return itemIDs
+}
+
+// TransferItem represents a single inventory item to transfer
+type TransferItem struct {
+	InventoryItemID uint                  `json:"inventory_item_id" validate:"required"`
+	InventoryItem   *models.InventoryItem `json:"inventory_item,omitempty" validate:"-"`
+	Quantity        int                   `json:"quantity" validate:"required,min=1"`
 }
