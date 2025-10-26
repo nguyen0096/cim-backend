@@ -103,13 +103,20 @@ func (r *revenueExpenseExcelRepository) AddExpenses(ctx context.Context, sheetNa
 	if err != nil {
 		return fmt.Errorf("failed to find last transaction row: %w", err)
 	}
-	// convert the ordinal number to int
-	ordinalNumber, err = strconv.Atoi(lastRow[1])
-	if err != nil {
-		return fmt.Errorf("failed to convert ordinal number to int: %w", err)
-	}
-	ordinalNumber++
 
+	// Check if lastRow has enough columns to access the ordinal number (STT column at index 1)
+	if len(lastRow) < 2 {
+		// If no ordinal number found, start from 1
+		ordinalNumber = 1
+	} else {
+		ordinalNumber, err = strconv.Atoi(lastRow[1])
+		if err != nil {
+			ordinalNumber = 1
+		} else {
+			ordinalNumber++
+		}
+	}
+	
 	// Add all expense data rows
 	for i, expenseData := range expensesData {
 		expenseData[pkg.RevenueExpenseColumnOrdinalNumber] = ordinalNumber

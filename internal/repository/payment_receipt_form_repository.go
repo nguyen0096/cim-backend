@@ -12,6 +12,8 @@ import (
 	"gorm.io/gorm"
 )
 
+//go:generate mockery --name=PaymentReceiptFormRepository --structname=PaymentReceiptFormRepository --output=../mocks/repositorymocks --outpkg=repositorymocks
+
 type PaymentReceiptFormRepository interface {
 	Create(ctx context.Context, form *models.PaymentReceiptForm) error
 	GetByID(ctx context.Context, id uint) (*models.PaymentReceiptForm, error)

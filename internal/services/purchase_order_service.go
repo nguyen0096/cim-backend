@@ -36,6 +36,7 @@ type PurchaseOrderService interface {
 
 type purchaseOrderService struct {
 	purchaseOrderRepo          repository.PurchaseOrderRepository
+	paymentReceiptFormRepo     repository.PaymentReceiptFormRepository
 	inventoryService           InventoryService
 	excelService               ExcelService
 	settingsService            SettingsService
@@ -52,6 +53,7 @@ type revenueExpenseRequest struct {
 
 func NewPurchaseOrderService(
 	purchaseOrderRepo repository.PurchaseOrderRepository,
+	paymentReceiptFormRepo repository.PaymentReceiptFormRepository,
 	inventoryService InventoryService,
 	excelService ExcelService,
 	settingsService SettingsService,
@@ -64,6 +66,7 @@ func NewPurchaseOrderService(
 
 	service := &purchaseOrderService{
 		purchaseOrderRepo:          purchaseOrderRepo,
+		paymentReceiptFormRepo:     paymentReceiptFormRepo,
 		inventoryService:           inventoryService,
 		excelService:               excelService,
 		settingsService:            settingsService,
@@ -183,6 +186,27 @@ func (s *purchaseOrderService) UpdatePurchaseOrderStatus(ctx context.Context, id
 		"status":            status,
 	}).Info("Updating purchase order status")
 
+	if status == models.PurchaseOrderStatusCompleted {
+		// Check if there is an approved payment receipt form before completing
+		approvedForm, err := s.paymentReceiptFormRepo.GetLatestPaymentReceiptForm(ctx, id, models.PaymentReceiptFormStatusApproved)
+		if err != nil {
+			s.logger.WithFields(logrus.Fields{
+				"operation":         "UpdatePurchaseOrderStatus",
+				"purchase_order_id": id,
+				"error":             err,
+			}).Error("Failed to check for approved payment receipt form")
+			return fmt.Errorf("failed to check for approved payment receipt form: %w", err)
+		}
+
+		if approvedForm == nil {
+			s.logger.WithFields(logrus.Fields{
+				"operation":         "UpdatePurchaseOrderStatus",
+				"purchase_order_id": id,
+			}).Warn("Cannot complete purchase order: no approved payment receipt form found")
+			return pkg.NewAppError(pkg.ErrorCodeValidation, "Cannot complete purchase order: no approved payment receipt form found", nil)
+		}
+	}
+
 	err := s.purchaseOrderRepo.UpdateStatus(ctx, id, status)
 	if err != nil {
 		s.logger.WithFields(logrus.Fields{
@@ -195,6 +219,7 @@ func (s *purchaseOrderService) UpdatePurchaseOrderStatus(ctx context.Context, id
 	}
 
 	if status == models.PurchaseOrderStatusCompleted {
+
 		// Queue the revenue expense request for serial processing
 		go s.queueRevenueExpenseRequest(context.Background(), id)
 	}
@@ -725,6 +750,13 @@ func (s *purchaseOrderService) handleRevenueExpenseGoogleSheetsAsync(ctx context
 	}
 
 	spreadsheetID := extractSpreadsheetID(filePath)
+	if spreadsheetID == "" {
+		s.logger.WithFields(logrus.Fields{
+			"operation":         "handleRevenueExpenseGoogleSheetsAsync",
+			"purchase_order_id": purchaseOrderID,
+		}).Error("spreadsheetID not found in revenue expense settings")
+		return
+	}
 
 	sheetName, ok := settingsValue["sheetName"].(string)
 	if !ok || sheetName == "" {
@@ -758,6 +790,13 @@ func (s *purchaseOrderService) handleRevenueExpenseGoogleSheetsAsync(ctx context
 	}
 
 	// Create expense data and add to Google Sheets
+	logger.WithFields(logrus.Fields{
+		"items_count": len(purchaseOrder.Items),
+		"spreadsheet_id": spreadsheetID,
+		"sheet_name":     sheetName,
+		"purchase_order_id": purchaseOrderID,
+	}).Info("Creating expense data from purchase order items")
+
 	expensesData, cellColors := s.createExpenseData(purchaseOrder.Items)
 	if err := s.excelService.AddExpensesToGoogleSheets(ctx, sheetName, expensesData, cellColors); err != nil {
 		duration := time.Since(startTime)
@@ -780,27 +819,23 @@ func (s *purchaseOrderService) handleRevenueExpenseGoogleSheetsAsync(ctx context
 
 // extractSpreadsheetID extracts the spreadsheet ID from a URL or returns the input if it's already an ID
 func extractSpreadsheetID(input string) string {
+	// Add safety check for empty input
+	if input == "" {
+		return ""
+	}
+
 	// Check if input contains Google Sheets URL pattern
 	if strings.Contains(input, "docs.google.com/spreadsheets") {
 		// Extract ID from URL pattern: https://docs.google.com/spreadsheets/d/{SPREADSHEET_ID}/...
-		parts := strings.Split(input, "/spreadsheets/d/")
-		if len(parts) > 1 {
-			idPart := parts[1]
-			// Remove everything after the ID (like /edit, #gid=0, etc.)
-			if idx := strings.Index(idPart, "/"); idx != -1 {
-				idPart = idPart[:idx]
-			}
-			if idx := strings.Index(idPart, "#"); idx != -1 {
-				idPart = idPart[:idx]
-			}
-			if idx := strings.Index(idPart, "?"); idx != -1 {
-				idPart = idPart[:idx]
-			}
-			return strings.TrimSpace(idPart)
+		input = strings.TrimLeft(input, "https://")
+		input = strings.TrimLeft(input, "docs.google.com/spreadsheets/d/")
+		parts := strings.Split(input, "/")
+		if len(parts) >= 1 && parts[0] != "" {
+			return parts[0]
 		}
 	}
-	// Return as-is if not a URL
-	return input
+
+	return ""
 }
 
 // createExpenseData creates expense data and cell colors from purchase order items
@@ -809,12 +844,29 @@ func (s *purchaseOrderService) createExpenseData(items []*models.PurchaseOrderIt
 	cellColors := make([]string, len(items))
 
 	for i, item := range items {
+		// Add nil checks to prevent panics
+		if item == nil {
+			s.logger.WithFields(logrus.Fields{
+				"operation":  "createExpenseData",
+				"item_index": i,
+			}).Warn("Skipping nil purchase order item")
+			continue
+		}
+
+		productName := "Unknown Product"
+		productType := "Unknown"
+
+		if item.Product != nil {
+			productName = item.Product.Name
+			productType = item.Product.ProductType
+		}
+
 		expensesData[i] = map[string]interface{}{
-			pkg.RevenueExpenseColumnName: item.Product.Name,
+			pkg.RevenueExpenseColumnName: productName,
 		}
 
 		itemTotalPrice := item.CalculateTotalAmount()
-		header, color := s.getHeaderAndColorFromProductType(item.Product.ProductType)
+		header, color := s.getHeaderAndColorFromProductType(productType)
 		expensesData[i][header] = itemTotalPrice
 		cellColors[i] = color
 	}

@@ -88,7 +88,7 @@ func main() {
 	inventoryItemService := services.NewInventoryItemService(inventoryItemRepo, inventoryRepo, productRepo)
 	settingsService := services.NewSettingsService(settingsRepo)
 	excelService := services.NewExcelService(productRepo, inventoryRepo, settingsService)
-	purchaseOrderService := services.NewPurchaseOrderService(purchaseOrderRepo, inventoryService, excelService, settingsService, db, logger)
+	purchaseOrderService := services.NewPurchaseOrderService(purchaseOrderRepo, paymentReceiptFormRepo, inventoryService, excelService, settingsService, db, logger)
 	paymentReceiptFormService := services.NewPaymentReceiptFormService(paymentReceiptFormRepo, db)
 
 	// Initialize handlers

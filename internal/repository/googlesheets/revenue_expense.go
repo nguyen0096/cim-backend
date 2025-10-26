@@ -8,6 +8,8 @@ import (
 
 	"cim-backend/internal/models"
 	"cim-backend/pkg"
+
+	"google.golang.org/api/sheets/v4"
 )
 
 // RevenueExpenseGoogleSheetsRepository handles data access for revenue/expense Google Sheets operations
@@ -19,8 +21,60 @@ type RevenueExpenseGoogleSheetsRepository interface {
 	GetSchema(ctx context.Context) *models.FileMetadata
 	VerifySpreadsheetAndSheet(ctx context.Context, serviceAccountFilePath string, spreadsheetID string, sheetName string) error
 	AddNewDateRow(ctx context.Context, sheetName string, date time.Time) error
+	DeleteLastNthRows(ctx context.Context, sheetName string, n int) error
 	Close() error
 	ForceCacheRefresh()
+}
+
+// DeleteLastNthRows deletes the last n rows from the specified sheet
+func (r *revenueExpenseGoogleSheetsRepository) DeleteLastNthRows(ctx context.Context, sheetName string, n int) error {
+	// Get sheet data
+	_, rows, err := r.GetSheetData(sheetName)
+	if err != nil {
+		return fmt.Errorf("failed to get sheet data: %w", err)
+	}
+
+	if len(rows) < n {
+		return fmt.Errorf("sheet has less than %d rows, cannot delete last %d rows", n, n)
+	}
+
+	// Get the sheet ID
+	sheetID, err := r.getSheetID(sheetName)
+	if err != nil {
+		return fmt.Errorf("failed to get sheet ID: %w", err)
+	}
+
+	// Calculate the indices of the last two rows
+	lastRowIndex := int64(len(rows))
+	startRowIndex := lastRowIndex - int64(n)
+
+	// Create delete request
+	requests := []*sheets.Request{
+		{
+			DeleteDimension: &sheets.DeleteDimensionRequest{
+				Range: &sheets.DimensionRange{
+					SheetId:    sheetID,
+					Dimension:  "ROWS",
+					StartIndex: startRowIndex,
+					EndIndex:   lastRowIndex,
+				},
+			},
+		},
+	}
+
+	batchUpdateRequest := &sheets.BatchUpdateSpreadsheetRequest{
+		Requests: requests,
+	}
+
+	_, err = r.sheetsService.Spreadsheets.BatchUpdate(r.spreadsheetID, batchUpdateRequest).Do()
+	if err != nil {
+		return fmt.Errorf("failed to delete last %d rows: %w", n, err)
+	}
+
+	// Invalidate cache after deleting to ensure next read gets fresh data
+	r.ForceCacheRefresh()
+
+	return nil
 }
 
 // revenueExpenseGoogleSheetsRepository implements RevenueExpenseGoogleSheetsRepository
@@ -56,7 +110,7 @@ func (r *revenueExpenseGoogleSheetsRepository) AddExpenses(ctx context.Context, 
 	// Get sheet data
 	_, rows, err := r.GetSheetData(sheetName)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to get sheet data: %w", err)
 	}
 
 	// Find header row
@@ -77,32 +131,62 @@ func (r *revenueExpenseGoogleSheetsRepository) AddExpenses(ctx context.Context, 
 	// 		return fmt.Errorf("failed to add transaction date row: %w", err)
 	// 	}
 	// 	targetRow++
+	// 	// After adding a new date row, ordinal number starts from 1
+	// 	ordinalNumber = 1
 	// } else {
 	// 	// find the ordinal number in the last row
 	// 	lastRow, _, err := r.FindLastTransactionRow(rows)
 	// 	if err != nil {
 	// 		return fmt.Errorf("failed to find last transaction row: %w", err)
 	// 	}
-	// 	// convert the ordinal number to int
-	// 	ordinalNumberStr := getCellValueAsString(lastRow[1])
-	// 	ordinalNumber, err = strconv.Atoi(ordinalNumberStr)
-	// 	if err != nil {
-	// 		return fmt.Errorf("failed to convert ordinal number to int: %w", err)
+
+	// 	// Check if lastRow has enough columns to access the ordinal number (STT column at index 1)
+	// 	if len(lastRow) < 2 {
+	// 		// If no ordinal number found, start from 1
+	// 		ordinalNumber = 1
+	// 	} else {
+	// 		// convert the ordinal number to int
+	// 		ordinalNumberStr := getCellValueAsString(lastRow[1])
+	// 		if ordinalNumberStr == "" {
+	// 			// If ordinal number is empty, start from 1
+	// 			ordinalNumber = 1
+	// 		} else {
+	// 			ordinalNumber, err = strconv.Atoi(ordinalNumberStr)
+	// 			if err != nil {
+	// 				// If conversion fails, start from 1
+	// 				ordinalNumber = 1
+	// 			} else {
+	// 				ordinalNumber++
+	// 			}
+	// 		}
 	// 	}
-	// 	ordinalNumber++
 	// }
 
 	lastRow, _, err := r.FindLastTransactionRow(rows)
 	if err != nil {
 		return fmt.Errorf("failed to find last transaction row: %w", err)
 	}
-	// convert the ordinal number to int
-	ordinalNumberStr := getCellValueAsString(lastRow[1])
-	ordinalNumber, err = strconv.Atoi(ordinalNumberStr)
-	if err != nil {
-		return fmt.Errorf("failed to convert ordinal number to int: %w", err)
+
+	// Check if lastRow has enough columns to access the ordinal number (STT column at index 1)
+	if len(lastRow) < 2 {
+		// If no ordinal number found, start from 1
+		ordinalNumber = 1
+	} else {
+		// convert the ordinal number to int
+		ordinalNumberStr := getCellValueAsString(lastRow[1])
+		if ordinalNumberStr == "" {
+			// If ordinal number is empty, start from 1
+			ordinalNumber = 1
+		} else {
+			ordinalNumber, err = strconv.Atoi(ordinalNumberStr)
+			if err != nil {
+				// If conversion fails, start from 1
+				ordinalNumber = 1
+			} else {
+				ordinalNumber++
+			}
+		}
 	}
-	ordinalNumber++
 
 	// Add all expense data rows
 	for i, expenseData := range expensesData {

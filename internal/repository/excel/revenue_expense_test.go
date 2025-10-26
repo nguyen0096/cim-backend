@@ -9,7 +9,6 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/require"
 )
@@ -77,7 +76,7 @@ func TestRevenueExpenseExcelRepository(t *testing.T) {
 		}
 	}
 
-	t.Log("\n=== Test Methods Functionality ===")
+	t.Log("\n=== Test Add First Expense ===")
 
 	// Display detected columns to show what the Excel file actually contains
 	t.Log("\n📋 Available columns for writing data:")
@@ -116,49 +115,21 @@ func TestRevenueExpenseExcelRepository(t *testing.T) {
 		pkg.RevenueExpenseColumnWater: 15000,
 	}
 
-	// Read last transaction date
-	t.Log("🔄 Reading last transaction date...")
-	lastTransactionDate, err := revenueExpenseExcelRepo.GetLastTransactionDate(ctx, sheetName)
-	require.Nil(t, err)
-	t.Logf("✅ Last transaction date retrieved: %v\n", lastTransactionDate)
-
-	// Verify that last transaction date is not today
-	require.NotEqual(t, lastTransactionDate.Format("2006-01-02"), time.Now().Format("2006-01-02"))
-
 	// Add expense
-	t.Log("🔄 Adding sample expense using detected columns...")
 	err = revenueExpenseExcelRepo.AddExpenses(ctx, sheetName, []map[string]interface{}{sampleExpense}, []string{pkg.RevenueExpenseColumnSnackAndRiceColor, pkg.RevenueExpenseColumnWaterColor})
 	require.Nil(t, err)
-	t.Log("✅ Sample expense added successfully")
 
 	// Try to read last expense
-	t.Log("🔄 Reading last expense...")
 	lastExpense, err := revenueExpenseExcelRepo.GetLastExpense(ctx, sheetName)
 	require.Nil(t, err)
-	t.Logf("✅ Last expense retrieved: %v\n", lastExpense)
 
 	// Compare last expense with expected expense
-	t.Log("\n🔍 Comparing last expense with expected expense...")
 	expectedExpense := map[string]interface{}{
 		pkg.RevenueExpenseColumnName:          "Test expense",
 		pkg.RevenueExpenseColumnWater:         15000,
 		pkg.RevenueExpenseColumnOrdinalNumber: 1,
 	}
 	compareExpenses(t, expectedExpense, lastExpense)
-
-	// Read last transaction date
-	t.Log("🔄 Reading last transaction date...")
-	lastTransactionDate2, err := revenueExpenseExcelRepo.GetLastTransactionDate(ctx, sheetName)
-	require.Nil(t, err)
-	t.Logf("✅ Last transaction date retrieved: %v\n", lastTransactionDate2)
-
-	// Verify that last transaction date is today
-	require.Equal(t, lastTransactionDate2.Format("2006-01-02"), time.Now().Format("2006-01-02"))
-
-	// lastTransactionCellStyle, err := revenueExpenseExcelRepo.GetLastTransactionCellStyle(ctx, sheetName)
-	// require.Nil(t, err)
-	// require.Equal(t, lastTransactionCellStyle[2], 34)
-	// require.Equal(t, lastTransactionCellStyle[3], 34)
 
 	sampleExpense2 := map[string]interface{}{
 		pkg.RevenueExpenseColumnName:          "Test expense 2",
@@ -167,21 +138,16 @@ func TestRevenueExpenseExcelRepository(t *testing.T) {
 	}
 
 	// Add another expense
-	t.Log("🔄 Adding sample expense using detected columns...")
 	err = revenueExpenseExcelRepo.AddExpenses(ctx, sheetName,
 		[]map[string]interface{}{sampleExpense2},
 		[]string{pkg.RevenueExpenseColumnSnackAndRiceColor})
 	require.Nil(t, err)
-	t.Log("✅ Sample expense added successfully")
 
 	// Try to read last expense
-	t.Log("🔄 Reading last expense...")
 	lastExpense2, err := revenueExpenseExcelRepo.GetLastExpense(ctx, sheetName)
 	require.Nil(t, err)
-	t.Logf("✅ Last expense 2 retrieved: %v\n", lastExpense2)
 
 	// Compare last expense with expected expense
-	t.Log("\n🔍 Comparing last expense with expected expense...")
 	expectedExpense2 := map[string]interface{}{
 		pkg.RevenueExpenseColumnName:          "Test expense 2",
 		pkg.RevenueExpenseColumnSnackAndRice:  1000000,

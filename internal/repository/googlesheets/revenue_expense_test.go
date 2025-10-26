@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"os"
 	"testing"
-	"time"
 
 	"github.com/joho/godotenv"
 	"github.com/stretchr/testify/require"
@@ -48,6 +47,8 @@ func TestRevenueExpenseGoogleSheetsRepository(t *testing.T) {
 
 	t.Cleanup(func() {
 		t.Log("Cleaning up...")
+		// Delete two last rows 
+		revenueExpenseGoogleSheetsRepo.DeleteLastNthRows(ctx, sheetName, 2)
 		revenueExpenseGoogleSheetsRepo.Close()
 		t.Log("✅ Cleanup completed")
 	})
@@ -59,7 +60,7 @@ func TestRevenueExpenseGoogleSheetsRepository(t *testing.T) {
 	// Force cache refresh to ensure we read fresh data
 	revenueExpenseGoogleSheetsRepo.ForceCacheRefresh()
 
-	t.Log("✅ Service initialized successfully")
+	t.Log("=== Service initialized successfully, getting schema ===")
 
 	// Get and display schema
 	schema := revenueExpenseGoogleSheetsRepo.GetSchema(ctx)
@@ -80,8 +81,6 @@ func TestRevenueExpenseGoogleSheetsRepository(t *testing.T) {
 		}
 	}
 
-	t.Log("\n=== Test Methods Functionality ===")
-
 	// Display detected columns to show what the Google Sheets actually contains
 	t.Log("\n📋 Available columns for writing data:")
 	t.Logf("   Total columns detected: %d\n", len(schema.Sheets[0].Headers))
@@ -93,8 +92,8 @@ func TestRevenueExpenseGoogleSheetsRepository(t *testing.T) {
 		t.Logf("   %d. %s [%s]%s\n", i+1, header.ColumnName, header.DataType, requiredText)
 	}
 
-	// Show column mapping for easier understanding
-	t.Log("\n🔍 Column mapping for data entry:")
+	t.Log("\n=== Test Add First Expense ===")
+
 	for _, header := range schema.Sheets[0].Headers {
 		switch header.ColumnName {
 		case "THÁNG 04+05/2023":
@@ -120,34 +119,14 @@ func TestRevenueExpenseGoogleSheetsRepository(t *testing.T) {
 		pkg.RevenueExpenseColumnWater: 15000,
 	}
 
-	// Read last transaction date
-	t.Log("🔄 Reading last transaction date...")
-	lastTransactionDate, err := revenueExpenseGoogleSheetsRepo.GetLastTransactionDate(ctx, sheetName)
-	require.Nil(t, err, "Failed to get last transaction date")
-	t.Logf("✅ Last transaction date retrieved: %v\n", lastTransactionDate)
-
-	// Store the initial transaction date for comparison later
-	initialTransactionDate := lastTransactionDate
-	t.Logf("📅 Initial transaction date: %v\n", initialTransactionDate)
-
 	// Add expense
-	t.Log("🔄 Adding sample expense using detected columns...")
 	err = revenueExpenseGoogleSheetsRepo.AddExpenses(ctx, sheetName, []map[string]interface{}{sampleExpense}, []string{pkg.RevenueExpenseColumnWaterColor})
-	if err != nil {
-		t.Logf("❌ Failed to add expense: %v", err)
-		t.Logf("\n⚠️  This might be due to:")
-		t.Logf("   1. The spreadsheet is read-only")
-		t.Logf("   2. The sheet name '%s' doesn't exist", sheetName)
-		t.Logf("   3. API key doesn't have write permissions")
-		t.Fatalf("Failed to add expense")
-	}
+	require.Nil(t, err, "Failed to add expense")
 	t.Log("✅ Sample expense added successfully")
 
 	// Try to read last expense
-	t.Log("🔄 Reading last expense...")
 	lastExpense, err := revenueExpenseGoogleSheetsRepo.GetLastExpense(ctx, sheetName)
 	require.Nil(t, err, "Failed to get last expense")
-	t.Logf("✅ Last expense retrieved: %v\n", lastExpense)
 
 	// Compare last expense with expected expense
 	t.Log("\n🔍 Comparing last expense with expected expense...")
@@ -160,17 +139,6 @@ func TestRevenueExpenseGoogleSheetsRepository(t *testing.T) {
 
 	// Force cache refresh before reading transaction date
 	revenueExpenseGoogleSheetsRepo.ForceCacheRefresh()
-
-	// Read last transaction date
-	t.Log("🔄 Reading last transaction date...")
-	lastTransactionDate2, err := revenueExpenseGoogleSheetsRepo.GetLastTransactionDate(ctx, sheetName)
-	require.Nil(t, err, "Failed to get last transaction date")
-	t.Logf("✅ Last transaction date retrieved: %v\n", lastTransactionDate2)
-
-	// Verify that last transaction date is today (should be updated after adding expense)
-	todayDate := time.Now().Format("2006-01-02")
-	require.Equal(t, todayDate, lastTransactionDate2.Format("2006-01-02"),
-		"Expected last transaction date to be today after adding expense, but got %s", lastTransactionDate2.Format("2006-01-02"))
 
 	sampleExpense2 := map[string]interface{}{
 		pkg.RevenueExpenseColumnName:          "Test expense 2",
@@ -203,6 +171,54 @@ func TestRevenueExpenseGoogleSheetsRepository(t *testing.T) {
 
 	t.Log("✅ Thu chi Google Sheets repository test completed successfully")
 }
+
+func TestAddNewDateRow_GoogleSheets(t *testing.T) {
+	t.Log("=== Google Sheets test: Add New Date Row (Thu Chi) ===")
+
+	ctx := context.Background()
+	sheetName := "TIỀN MẶT"
+	if err := godotenv.Load("../../../.env"); err != nil {
+		t.Logf("Warning: Could not load .env file: %v", err)
+	}
+
+	// Use fresh repo instance for this test to avoid side-effects with shared cache
+	revenueExpenseGoogleSheetsRepo := NewRevenueExpenseGoogleSheetsRepository()
+
+	// Use environment variables to pull service account and spreadsheet configs
+	serviceAccountFile := os.Getenv(TestGoogleAPIKey)
+	spreadsheetID := os.Getenv(TestRevenueExpenseSpreadsheetID)
+
+	// Initialize with test service account and spreadsheet
+	err := revenueExpenseGoogleSheetsRepo.InitializeWithSpreadsheet(ctx, serviceAccountFile, spreadsheetID, sheetName)
+	require.Nil(t, err, "Failed to initialize repository")
+
+	t.Cleanup(func() {
+		t.Log("Cleaning up after AddNewDateRow test...")
+		revenueExpenseGoogleSheetsRepo.DeleteLastNthRows(ctx, sheetName, 1)
+		revenueExpenseGoogleSheetsRepo.Close()
+	})
+
+	// Choose a new date (use today's date for testing)
+	newDate := pkg.GetTodayDate()
+
+	// Add new date row
+	t.Logf("Adding new date row: %v", newDate)
+	err = revenueExpenseGoogleSheetsRepo.AddNewDateRow(ctx, sheetName, newDate)
+	require.Nil(t, err, "Failed to add new date row")
+
+	// Force cache refresh to ensure read after write
+	revenueExpenseGoogleSheetsRepo.ForceCacheRefresh()
+
+	// Get last transaction date to verify
+	t.Log("Verifying last transaction date matches inserted date...")
+	lastDate, err := revenueExpenseGoogleSheetsRepo.GetLastTransactionDate(ctx, sheetName)
+	require.Nil(t, err, "Failed to get last transaction date")
+	require.Equal(t, newDate.Format("2006-01-02"), lastDate.Format("2006-01-02"), "Last transaction date mismatch")
+
+	t.Logf("✅ AddNewDateRow and last transaction date verified for date: %v", lastDate.Format("2006-01-02"))
+}
+
+
 
 // compareExpenses compares two expense maps and returns true if they match
 // It only checks that all expected keys exist in actual with matching values
