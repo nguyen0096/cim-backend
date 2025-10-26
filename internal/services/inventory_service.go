@@ -23,12 +23,13 @@ type InventoryService interface {
 	RemoveInventory(ctx context.Context, productID uint, quantity int, referenceID uint, referenceType, notes string) error
 
 	// v1
+	GetLastPurchasePrices(ctx context.Context, supplierID uint) (dto.LastPurchasePriceMap, error)
+	GetPendingSubmissions(ctx context.Context, inventoryID uint) ([]dto.SubmissionResponse, error)
+	ListSubmissions(ctx context.Context, params models.ListParams, approvalStatuses []string, inventoryID uint, submissionTypes []string) ([]dto.SubmissionResponse, int64, error)
 	CreateReconcileSubmission(ctx context.Context, req dto.ReconcileInventoryRequest) (*models.InventorySubmission, error)
 	CreateDisposeSubmission(ctx context.Context, req dto.DisposeInventoryRequest) (*models.InventorySubmission, error)
 	CreateTransferSubmission(ctx context.Context, req dto.TransferInventoryRequest) (*models.InventorySubmission, error)
-	GetPendingSubmissions(ctx context.Context, inventoryID uint) ([]dto.PendingSubmissionResponse, error)
 	ProcessSubmission(ctx context.Context, req dto.ProcessSubmissionRequest) (*models.InventorySubmission, error)
-	GetLastPurchasePrices(ctx context.Context, supplierID uint) (dto.LastPurchasePriceMap, error)
 }
 
 type inventoryService struct {
@@ -403,7 +404,7 @@ func buildSimplifiedItems(payload json.RawMessage, itemsMap map[uint]*models.Inv
 		Items []struct {
 			InventoryItemID uint `json:"inventory_item_id"`
 			ActualQuantity  *int `json:"actual_quantity,omitempty"` // For reconcile
-			Quantity        int  `json:"quantity,omitempty"`        // For dispose
+			Quantity        int  `json:"quantity,omitempty"`        // For dispose and transfer
 		} `json:"items"`
 	}
 
@@ -436,14 +437,14 @@ func buildSimplifiedItems(payload json.RawMessage, itemsMap map[uint]*models.Inv
 }
 
 // GetPendingSubmissions retrieves all pending submissions for an inventory and populates inventory items
-func (s *inventoryService) GetPendingSubmissions(ctx context.Context, inventoryID uint) ([]dto.PendingSubmissionResponse, error) {
+func (s *inventoryService) GetPendingSubmissions(ctx context.Context, inventoryID uint) ([]dto.SubmissionResponse, error) {
 	submissions, err := s.inventorySubmissionRepo.GetPendingSubmissions(ctx, inventoryID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get pending submissions: %w", err)
 	}
 
 	if len(submissions) == 0 {
-		return []dto.PendingSubmissionResponse{}, nil
+		return []dto.SubmissionResponse{}, nil
 	}
 
 	// Extract all inventory item IDs from all submissions
@@ -475,9 +476,9 @@ func (s *inventoryService) GetPendingSubmissions(ctx context.Context, inventoryI
 		}
 	}
 
-	responses := make([]dto.PendingSubmissionResponse, len(submissions))
+	responses := make([]dto.SubmissionResponse, len(submissions))
 	for i, submission := range submissions {
-		responses[i] = dto.PendingSubmissionResponse{
+		responses[i] = dto.SubmissionResponse{
 			ID:             submission.ID,
 			InventoryID:    submission.InventoryID,
 			Inventory:      submission.Inventory,
@@ -516,7 +517,7 @@ func (s *inventoryService) ProcessSubmission(ctx context.Context, req dto.Proces
 	}
 
 	// Determine approval status based on action
-	var approvalStatus models.InventorySubmissionApprovalStatus
+	var approvalStatus models.SubmissionApprovalStatus
 	switch models.InventorySubmissionAction(req.Action) {
 	case models.InventorySubmissionActionApprove:
 		approvalStatus = models.InventorySubmissionApprovalStatusApproved
@@ -679,6 +680,7 @@ func (s *inventoryService) transferInventory(
 	srcItemMap := s.buildItemMap(srcItems)
 
 	itemConsumeQuantity := make(map[uint]int)
+	productIDs := make([]uint, 0, len(req.Items))
 	for _, reqItem := range req.Items {
 		item, exists := srcItemMap[reqItem.InventoryItemID]
 		if !exists {
@@ -692,15 +694,16 @@ func (s *inventoryService) transferInventory(
 			continue
 		}
 
+		productIDs = append(productIDs, item.ProductID)
 		itemConsumeQuantity[reqItem.InventoryItemID] = reqItem.Quantity
 	}
 	if ps.hasAnyErrors() {
 		return ps.addError(pkg.ErrTransferValidationFailed("validation failed for transfer request"))
 	}
 
-	destItems, err := s.getActiveInventoryItems(ctx, req.DestinationInventoryID, req.GetItemIDs())
+	destItems, err := s.getActiveInventoryItemsByProductIDs(ctx, req.DestinationInventoryID, productIDs)
 	if err != nil && !pkg.IsErrorCode(err, pkg.ErrorCodeNotFound) {
-		return ps.addError(fmt.Errorf("failed to get active inventory items: %w", err))
+		return ps.addError(fmt.Errorf("failed to get active destination inventory items: %w", err))
 	}
 	destItemMap := s.buildProductIDMap(destItems) // product_id -> inventory_item
 
@@ -779,10 +782,37 @@ func (s *inventoryService) linkTxnWithInventoryItem(txn *models.InventoryTransac
 }
 
 // getActiveInventoryItems gets active inventory items by item IDs and validates them.
-func (s *inventoryService) getActiveInventoryItems(ctx context.Context, inventoryID uint, itemIDs []uint) ([]*models.InventoryItem, error) {
+func (s *inventoryService) getActiveInventoryItems(
+	ctx context.Context,
+	inventoryID uint,
+	itemIDs []uint,
+) ([]*models.InventoryItem, error) {
 	activeItems, err := s.inventoryItemRepo.GetActiveInventoryItems(ctx, inventoryID, itemIDs)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get active inventory items: %w", err)
+	}
+
+	if len(activeItems) == 0 {
+		return nil, pkg.NewAppError(pkg.ErrorCodeNotFound, "no active inventory items found", nil)
+	}
+
+	for _, item := range activeItems {
+		if err := item.ValidateActivePurchaseTransactions(); err != nil {
+			return nil, fmt.Errorf("validation failed for inventory item %d: %w", item.ID, err)
+		}
+	}
+
+	return activeItems, nil
+}
+
+func (s *inventoryService) getActiveInventoryItemsByProductIDs(
+	ctx context.Context,
+	inventoryID uint,
+	productIDs []uint,
+) ([]*models.InventoryItem, error) {
+	activeItems, err := s.inventoryItemRepo.GetActiveInventoryItemsByProductIDs(ctx, inventoryID, productIDs)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get active inventory items by product IDs: %w", err)
 	}
 
 	if len(activeItems) == 0 {
@@ -856,4 +886,61 @@ func (s *processingState) end(ctx context.Context) {
 	if err := s.svc.inventorySubmissionRepo.UpdateProcessingStatus(ctx, s.submission.ID, models.InventorySubmissionStatusCompleted); err != nil {
 		log.Error("failed to update submission status: %w", err)
 	}
+}
+
+// ListSubmissions retrieves submissions with pagination and filtering
+func (s *inventoryService) ListSubmissions(ctx context.Context, params models.ListParams, approvalStatuses []string, inventoryID uint, submissionTypes []string) ([]dto.SubmissionResponse, int64, error) {
+	// Get submissions from repository
+	submissions, total, err := s.inventorySubmissionRepo.ListSubmissions(ctx, params, inventoryID, approvalStatuses, submissionTypes)
+	if err != nil {
+		return nil, 0, fmt.Errorf("failed to list submissions: %w", err)
+	}
+
+	if len(submissions) == 0 {
+		return []dto.SubmissionResponse{}, 0, nil
+	}
+
+	// Extract all inventory item IDs from all submissions
+	itemIDsSet := make(map[uint]struct{})
+	for _, submission := range submissions {
+		itemIDs := extractInventoryItemIDsFromPayload(submission.Payload)
+		for _, id := range itemIDs {
+			itemIDsSet[id] = struct{}{}
+		}
+	}
+
+	// Convert set to slice
+	itemIDs := make([]uint, 0, len(itemIDsSet))
+	for id := range itemIDsSet {
+		itemIDs = append(itemIDs, id)
+	}
+
+	itemMap := make(map[uint]*models.InventoryItem)
+	if len(itemIDs) > 0 {
+		inventoryItems, err := s.inventoryItemRepo.GetByIDs(ctx, itemIDs)
+		if err != nil {
+			return nil, 0, fmt.Errorf("failed to get inventory items: %w", err)
+		}
+		itemMap = models.BuildIDMap(inventoryItems)
+	}
+
+	responses := make([]dto.SubmissionResponse, len(submissions))
+	for i, submission := range submissions {
+		responses[i] = dto.SubmissionResponse{
+			ID:             submission.ID,
+			InventoryID:    submission.InventoryID,
+			Inventory:      submission.Inventory,
+			SubmissionType: submission.SubmissionType,
+			Status:         submission.ProcessingStatus,
+			ApprovalStatus: submission.ApprovalStatus,
+			Items:          buildSimplifiedItems(submission.Payload, itemMap),
+			Reason:         submission.Reason,
+			CreatedBy:      submission.CreatedBy,
+			CreatedAt:      submission.CreatedAt.Format(pkg.DateTimeFormat),
+			UpdatedBy:      submission.UpdatedBy,
+			UpdatedAt:      submission.UpdatedAt.Format(pkg.DateTimeFormat),
+		}
+	}
+
+	return responses, total, nil
 }

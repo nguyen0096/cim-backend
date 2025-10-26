@@ -21,7 +21,7 @@ func GetConsumableTransactionTypes() []InventoryTransactionType {
 // InventoryTransaction represents an inventory transaction
 type InventoryTransaction struct {
 	Base
-	InventoryItemID      uint                     `json:"inventory_item_id"`
+	InventoryItemID      uint                     `json:"inventory_item_id" gorm:"not null"`
 	InventoryItem        *InventoryItem           `json:"inventory_item" gorm:"foreignKey:InventoryItemID"`
 	SupplierID           *uint                    `json:"supplier_id"`
 	Supplier             *Supplier                `json:"supplier,omitempty" gorm:"foreignKey:SupplierID" validate:"-"`

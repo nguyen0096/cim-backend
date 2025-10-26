@@ -2,28 +2,28 @@ package models
 
 import "encoding/json"
 
-type InventorySubmissionStatus string
+type SubmissionProcessingStatus string
 
 const (
-	InventorySubmissionStatusPending   InventorySubmissionStatus = "pending"
-	InventorySubmissionStatusFailed    InventorySubmissionStatus = "failed"
-	InventorySubmissionStatusCompleted InventorySubmissionStatus = "completed"
+	InventorySubmissionStatusPending   SubmissionProcessingStatus = "pending"
+	InventorySubmissionStatusFailed    SubmissionProcessingStatus = "failed"
+	InventorySubmissionStatusCompleted SubmissionProcessingStatus = "completed"
 )
 
-type InventorySubmissionApprovalStatus string
+type SubmissionApprovalStatus string
 
 const (
-	InventorySubmissionApprovalStatusPending  InventorySubmissionApprovalStatus = "pending"
-	InventorySubmissionApprovalStatusApproved InventorySubmissionApprovalStatus = "approved"
-	InventorySubmissionApprovalStatusRejected InventorySubmissionApprovalStatus = "rejected"
+	InventorySubmissionApprovalStatusPending  SubmissionApprovalStatus = "pending"
+	InventorySubmissionApprovalStatusApproved SubmissionApprovalStatus = "approved"
+	InventorySubmissionApprovalStatusRejected SubmissionApprovalStatus = "rejected"
 )
 
-type InventorySubmissionType string
+type SubmissionType string
 
 const (
-	InventorySubmissionTypeReconcile InventorySubmissionType = "reconcile"
-	InventorySubmissionTypeDispose   InventorySubmissionType = "dispose"
-	InventorySubmissionTypeTransfer  InventorySubmissionType = "transfer"
+	InventorySubmissionTypeReconcile SubmissionType = "reconcile"
+	InventorySubmissionTypeDispose   SubmissionType = "dispose"
+	InventorySubmissionTypeTransfer  SubmissionType = "transfer"
 )
 
 type InventorySubmissionAction string
@@ -36,14 +36,14 @@ const (
 // InventorySubmission represents a pending inventory operation
 type InventorySubmission struct {
 	Base
-	InventoryID      uint                              `json:"inventory_id"`
-	Inventory        *Inventory                        `json:"inventory,omitempty" gorm:"foreignKey:InventoryID"`
-	SubmissionType   InventorySubmissionType           `json:"submission_type" gorm:"not null"`
-	ProcessingStatus InventorySubmissionStatus         `json:"processing_status" gorm:"default:pending"`
-	ApprovalStatus   InventorySubmissionApprovalStatus `json:"approval_status" gorm:"default:pending"`
-	Payload          json.RawMessage                   `json:"payload" gorm:"serializer:json"`
-	Reason           string                            `json:"reason,omitempty"`
-	Error            json.RawMessage                   `json:"error,omitempty" gorm:"serializer:json"`
+	InventoryID      uint                       `json:"inventory_id"`
+	Inventory        *Inventory                 `json:"inventory,omitempty" gorm:"foreignKey:InventoryID"`
+	SubmissionType   SubmissionType             `json:"submission_type" gorm:"not null"`
+	ProcessingStatus SubmissionProcessingStatus `json:"processing_status" gorm:"default:pending"`
+	ApprovalStatus   SubmissionApprovalStatus   `json:"approval_status" gorm:"default:pending"`
+	Payload          json.RawMessage            `json:"payload" gorm:"serializer:json"`
+	Reason           string                     `json:"reason,omitempty"`
+	Error            json.RawMessage            `json:"error,omitempty" gorm:"serializer:json"`
 }
 
 // MarshalErrors marshals errors to JSON

@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/labstack/echo/v4"
 )
@@ -241,23 +242,21 @@ func (h *InventoryHandler) ReconcileInventory(c echo.Context) error {
 
 // GetPendingSubmissions retrieves all pending submissions for an inventory
 // @Summary Get pending submissions
-// @Description Get all pending inventory submissions with simplified item info (product name and quantity), optionally filtered by inventory ID
+// @Description Get all pending inventory submissions with simplified item info (product name and quantity) for a specific inventory
 // @Tags inventories
 // @Accept json
 // @Produce json
-// @Param inventory_id query int false "Inventory ID to filter by"
-// @Success 200 {array} dto.PendingSubmissionResponse
+// @Param id path int true "Inventory ID"
+// @Success 200 {array} dto.SubmissionResponse
+// @Failure 400 {object} map[string]string
 // @Failure 500 {object} map[string]string
 // @Security BearerAuth
-// @Router /inventories/submissions/pending [get]
+// @Router /inventories/{id}/submissions/pending [get]
 func (h *InventoryHandler) GetPendingSubmissions(c echo.Context) error {
-	inventoryID := uint(0)
-	if id := c.QueryParam("inventory_id"); id != "" {
-		parsedID, err := strconv.Atoi(id)
-		if err != nil {
-			return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid inventory_id"})
-		}
-		inventoryID = uint(parsedID)
+	// Get inventory ID from URL param
+	inventoryID, err := pkg.ExtractIDParam(c)
+	if err != nil {
+		return err
 	}
 
 	submissions, err := h.inventoryService.GetPendingSubmissions(c.Request().Context(), inventoryID)
@@ -361,4 +360,72 @@ func (h *InventoryHandler) TransferInventory(c echo.Context) error {
 	}
 
 	return c.JSON(http.StatusOK, submission)
+}
+
+// ListSubmissions retrieves all approved/rejected submissions with pagination
+// @Summary List submissions
+// @Description Get all approved or rejected inventory submissions with pagination, optionally filtered by approval status or submission types
+// @Tags inventories
+// @Accept json
+// @Produce json
+// @Param id path int true "Inventory ID"
+// @Param page query int false "Page number" default(1)
+// @Param limit query int false "Items per page" default(20)
+// @Param approval_status query string false "Filter by approval status (comma-separated: approved,rejected,pending)"
+// @Param submission_type query string false "Filter by submission types (comma-separated: reconcile,dispose,transfer)"
+// @Success 200 {object} map[string]interface{}
+// @Failure 400 {object} map[string]string
+// @Failure 500 {object} map[string]string
+// @Security BearerAuth
+// @Router /inventories/{id}/submissions [get]
+func (h *InventoryHandler) ListSubmissions(c echo.Context) error {
+	// Get inventory ID from URL param
+	inventoryID, err := pkg.ExtractIDParam(c)
+	if err != nil {
+		return err
+	}
+
+	// Parse query parameters into ListParams
+	var params models.ListParams
+	if err := c.Bind(&params); err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid request parameters"})
+	}
+
+	// Get additional filter params
+	approvalStatusParam := c.QueryParam("approval_status")
+	submissionTypeParam := c.QueryParam("submission_type")
+
+	// Parse comma-separated approval statuses
+	var approvalStatuses []string
+	if approvalStatusParam != "" {
+		approvalStatuses = strings.Split(approvalStatusParam, ",")
+		// Trim whitespace from each status
+		for i, s := range approvalStatuses {
+			approvalStatuses[i] = strings.TrimSpace(s)
+		}
+	}
+
+	// Parse comma-separated submission types
+	var submissionTypes []string
+	if submissionTypeParam != "" {
+		submissionTypes = strings.Split(submissionTypeParam, ",")
+		// Trim whitespace from each type
+		for i, t := range submissionTypes {
+			submissionTypes[i] = strings.TrimSpace(t)
+		}
+	}
+
+	// Validate and set defaults for pagination
+	params.ValidateAndSetDefaults()
+
+	// Get submissions and total count
+	submissions, total, err := h.inventoryService.ListSubmissions(c.Request().Context(), params, approvalStatuses, inventoryID, submissionTypes)
+	if err != nil {
+		return fmt.Errorf("failed to list submissions: %w", err)
+	}
+
+	// Create paginated response
+	response := models.NewPaginationResult(submissions, total, params.Page, params.Limit)
+
+	return c.JSON(http.StatusOK, response)
 }

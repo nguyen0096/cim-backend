@@ -48,6 +48,7 @@ type InventoryItemRepository interface {
 	GetByInventoryIDWithFilters(ctx context.Context, inventoryID uint, filters InventoryItemFilters, limit, offset int) ([]models.InventoryItem, error)
 	CountByInventoryIDWithFilters(ctx context.Context, inventoryID uint, filters InventoryItemFilters) (int64, error)
 	GetActiveInventoryItems(ctx context.Context, inventoryID uint, ids []uint) ([]*models.InventoryItem, error)
+	GetActiveInventoryItemsByProductIDs(ctx context.Context, inventoryID uint, productIDs []uint) ([]*models.InventoryItem, error)
 	GetByIDs(ctx context.Context, ids []uint) ([]*models.InventoryItem, error)
 	Update(ctx context.Context, items []*models.InventoryItem, transactions []*models.InventoryTransaction) error
 	SaveInventoryItemChanges(ctx context.Context, items []*models.InventoryItemChange, transactions []*models.InventoryTransaction) error
@@ -229,33 +230,74 @@ func (r *inventoryItemRepository) GetActiveInventoryItems(
 			return pkg.ErrNotFound("no active inventory items found", nil)
 		}
 
-		// Fetch consumable transactions for the active inventory items.
-		var transactions []*models.InventoryTransaction
-		err = tx.
-			Table("inventory_transactions").
-			Joins("JOIN inventory_items ON inventory_items.id = inventory_transactions.inventory_item_id").
-			Where("inventory_transactions.inventory_item_id IN ?",
-				models.GetIDs(items)).
-			Where("inventory_transactions.transaction_type IN ?",
-				models.GetConsumableTransactionTypes()).
-			Where("inventory_transactions.id >= COALESCE(inventory_items.consuming_transaction_id, 0)").
-			Where("inventory_transactions.consumed_quantity < inventory_transactions.quantity").
-			Order("inventory_transactions.created_at ASC").
-			Find(&transactions).Error
+		err = r.populateConsumableTransactions(tx, items)
 		if err != nil {
-			return fmt.Errorf("failed to get active purchase transactions: %w", err)
+			return fmt.Errorf("failed to populate consumable transactions: %w", err)
 		}
-
-		transactionMap := make(map[uint][]*models.InventoryTransaction)
-		for _, transaction := range transactions {
-			transactionMap[transaction.InventoryItemID] = append(transactionMap[transaction.InventoryItemID], transaction)
-		}
-		for _, item := range items {
-			item.ConsumableTransactions = transactionMap[item.ID]
-		}
-
 		return nil
 	})
+}
+
+// GetActiveInventoryItemsByProductIDs returns active inventory items for the given inventory ID and product IDs.
+func (r *inventoryItemRepository) GetActiveInventoryItemsByProductIDs(
+	ctx context.Context,
+	inventoryID uint,
+	productIDs []uint,
+) ([]*models.InventoryItem, error) {
+	var items []*models.InventoryItem
+	return items, r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		err := tx.
+			Preload("Inventory").
+			Preload("Product").
+			Where("inventory_id = ?", inventoryID).
+			Where("product_id IN ?", productIDs).
+			Where("status = ?", models.InventoryItemStatusActive).
+			Find(&items).Error
+		if err != nil {
+			return fmt.Errorf("failed to get active inventory items by inventory IDs: %w", err)
+		}
+
+		if len(items) == 0 {
+			return pkg.ErrNotFound("no active inventory items found", nil)
+		}
+
+		err = r.populateConsumableTransactions(tx, items)
+		if err != nil {
+			return fmt.Errorf("failed to populate consumable transactions: %w", err)
+		}
+		return nil
+	})
+}
+
+func (r *inventoryItemRepository) populateConsumableTransactions(
+	tx *gorm.DB,
+	items []*models.InventoryItem,
+) error {
+	// Fetch consumable transactions for the active inventory items.
+	var transactions []*models.InventoryTransaction
+	err := tx.
+		Table("inventory_transactions").
+		Joins("JOIN inventory_items ON inventory_items.id = inventory_transactions.inventory_item_id").
+		Where("inventory_transactions.inventory_item_id IN ?",
+			models.GetIDs(items)).
+		Where("inventory_transactions.transaction_type IN ?",
+			models.GetConsumableTransactionTypes()).
+		Where("inventory_transactions.id >= COALESCE(inventory_items.consuming_transaction_id, 0)").
+		Where("inventory_transactions.consumed_quantity < inventory_transactions.quantity").
+		Order("inventory_transactions.created_at ASC").
+		Find(&transactions).Error
+	if err != nil {
+		return fmt.Errorf("failed to get active purchase transactions: %w", err)
+	}
+
+	transactionMap := make(map[uint][]*models.InventoryTransaction)
+	for _, transaction := range transactions {
+		transactionMap[transaction.InventoryItemID] = append(transactionMap[transaction.InventoryItemID], transaction)
+	}
+	for _, item := range items {
+		item.ConsumableTransactions = transactionMap[item.ID]
+	}
+	return nil
 }
 
 // GetByIDs retrieves inventory items by IDs
