@@ -402,3 +402,35 @@ func (h *InventoryHandler) ListSubmissions(c echo.Context) error {
 
 	return c.JSON(http.StatusOK, response)
 }
+
+// UpdateSubmission updates the items in a pending submission
+// @Summary Update submission items
+// @Description Update the quantity items in an inventory submission. Only submissions with pending approval status can be updated.
+// @Tags inventories
+// @Accept json
+// @Produce json
+// @Param id path int true "Submission ID"
+// @Param request body dto.UpdateSubmissionRequest true "Update request"
+// @Success 200 {object} dto.SubmissionResponse
+// @Failure 400 {object} map[string]string
+// @Failure 404 {object} map[string]string
+// @Failure 500 {object} map[string]string
+// @Security BearerAuth
+// @Router /inventories/submissions/{id} [put]
+func (h *InventoryHandler) UpdateSubmission(c echo.Context) error {
+	var req dto.UpdateSubmissionRequest
+	if err := c.Bind(&req); err != nil {
+		return pkg.ErrInvalidRequestBody(err)
+	}
+
+	if err := pkg.Validator.Struct(req); err != nil {
+		return pkg.ErrValidation("failed to validate request", err)
+	}
+
+	response, err := h.inventoryService.UpdateSubmission(c.Request().Context(), req)
+	if err != nil {
+		return fmt.Errorf("failed to update submission: %w", err)
+	}
+
+	return c.JSON(http.StatusOK, response)
+}

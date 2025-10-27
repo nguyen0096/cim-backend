@@ -8,11 +8,15 @@ var (
 
 // QuantityItem represents a single inventory item quantity
 type QuantityItem struct {
-	InventoryItemID uint                  `json:"inventory_item_id" validate:"required"`
+	InventoryItemID uint `json:"inventory_item_id" validate:"required"`
+	Quantity        *int `json:"quantity" validate:"required,min=0"`
+	PrevQuantity    int  `json:"prev_quantity,omitempty" validate:"required,min=1"`
+
+	// Response fields
+
 	InventoryItem   *models.InventoryItem `json:"inventory_item,omitempty" validate:"-"`
 	ProductName     string                `json:"product_name,omitempty" validate:"-"`
-	Quantity        *int                  `json:"quantity" validate:"required,min=0"`
-	PrevQuantity    int                   `json:"prev_quantity,omitempty" validate:"required,min=1"`
+	CurrentQuantity int                   `json:"current_quantity,omitempty" validate:"-"`
 }
 
 func (d QuantityItem) GetID() uint {

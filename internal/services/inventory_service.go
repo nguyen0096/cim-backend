@@ -29,6 +29,7 @@ type InventoryService interface {
 	CreateDisposeSubmission(ctx context.Context, req dto.DisposeInventoryRequest) (*models.InventorySubmission, error)
 	CreateTransferSubmission(ctx context.Context, req dto.TransferInventoryRequest) (*models.InventorySubmission, error)
 	ProcessSubmission(ctx context.Context, req dto.SubmissionApprovalRequest) (*models.InventorySubmission, error)
+	UpdateSubmission(ctx context.Context, req dto.UpdateSubmissionRequest) (*dto.SubmissionResponse, error)
 }
 
 type inventoryService struct {
@@ -394,6 +395,7 @@ func formatItems(items []dto.QuantityItem, itemsMap map[uint]*models.InventoryIt
 			ProductName:     inventoryItem.Product.Name,
 			Quantity:        item.Quantity,
 			PrevQuantity:    item.PrevQuantity,
+			CurrentQuantity: inventoryItem.Quantity,
 		})
 	}
 	return summaries
@@ -986,4 +988,217 @@ func (s *inventoryService) formatProcessingErrors(jsonStr json.RawMessage) json.
 	}
 
 	return json.RawMessage(result)
+}
+
+// UpdateSubmission updates the items in a pending submission
+func (s *inventoryService) UpdateSubmission(ctx context.Context, req dto.UpdateSubmissionRequest) (*dto.SubmissionResponse, error) {
+	// Get the submission
+	submission, err := s.inventorySubmissionRepo.GetByID(ctx, req.SubmissionID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get submission: %w", err)
+	}
+
+	// Verify submission approval is pending - only check approval status
+	if submission.ApprovalStatus != models.InventorySubmissionApprovalStatusPending {
+		return nil, pkg.NewAppError(pkg.ErrorCodeValidation,
+			fmt.Sprintf("cannot update submission with approval status: %s. Only pending submissions can be updated", submission.ApprovalStatus), nil)
+	}
+
+	// Validate based on submission type
+	switch submission.SubmissionType {
+	case models.InventorySubmissionTypeReconcile:
+		if err := s.validateReconcileUpdate(ctx, submission.InventoryID, req.Items); err != nil {
+			return nil, err
+		}
+	case models.InventorySubmissionTypeDispose:
+		if err := s.validateDisposeUpdate(ctx, submission.InventoryID, req.Items); err != nil {
+			return nil, err
+		}
+	case models.InventorySubmissionTypeTransfer:
+		if err := s.validateTransferUpdate(ctx, submission, req.Items); err != nil {
+			return nil, err
+		}
+	default:
+		return nil, pkg.NewAppError(pkg.ErrorCodeValidation,
+			fmt.Sprintf("unknown submission type: %s", submission.SubmissionType), nil)
+	}
+
+	// Build updated payload based on submission type
+	var payloadBytes []byte
+	switch submission.SubmissionType {
+	case models.InventorySubmissionTypeReconcile:
+		updatedReq := dto.ReconcileInventoryRequest{
+			InventoryID: submission.InventoryID,
+			Items:       req.Items,
+		}
+		payloadBytes, err = json.Marshal(updatedReq)
+	case models.InventorySubmissionTypeDispose:
+		updatedReq := dto.DisposeInventoryRequest{
+			InventoryID: submission.InventoryID,
+			Items:       req.Items,
+		}
+		payloadBytes, err = json.Marshal(updatedReq)
+	case models.InventorySubmissionTypeTransfer:
+		// For transfer, we need to extract the source and destination inventory IDs from the original payload
+		var originalReq dto.TransferInventoryRequest
+		if unmarshalErr := json.Unmarshal(submission.Payload, &originalReq); unmarshalErr != nil {
+			return nil, fmt.Errorf("failed to unmarshal original transfer payload: %w", unmarshalErr)
+		}
+		updatedReq := dto.TransferInventoryRequest{
+			SourceInventoryID:      originalReq.SourceInventoryID,
+			DestinationInventoryID: originalReq.DestinationInventoryID,
+			Items:                  req.Items,
+		}
+		payloadBytes, err = json.Marshal(updatedReq)
+	}
+
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal updated payload: %w", err)
+	}
+
+	// Update the submission payload
+	if err := s.inventorySubmissionRepo.UpdateSubmissionPayload(ctx, submission.ID, payloadBytes); err != nil {
+		return nil, fmt.Errorf("failed to update submission payload: %w", err)
+	}
+
+	// Update the submission object with the new payload
+	submission.Payload = json.RawMessage(payloadBytes)
+
+	// Get inventory items for formatting response
+	itemIDs := make([]uint, 0, len(req.Items))
+	for _, item := range req.Items {
+		itemIDs = append(itemIDs, item.InventoryItemID)
+	}
+
+	inventoryItems, err := s.inventoryItemRepo.GetByIDs(ctx, itemIDs)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get inventory items: %w", err)
+	}
+	inventoryItemMap := s.buildItemMap(inventoryItems)
+
+	// Load inventory for response
+	inventory, err := s.inventoryRepo.GetByID(ctx, submission.InventoryID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get inventory: %w", err)
+	}
+	submission.Inventory = inventory
+
+	// Build response
+	response := &dto.SubmissionResponse{
+		ID:             submission.ID,
+		InventoryID:    submission.InventoryID,
+		Inventory:      submission.Inventory,
+		SubmissionType: submission.SubmissionType,
+		Status:         submission.ProcessingStatus,
+		ApprovalStatus: submission.ApprovalStatus,
+		Items:          formatItems(req.Items, inventoryItemMap),
+		Warnings:       formatWarnings(*submission, req.Items, inventoryItemMap),
+		Reason:         submission.Reason,
+		CreatedBy:      submission.CreatedBy,
+		CreatedAt:      submission.CreatedAt.Format(pkg.DateTimeFormat),
+		UpdatedBy:      submission.UpdatedBy,
+		UpdatedAt:      submission.UpdatedAt.Format(pkg.DateTimeFormat),
+	}
+
+	return response, nil
+}
+
+// validateReconcileUpdate validates items for reconcile submission update
+func (s *inventoryService) validateReconcileUpdate(ctx context.Context, inventoryID uint, items []dto.QuantityItem) error {
+	activeItems, err := s.getActiveInventoryItems(ctx, inventoryID, models.GetIDs(items))
+	if err != nil {
+		return fmt.Errorf("failed to get active inventory items: %w", err)
+	}
+	activeItemMap := s.buildItemMap(activeItems)
+
+	for _, reqItem := range items {
+		if reqItem.Quantity == nil {
+			return pkg.ErrInvalidRequestBody(fmt.Errorf("actual quantity is required for inventory item %d", reqItem.InventoryItemID))
+		}
+
+		item, exists := activeItemMap[reqItem.InventoryItemID]
+		if !exists {
+			return pkg.ErrInventoryItemNotFound(reqItem.InventoryItemID)
+		}
+
+		// Optimistic locking: validate that current quantity matches what frontend saw
+		if item.Quantity != reqItem.PrevQuantity {
+			return pkg.ErrOptimisticLockConflict("inventory item", reqItem.InventoryItemID, reqItem.PrevQuantity, item.Quantity)
+		}
+
+		// Validate that actual quantity doesn't exceed previous quantity
+		if *reqItem.Quantity > item.Quantity {
+			return pkg.NewAppError(pkg.ErrorCodeValidation,
+				fmt.Sprintf("actual quantity %d exceeds previous quantity %d for inventory item %d",
+					*reqItem.Quantity, reqItem.PrevQuantity, reqItem.InventoryItemID), nil)
+		}
+	}
+
+	return nil
+}
+
+// validateDisposeUpdate validates items for dispose submission update
+func (s *inventoryService) validateDisposeUpdate(ctx context.Context, inventoryID uint, items []dto.QuantityItem) error {
+	activeItems, err := s.getActiveInventoryItems(ctx, inventoryID, models.GetIDs(items))
+	if err != nil {
+		return fmt.Errorf("failed to get active inventory items: %w", err)
+	}
+	activeItemMap := s.buildItemMap(activeItems)
+
+	for _, reqItem := range items {
+		if reqItem.Quantity == nil {
+			return pkg.ErrInvalidRequestBody(fmt.Errorf("quantity is required for inventory item %d", reqItem.InventoryItemID))
+		}
+
+		item, exists := activeItemMap[reqItem.InventoryItemID]
+		if !exists {
+			return pkg.NewAppError(pkg.ErrorCodeNotFound,
+				fmt.Sprintf("inventory item %d not found", reqItem.InventoryItemID), nil)
+		}
+
+		// Validate that dispose quantity doesn't exceed current quantity
+		if *reqItem.Quantity > item.Quantity {
+			return pkg.NewAppError(pkg.ErrorCodeValidation,
+				fmt.Sprintf("dispose quantity %d exceeds available quantity %d for product %s",
+					*reqItem.Quantity, item.Quantity, item.Product.Name), nil)
+		}
+	}
+
+	return nil
+}
+
+// validateTransferUpdate validates items for transfer submission update
+func (s *inventoryService) validateTransferUpdate(ctx context.Context, submission *models.InventorySubmission, items []dto.QuantityItem) error {
+	// Unmarshal original payload to get source inventory ID
+	var originalReq dto.TransferInventoryRequest
+	if err := json.Unmarshal(submission.Payload, &originalReq); err != nil {
+		return fmt.Errorf("failed to unmarshal transfer payload: %w", err)
+	}
+
+	activeItems, err := s.getActiveInventoryItems(ctx, originalReq.SourceInventoryID, models.GetIDs(items))
+	if err != nil {
+		return fmt.Errorf("failed to get active inventory items: %w", err)
+	}
+	activeItemMap := s.buildItemMap(activeItems)
+
+	for _, reqItem := range items {
+		if reqItem.Quantity == nil {
+			return pkg.ErrInvalidRequestBody(fmt.Errorf("quantity is required for inventory item %d", reqItem.InventoryItemID))
+		}
+
+		item, exists := activeItemMap[reqItem.InventoryItemID]
+		if !exists {
+			return pkg.NewAppError(pkg.ErrorCodeNotFound,
+				fmt.Sprintf("inventory item %d not found", reqItem.InventoryItemID), nil)
+		}
+
+		// Validate that transfer quantity doesn't exceed current quantity
+		if *reqItem.Quantity > item.Quantity {
+			return pkg.NewAppError(pkg.ErrorCodeValidation,
+				fmt.Sprintf("transfer quantity %d exceeds available quantity %d for product %s",
+					*reqItem.Quantity, item.Quantity, item.Product.Name), nil)
+		}
+	}
+
+	return nil
 }

@@ -173,6 +173,7 @@ func main() {
 	inventories.DELETE("/:id", inventoryHandler.DeleteInventory)
 	inventories.GET("/last-purchase-prices", inventoryHandler.GetLastPurchasePrices)
 	inventories.POST("/submissions/:id/process", inventoryHandler.ProcessSubmission)
+	inventories.PUT("/submissions/:id", inventoryHandler.UpdateSubmission)
 	inventories.GET("/:id/submissions", inventoryHandler.ListSubmissions)
 	inventories.POST("/transfer", inventoryHandler.TransferInventory)
 	inventories.PUT("/:id/dispose", inventoryHandler.DisposeInventoryItems)

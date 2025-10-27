@@ -30,3 +30,9 @@ type SubmissionApprovalRequest struct {
 	Action       string `json:"action" validate:"required,oneof=approve reject"`
 	Reason       string `json:"reason,omitempty"`
 }
+
+// UpdateSubmissionRequest represents a request to update submission items
+type UpdateSubmissionRequest struct {
+	SubmissionID uint           `json:"submission_id" validate:"required" param:"id"`
+	Items        []QuantityItem `json:"items" validate:"required,min=1,dive"`
+}

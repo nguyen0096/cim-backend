@@ -18,6 +18,7 @@ type InventorySubmissionRepository interface {
 	UpdateProcessingStatus(ctx context.Context, id uint, status models.SubmissionProcessingStatus) error
 	FailSubmissionProcessingWithErrors(ctx context.Context, id uint, errors []error) error
 	ListSubmissions(ctx context.Context, params models.ListParams, inventoryID uint, approvalStatuses []string, submissionTypes []string) ([]models.InventorySubmission, int64, error)
+	UpdateSubmissionPayload(ctx context.Context, id uint, payload []byte) error
 }
 
 type inventorySubmissionRepository struct {
@@ -154,4 +155,21 @@ func (r *inventorySubmissionRepository) ListSubmissions(
 	}
 
 	return submissions, total, nil
+}
+
+// UpdateSubmissionPayload updates the payload of a submission
+func (r *inventorySubmissionRepository) UpdateSubmissionPayload(ctx context.Context, id uint, payload []byte) error {
+	// Get user email from context to set UpdatedBy
+	userEmail, err := pkg.GetUserEmailFromContext(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to get user email from context: %w", err)
+	}
+
+	return r.db.WithContext(ctx).
+		Model(&models.InventorySubmission{}).
+		Where("id = ?", id).
+		Updates(map[string]interface{}{
+			"payload":    payload,
+			"updated_by": userEmail,
+		}).Error
 }
