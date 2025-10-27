@@ -36,3 +36,15 @@ type UpdateSubmissionRequest struct {
 	SubmissionID uint           `json:"submission_id" validate:"required" param:"id"`
 	Items        []QuantityItem `json:"items" validate:"required,min=1,dive"`
 }
+
+type SubmissionSortField string
+
+const (
+	SubmissionSortFieldUpdatedAt SubmissionSortField = "updated_at"
+)
+
+func GetSubmissionSortFields() []string {
+	return []string{
+		string(SubmissionSortFieldUpdatedAt),
+	}
+}

@@ -25,3 +25,24 @@ func IsExcelFile(filename string) bool {
 func IsProductImportFile(filename string) bool {
 	return IsCSVFile(filename) || IsExcelFile(filename)
 }
+
+// ValidateAndSetSortParams validates sort field and order, setting defaults if invalid
+func ValidateAndSetSortParams(sortField string, order string, allowedSortFields []string, defaultSortField string, defaultOrder string) (string, string) {
+	// Create a map for O(1) lookup instead of O(n) iteration
+	allowedMap := make(map[string]bool, len(allowedSortFields))
+	for _, field := range allowedSortFields {
+		allowedMap[field] = true
+	}
+
+	// Validate sort field
+	if !allowedMap[sortField] {
+		sortField = defaultSortField
+	}
+
+	// Validate order
+	if order != "asc" && order != "desc" {
+		order = defaultOrder
+	}
+
+	return sortField, order
+}

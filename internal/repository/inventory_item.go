@@ -30,6 +30,7 @@ var (
 type InventoryItemFilters struct {
 	Status      string
 	ProductType string
+	Search      string
 	Sort        string
 	Order       string
 }
@@ -107,7 +108,7 @@ func (r *inventoryItemRepository) GetByInventoryIDWithFilters(ctx context.Contex
 	}
 
 	// Determine if we need to join products table
-	needsProductJoin := filters.ProductType != "" || filters.Sort == string(InventoryItemSortFieldProductName)
+	needsProductJoin := filters.ProductType != "" || filters.Sort == string(InventoryItemSortFieldProductName) || filters.Search != ""
 
 	// Apply product_type filter by joining with products table
 	if needsProductJoin {
@@ -115,6 +116,12 @@ func (r *inventoryItemRepository) GetByInventoryIDWithFilters(ctx context.Contex
 		if filters.ProductType != "" {
 			query = query.Where("products.product_type = ?", filters.ProductType)
 		}
+	}
+
+	// Apply search filter
+	if filters.Search != "" {
+		searchPattern := "%" + filters.Search + "%"
+		query = query.Where("products.name ILIKE ?", searchPattern)
 	}
 
 	// Apply sorting
@@ -180,10 +187,17 @@ func (r *inventoryItemRepository) CountByInventoryIDWithFilters(ctx context.Cont
 		query = query.Where("inventory_items.status = ?", filters.Status)
 	}
 
-	// Apply product_type filter by joining with products table
-	if filters.ProductType != "" {
-		query = query.Joins("JOIN products ON products.id = inventory_items.product_id").
-			Where("products.product_type = ?", filters.ProductType)
+	// Apply product_type filter and search filter by joining with products table
+	needsProductJoin := filters.ProductType != "" || filters.Search != ""
+	if needsProductJoin {
+		query = query.Joins("JOIN products ON products.id = inventory_items.product_id")
+		if filters.ProductType != "" {
+			query = query.Where("products.product_type = ?", filters.ProductType)
+		}
+		if filters.Search != "" {
+			searchPattern := "%" + filters.Search + "%"
+			query = query.Where("products.name ILIKE ?", searchPattern)
+		}
 	}
 
 	err := query.Count(&count).Error

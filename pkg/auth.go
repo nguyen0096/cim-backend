@@ -3,6 +3,7 @@ package pkg
 import (
 	"context"
 	"fmt"
+	"time"
 )
 
 const (
@@ -78,4 +79,24 @@ func HasPermission(ctx context.Context, resource, action string) bool {
 	}
 	_, exists := permissions[expectedPermission]
 	return exists
+}
+
+// WithUpdateFields wraps a map update to include UpdatedAt and UpdatedBy fields
+// This replicates the behavior of the BeforeUpdate hook when using Updates(map[string]interface{})
+func WithUpdateFields(ctx context.Context, updates map[string]interface{}) (map[string]interface{}, error) {
+	if updates == nil {
+		updates = make(map[string]interface{})
+	}
+
+	// Get user email from context
+	userEmail, err := GetUserEmailFromContext(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get user email from context: %w", err)
+	}
+
+	// Add update fields
+	updates["updated_at"] = time.Now()
+	updates["updated_by"] = userEmail
+
+	return updates, nil
 }

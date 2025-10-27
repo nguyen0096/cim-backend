@@ -5,7 +5,7 @@ const (
 	DefaultPage      = 1
 	DefaultLimit     = 20
 	MaxLimit         = 100
-	DefaultSortOrder = "asc"
+	DefaultSortOrder = "desc"
 )
 
 // ListParams represents pagination and filtering parameters

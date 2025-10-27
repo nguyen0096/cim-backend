@@ -29,6 +29,7 @@ func (b *Base) BeforeCreate(tx *gorm.DB) error {
 		return err
 	}
 	b.CreatedBy = userEmail
+	b.UpdatedBy = userEmail
 	return nil
 }
 
@@ -43,5 +44,6 @@ func (b *Base) BeforeUpdate(tx *gorm.DB) error {
 		return err
 	}
 	b.UpdatedBy = userEmail
+	b.UpdatedAt = time.Now()
 	return nil
 }

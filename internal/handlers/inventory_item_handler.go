@@ -260,23 +260,13 @@ func (h *InventoryItemHandler) GetInventoryItemsByInventoryID(c echo.Context) er
 		params.Sort = string(dto.InventoryItemSortFieldUpdatedAt)
 	}
 
-	// Validate sort field against allowed values
+	// Validate sort field and order against allowed values
 	validSortFields := dto.GetInventoryItemSortFields()
-	isValidSort := false
-	for _, field := range validSortFields {
-		if params.Sort == field {
-			isValidSort = true
-			break
-		}
-	}
-	if !isValidSort {
-		params.Sort = string(dto.InventoryItemSortFieldUpdatedAt)
-	}
-
-	// Set default order to desc if not provided or invalid
-	if params.Order != "asc" && params.Order != "desc" {
-		params.Order = "desc"
-	}
+	params.Sort, params.Order = pkg.ValidateAndSetSortParams(
+		params.Sort, params.Order,
+		validSortFields,
+		string(dto.InventoryItemSortFieldUpdatedAt),
+		models.DefaultSortOrder)
 
 	// Validate and set defaults for pagination
 	params.ValidateAndSetDefaults()

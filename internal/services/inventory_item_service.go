@@ -179,6 +179,7 @@ func (s *inventoryItemService) GetInventoryItemsByInventoryIDWithFilters(ctx con
 	filters := repository.InventoryItemFilters{
 		Status:      params.Status,
 		ProductType: productType,
+		Search:      params.Search,
 		Sort:        mappedSortField,
 		Order:       params.Order,
 	}
@@ -243,6 +244,7 @@ func (s *inventoryItemService) CountInventoryItemsByInventoryIDWithFilters(ctx c
 	filters := repository.InventoryItemFilters{
 		Status:      params.Status,
 		ProductType: productType,
+		Search:      params.Search,
 	}
 
 	count, err := s.inventoryItemRepo.CountByInventoryIDWithFilters(ctx, inventoryID, filters)

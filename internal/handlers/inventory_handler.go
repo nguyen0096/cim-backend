@@ -368,6 +368,14 @@ func (h *InventoryHandler) ListSubmissions(c echo.Context) error {
 	approvalStatusParam := c.QueryParam("approval_status")
 	submissionTypeParam := c.QueryParam("submission_type")
 
+	// Validate sort field and order against allowed values
+	validSortFields := dto.GetSubmissionSortFields()
+	params.Sort, params.Order = pkg.ValidateAndSetSortParams(
+		params.Sort, params.Order,
+		validSortFields,
+		string(dto.SubmissionSortFieldUpdatedAt),
+		models.DefaultSortOrder)
+
 	// Parse comma-separated approval statuses
 	var approvalStatuses []string
 	if approvalStatusParam != "" {

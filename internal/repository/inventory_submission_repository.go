@@ -5,6 +5,7 @@ import (
 	"cim-backend/pkg"
 	"context"
 	"fmt"
+	"strings"
 
 	"gorm.io/gorm"
 )
@@ -62,17 +63,14 @@ func (r *inventorySubmissionRepository) GetByID(ctx context.Context, id uint) (*
 
 // UpdateApprovalStatus updates the approval status and reason of a submission
 func (r *inventorySubmissionRepository) UpdateApprovalStatus(ctx context.Context, id uint, status models.SubmissionApprovalStatus, reason string) error {
-	// Get user email from context to set UpdatedBy
-	userEmail, err := pkg.GetUserEmailFromContext(ctx)
-	if err != nil {
-		return fmt.Errorf("failed to get user email from context: %w", err)
-	}
-
-	updates := map[string]interface{}{
+	updates, err := pkg.WithUpdateFields(ctx, map[string]interface{}{
 		"approval_status": status,
 		"reason":          reason,
-		"updated_by":      userEmail,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to prepare update fields: %w", err)
 	}
+
 	return r.db.WithContext(ctx).
 		Model(&models.InventorySubmission{}).
 		Where("id = ?", id).
@@ -81,19 +79,17 @@ func (r *inventorySubmissionRepository) UpdateApprovalStatus(ctx context.Context
 
 // UpdateProcessingStatus updates the processing status of a submission
 func (r *inventorySubmissionRepository) UpdateProcessingStatus(ctx context.Context, id uint, status models.SubmissionProcessingStatus) error {
-	// Get user email from context to set UpdatedBy
-	userEmail, err := pkg.GetUserEmailFromContext(ctx)
+	updates, err := pkg.WithUpdateFields(ctx, map[string]interface{}{
+		"processing_status": status,
+	})
 	if err != nil {
-		return fmt.Errorf("failed to get user email from context: %w", err)
+		return fmt.Errorf("failed to prepare update fields: %w", err)
 	}
 
 	return r.db.WithContext(ctx).
 		Model(&models.InventorySubmission{}).
 		Where("id = ?", id).
-		Updates(map[string]interface{}{
-			"processing_status": status,
-			"updated_by":        userEmail,
-		}).Error
+		Updates(updates).Error
 }
 
 func (r *inventorySubmissionRepository) FailSubmissionProcessingWithErrors(ctx context.Context, id uint, errors []error) error {
@@ -102,20 +98,18 @@ func (r *inventorySubmissionRepository) FailSubmissionProcessingWithErrors(ctx c
 		return err
 	}
 
-	// Get user email from context to set UpdatedBy
-	userEmail, err := pkg.GetUserEmailFromContext(ctx)
+	updates, err := pkg.WithUpdateFields(ctx, map[string]interface{}{
+		"processing_status": models.InventorySubmissionStatusFailed,
+		"error":             errorsJSON,
+	})
 	if err != nil {
-		return fmt.Errorf("failed to get user email from context: %w", err)
+		return fmt.Errorf("failed to prepare update fields: %w", err)
 	}
 
 	return r.db.WithContext(ctx).
 		Model(&models.InventorySubmission{}).
 		Where("id = ?", id).
-		Updates(map[string]interface{}{
-			"processing_status": models.InventorySubmissionStatusFailed,
-			"error":             errorsJSON,
-			"updated_by":        userEmail,
-		}).Error
+		Updates(updates).Error
 }
 
 // ListSubmissions retrieves submissions with pagination and filtering
@@ -145,8 +139,11 @@ func (r *inventorySubmissionRepository) ListSubmissions(
 		return nil, 0, fmt.Errorf("failed to count submissions: %w", err)
 	}
 
+	// Build order clause using params Sort and Order
+	orderClause := fmt.Sprintf("%s %s",
+		params.Sort, strings.ToUpper(params.Order))
 	query = query.
-		Order("created_at DESC").
+		Order(orderClause).
 		Limit(params.Limit).
 		Offset(params.GetOffset()).
 		Preload("Inventory")
@@ -159,17 +156,15 @@ func (r *inventorySubmissionRepository) ListSubmissions(
 
 // UpdateSubmissionPayload updates the payload of a submission
 func (r *inventorySubmissionRepository) UpdateSubmissionPayload(ctx context.Context, id uint, payload []byte) error {
-	// Get user email from context to set UpdatedBy
-	userEmail, err := pkg.GetUserEmailFromContext(ctx)
+	updates, err := pkg.WithUpdateFields(ctx, map[string]interface{}{
+		"payload": payload,
+	})
 	if err != nil {
-		return fmt.Errorf("failed to get user email from context: %w", err)
+		return fmt.Errorf("failed to prepare update fields: %w", err)
 	}
 
 	return r.db.WithContext(ctx).
 		Model(&models.InventorySubmission{}).
 		Where("id = ?", id).
-		Updates(map[string]interface{}{
-			"payload":    payload,
-			"updated_by": userEmail,
-		}).Error
+		Updates(updates).Error
 }
