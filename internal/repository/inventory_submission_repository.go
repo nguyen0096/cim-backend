@@ -2,6 +2,7 @@ package repository
 
 import (
 	"cim-backend/internal/models"
+	"cim-backend/pkg"
 	"context"
 	"fmt"
 
@@ -60,9 +61,16 @@ func (r *inventorySubmissionRepository) GetByID(ctx context.Context, id uint) (*
 
 // UpdateApprovalStatus updates the approval status and reason of a submission
 func (r *inventorySubmissionRepository) UpdateApprovalStatus(ctx context.Context, id uint, status models.SubmissionApprovalStatus, reason string) error {
+	// Get user email from context to set UpdatedBy
+	userEmail, err := pkg.GetUserEmailFromContext(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to get user email from context: %w", err)
+	}
+
 	updates := map[string]interface{}{
 		"approval_status": status,
 		"reason":          reason,
+		"updated_by":      userEmail,
 	}
 	return r.db.WithContext(ctx).
 		Model(&models.InventorySubmission{}).
@@ -72,10 +80,19 @@ func (r *inventorySubmissionRepository) UpdateApprovalStatus(ctx context.Context
 
 // UpdateProcessingStatus updates the processing status of a submission
 func (r *inventorySubmissionRepository) UpdateProcessingStatus(ctx context.Context, id uint, status models.SubmissionProcessingStatus) error {
+	// Get user email from context to set UpdatedBy
+	userEmail, err := pkg.GetUserEmailFromContext(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to get user email from context: %w", err)
+	}
+
 	return r.db.WithContext(ctx).
 		Model(&models.InventorySubmission{}).
 		Where("id = ?", id).
-		Update("processing_status", status).Error
+		Updates(map[string]interface{}{
+			"processing_status": status,
+			"updated_by":        userEmail,
+		}).Error
 }
 
 func (r *inventorySubmissionRepository) FailSubmissionProcessingWithErrors(ctx context.Context, id uint, errors []error) error {
@@ -84,11 +101,20 @@ func (r *inventorySubmissionRepository) FailSubmissionProcessingWithErrors(ctx c
 		return err
 	}
 
+	// Get user email from context to set UpdatedBy
+	userEmail, err := pkg.GetUserEmailFromContext(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to get user email from context: %w", err)
+	}
+
 	return r.db.WithContext(ctx).
 		Model(&models.InventorySubmission{}).
 		Where("id = ?", id).
-		Update("processing_status", models.InventorySubmissionStatusFailed).
-		Update("error", errorsJSON).Error
+		Updates(map[string]interface{}{
+			"processing_status": models.InventorySubmissionStatusFailed,
+			"error":             errorsJSON,
+			"updated_by":        userEmail,
+		}).Error
 }
 
 // ListSubmissions retrieves submissions with pagination and filtering

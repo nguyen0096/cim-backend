@@ -24,12 +24,11 @@ type InventoryService interface {
 
 	// v1
 	GetLastPurchasePrices(ctx context.Context, supplierID uint) (dto.LastPurchasePriceMap, error)
-	GetPendingSubmissions(ctx context.Context, inventoryID uint) ([]dto.SubmissionResponse, error)
 	ListSubmissions(ctx context.Context, params models.ListParams, approvalStatuses []string, inventoryID uint, submissionTypes []string) ([]dto.SubmissionResponse, int64, error)
 	CreateReconcileSubmission(ctx context.Context, req dto.ReconcileInventoryRequest) (*models.InventorySubmission, error)
 	CreateDisposeSubmission(ctx context.Context, req dto.DisposeInventoryRequest) (*models.InventorySubmission, error)
 	CreateTransferSubmission(ctx context.Context, req dto.TransferInventoryRequest) (*models.InventorySubmission, error)
-	ProcessSubmission(ctx context.Context, req dto.ProcessSubmissionRequest) (*models.InventorySubmission, error)
+	ProcessSubmission(ctx context.Context, req dto.SubmissionApprovalRequest) (*models.InventorySubmission, error)
 }
 
 type inventoryService struct {
@@ -182,10 +181,11 @@ func (s *inventoryService) reconcileInventory(
 
 	itemConsumeQuantity := make(map[uint]int)
 	for _, reqItem := range req.Items {
-		if reqItem.ActualQuantity == nil {
+		if reqItem.Quantity == nil {
 			ps.addError(pkg.ErrInvalidRequestBody(fmt.Errorf("actual quantity is required for inventory item %d", reqItem.InventoryItemID)))
 			continue
 		}
+
 		item, exists := activeItemMap[reqItem.InventoryItemID]
 		if !exists {
 			ps.addError(pkg.ErrInventoryItemNotFound(reqItem.InventoryItemID))
@@ -198,7 +198,7 @@ func (s *inventoryService) reconcileInventory(
 			continue
 		}
 
-		itemConsumeQuantity[reqItem.InventoryItemID] = item.Quantity - *reqItem.ActualQuantity
+		itemConsumeQuantity[reqItem.InventoryItemID] = item.Quantity - *reqItem.Quantity
 	}
 	if ps.hasAnyErrors() {
 		return ps.addError(pkg.ErrReconcileValidationFailed("validation failed for reconcile request"))
@@ -235,9 +235,8 @@ func (s *inventoryService) CreateReconcileSubmission(ctx context.Context, req dt
 	}
 	activeItemMap := s.buildItemMap(activeItems)
 
-	// validation
 	for _, reqItem := range req.Items {
-		if reqItem.ActualQuantity == nil {
+		if reqItem.Quantity == nil {
 			return nil, pkg.ErrInvalidRequestBody(fmt.Errorf("actual quantity is required for inventory item %d", reqItem.InventoryItemID))
 		}
 
@@ -252,10 +251,10 @@ func (s *inventoryService) CreateReconcileSubmission(ctx context.Context, req dt
 		}
 
 		// Validate that actual quantity doesn't exceed previous quantity
-		if *reqItem.ActualQuantity > item.Quantity {
+		if *reqItem.Quantity > item.Quantity {
 			return nil, pkg.NewAppError(pkg.ErrorCodeValidation,
 				fmt.Sprintf("actual quantity %d exceeds previous quantity %d for inventory item %d",
-					reqItem.ActualQuantity, reqItem.PrevQuantity, reqItem.InventoryItemID), nil)
+					*reqItem.Quantity, reqItem.PrevQuantity, reqItem.InventoryItemID), nil)
 		}
 	}
 
@@ -332,28 +331,23 @@ func (s *inventoryService) CreateDisposeSubmission(ctx context.Context, req dto.
 	}
 	activeItemMap := s.buildItemMap(activeItems)
 
-	// Validate prevQuantity matches current quantity
 	for _, reqItem := range req.Items {
 		if reqItem.Quantity == nil {
 			return nil, pkg.ErrInvalidRequestBody(fmt.Errorf("quantity is required for inventory item %d", reqItem.InventoryItemID))
 		}
 
+		// Validate that inventory item exists
 		item, exists := activeItemMap[reqItem.InventoryItemID]
 		if !exists {
 			return nil, pkg.NewAppError(pkg.ErrorCodeNotFound,
 				fmt.Sprintf("inventory item %d not found", reqItem.InventoryItemID), nil)
 		}
 
-		// Optimistic locking: validate that current quantity matches what frontend saw
-		if item.Quantity != reqItem.PrevQuantity {
-			return nil, pkg.ErrOptimisticLockConflict("inventory item", reqItem.InventoryItemID, reqItem.PrevQuantity, item.Quantity)
-		}
-
-		// Validate that dispose quantity doesn't exceed previous quantity
+		// Validate that dispose quantity doesn't exceed current quantity
 		if *reqItem.Quantity > item.Quantity {
 			return nil, pkg.NewAppError(pkg.ErrorCodeValidation,
-				fmt.Sprintf("dispose quantity %d exceeds previous quantity %d for inventory item %d",
-					reqItem.Quantity, reqItem.PrevQuantity, reqItem.InventoryItemID), nil)
+				fmt.Sprintf("dispose quantity %d exceeds available quantity %d for product %s",
+					*reqItem.Quantity, item.Quantity, item.Product.Name), nil)
 		}
 	}
 
@@ -377,128 +371,100 @@ func (s *inventoryService) CreateDisposeSubmission(ctx context.Context, req dto.
 
 // extractInventoryItemIDsFromPayload extracts inventory item IDs from a payload's items array
 func extractInventoryItemIDsFromPayload(payload json.RawMessage) []uint {
-	var itemIDs []uint
-
-	// Try to unmarshal as a generic payload structure
 	var genericPayload struct {
-		Items []struct {
-			InventoryItemID uint `json:"inventory_item_id"`
-		} `json:"items"`
+		Items []dto.QuantityItem `json:"items"`
 	}
 
 	if err := json.Unmarshal(payload, &genericPayload); err != nil {
-		return itemIDs
+		return nil
 	}
-
-	for _, item := range genericPayload.Items {
-		itemIDs = append(itemIDs, item.InventoryItemID)
-	}
-
-	return itemIDs
+	return models.GetIDs(genericPayload.Items)
 }
 
-// buildSimplifiedItems builds simplified item summaries from payload
-func buildSimplifiedItems(payload json.RawMessage, itemsMap map[uint]*models.InventoryItem) []dto.PendingSubmissionItemSummary {
-	// Try to unmarshal as a generic payload structure that works for both reconcile and dispose
-	var genericPayload struct {
-		Items []struct {
-			InventoryItemID uint `json:"inventory_item_id"`
-			ActualQuantity  *int `json:"actual_quantity,omitempty"` // For reconcile
-			Quantity        int  `json:"quantity,omitempty"`        // For dispose and transfer
-		} `json:"items"`
-	}
-
-	if err := json.Unmarshal(payload, &genericPayload); err != nil {
-		return []dto.PendingSubmissionItemSummary{}
-	}
-
-	summaries := make([]dto.PendingSubmissionItemSummary, 0, len(genericPayload.Items))
-	for _, item := range genericPayload.Items {
+// formatItems builds simplified item summaries from payload
+func formatItems(items []dto.QuantityItem, itemsMap map[uint]*models.InventoryItem) []dto.QuantityItem {
+	summaries := make([]dto.QuantityItem, 0, len(items))
+	for _, item := range items {
 		inventoryItem, exists := itemsMap[item.InventoryItemID]
-		if !exists || inventoryItem.Product == nil {
+		if !exists {
 			continue
 		}
-
-		// Extract quantity based on submission type (actual_quantity for reconcile, quantity for dispose)
-		var quantity int
-		if item.ActualQuantity != nil {
-			quantity = *item.ActualQuantity
-		} else {
-			quantity = item.Quantity
-		}
-
-		summaries = append(summaries, dto.PendingSubmissionItemSummary{
-			ProductName: inventoryItem.Product.Name,
-			Quantity:    quantity,
+		summaries = append(summaries, dto.QuantityItem{
+			InventoryItemID: item.InventoryItemID,
+			ProductName:     inventoryItem.Product.Name,
+			Quantity:        item.Quantity,
+			PrevQuantity:    item.PrevQuantity,
 		})
 	}
-
 	return summaries
 }
 
-// GetPendingSubmissions retrieves all pending submissions for an inventory and populates inventory items
-func (s *inventoryService) GetPendingSubmissions(ctx context.Context, inventoryID uint) ([]dto.SubmissionResponse, error) {
-	submissions, err := s.inventorySubmissionRepo.GetPendingSubmissions(ctx, inventoryID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get pending submissions: %w", err)
+func formatWarnings(
+	submission models.InventorySubmission,
+	items []dto.QuantityItem,
+	itemsMap map[uint]*models.InventoryItem,
+) []string {
+	if items == nil || itemsMap == nil {
+		return []string{}
 	}
 
-	if len(submissions) == 0 {
-		return []dto.SubmissionResponse{}, nil
+	// Only show warnings for pending submissions
+	if submission.ApprovalStatus != models.InventorySubmissionApprovalStatusPending {
+		return nil
 	}
 
-	// Extract all inventory item IDs from all submissions
-	itemIDsSet := make(map[uint]struct{})
-	for _, submission := range submissions {
-		itemIDs := extractInventoryItemIDsFromPayload(submission.Payload)
-		for _, id := range itemIDs {
-			itemIDsSet[id] = struct{}{}
+	warnings := make([]string, 0)
+
+	for _, item := range items {
+		// Skip if inventory item doesn't exist
+		inventoryItem, exists := itemsMap[item.InventoryItemID]
+		if !exists {
+			continue
+		}
+
+		// Skip if inventory item or product is nil
+		if inventoryItem == nil || inventoryItem.Product == nil {
+			continue
+		}
+
+		// Skip if product name is empty
+		if inventoryItem.Product.Name == "" {
+			continue
+		}
+
+		// Skip if quantity is nil
+		if item.Quantity == nil {
+			continue
+		}
+
+		// Generate warnings based on submission type
+		switch submission.SubmissionType {
+		case models.InventorySubmissionTypeDispose, models.InventorySubmissionTypeTransfer:
+			// Check if requested quantity exceeds available quantity
+			if *item.Quantity > inventoryItem.Quantity {
+				operation := "dispose"
+				if submission.SubmissionType == models.InventorySubmissionTypeTransfer {
+					operation = "transfer"
+				}
+				warning := fmt.Sprintf("Product %s doesn't have enough available quantity (current: %d) for %s %d",
+					inventoryItem.Product.Name, inventoryItem.Quantity, operation, *item.Quantity)
+				warnings = append(warnings, warning)
+			}
+		case models.InventorySubmissionTypeReconcile:
+			// Check if prev_quantity is not equal to current item quantity
+			if item.PrevQuantity != inventoryItem.Quantity {
+				warning := fmt.Sprintf("Product %s quantity has changed. Quantity at time of submission was %d. Current quantity is %d.",
+					inventoryItem.Product.Name, item.PrevQuantity, inventoryItem.Quantity)
+				warnings = append(warnings, warning)
+			}
 		}
 	}
 
-	// Convert set to slice
-	itemIDs := make([]uint, 0, len(itemIDsSet))
-	for id := range itemIDsSet {
-		itemIDs = append(itemIDs, id)
-	}
-
-	// Query all inventory items with products in a single call
-	itemsMap := make(map[uint]*models.InventoryItem)
-	if len(itemIDs) > 0 {
-		inventoryItems, err := s.inventoryItemRepo.GetByIDs(ctx, itemIDs)
-		if err != nil {
-			return nil, fmt.Errorf("failed to get inventory items: %w", err)
-		}
-
-		// Create a map for O(1) lookup
-		for _, item := range inventoryItems {
-			itemsMap[item.ID] = item
-		}
-	}
-
-	responses := make([]dto.SubmissionResponse, len(submissions))
-	for i, submission := range submissions {
-		responses[i] = dto.SubmissionResponse{
-			ID:             submission.ID,
-			InventoryID:    submission.InventoryID,
-			Inventory:      submission.Inventory,
-			SubmissionType: submission.SubmissionType,
-			Status:         submission.ProcessingStatus,
-			ApprovalStatus: submission.ApprovalStatus,
-			Items:          buildSimplifiedItems(submission.Payload, itemsMap),
-			Reason:         submission.Reason,
-			CreatedBy:      submission.CreatedBy,
-			CreatedAt:      submission.CreatedAt.Format(pkg.DateTimeFormat),
-			UpdatedBy:      submission.UpdatedBy,
-			UpdatedAt:      submission.UpdatedAt.Format(pkg.DateTimeFormat),
-		}
-	}
-
-	return responses, nil
+	return warnings
 }
 
 // ProcessSubmission approves or rejects a pending inventory submission
-func (s *inventoryService) ProcessSubmission(ctx context.Context, req dto.ProcessSubmissionRequest) (*models.InventorySubmission, error) {
+func (s *inventoryService) ProcessSubmission(ctx context.Context, req dto.SubmissionApprovalRequest) (*models.InventorySubmission, error) {
 	// Check permissions
 	if !pkg.HasPermission(ctx, pkg.RBACResourceInventorySubmissions, pkg.RBACActionApprove) {
 		return nil, pkg.NewAppError(pkg.ErrorCodeForbidden, "user does not have permission to approve inventory submissions", nil)
@@ -535,9 +501,18 @@ func (s *inventoryService) ProcessSubmission(ctx context.Context, req dto.Proces
 	submission.ApprovalStatus = approvalStatus
 	submission.Reason = req.Reason
 
-	// Step 2: Process submission only if approved
-	if approvalStatus == models.InventorySubmissionApprovalStatusApproved {
+	// Step 2: Handle submission based on approval status
+	switch approvalStatus {
+	case models.InventorySubmissionApprovalStatusApproved:
 		s.processSubmission(ctx, submission)
+	case models.InventorySubmissionApprovalStatusRejected:
+		// Set processing status to canceled when rejected
+		if err := s.inventorySubmissionRepo.UpdateProcessingStatus(ctx, submission.ID, models.InventorySubmissionStatusCanceled); err != nil {
+			return nil, fmt.Errorf("failed to update processing status to canceled: %w", err)
+		}
+		submission.ProcessingStatus = models.InventorySubmissionStatusCanceled
+	case models.InventorySubmissionApprovalStatusPending:
+		// No action needed for pending status
 	}
 
 	return submission, nil
@@ -633,18 +608,21 @@ func (s *inventoryService) CreateTransferSubmission(ctx context.Context, req dto
 	}
 	srcItemMap := s.buildItemMap(srcItems)
 
-	// Validate item quantity
 	for _, reqItem := range req.Items {
+		if reqItem.Quantity == nil {
+			return nil, pkg.ErrInvalidRequestBody(fmt.Errorf("quantity is required for inventory item %d", reqItem.InventoryItemID))
+		}
+
 		item, exists := srcItemMap[reqItem.InventoryItemID]
 		if !exists {
 			return nil, pkg.NewAppError(pkg.ErrorCodeNotFound,
 				fmt.Sprintf("inventory item %d not found", reqItem.InventoryItemID), nil)
 		}
 
-		if reqItem.Quantity > item.Quantity {
+		if *reqItem.Quantity > item.Quantity {
 			return nil, pkg.NewAppError(pkg.ErrorCodeValidation,
-				fmt.Sprintf("transfer quantity %d exceeds available quantity %d for inventory item %d",
-					reqItem.Quantity, item.Quantity, reqItem.InventoryItemID), nil)
+				fmt.Sprintf("transfer quantity %d exceeds available quantity %d for product %s",
+					*reqItem.Quantity, item.Quantity, item.Product.Name), nil)
 		}
 	}
 
@@ -682,20 +660,25 @@ func (s *inventoryService) transferInventory(
 	itemConsumeQuantity := make(map[uint]int)
 	productIDs := make([]uint, 0, len(req.Items))
 	for _, reqItem := range req.Items {
+		if reqItem.Quantity == nil {
+			ps.addError(pkg.ErrInvalidRequestBody(fmt.Errorf("actual quantity is required for inventory item %d", reqItem.InventoryItemID)))
+			continue
+		}
+
 		item, exists := srcItemMap[reqItem.InventoryItemID]
 		if !exists {
 			ps.addError(pkg.ErrInventoryItemNotFound(reqItem.InventoryItemID))
 			continue
 		}
 
-		if reqItem.Quantity > item.Quantity {
+		if *reqItem.Quantity > item.Quantity {
 			ps.addError(pkg.ErrTransferValidationFailed(fmt.Sprintf("transfer quantity %d exceeds available quantity %d for inventory item %d",
 				reqItem.Quantity, item.Quantity, reqItem.InventoryItemID)))
 			continue
 		}
 
 		productIDs = append(productIDs, item.ProductID)
-		itemConsumeQuantity[reqItem.InventoryItemID] = reqItem.Quantity
+		itemConsumeQuantity[reqItem.InventoryItemID] = *reqItem.Quantity
 	}
 	if ps.hasAnyErrors() {
 		return ps.addError(pkg.ErrTransferValidationFailed("validation failed for transfer request"))
@@ -900,32 +883,28 @@ func (s *inventoryService) ListSubmissions(ctx context.Context, params models.Li
 		return []dto.SubmissionResponse{}, 0, nil
 	}
 
-	// Extract all inventory item IDs from all submissions
-	itemIDsSet := make(map[uint]struct{})
+	submissionItemMap := make(map[uint][]dto.QuantityItem)
+	itemIDs := make([]uint, 0)
 	for _, submission := range submissions {
-		itemIDs := extractInventoryItemIDsFromPayload(submission.Payload)
-		for _, id := range itemIDs {
-			itemIDsSet[id] = struct{}{}
+		var genericPayload struct {
+			Items []dto.QuantityItem `json:"items"`
 		}
+		if err := json.Unmarshal(submission.Payload, &genericPayload); err != nil {
+			continue
+		}
+		submissionItemMap[submission.ID] = genericPayload.Items
+		itemIDs = append(itemIDs, models.GetIDs(genericPayload.Items)...)
 	}
 
-	// Convert set to slice
-	itemIDs := make([]uint, 0, len(itemIDsSet))
-	for id := range itemIDsSet {
-		itemIDs = append(itemIDs, id)
+	inventoryItems, err := s.inventoryItemRepo.GetByIDs(ctx, itemIDs)
+	if err != nil {
+		return nil, 0, fmt.Errorf("failed to get inventory items: %w", err)
 	}
-
-	itemMap := make(map[uint]*models.InventoryItem)
-	if len(itemIDs) > 0 {
-		inventoryItems, err := s.inventoryItemRepo.GetByIDs(ctx, itemIDs)
-		if err != nil {
-			return nil, 0, fmt.Errorf("failed to get inventory items: %w", err)
-		}
-		itemMap = models.BuildIDMap(inventoryItems)
-	}
+	inventoryItemMap := s.buildItemMap(inventoryItems)
 
 	responses := make([]dto.SubmissionResponse, len(submissions))
 	for i, submission := range submissions {
+		items := submissionItemMap[submission.ID]
 		responses[i] = dto.SubmissionResponse{
 			ID:             submission.ID,
 			InventoryID:    submission.InventoryID,
@@ -933,7 +912,9 @@ func (s *inventoryService) ListSubmissions(ctx context.Context, params models.Li
 			SubmissionType: submission.SubmissionType,
 			Status:         submission.ProcessingStatus,
 			ApprovalStatus: submission.ApprovalStatus,
-			Items:          buildSimplifiedItems(submission.Payload, itemMap),
+			Errors:         s.formatProcessingErrors(submission.Error),
+			Warnings:       formatWarnings(submission, items, inventoryItemMap),
+			Items:          formatItems(items, inventoryItemMap),
 			Reason:         submission.Reason,
 			CreatedBy:      submission.CreatedBy,
 			CreatedAt:      submission.CreatedAt.Format(pkg.DateTimeFormat),
@@ -943,4 +924,66 @@ func (s *inventoryService) ListSubmissions(ctx context.Context, params models.Li
 	}
 
 	return responses, total, nil
+}
+
+func (s *inventoryService) formatProcessingErrors(jsonStr json.RawMessage) json.RawMessage {
+	if len(jsonStr) == 0 {
+		return nil
+	}
+
+	// Unmarshal to []map[string]any
+	var errors []map[string]interface{}
+	if err := json.Unmarshal(jsonStr, &errors); err != nil {
+		// If unmarshaling fails, return a single internal error
+		internalError := map[string]interface{}{
+			"code":    pkg.ErrorCodeInternal.String(),
+			"message": "Internal server error",
+		}
+		result, _ := json.Marshal([]map[string]interface{}{internalError})
+		return json.RawMessage(result)
+	}
+
+	var formattedErrors []map[string]interface{}
+	hasInternalError := false
+
+	for _, err := range errors {
+		// Check if "code" is present - if so, it's an AppError
+		if _, exists := err["code"]; exists {
+			// It's an AppError, remove "cause" field for user display
+			cleanError := map[string]interface{}{
+				"code":    err["code"],
+				"message": err["message"],
+			}
+			formattedErrors = append(formattedErrors, cleanError)
+		} else {
+			// No "code" present, it's an internal server error
+			hasInternalError = true
+		}
+	}
+
+	// If there are any internal errors, add a single internal error at the end
+	if hasInternalError {
+		internalError := map[string]interface{}{
+			"code":    pkg.ErrorCodeInternal.String(),
+			"message": "Internal server error",
+		}
+		formattedErrors = append(formattedErrors, internalError)
+	}
+
+	if len(formattedErrors) == 0 {
+		return nil
+	}
+
+	result, err := json.Marshal(formattedErrors)
+	if err != nil {
+		// If marshaling fails, return a single internal error
+		internalError := map[string]interface{}{
+			"code":    pkg.ErrorCodeInternal.String(),
+			"message": "Internal server error",
+		}
+		result, _ := json.Marshal([]map[string]interface{}{internalError})
+		return json.RawMessage(result)
+	}
+
+	return json.RawMessage(result)
 }

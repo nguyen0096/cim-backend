@@ -240,33 +240,6 @@ func (h *InventoryHandler) ReconcileInventory(c echo.Context) error {
 	return c.JSON(http.StatusOK, submission)
 }
 
-// GetPendingSubmissions retrieves all pending submissions for an inventory
-// @Summary Get pending submissions
-// @Description Get all pending inventory submissions with simplified item info (product name and quantity) for a specific inventory
-// @Tags inventories
-// @Accept json
-// @Produce json
-// @Param id path int true "Inventory ID"
-// @Success 200 {array} dto.SubmissionResponse
-// @Failure 400 {object} map[string]string
-// @Failure 500 {object} map[string]string
-// @Security BearerAuth
-// @Router /inventories/{id}/submissions/pending [get]
-func (h *InventoryHandler) GetPendingSubmissions(c echo.Context) error {
-	// Get inventory ID from URL param
-	inventoryID, err := pkg.ExtractIDParam(c)
-	if err != nil {
-		return err
-	}
-
-	submissions, err := h.inventoryService.GetPendingSubmissions(c.Request().Context(), inventoryID)
-	if err != nil {
-		return fmt.Errorf("failed to get pending submissions: %w", err)
-	}
-
-	return c.JSON(http.StatusOK, submissions)
-}
-
 // ProcessSubmission approves or rejects a pending inventory submission
 // @Summary Process submission (approve/reject)
 // @Description Approve or reject a pending inventory submission. Approve will execute the inventory operation, reject will mark as rejected.
@@ -283,7 +256,7 @@ func (h *InventoryHandler) GetPendingSubmissions(c echo.Context) error {
 // @Security BearerAuth
 // @Router /inventories/submissions/{id}/process [post]
 func (h *InventoryHandler) ProcessSubmission(c echo.Context) error {
-	var req dto.ProcessSubmissionRequest
+	var req dto.SubmissionApprovalRequest
 	if err := c.Bind(&req); err != nil {
 		return pkg.ErrInvalidRequestBody(err)
 	}

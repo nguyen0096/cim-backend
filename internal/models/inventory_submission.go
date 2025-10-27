@@ -8,6 +8,7 @@ const (
 	InventorySubmissionStatusPending   SubmissionProcessingStatus = "pending"
 	InventorySubmissionStatusFailed    SubmissionProcessingStatus = "failed"
 	InventorySubmissionStatusCompleted SubmissionProcessingStatus = "completed"
+	InventorySubmissionStatusCanceled  SubmissionProcessingStatus = "canceled"
 )
 
 type SubmissionApprovalStatus string
@@ -41,7 +42,7 @@ type InventorySubmission struct {
 	SubmissionType   SubmissionType             `json:"submission_type" gorm:"not null"`
 	ProcessingStatus SubmissionProcessingStatus `json:"processing_status" gorm:"default:pending"`
 	ApprovalStatus   SubmissionApprovalStatus   `json:"approval_status" gorm:"default:pending"`
-	Payload          json.RawMessage            `json:"payload" gorm:"serializer:json"`
+	Payload          json.RawMessage            `json:"payload" gorm:"serializer:json;type:jsonb"`
 	Reason           string                     `json:"reason,omitempty"`
 	Error            json.RawMessage            `json:"error,omitempty" gorm:"serializer:json"`
 }
