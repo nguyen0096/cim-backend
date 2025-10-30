@@ -46,14 +46,11 @@ func getTLBRCells(rangeStr string) (Cell, Cell, error) {
 	return Cell{tlr, tlc}, Cell{brr, brc}, nil
 }
 
-// buildMergeCellLookup builds a merge cell lookup from a list of merge cells.
-func buildMergeCellLookup(mergeCells []excelize.MergeCell) map[int]map[int]string {
-	// Initialize the sheet's spatial index (sparse map)
-	spatialIndex := make(map[int]map[int]string)
-
-	// Populate the spatial index - only store cells that are actually merged
-	for _, mergeCell := range mergeCells {
-		rangeStr := mergeCell[0]
+// ConvertExcelizeMergeCells converts excelize MergeCells to provider-agnostic MergeCells
+func ConvertExcelizeMergeCells(excelizeMergeCells []excelize.MergeCell) []MergeCell {
+	result := make([]MergeCell, 0, len(excelizeMergeCells))
+	for _, em := range excelizeMergeCells {
+		rangeStr := em[0]
 		parts := strings.Split(rangeStr, ":")
 		if len(parts) != 2 {
 			continue
@@ -68,15 +65,34 @@ func buildMergeCellLookup(mergeCells []excelize.MergeCell) map[int]map[int]strin
 			continue
 		}
 
+		result = append(result, MergeCell{
+			StartRow: startRow,
+			StartCol: startCol,
+			EndRow:   endRow,
+			EndCol:   endCol,
+		})
+	}
+	return result
+}
+
+// buildMergeCellLookup builds a merge cell lookup from a list of merge cells.
+func buildMergeCellLookup(mergeCells []MergeCell) map[int]map[int]string {
+	// Initialize the sheet's spatial index (sparse map)
+	spatialIndex := make(map[int]map[int]string)
+
+	// Populate the spatial index - only store cells that are actually merged
+	for _, mergeCell := range mergeCells {
+		rangeStr := mergeCell.GetRange()
+
 		// Use 1-based coordinates directly for spatial index
 		// Populate all cells in the merged range
-		for row := startRow; row <= endRow; row++ {
+		for row := mergeCell.StartRow; row <= mergeCell.EndRow; row++ {
 			// Initialize row map if it doesn't exist
 			if spatialIndex[row] == nil {
 				spatialIndex[row] = make(map[int]string)
 			}
 
-			for col := startCol; col <= endCol; col++ {
+			for col := mergeCell.StartCol; col <= mergeCell.EndCol; col++ {
 				spatialIndex[row][col] = rangeStr
 			}
 		}
@@ -92,4 +108,19 @@ func getMergeCellRange(mergeCellLookup map[int]map[int]string, cell Cell) (bool,
 		return false, ""
 	}
 	return true, rangeStr
+}
+
+// MergeCell represents a merged cell range in a provider-agnostic way
+type MergeCell struct {
+	StartRow int
+	StartCol int
+	EndRow   int
+	EndCol   int
+}
+
+// GetRange returns the range string in Excel format (e.g., "A1:B2")
+func (m MergeCell) GetRange() string {
+	startCell, _ := excelize.CoordinatesToCellName(m.StartCol, m.StartRow)
+	endCell, _ := excelize.CoordinatesToCellName(m.EndCol, m.EndRow)
+	return fmt.Sprintf("%s:%s", startCell, endCell)
 }

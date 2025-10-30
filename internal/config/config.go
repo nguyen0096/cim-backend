@@ -9,12 +9,13 @@ import (
 )
 
 type Config struct {
-	Database  DatabaseConfig
-	Server    ServerConfig
-	JWT       JWTConfig
-	Firebase  FirebaseConfig
-	Excel     ExcelConfig
-	Migration MigrationConfig
+	Database     DatabaseConfig
+	Server       ServerConfig
+	JWT          JWTConfig
+	Firebase     FirebaseConfig
+	Excel        ExcelConfig
+	Migration    MigrationConfig
+	GoogleSheets GoogleSheetsConfig
 }
 
 type DatabaseConfig struct {
@@ -49,6 +50,11 @@ type MigrationConfig struct {
 	Directory string
 }
 
+type GoogleSheetsConfig struct {
+	ServiceAccountPath     string
+	InventorySpreadsheetID string
+}
+
 func Load() *Config {
 	// Load .env file if it exists
 	godotenv.Load()
@@ -76,6 +82,10 @@ func Load() *Config {
 		},
 		Migration: MigrationConfig{
 			Directory: getEnv("MIGRATION_DIR", "database/migrations"),
+		},
+		GoogleSheets: GoogleSheetsConfig{
+			ServiceAccountPath:     getEnv("GOOGLE_SERVICE_ACCOUNT", ""),
+			InventorySpreadsheetID: getEnv("INVENTORY_SPREADSHEET_ID", ""),
 		},
 	}
 }

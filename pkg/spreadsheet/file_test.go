@@ -3,6 +3,7 @@ package spreadsheet
 import (
 	"testing"
 
+
 	"github.com/stretchr/testify/assert"
 )
 
@@ -394,7 +395,8 @@ func TestNewFile(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			file, err := NewFile(tt.config)
+			prov := &ExcelFileProvider{}
+			file, err := NewFile(tt.config, prov)
 
 			if tt.expectError {
 				assert.Error(t, err)

@@ -1,6 +1,8 @@
 package spreadsheet
 
 import (
+
+	"context"
 	"fmt"
 	"testing"
 	"time"
@@ -167,6 +169,8 @@ func TestSheetNamePattern_Parse(t *testing.T) {
 }
 
 func TestGetColByExactHeaders(t *testing.T) {
+	ctx := context.Background()
+
 	xntSheet := SheetConfig{
 		InternalID:     "current_month_inventory_change",
 		NamePattern:    "THANG {MM}",
@@ -181,10 +185,11 @@ func TestGetColByExactHeaders(t *testing.T) {
 		SheetConfigs: []SheetConfig{xntSheet},
 	}
 
-	f, err := NewFile(fc)
+	prov := &ExcelFileProvider{}
+	f, err := NewFile(fc, prov)
 	require.Nil(t, err)
 
-	err = f.Connect()
+	err = f.Connect(ctx)
 	require.Nil(t, err)
 
 	col, err := f.Sheets[xntSheet.InternalID].GetColByExactHeaders(xntSheet.InternalID, []string{"DiẾN GiẢI", ""})
@@ -259,10 +264,12 @@ func getTestFileConfig() FileConfig {
 }
 
 func TestFile_Load(t *testing.T) {
-	f, err := NewFile(getTestFileConfig())
+	ctx := context.Background()
+	prov := &ExcelFileProvider{}
+	f, err := NewFile(getTestFileConfig(), prov)
 	require.Nil(t, err)
 
-	err = f.Connect()
+	err = f.Connect(ctx)
 	t.Logf("err: %v", err)
 	require.Nil(t, err)
 
@@ -285,10 +292,12 @@ func TestSpatialIndex_Standalone(t *testing.T) {
 	}
 
 	// Get merged cells from excelize
-	mergeCells, err := excelFile.GetMergeCells("Sheet1")
+	excelizeMergeCells, err := excelFile.GetMergeCells("Sheet1")
 	if err != nil {
 		t.Fatalf("Failed to get merged cells: %v", err)
 	}
+
+	mergeCells := ConvertExcelizeMergeCells(excelizeMergeCells)
 
 	// Build spatial index using the updated function
 	spatialIndex := buildMergeCellLookup(mergeCells)
@@ -423,15 +432,18 @@ func assertColumnIndices(t *testing.T, f *File) {
 }
 
 func TestFile_UpsertRow(t *testing.T) {
-	f, err := NewFile(getTestFileConfig())
+	ctx := context.Background()
+	prov := &ExcelFileProvider{}
+	f, err := NewFile(getTestFileConfig(), prov)
 	require.Nil(t, err)
 
-	err = f.Connect()
+	err = f.Connect(ctx)
 	require.Nil(t, err)
 
 	// update row with index column: __product_id = test-product-id-1
 	// change SL of Ngày 6 to 11
 	err = f.UpsertRow(
+		ctx,
 		getTestFileConfig().SheetConfigs[0].InternalID,
 		"__product_id",
 		"test-product-id-3",
@@ -443,6 +455,7 @@ func TestFile_UpsertRow(t *testing.T) {
 	// update row with index column: __product_id = insert-product-id
 	// change SL of Ngày 6 to 11
 	err = f.UpsertRow(
+		ctx,
 		getTestFileConfig().SheetConfigs[0].InternalID,
 		"__product_id",
 		"insert-product-id",

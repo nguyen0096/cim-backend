@@ -1,6 +1,7 @@
 package spreadsheet
 
 import (
+	"context"
 	"fmt"
 	"strings"
 	"time"
@@ -81,21 +82,23 @@ type Sheet struct {
 
 // AppendRow appends a new row to the sheet.
 func (s *Sheet) InsertRow(
+	ctx context.Context,
 	rowNumber int,
 	rowData map[TreeHeaderStr]interface{},
 ) error {
 	if rowNumber < s.DataStartRow {
 		return fmt.Errorf("row number is less than data start row")
 	}
-	err := s.File.Provider.InsertRows(s.SheetName, rowNumber, 1)
+	err := s.File.Provider.InsertRows(ctx, s.SheetName, rowNumber, 1)
 	if err != nil {
 		return fmt.Errorf("failed to insert rows: %w", err)
 	}
-	return s.UpdateRow(rowNumber, rowData)
+	return s.UpdateRow(ctx, rowNumber, rowData)
 }
 
 // UpdateRow updates the row data by headers.
 func (s *Sheet) UpdateRow(
+	ctx context.Context,
 	rowNumber int,
 	rowData map[TreeHeaderStr]interface{},
 ) error {
@@ -105,7 +108,7 @@ func (s *Sheet) UpdateRow(
 			return fmt.Errorf("failed to get column index: %w", err)
 		}
 		cell := Cell{Row: rowNumber, Col: col}
-		if err := s.File.Provider.SetCellValue(s.SheetName, cell.String(), value); err != nil {
+		if err := s.File.Provider.SetCellValue(ctx, s.SheetName, cell.String(), value); err != nil {
 			return fmt.Errorf("failed to set cell value: %w", err)
 		}
 	}
@@ -138,7 +141,7 @@ func (s *Sheet) GetColByExactHeaders(sheetInternalID SheetInternalID, headers []
 }
 
 // recursively parse a node and its children.
-func (s *Sheet) recursivelyParseNode(currentDepth int, topLeftCell Cell) (*HeaderNode, error) {
+func (s *Sheet) recursivelyParseNode(ctx context.Context, currentDepth int, topLeftCell Cell) (*HeaderNode, error) {
 	if currentDepth == 0 {
 		return nil, fmt.Errorf("current depth cannot be 0")
 	}
@@ -168,7 +171,7 @@ func (s *Sheet) recursivelyParseNode(currentDepth int, topLeftCell Cell) (*Heade
 	}
 
 	// get header text from cell value and trim space
-	cellValue, err := s.File.Provider.GetCellValue(s.SheetName, cellName)
+	cellValue, err := s.File.Provider.GetCellValue(ctx, s.SheetName, cellName)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get cell value: %w", err)
 	}
@@ -196,6 +199,7 @@ func (s *Sheet) recursivelyParseNode(currentDepth int, topLeftCell Cell) (*Heade
 	currentCol := topLeftCell.Col
 	for currentCol <= bottomRightCell.Col {
 		child, err := s.recursivelyParseNode(
+			ctx,
 			currentDepth+1,
 			Cell{Col: currentCol, Row: node.BottomRightCell.Row + 1})
 		if err != nil {
@@ -217,14 +221,14 @@ func (s *Sheet) recursivelyParseNode(currentDepth int, topLeftCell Cell) (*Heade
 }
 
 // buildColumnIndices builds the column indices for the sheet.
-func (s *Sheet) buildColumnIndices() error {
+func (s *Sheet) buildColumnIndices(ctx context.Context) error {
 	for _, mlHeader := range s.IndexColumnNames {
 		col, err := s.GetColByExactHeaders(s.InternalID, mlHeader)
 		if err != nil {
 			return fmt.Errorf("failed to get column index: %w", err)
 		}
 
-		rows, err := s.File.Provider.GetRows(s.SheetName)
+		rows, err := s.File.Provider.GetRows(ctx, s.SheetName)
 		if err != nil {
 			return fmt.Errorf("failed to get Excel rows: %w", err)
 		}
@@ -237,7 +241,7 @@ func (s *Sheet) buildColumnIndices() error {
 			if err != nil {
 				return fmt.Errorf("failed to convert coordinates to cell name")
 			}
-			cellValue, err := s.File.Provider.GetCellValue(s.SheetName, cellName)
+			cellValue, err := s.File.Provider.GetCellValue(ctx, s.SheetName, cellName)
 			if err != nil {
 				return fmt.Errorf("failed to get cell value: %w", err)
 			}
@@ -256,13 +260,13 @@ func (s *Sheet) buildColumnIndices() error {
 // parseHeader parses the header structure of an Excel sheet into a tree representation.
 // It analyzes merged cells and creates HeaderTree structures that represent the hierarchical
 // organization of headers across multiple rows.
-func (s *Sheet) parseHeader() error {
-	mergeCells, err := s.File.Provider.GetMergeCells(s.SheetName)
+func (s *Sheet) parseHeader(ctx context.Context) error {
+	mergeCells, err := s.File.Provider.GetMergeCells(ctx, s.SheetName)
 	if err != nil {
 		return fmt.Errorf("failed to get merged cells: %w", err)
 	}
 	s.MergeCellLookup = buildMergeCellLookup(mergeCells)
-	s.HeaderRoot, err = s.parseHeaderRow()
+	s.HeaderRoot, err = s.parseHeaderRow(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to parse header row: %w", err)
 	}
@@ -270,7 +274,7 @@ func (s *Sheet) parseHeader() error {
 }
 
 // parseHeaderRow recursively parses a header row and its children
-func (s *Sheet) parseHeaderRow() (*HeaderNode, error) {
+func (s *Sheet) parseHeaderRow(ctx context.Context) (*HeaderNode, error) {
 	if s.HeaderStartCol == 0 || s.HeaderStartRow == 0 || s.HeaderHeight == 0 {
 		return nil, fmt.Errorf("header start col, row or height is not set")
 	}
@@ -281,7 +285,7 @@ func (s *Sheet) parseHeaderRow() (*HeaderNode, error) {
 
 	currentCol := s.HeaderStartCol
 	for {
-		node, err := s.recursivelyParseNode(1, Cell{Row: s.HeaderStartRow, Col: currentCol})
+		node, err := s.recursivelyParseNode(ctx, 1, Cell{Row: s.HeaderStartRow, Col: currentCol})
 		if err != nil {
 			return nil, fmt.Errorf("failed to parse node: %w", err)
 		}

@@ -1,13 +1,13 @@
 package spreadsheet
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"strings"
 	"sync"
 
 	"github.com/go-playground/validator/v10"
-	"github.com/xuri/excelize/v2"
 )
 
 // FileConfig contains the configuration of Excel file.
@@ -19,21 +19,21 @@ type FileConfig struct {
 // FileProvider abstracts the underlying spreadsheet implementation (Excel, Google Sheets, etc.)
 type FileProvider interface {
 	// Connect opens a connection to the file
-	Connect(filePath string) error
+	Connect(ctx context.Context, filePath string) error
 	// Close closes the connection to the file
-	Close() error
+	Close(ctx context.Context) error
 	// GetSheetIndex returns the index of a sheet by name
-	GetSheetIndex(name string) (int, error)
+	GetSheetIndex(ctx context.Context, name string) (int, error)
 	// InsertRows inserts rows at the specified position
-	InsertRows(sheet string, row, n int) error
+	InsertRows(ctx context.Context, sheet string, row, n int) error
 	// SetCellValue sets the value of a cell
-	SetCellValue(sheet, cell string, value interface{}) error
+	SetCellValue(ctx context.Context, sheet, cell string, value interface{}) error
 	// GetCellValue gets the value of a cell
-	GetCellValue(sheet, cell string) (string, error)
+	GetCellValue(ctx context.Context, sheet, cell string) (string, error)
 	// GetRows gets all rows in a sheet
-	GetRows(sheet string) ([][]string, error)
+	GetRows(ctx context.Context, sheet string) ([][]string, error)
 	// GetMergeCells gets all merged cells in a sheet
-	GetMergeCells(sheet string) ([]excelize.MergeCell, error)
+	GetMergeCells(ctx context.Context, sheet string) ([]MergeCell, error)
 }
 
 type File struct {
@@ -44,6 +44,7 @@ type File struct {
 }
 
 func (f *File) UpsertRow(
+	ctx context.Context,
 	sheetInternalID SheetInternalID,
 	indexColHeaderStr TreeHeaderStr,
 	indexValue string,
@@ -66,12 +67,12 @@ func (f *File) UpsertRow(
 	}
 
 	if ok {
-		err = sheet.UpdateRow(row, rowData)
+		err = sheet.UpdateRow(ctx, row, rowData)
 		if err != nil {
 			return fmt.Errorf("failed to update row: %w", err)
 		}
 	} else {
-		err = sheet.InsertRow(sheet.DataStartRow, rowData)
+		err = sheet.InsertRow(ctx, sheet.DataStartRow, rowData)
 		if err != nil {
 			return fmt.Errorf("failed to append row: %w", err)
 		}
@@ -105,7 +106,7 @@ func (f *File) findRowByIndex(
 	return row, ok, nil
 }
 
-func (f *File) Close() error {
+func (f *File) Close(ctx context.Context) error {
 	f.Lock()
 	defer f.Unlock()
 
@@ -113,46 +114,52 @@ func (f *File) Close() error {
 		return fmt.Errorf("file not opened")
 	}
 
-	err := f.Provider.Close()
+	err := f.Provider.Close(ctx)
 	f.Provider = nil
 	return err
 }
 
 // Connect connects to the file and parses the sheets.
-func (f *File) Connect() (err error) {
+func (f *File) Connect(ctx context.Context) (err error) {
 	defer func() {
 		if err := recover(); err != nil {
-			f.Provider = nil
 			err = fmt.Errorf("failed to load file: %v", err)
 		}
 	}()
 	f.Lock()
 	defer f.Unlock()
 
-	if f.Provider != nil {
-		return fmt.Errorf("file already opened")
+	if f.Provider == nil {
+		return fmt.Errorf("provider not set")
 	}
 
-	if _, err := os.Stat(f.FilePath); os.IsNotExist(err) {
-		return fmt.Errorf("file not found: %s", f.FilePath)
+	if f.Sheets != nil {
+		return fmt.Errorf("file already connected")
 	}
 
-	err = f.Provider.Connect(f.FilePath)
+	// Only check file existence for local files (not URLs)
+	if !strings.Contains(f.FilePath, "://") && !strings.Contains(f.FilePath, "docs.google.com") {
+		if _, err := os.Stat(f.FilePath); os.IsNotExist(err) {
+			return fmt.Errorf("file not found: %s", f.FilePath)
+		}
+	}
+
+	err = f.Provider.Connect(ctx, f.FilePath)
 	if err != nil {
 		return fmt.Errorf("failed to open excel file: %w", err)
 	}
 
-	if err := f.parseSheets(); err != nil {
+	if err := f.parseSheets(ctx); err != nil {
 		return fmt.Errorf("failed to parse sheets: %w", err)
 	}
 
 	return nil
 }
 
-func (f *File) parseSheets() error {
+func (f *File) parseSheets(ctx context.Context) error {
 	for _, sheetCfg := range f.SheetConfigs {
 		targetSheet := sheetCfg.NamePattern.Parse(sheetCfg.NameParams)
-		idx, err := f.Provider.GetSheetIndex(targetSheet)
+		idx, err := f.Provider.GetSheetIndex(ctx, targetSheet)
 		if err != nil {
 			continue
 		}
@@ -163,7 +170,7 @@ func (f *File) parseSheets() error {
 			Index:       idx,
 		}
 
-		if err := s.parseHeader(); err != nil {
+		if err := s.parseHeader(ctx); err != nil {
 			return fmt.Errorf("failed to parse header: %w", err)
 		}
 		// store parsed sheet by internal ID
@@ -174,15 +181,15 @@ func (f *File) parseSheets() error {
 
 		// build runtime data
 		s.ColumnIndices = make(map[int]map[string]int)
-		if err := s.buildColumnIndices(); err != nil {
+		if err := s.buildColumnIndices(ctx); err != nil {
 			return fmt.Errorf("failed to build column indices: %w", err)
 		}
 	}
 	return nil
 }
 
-// NewFile creates a new File instance with validated configuration
-func NewFile(config FileConfig) (*File, error) {
+// NewFile creates a new File instance with validated configuration and the provided provider
+func NewFile(config FileConfig, provider FileProvider) (*File, error) {
 	config = trimFileConfigValues(config)
 	if err := validateFileConfig(config); err != nil {
 		return nil, fmt.Errorf("invalid file config: %w", err)
@@ -196,7 +203,10 @@ func NewFile(config FileConfig) (*File, error) {
 		}
 	}
 
-	return &File{FileConfig: config}, nil
+	return &File{
+		FileConfig: config,
+		Provider:   provider,
+	}, nil
 }
 
 // trimFileConfigValues cleans the FileConfig by trimming the strings
