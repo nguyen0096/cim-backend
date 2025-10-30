@@ -1,11 +1,68 @@
-package excel
+package spreadsheet
 
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/xuri/excelize/v2"
 )
+
+type SheetInternalID string
+
+type SheetNamePattern string
+
+func (s SheetNamePattern) Parse(params map[string]string) string {
+	result := string(s)
+	for key, value := range params {
+		result = strings.ReplaceAll(result, key, value)
+	}
+	return result
+}
+
+// SheetConfig contains the configuration for a sheet, used as anchor to let
+// repository how to parse the sheet.
+type SheetConfig struct {
+	InternalID SheetInternalID `json:"internal_id" validate:"required"`
+
+	// Naming
+
+	NamePattern SheetNamePattern  `json:"name_pattern" validate:"required"`
+	NameParams  map[string]string `json:"name_params" validate:"-"`
+
+	// Header
+	HeaderStartRow int `json:"header_start_row" validate:"required,min=1"`
+	HeaderStartCol int `json:"header_start_col" validate:"required,min=1"`
+	HeaderHeight   int `json:"header_height" validate:"required,min=1"`
+
+	// Footer
+
+	FooterHeight int `json:"footer_height" validate:"-"`
+
+	// Data
+	DataStartRow int `json:"data_start_row" validate:"-"`
+
+	// IndexColumnNames are names of columns that will be indexed for lookup.
+	IndexColumnNames []TreeHeader `json:"index_columns" validate:"-"`
+}
+
+func (sc *SheetConfig) SetSheetNameTimeParams(t time.Time) {
+	timeParams := map[string]string{
+		"{MM}":   t.Format("01"),
+		"{M}":    t.Format("1"),
+		"{DD}":   t.Format("02"),
+		"{D}":    t.Format("2"),
+		"{YYYY}": t.Format("2006"),
+		"{YY}":   t.Format("06"),
+	}
+
+	if sc.NameParams == nil {
+		sc.NameParams = make(map[string]string)
+	}
+	for k, v := range timeParams {
+		sc.NameParams[k] = v
+	}
+}
 
 type Sheet struct {
 	SheetConfig
@@ -25,12 +82,12 @@ type Sheet struct {
 // AppendRow appends a new row to the sheet.
 func (s *Sheet) InsertRow(
 	rowNumber int,
-	rowData map[MultiLeverHeaderStr]interface{},
+	rowData map[TreeHeaderStr]interface{},
 ) error {
 	if rowNumber < s.DataStartRow {
 		return fmt.Errorf("row number is less than data start row")
 	}
-	err := s.File.Excel.InsertRows(s.SheetName, rowNumber, 1)
+	err := s.File.Provider.InsertRows(s.SheetName, rowNumber, 1)
 	if err != nil {
 		return fmt.Errorf("failed to insert rows: %w", err)
 	}
@@ -40,15 +97,15 @@ func (s *Sheet) InsertRow(
 // UpdateRow updates the row data by headers.
 func (s *Sheet) UpdateRow(
 	rowNumber int,
-	rowData map[MultiLeverHeaderStr]interface{},
+	rowData map[TreeHeaderStr]interface{},
 ) error {
 	for header, value := range rowData {
-		col, err := s.GetColByExactHeaders(s.InternalID, header.MultiLevelHeader())
+		col, err := s.GetColByExactHeaders(s.InternalID, header.TreeHeader())
 		if err != nil {
 			return fmt.Errorf("failed to get column index: %w", err)
 		}
 		cell := Cell{Row: rowNumber, Col: col}
-		if err := s.File.Excel.SetCellValue(s.SheetName, cell.String(), value); err != nil {
+		if err := s.File.Provider.SetCellValue(s.SheetName, cell.String(), value); err != nil {
 			return fmt.Errorf("failed to set cell value: %w", err)
 		}
 	}
@@ -111,7 +168,7 @@ func (s *Sheet) recursivelyParseNode(currentDepth int, topLeftCell Cell) (*Heade
 	}
 
 	// get header text from cell value and trim space
-	cellValue, err := s.File.Excel.GetCellValue(s.SheetName, cellName)
+	cellValue, err := s.File.Provider.GetCellValue(s.SheetName, cellName)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get cell value: %w", err)
 	}
@@ -167,7 +224,7 @@ func (s *Sheet) buildColumnIndices() error {
 			return fmt.Errorf("failed to get column index: %w", err)
 		}
 
-		rows, err := s.File.Excel.GetRows(s.SheetName)
+		rows, err := s.File.Provider.GetRows(s.SheetName)
 		if err != nil {
 			return fmt.Errorf("failed to get Excel rows: %w", err)
 		}
@@ -180,7 +237,7 @@ func (s *Sheet) buildColumnIndices() error {
 			if err != nil {
 				return fmt.Errorf("failed to convert coordinates to cell name")
 			}
-			cellValue, err := s.File.Excel.GetCellValue(s.SheetName, cellName)
+			cellValue, err := s.File.Provider.GetCellValue(s.SheetName, cellName)
 			if err != nil {
 				return fmt.Errorf("failed to get cell value: %w", err)
 			}
@@ -200,7 +257,7 @@ func (s *Sheet) buildColumnIndices() error {
 // It analyzes merged cells and creates HeaderTree structures that represent the hierarchical
 // organization of headers across multiple rows.
 func (s *Sheet) parseHeader() error {
-	mergeCells, err := s.File.Excel.GetMergeCells(s.SheetName)
+	mergeCells, err := s.File.Provider.GetMergeCells(s.SheetName)
 	if err != nil {
 		return fmt.Errorf("failed to get merged cells: %w", err)
 	}

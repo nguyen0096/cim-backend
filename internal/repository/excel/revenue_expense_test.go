@@ -13,6 +13,11 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+const (
+	// TestRevenueExpenseExcelFile is the path to the revenue expense test Excel file
+	TestRevenueExpenseExcelFile = "../../../test/data/excel/revenue_expense_sample.xlsx"
+)
+
 func TestRevenueExpenseExcelRepository(t *testing.T) {
 	t.Log("=== Excel test: handling with THU CHI Excel ===")
 	ctx := context.Background()

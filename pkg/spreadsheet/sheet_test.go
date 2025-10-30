@@ -1,4 +1,4 @@
-package excel
+package spreadsheet
 
 import (
 	"fmt"
@@ -8,14 +8,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/xuri/excelize/v2"
-)
-
-const (
-	// TestRevenueExpenseExcelFile is the path to the revenue expense test Excel file
-	TestRevenueExpenseExcelFile = "../../../test/data/excel/revenue_expense_sample.xlsx"
-
-	// TestInventoryTrackerExcelFile is the path to the inventory tracker test Excel file
-	TestInventoryTrackerExcelFile = "../../../test/data/excel/XNT_app.xlsx"
 )
 
 func TestSheetNamePattern_Parse(t *testing.T) {
@@ -174,6 +166,32 @@ func TestSheetNamePattern_Parse(t *testing.T) {
 	}
 }
 
+func TestGetColByExactHeaders(t *testing.T) {
+	xntSheet := SheetConfig{
+		InternalID:     "current_month_inventory_change",
+		NamePattern:    "THANG {MM}",
+		HeaderStartRow: 3,
+		HeaderStartCol: 1,
+		HeaderHeight:   3,
+	}
+	xntSheet.SetSheetNameTimeParams(time.Date(2023, 12, 1, 0, 0, 0, 0, time.UTC))
+
+	fc := FileConfig{
+		FilePath:     TestInventoryTrackerExcelFile,
+		SheetConfigs: []SheetConfig{xntSheet},
+	}
+
+	f, err := NewFile(fc)
+	require.Nil(t, err)
+
+	err = f.Connect()
+	require.Nil(t, err)
+
+	col, err := f.Sheets[xntSheet.InternalID].GetColByExactHeaders(xntSheet.InternalID, []string{"DiẾN GiẢI", ""})
+	require.Nil(t, err)
+	assert.Equal(t, 2, col)
+}
+
 func TestSheetNamePattern_Parse_EdgeCases(t *testing.T) {
 	tests := []struct {
 		name     string
@@ -227,7 +245,7 @@ func getTestFileConfig() FileConfig {
 		HeaderStartCol: 1,
 		HeaderHeight:   3,
 		FooterHeight:   3,
-		IndexColumnNames: []MultiLevelHeader{
+		IndexColumnNames: []TreeHeader{
 			{fmt.Sprintf("%s%s", MetadataHeaderPrefix, "product_id")},
 		},
 	}
@@ -244,7 +262,7 @@ func TestFile_Load(t *testing.T) {
 	f, err := NewFile(getTestFileConfig())
 	require.Nil(t, err)
 
-	err = f.Load()
+	err = f.Connect()
 	t.Logf("err: %v", err)
 	require.Nil(t, err)
 
@@ -396,534 +414,6 @@ func TestSpatialIndex_Concept(t *testing.T) {
 	}
 }
 
-func TestTrimFileConfigValues(t *testing.T) {
-	tests := []struct {
-		name     string
-		input    FileConfig
-		expected FileConfig
-	}{
-		{
-			name: "should trim whitespace from all string fields",
-			input: FileConfig{
-				FilePath: "  /path/to/file.xlsx  ",
-				SheetConfigs: []SheetConfig{
-					{
-						InternalID:  "  sheet1  ",
-						NamePattern: "  THANG {MM}  ",
-						NameParams: map[string]string{
-							"  key1  ": "  value1  ",
-							"key2":     "value2",
-						},
-						HeaderStartRow:   1,
-						HeaderStartCol:   1,
-						HeaderHeight:     2,
-						IndexColumnNames: []MultiLevelHeader{{"  col1  "}, {"col2"}, {"  col3  "}},
-					},
-				},
-			},
-			expected: FileConfig{
-				FilePath: "/path/to/file.xlsx",
-				SheetConfigs: []SheetConfig{
-					{
-						InternalID:  "sheet1",
-						NamePattern: "THANG {MM}",
-						NameParams: map[string]string{
-							"  key1  ": "value1",
-							"key2":     "value2",
-						},
-						HeaderStartRow:   1,
-						HeaderStartCol:   1,
-						HeaderHeight:     2,
-						IndexColumnNames: []MultiLevelHeader{{"col1"}, {"col2"}, {"col3"}},
-					},
-				},
-			},
-		},
-		{
-			name: "should handle empty strings",
-			input: FileConfig{
-				FilePath: "",
-				SheetConfigs: []SheetConfig{
-					{
-						InternalID:       "",
-						NamePattern:      "",
-						NameParams:       map[string]string{},
-						HeaderStartRow:   1,
-						HeaderStartCol:   1,
-						HeaderHeight:     1,
-						IndexColumnNames: []MultiLevelHeader{},
-					},
-				},
-			},
-			expected: FileConfig{
-				FilePath: "",
-				SheetConfigs: []SheetConfig{
-					{
-						InternalID:       "",
-						NamePattern:      "",
-						NameParams:       map[string]string{},
-						HeaderStartRow:   1,
-						HeaderStartCol:   1,
-						HeaderHeight:     1,
-						IndexColumnNames: []MultiLevelHeader{},
-					},
-				},
-			},
-		},
-		{
-			name: "should handle nil maps",
-			input: FileConfig{
-				FilePath: "file.xlsx",
-				SheetConfigs: []SheetConfig{
-					{
-						InternalID:       "sheet1",
-						NamePattern:      "SHEET_{MM}",
-						NameParams:       nil,
-						HeaderStartRow:   2,
-						HeaderStartCol:   3,
-						HeaderHeight:     4,
-						IndexColumnNames: nil,
-					},
-				},
-			},
-			expected: FileConfig{
-				FilePath: "file.xlsx",
-				SheetConfigs: []SheetConfig{
-					{
-						InternalID:       "sheet1",
-						NamePattern:      "SHEET_{MM}",
-						NameParams:       nil,
-						HeaderStartRow:   2,
-						HeaderStartCol:   3,
-						HeaderHeight:     4,
-						IndexColumnNames: nil,
-					},
-				},
-			},
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			result := trimFileConfigValues(tt.input)
-			assert.Equal(t, tt.expected, result)
-		})
-	}
-}
-
-func TestValidateFileConfig(t *testing.T) {
-	tests := []struct {
-		name        string
-		config      FileConfig
-		expectError bool
-		errorMsg    string
-	}{
-		{
-			name: "should pass validation with valid config",
-			config: FileConfig{
-				FilePath: "test.xlsx",
-				SheetConfigs: []SheetConfig{
-					{
-						InternalID:  "sheet1",
-						NamePattern: "SHEET_{MM}",
-						NameParams: map[string]string{
-							"{MM}": "01",
-						},
-						HeaderStartRow:   1,
-						HeaderStartCol:   1,
-						HeaderHeight:     2,
-						IndexColumnNames: []MultiLevelHeader{{"col1"}, {"col2"}},
-					},
-				},
-			},
-			expectError: false,
-		},
-		{
-			name: "should fail validation when FilePath is empty",
-			config: FileConfig{
-				FilePath: "",
-				SheetConfigs: []SheetConfig{
-					{
-						InternalID:     "sheet1",
-						NamePattern:    "SHEET_{MM}",
-						HeaderStartRow: 1,
-						HeaderStartCol: 1,
-						HeaderHeight:   2,
-					},
-				},
-			},
-			expectError: true,
-			errorMsg:    "failed to validate file config",
-		},
-		{
-			name: "should fail validation when SheetConfigs is empty",
-			config: FileConfig{
-				FilePath:     "test.xlsx",
-				SheetConfigs: []SheetConfig{},
-			},
-			expectError: true,
-			errorMsg:    "failed to validate file config",
-		},
-		{
-			name: "should fail validation when InternalID is empty",
-			config: FileConfig{
-				FilePath: "test.xlsx",
-				SheetConfigs: []SheetConfig{
-					{
-						InternalID:     "",
-						NamePattern:    "SHEET_{MM}",
-						HeaderStartRow: 1,
-						HeaderStartCol: 1,
-						HeaderHeight:   2,
-					},
-				},
-			},
-			expectError: true,
-			errorMsg:    "failed to validate file config",
-		},
-		{
-			name: "should fail validation when NamePattern is empty",
-			config: FileConfig{
-				FilePath: "test.xlsx",
-				SheetConfigs: []SheetConfig{
-					{
-						InternalID:     "sheet1",
-						NamePattern:    "",
-						HeaderStartRow: 1,
-						HeaderStartCol: 1,
-						HeaderHeight:   2,
-					},
-				},
-			},
-			expectError: true,
-			errorMsg:    "failed to validate file config",
-		},
-		{
-			name: "should fail validation when HeaderStartRow is zero",
-			config: FileConfig{
-				FilePath: "test.xlsx",
-				SheetConfigs: []SheetConfig{
-					{
-						InternalID:     "sheet1",
-						NamePattern:    "SHEET_{MM}",
-						HeaderStartRow: 0,
-						HeaderStartCol: 1,
-						HeaderHeight:   2,
-					},
-				},
-			},
-			expectError: true,
-			errorMsg:    "failed to validate file config",
-		},
-		{
-			name: "should fail validation when HeaderStartCol is zero",
-			config: FileConfig{
-				FilePath: "test.xlsx",
-				SheetConfigs: []SheetConfig{
-					{
-						InternalID:     "sheet1",
-						NamePattern:    "SHEET_{MM}",
-						HeaderStartRow: 1,
-						HeaderStartCol: 0,
-						HeaderHeight:   2,
-					},
-				},
-			},
-			expectError: true,
-			errorMsg:    "failed to validate file config",
-		},
-		{
-			name: "should fail validation when HeaderHeight is zero",
-			config: FileConfig{
-				FilePath: "test.xlsx",
-				SheetConfigs: []SheetConfig{
-					{
-						InternalID:     "sheet1",
-						NamePattern:    "SHEET_{MM}",
-						HeaderStartRow: 1,
-						HeaderStartCol: 1,
-						HeaderHeight:   0,
-					},
-				},
-			},
-			expectError: true,
-			errorMsg:    "failed to validate file config",
-		},
-		{
-			name: "should fail validation when HeaderStartRow is negative",
-			config: FileConfig{
-				FilePath: "test.xlsx",
-				SheetConfigs: []SheetConfig{
-					{
-						InternalID:     "sheet1",
-						NamePattern:    "SHEET_{MM}",
-						HeaderStartRow: -1,
-						HeaderStartCol: 1,
-						HeaderHeight:   2,
-					},
-				},
-			},
-			expectError: true,
-			errorMsg:    "failed to validate file config",
-		},
-		{
-			name: "should pass validation with multiple sheets",
-			config: FileConfig{
-				FilePath: "test.xlsx",
-				SheetConfigs: []SheetConfig{
-					{
-						InternalID:     "sheet1",
-						NamePattern:    "SHEET_{MM}",
-						HeaderStartRow: 1,
-						HeaderStartCol: 1,
-						HeaderHeight:   2,
-					},
-					{
-						InternalID:     "sheet2",
-						NamePattern:    "DATA_{YYYY}",
-						HeaderStartRow: 2,
-						HeaderStartCol: 3,
-						HeaderHeight:   1,
-					},
-				},
-			},
-			expectError: false,
-		},
-		{
-			name: "should pass validation with empty IndexColumnNames",
-			config: FileConfig{
-				FilePath: "test.xlsx",
-				SheetConfigs: []SheetConfig{
-					{
-						InternalID:       "sheet1",
-						NamePattern:      "SHEET_{MM}",
-						HeaderStartRow:   1,
-						HeaderStartCol:   1,
-						HeaderHeight:     2,
-						IndexColumnNames: []MultiLevelHeader{},
-					},
-				},
-			},
-			expectError: false,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			err := validateFileConfig(tt.config)
-
-			if tt.expectError {
-				assert.Error(t, err)
-				if tt.errorMsg != "" {
-					assert.Contains(t, err.Error(), tt.errorMsg)
-				}
-			} else {
-				assert.NoError(t, err)
-			}
-		})
-	}
-}
-
-func TestNewFile(t *testing.T) {
-	tests := []struct {
-		name        string
-		config      FileConfig
-		expectError bool
-		errorMsg    string
-	}{
-		{
-			name: "should create file successfully with valid config",
-			config: FileConfig{
-				FilePath: "test.xlsx",
-				SheetConfigs: []SheetConfig{
-					{
-						InternalID:     "sheet1",
-						NamePattern:    "SHEET_{MM}",
-						HeaderStartRow: 1,
-						HeaderStartCol: 1,
-						HeaderHeight:   2,
-					},
-				},
-			},
-			expectError: false,
-		},
-		{
-			name: "should trim values and create file successfully",
-			config: FileConfig{
-				FilePath: "  test.xlsx  ",
-				SheetConfigs: []SheetConfig{
-					{
-						InternalID:     "  sheet1  ",
-						NamePattern:    "  SHEET_{MM}  ",
-						HeaderStartRow: 1,
-						HeaderStartCol: 1,
-						HeaderHeight:   2,
-					},
-				},
-			},
-			expectError: false,
-		},
-		{
-			name: "should fail with invalid config",
-			config: FileConfig{
-				FilePath: "",
-				SheetConfigs: []SheetConfig{
-					{
-						InternalID:     "sheet1",
-						NamePattern:    "SHEET_{MM}",
-						HeaderStartRow: 1,
-						HeaderStartCol: 1,
-						HeaderHeight:   2,
-					},
-				},
-			},
-			expectError: true,
-			errorMsg:    "invalid file config",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			file, err := NewFile(tt.config)
-
-			if tt.expectError {
-				assert.Error(t, err)
-				assert.Nil(t, file)
-				if tt.errorMsg != "" {
-					assert.Contains(t, err.Error(), tt.errorMsg)
-				}
-			} else {
-				assert.NoError(t, err)
-				assert.NotNil(t, file)
-				// For the trimming test, we expect the trimmed values
-				if tt.name == "should trim values and create file successfully" {
-					assert.Equal(t, "test.xlsx", file.FilePath)
-					assert.Equal(t, SheetInternalID("sheet1"), file.SheetConfigs[0].InternalID)
-					assert.Equal(t, "SHEET_{MM}", string(file.SheetConfigs[0].NamePattern))
-				} else {
-					assert.Equal(t, tt.config.FilePath, file.FilePath)
-					assert.Equal(t, tt.config.SheetConfigs, file.SheetConfigs)
-				}
-			}
-		})
-	}
-}
-
-func TestFile_GetColByExactHeaders(t *testing.T) {
-	xntSheet := SheetConfig{
-		InternalID:     "current_month_inventory_change",
-		NamePattern:    "THANG {MM}",
-		HeaderStartRow: 3,
-		HeaderStartCol: 1,
-		HeaderHeight:   3,
-	}
-	xntSheet.SetSheetNameTimeParams(time.Date(2023, 12, 1, 0, 0, 0, 0, time.UTC))
-
-	fc := FileConfig{
-		FilePath:     TestInventoryTrackerExcelFile,
-		SheetConfigs: []SheetConfig{xntSheet},
-	}
-
-	f, err := NewFile(fc)
-	require.Nil(t, err)
-
-	err = f.Load()
-	require.Nil(t, err)
-
-	col, err := f.Sheets[xntSheet.InternalID].GetColByExactHeaders(xntSheet.InternalID, []string{"DiẾN GiẢI", ""})
-	require.Nil(t, err)
-	assert.Equal(t, 2, col)
-}
-
-// func TestSheet_isDividerCell(t *testing.T) {
-// 	// Setup: Create a sheet configuration for the test
-// 	xntSheet := SheetConfig{
-// 		InternalID:     "xnt_sheet",
-// 		NamePattern:    "THANG {MM}",
-// 		HeaderStartRow: 3,
-// 		HeaderStartCol: 1,
-// 		HeaderHeight:   3,
-// 	}
-// 	xntSheet.SetSheetNameTimeParams(time.Date(2023, 12, 1, 0, 0, 0, 0, time.UTC))
-
-// 	fc := FileConfig{
-// 		FilePath:     TestInventoryTrackerExcelFile,
-// 		SheetConfigs: []SheetConfig{xntSheet},
-// 	}
-
-// 	f, err := NewFile(fc)
-// 	require.Nil(t, err)
-
-// 	err = f.Load()
-// 	require.Nil(t, err)
-
-// 	// Get the sheet for testing
-// 	sheet, ok := f.Sheets[xntSheet.InternalID]
-// 	require.True(t, ok, "Sheet should exist")
-
-// 	t.Run("should return true when cell has red background color", func(t *testing.T) {
-// 		// Test the specific cell mentioned by user: col 3, row 767
-// 		dividerCell := Cell{Row: 767, Col: 3}
-
-// 		// Use a defer recover to handle potential panics from the function
-// 		defer func() {
-// 			if r := recover(); r != nil {
-// 				t.Logf("Function panicked with: %v", r)
-// 				// The function might panic if the color array is empty
-// 				// This is expected behavior that needs to be fixed in the function
-// 				t.Skip("Function panicked - this indicates a bug in isDividerCell that needs to be fixed")
-// 			}
-// 		}()
-
-// 		result := sheet.isDividerCell(dividerCell, EndFileDividerCellColor)
-// 		assert.True(t, result, "Cell with red background should be identified as divider cell")
-// 	})
-
-// 	t.Run("should return false when cell does not have red background color", func(t *testing.T) {
-// 		// Test a regular cell that should not have red background
-// 		regularCell := Cell{Row: 4, Col: 2} // A regular data cell
-// 		result := sheet.isDividerCell(regularCell, EndFileDividerCellColor)
-// 		assert.False(t, result, "Cell without red background should not be identified as divider cell")
-// 	})
-
-// 	t.Run("should return false when cell style cannot be retrieved", func(t *testing.T) {
-// 		// Test with an invalid cell that might cause style retrieval to fail
-// 		invalidCell := Cell{Row: 99999, Col: 99999} // Very large row/col that likely doesn't exist
-// 		result := sheet.isDividerCell(invalidCell, EndFileDividerCellColor)
-// 		assert.False(t, result, "Invalid cell should return false when style cannot be retrieved")
-// 	})
-
-// 	t.Run("should return false when cell style exists but has different color", func(t *testing.T) {
-// 		// Test with a cell that has a style but not red background
-// 		// We'll test a few different cells to ensure they don't have red background
-// 		testCells := []Cell{
-// 			{Row: 1, Col: 1},  // Top-left cell
-// 			{Row: 5, Col: 1},  // A data cell
-// 			{Row: 10, Col: 5}, // Another data cell
-// 		}
-
-// 		for _, cell := range testCells {
-// 			result := sheet.isDividerCell(cell, EndFileDividerCellColor)
-// 			assert.False(t, result, "Cell at %s should not be identified as divider cell", cell.String())
-// 		}
-// 	})
-
-// 	t.Run("should handle edge cases gracefully", func(t *testing.T) {
-// 		// Test edge cases
-// 		edgeCases := []Cell{
-// 			{Row: 0, Col: 0},   // Invalid coordinates
-// 			{Row: -1, Col: -1}, // Negative coordinates
-// 			{Row: 1, Col: 0},   // Zero column
-// 			{Row: 0, Col: 1},   // Zero row
-// 		}
-
-// 		for _, cell := range edgeCases {
-// 			result := sheet.isDividerCell(cell, EndFileDividerCellColor)
-// 			assert.False(t, result, "Edge case cell at %s should return false", cell.String())
-// 		}
-// 	})
-// }
-
 func assertColumnIndices(t *testing.T, f *File) {
 	sheet, ok := f.Sheets[SheetInternalID(getTestFileConfig().SheetConfigs[0].InternalID)]
 	require.True(t, ok, "should found sheet")
@@ -936,8 +426,7 @@ func TestFile_UpsertRow(t *testing.T) {
 	f, err := NewFile(getTestFileConfig())
 	require.Nil(t, err)
 
-	err = f.Load()
-	t.Logf("err: %v", err)
+	err = f.Connect()
 	require.Nil(t, err)
 
 	// update row with index column: __product_id = test-product-id-1
@@ -946,7 +435,7 @@ func TestFile_UpsertRow(t *testing.T) {
 		getTestFileConfig().SheetConfigs[0].InternalID,
 		"__product_id",
 		"test-product-id-3",
-		map[MultiLeverHeaderStr]interface{}{
+		map[TreeHeaderStr]interface{}{
 			"Ngày.6.SL": 11,
 		})
 	require.Nil(t, err)
@@ -957,7 +446,7 @@ func TestFile_UpsertRow(t *testing.T) {
 		getTestFileConfig().SheetConfigs[0].InternalID,
 		"__product_id",
 		"insert-product-id",
-		map[MultiLeverHeaderStr]interface{}{
+		map[TreeHeaderStr]interface{}{
 			"Ngày.4.SL": 1,
 		})
 	require.Nil(t, err)
