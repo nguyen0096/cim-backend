@@ -81,7 +81,7 @@ type Sheet struct {
 }
 
 // AppendRow appends a new row to the sheet.
-func (s *Sheet) InsertRow(
+func (s *Sheet) PrependRowData(
 	ctx context.Context,
 	rowNumber int,
 	rowData map[TreeHeaderStr]interface{},
@@ -118,25 +118,38 @@ func (s *Sheet) UpdateRow(
 func (s *Sheet) GetColByExactHeaders(sheetInternalID SheetInternalID, headers []string) (int, error) {
 	headerNode := s.HeaderRoot
 
-	// if defined header doens't have enough levels, fill up the the low levels with empty string
-	for i := len(headers); i < s.HeaderHeight; i++ {
-		headers = append(headers, "")
+	// Validate that the search path depth doesn't exceed header height
+	if len(headers) > s.HeaderHeight {
+		return -1, fmt.Errorf("search path depth (%d) exceeds header height (%d). Header path: %v", len(headers), s.HeaderHeight, headers)
 	}
 
-	for _, header := range headers {
+	for i, header := range headers {
 		if headerNode.Lookup == nil {
-			return -1, fmt.Errorf("header lookup not found")
+			// If the node has no children (leaf node), the search path is too deep
+			if len(headerNode.SubHeaders) == 0 {
+				return -1, fmt.Errorf("cannot traverse deeper: node '%s' at cell %s is a leaf node (merged cell spanning full header height) but search path has %d more levels. Header path provided: %v",
+					headerNode.Value, headerNode.TopLeftCell.String(), len(headers)-i, headers)
+			}
+			return -1, fmt.Errorf("header lookup not found at depth %d (searching for '%s'). Current node: value='%s', cell=%s",
+				i, header, headerNode.Value, headerNode.TopLeftCell.String())
 		}
 		node, ok := headerNode.Lookup[header]
 		if !ok {
-			return -1, fmt.Errorf("header [%s] not found", header)
+			// List available headers in the lookup for debugging
+			availableHeaders := make([]string, 0, len(headerNode.Lookup))
+			for k := range headerNode.Lookup {
+				availableHeaders = append(availableHeaders, k)
+			}
+			return -1, fmt.Errorf("header [%s] not found at depth %d. Available headers: %v", header, i, availableHeaders)
 		}
 		headerNode = node
 	}
 
+	// After traversing the path, verify we're at a leaf node (column header)
 	if headerNode.TopLeftCell.Col != headerNode.BottomRightCell.Col {
-		return -1, fmt.Errorf("header node is not a single column")
+		return -1, fmt.Errorf("header node is not a single column (spans columns %d-%d)", headerNode.TopLeftCell.Col, headerNode.BottomRightCell.Col)
 	}
+
 	return headerNode.TopLeftCell.Col, nil
 }
 

@@ -43,8 +43,8 @@ func NewInventoryGoogleSheetsRepository(
 
 // Connect initializes the connection to the Google Sheets inventory spreadsheet
 func (r *inventoryGoogleSheetsRepository) Connect(ctx context.Context, fileConfig spreadsheet.FileConfig) error {
-	// Create Google Sheets provider
-	prov := spreadsheet.NewGoogleSheetsFileProvider(r.config.ServiceAccountPath)
+	// Create Google Sheets provider with spreadsheet ID and service account path
+	prov := spreadsheet.NewGoogleSheetsFileProvider(r.config.InventorySpreadsheetID, r.config.ServiceAccountPath)
 
 	// Create file with provider
 	file, err := spreadsheet.NewFile(fileConfig, prov)

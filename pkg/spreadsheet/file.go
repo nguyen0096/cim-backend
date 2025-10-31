@@ -3,7 +3,6 @@ package spreadsheet
 import (
 	"context"
 	"fmt"
-	"os"
 	"strings"
 	"sync"
 
@@ -19,7 +18,7 @@ type FileConfig struct {
 // FileProvider abstracts the underlying spreadsheet implementation (Excel, Google Sheets, etc.)
 type FileProvider interface {
 	// Connect opens a connection to the file
-	Connect(ctx context.Context, filePath string) error
+	Connect(ctx context.Context) error
 	// Close closes the connection to the file
 	Close(ctx context.Context) error
 	// GetSheetIndex returns the index of a sheet by name
@@ -72,7 +71,7 @@ func (f *File) UpsertRow(
 			return fmt.Errorf("failed to update row: %w", err)
 		}
 	} else {
-		err = sheet.InsertRow(ctx, sheet.DataStartRow, rowData)
+		err = sheet.PrependRowData(ctx, sheet.DataStartRow, rowData)
 		if err != nil {
 			return fmt.Errorf("failed to append row: %w", err)
 		}
@@ -137,16 +136,9 @@ func (f *File) Connect(ctx context.Context) (err error) {
 		return fmt.Errorf("file already connected")
 	}
 
-	// Only check file existence for local files (not URLs)
-	if !strings.Contains(f.FilePath, "://") && !strings.Contains(f.FilePath, "docs.google.com") {
-		if _, err := os.Stat(f.FilePath); os.IsNotExist(err) {
-			return fmt.Errorf("file not found: %s", f.FilePath)
-		}
-	}
-
-	err = f.Provider.Connect(ctx, f.FilePath)
+	err = f.Provider.Connect(ctx)
 	if err != nil {
-		return fmt.Errorf("failed to open excel file: %w", err)
+		return fmt.Errorf("failed to connect to file: %w", err)
 	}
 
 	if err := f.parseSheets(ctx); err != nil {

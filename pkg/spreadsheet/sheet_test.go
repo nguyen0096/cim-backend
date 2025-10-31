@@ -1,9 +1,10 @@
 package spreadsheet
 
 import (
-
 	"context"
 	"fmt"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -185,7 +186,7 @@ func TestGetColByExactHeaders(t *testing.T) {
 		SheetConfigs: []SheetConfig{xntSheet},
 	}
 
-	prov := &ExcelFileProvider{}
+	prov := NewExcelFileProvider(fc.FilePath)
 	f, err := NewFile(fc, prov)
 	require.Nil(t, err)
 
@@ -246,7 +247,7 @@ func getTestFileConfig() FileConfig {
 	xntSheet := SheetConfig{
 		InternalID:     "xnt_sheet",
 		NamePattern:    "THANG {MM}",
-		HeaderStartRow: 3,
+		HeaderStartRow: 5,
 		HeaderStartCol: 1,
 		HeaderHeight:   3,
 		FooterHeight:   3,
@@ -254,7 +255,7 @@ func getTestFileConfig() FileConfig {
 			{fmt.Sprintf("%s%s", MetadataHeaderPrefix, "product_id")},
 		},
 	}
-	xntSheet.SetSheetNameTimeParams(time.Date(2023, 12, 1, 0, 0, 0, 0, time.UTC))
+	xntSheet.SetSheetNameTimeParams(time.Date(2023, 11, 1, 0, 0, 0, 0, time.UTC))
 
 	fc := FileConfig{
 		FilePath:     TestInventoryTrackerExcelFile,
@@ -265,8 +266,9 @@ func getTestFileConfig() FileConfig {
 
 func TestFile_Load(t *testing.T) {
 	ctx := context.Background()
-	prov := &ExcelFileProvider{}
-	f, err := NewFile(getTestFileConfig(), prov)
+	fc := getTestFileConfig()
+	prov := NewExcelFileProvider(fc.FilePath)
+	f, err := NewFile(fc, prov)
 	require.Nil(t, err)
 
 	err = f.Connect(ctx)
@@ -431,36 +433,90 @@ func assertColumnIndices(t *testing.T, f *File) {
 	assert.Containsf(t, sheet.ColumnIndices[1], "test-product-id-1", "should contain product_id value test-product-id-1")
 }
 
+// copyTestFile creates a copy of the test file and returns the path to the copy.
+// The caller should defer cleanup by removing the copied file.
+func copyTestFile(t *testing.T, originalPath string) string {
+	t.Helper()
+
+	// Read the original file
+	sourceData, err := os.ReadFile(originalPath)
+	require.NoError(t, err, "failed to read original test file")
+
+	// Create a temporary file with the same extension
+	ext := filepath.Ext(originalPath)
+	tempFile, err := os.CreateTemp("", "test-*"+ext)
+	require.NoError(t, err, "failed to create temporary file")
+	tempPath := tempFile.Name()
+
+	// Write the data to the temporary file
+	_, err = tempFile.Write(sourceData)
+	require.NoError(t, err, "failed to write to temporary file")
+
+	// Close the file
+	err = tempFile.Close()
+	require.NoError(t, err, "failed to close temporary file")
+
+	return tempPath
+}
+
 func TestFile_UpsertRow(t *testing.T) {
 	ctx := context.Background()
-	prov := &ExcelFileProvider{}
-	f, err := NewFile(getTestFileConfig(), prov)
-	require.Nil(t, err)
+
+	// Create a copy of the test file to avoid modifying the original
+	fc := getTestFileConfig()
+	testFileCopy := copyTestFile(t, fc.FilePath)
+	defer os.Remove(testFileCopy) // Clean up the copy after the test
+
+	// Update the config to use the copied file
+	fc.FilePath = testFileCopy
+
+	prov := NewExcelFileProvider(fc.FilePath)
+	f, err := NewFile(fc, prov)
+	require.NoError(t, err)
 
 	err = f.Connect(ctx)
-	require.Nil(t, err)
+	require.NoError(t, err)
 
-	// update row with index column: __product_id = test-product-id-1
+	defer f.Close(ctx) // Close the file after the test
+
+	// update row with index column: __product_id = test-product-id-3
 	// change SL of Ngày 6 to 11
 	err = f.UpsertRow(
 		ctx,
-		getTestFileConfig().SheetConfigs[0].InternalID,
+		fc.SheetConfigs[0].InternalID,
 		"__product_id",
-		"test-product-id-3",
+		"test-product-id3",
 		map[TreeHeaderStr]interface{}{
-			"Ngày.6.SL": 11,
+			"Ngày.2.SL": 11,
 		})
-	require.Nil(t, err)
+	require.NoError(t, err)
 
-	// update row with index column: __product_id = insert-product-id
-	// change SL of Ngày 6 to 11
+	// Insert a new row with index column: __product_id = insert-product-id
+	// set SL of Ngày 4 to 1
 	err = f.UpsertRow(
 		ctx,
-		getTestFileConfig().SheetConfigs[0].InternalID,
+		fc.SheetConfigs[0].InternalID,
 		"__product_id",
 		"insert-product-id",
 		map[TreeHeaderStr]interface{}{
 			"Ngày.4.SL": 1,
 		})
-	require.Nil(t, err)
+	require.NoError(t, err)
+
+	// Verify the changes were made by reading the values back
+	sheet := f.Sheets[fc.SheetConfigs[0].InternalID]
+	require.NotNil(t, sheet, "sheet should exist")
+
+	// Verify that test-product-id-3 exists in the index
+	productIDCol, err := sheet.GetColByExactHeaders(fc.SheetConfigs[0].InternalID, TreeHeader{fmt.Sprintf("%s%s", MetadataHeaderPrefix, "product_id")})
+	require.NoError(t, err)
+
+	productIDIndex := sheet.ColumnIndices[productIDCol]
+	require.NotNil(t, productIDIndex, "product_id index should exist")
+
+	_, exists := productIDIndex["test-product-id3"]
+	assert.True(t, exists, "test-product-id-3 should exist in the index")
+
+	_, exists = productIDIndex["insert-product-id"]
+	assert.True(t, exists, "insert-product-id should exist in the index")
 }

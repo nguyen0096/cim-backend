@@ -55,9 +55,11 @@ type GoogleSheetsConfig struct {
 	InventorySpreadsheetID string
 }
 
-func Load() *Config {
-	// Load .env file if it exists
-	godotenv.Load()
+// Load loads configuration from environment variables.
+// Optional filePath parameter can be provided to load a specific .env file.
+// If no filePath is provided, it attempts to load .env from the current directory.
+func Load(filePath ...string) *Config {
+	godotenv.Load(filePath...)
 
 	return &Config{
 		Database: DatabaseConfig{

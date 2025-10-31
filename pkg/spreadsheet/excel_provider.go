@@ -9,11 +9,19 @@ import (
 )
 
 type ExcelFileProvider struct {
-	file *excelize.File
+	filePath string
+	file     *excelize.File
 }
 
-func (e *ExcelFileProvider) Connect(ctx context.Context, filePath string) error {
-	file, err := excelize.OpenFile(filePath)
+// NewExcelFileProvider creates a new ExcelFileProvider with the given file path
+func NewExcelFileProvider(filePath string) *ExcelFileProvider {
+	return &ExcelFileProvider{
+		filePath: filePath,
+	}
+}
+
+func (e *ExcelFileProvider) Connect(ctx context.Context) error {
+	file, err := excelize.OpenFile(e.filePath)
 	if err != nil {
 		return fmt.Errorf("excel file provider: failed to open excel file: %w", err)
 	}

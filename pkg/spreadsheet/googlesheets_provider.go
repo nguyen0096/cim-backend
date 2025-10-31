@@ -28,24 +28,26 @@ type cachedData struct {
 const cacheTTL = 1 * time.Minute
 
 // NewGoogleSheetsFileProvider creates a new Google Sheets file provider
-func NewGoogleSheetsFileProvider(serviceAccountPath string) *GoogleSheetsFileProvider {
+// spreadsheetIDOrURL can be either the full Google Sheets URL or just the spreadsheet ID
+func NewGoogleSheetsFileProvider(spreadsheetIDOrURL, serviceAccountPath string) *GoogleSheetsFileProvider {
+	// Extract spreadsheet ID from URL if it's a full URL
+	spreadsheetID := extractSpreadsheetID(spreadsheetIDOrURL)
+
 	return &GoogleSheetsFileProvider{
+		spreadsheetID:      spreadsheetID,
 		serviceAccountPath: serviceAccountPath,
 		cache:              make(map[string]cachedData),
 	}
 }
 
-// Connect initializes the Google Sheets service and sets the spreadsheet ID
-// filePath should be either the full Google Sheets URL or just the spreadsheet ID
-func (g *GoogleSheetsFileProvider) Connect(ctx context.Context, filePath string) error {
+// Connect initializes the Google Sheets service
+func (g *GoogleSheetsFileProvider) Connect(ctx context.Context) error {
 	g.ctx = ctx
 
-	// Extract spreadsheet ID from URL if it's a full URL
-	spreadsheetID := extractSpreadsheetID(filePath)
-	if spreadsheetID == "" {
-		return fmt.Errorf("google sheets provider: invalid spreadsheet URL or ID: %s", filePath)
+	// Validate spreadsheet ID
+	if g.spreadsheetID == "" {
+		return fmt.Errorf("google sheets provider: spreadsheet ID is not set")
 	}
-	g.spreadsheetID = spreadsheetID
 
 	// Create Google Sheets service with service account credentials
 	srv, err := sheets.NewService(ctx, option.WithCredentialsFile(g.serviceAccountPath))
