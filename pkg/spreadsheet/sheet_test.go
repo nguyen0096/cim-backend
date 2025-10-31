@@ -433,8 +433,8 @@ func assertColumnIndices(t *testing.T, f *File) {
 	assert.Containsf(t, sheet.ColumnIndices[1], "test-product-id-1", "should contain product_id value test-product-id-1")
 }
 
-// copyTestFile creates a copy of the test file and returns the path to the copy.
-// The caller should defer cleanup by removing the copied file.
+// copyTestFile creates a copy of the test file in the same directory as the original
+// and returns the path to the copy. The caller should defer cleanup by removing the copied file.
 func copyTestFile(t *testing.T, originalPath string) string {
 	t.Helper()
 
@@ -442,9 +442,14 @@ func copyTestFile(t *testing.T, originalPath string) string {
 	sourceData, err := os.ReadFile(originalPath)
 	require.NoError(t, err, "failed to read original test file")
 
-	// Create a temporary file with the same extension
+	// Get the directory and filename components
+	dir := filepath.Dir(originalPath)
 	ext := filepath.Ext(originalPath)
-	tempFile, err := os.CreateTemp("", "test-*"+ext)
+	baseName := filepath.Base(originalPath)
+	nameWithoutExt := baseName[:len(baseName)-len(ext)]
+
+	// Create a temporary file in the same directory as the original
+	tempFile, err := os.CreateTemp(dir, nameWithoutExt+"-test-*"+ext)
 	require.NoError(t, err, "failed to create temporary file")
 	tempPath := tempFile.Name()
 
@@ -465,7 +470,7 @@ func TestFile_UpsertRow(t *testing.T) {
 	// Create a copy of the test file to avoid modifying the original
 	fc := getTestFileConfig()
 	testFileCopy := copyTestFile(t, fc.FilePath)
-	defer os.Remove(testFileCopy) // Clean up the copy after the test
+	// defer os.Remove(testFileCopy) // Clean up the copy after the test
 
 	// Update the config to use the copied file
 	fc.FilePath = testFileCopy
@@ -491,8 +496,8 @@ func TestFile_UpsertRow(t *testing.T) {
 		})
 	require.NoError(t, err)
 
-	// Insert a new row with index column: __product_id = insert-product-id
-	// set SL of Ngày 4 to 1
+	// // Insert a new row with index column: __product_id = insert-product-id
+	// // set SL of Ngày 4 to 1
 	err = f.UpsertRow(
 		ctx,
 		fc.SheetConfigs[0].InternalID,

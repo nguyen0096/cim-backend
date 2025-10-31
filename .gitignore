@@ -44,6 +44,10 @@ __debug_bin*
 # Excel temp files
 ~$*.xlsx
 
+# Test file copies created by copyTestFile function
+*-test-*.xlsx
+*-test-*.xls
+
 # Firebase service account file (contains sensitive credentials)
 firebase-service-account.json
 google-service-account.json

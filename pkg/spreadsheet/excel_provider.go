@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 
-
 	"github.com/xuri/excelize/v2"
 )
 
@@ -33,9 +32,16 @@ func (e *ExcelFileProvider) Close(ctx context.Context) error {
 	if e.file == nil {
 		return fmt.Errorf("file not connected")
 	}
-	err := e.file.Close()
+
+	// Save all changes before closing
+	err := e.file.Save()
 	if err != nil {
-		return fmt.Errorf("excel file provider: failed to connect to excel file: %w", err)
+		return fmt.Errorf("excel file provider: failed to save excel file: %w", err)
+	}
+
+	err = e.file.Close()
+	if err != nil {
+		return fmt.Errorf("excel file provider: failed to close excel file: %w", err)
 	}
 	e.file = nil
 	return nil
@@ -54,12 +60,6 @@ func (e *ExcelFileProvider) InsertRows(ctx context.Context, sheet string, row, n
 	if err != nil {
 		return fmt.Errorf("excel file provider: failed to insert rows: %w", err)
 	}
-
-	err = e.file.Save()
-	if err != nil {
-		return fmt.Errorf("excel file provider: failed to save excel file: %w", err)
-	}
-
 	return nil
 }
 
@@ -67,11 +67,6 @@ func (e *ExcelFileProvider) SetCellValue(ctx context.Context, sheet, cell string
 	err := e.file.SetCellValue(sheet, cell, value)
 	if err != nil {
 		return fmt.Errorf("excel file provider: failed to set cell value: %w", err)
-	}
-
-	err = e.file.Save()
-	if err != nil {
-		return fmt.Errorf("excel file provider: failed to save excel file: %w", err)
 	}
 	return nil
 }
