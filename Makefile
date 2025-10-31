@@ -83,3 +83,6 @@ help:
 
 generate:
 	go generate ./...
+
+migrate-file:
+	migrate create -ext sql -dir database/migrations ${NAME}
