@@ -124,7 +124,7 @@ func AuthorizationMiddleware(casbinService *auth.CasbinService, userService *ser
 
 // RouteMapping defines custom resource and action mappings for specific routes
 type RouteMapping struct {
-	Method      string // HTTP method (GET, POST, etc.). Empty means match any method
+	Method      string // HTTP method (GET, POST, etc.). Use "*" to match any method
 	PathPattern string // The path pattern to match (supports * as wildcard for path segments)
 	Resource    string // The resource name for RBAC
 	Action      string // Optional: custom action (if empty, use methodToAction)
@@ -134,12 +134,13 @@ type RouteMapping struct {
 // Add new mappings here to customize resource/action extraction
 //
 // Example usage:
-//   {
-//       Method:      "POST",                    // Specific HTTP method (or "" for any)
-//       PathPattern: "/inventories/*/reconcile", // Path with * wildcards
-//       Resource:    "inventory-submissions",    // RBAC resource name
-//       Action:      "create",                   // Custom action (or "" to use HTTP method mapping)
-//   }
+//
+//	{
+//	    Method:      "POST",                     // Specific HTTP method (or "*" for any)
+//	    PathPattern: "/inventories/*/reconcile", // Path with * wildcards
+//	    Resource:    "inventory-submissions",    // RBAC resource name
+//	    Action:      "create",                   // Custom action (or "" to use HTTP method mapping)
+//	}
 var customRouteMappings = []RouteMapping{
 	// Payment receipt form submissions
 	{
@@ -154,12 +155,23 @@ var customRouteMappings = []RouteMapping{
 		Resource:    "payment-receipt-forms",
 		Action:      "submit",
 	},
-	// Inventory reconciliation - matches any HTTP method
 	{
-		Method:      "", // Empty = match any method
+		Method:      "*",
 		PathPattern: "/inventories/*/reconcile",
 		Resource:    "inventory-submissions",
-		Action:      "", // Will use methodToAction based on HTTP method
+		Action:      "",
+	},
+	{
+		Method:      "*",
+		PathPattern: "/inventories/*/dispose",
+		Resource:    "inventory-submissions",
+		Action:      "",
+	},
+	{
+		Method:      "*",
+		PathPattern: "/inventories/transfer",
+		Resource:    "inventory-submissions",
+		Action:      "",
 	},
 }
 
@@ -183,8 +195,8 @@ func matchPathPattern(path, pattern string) bool {
 
 // matchRouteMapping checks if a request matches a route mapping
 func matchRouteMapping(method, path string, mapping RouteMapping) bool {
-	// Check method match (empty Method matches any)
-	if mapping.Method != "" && mapping.Method != method {
+	// Check method match ("*" matches any method)
+	if mapping.Method != "*" && mapping.Method != method {
 		return false
 	}
 
