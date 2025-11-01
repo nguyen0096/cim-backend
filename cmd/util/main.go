@@ -18,8 +18,15 @@ var rootCmd = &cobra.Command{
 var seedCmd = &cobra.Command{
 	Use:   "seed",
 	Short: "Seed the database with mock data",
-	Long:  "Populate the database with predefined mock data for manual testing",
+	Long:  "Populate the database with predefined mock data for manual testing. Only allowed in non-production environments.",
 	Run: func(cmd *cobra.Command, args []string) {
+		// Check if environment is production
+		env := os.Getenv("ENV")
+		if env == "production" {
+			fmt.Fprintf(os.Stderr, "Error: Seeding is not allowed in production environment\n")
+			os.Exit(1)
+		}
+
 		fmt.Println("🌱 Seeding database with mock data...")
 		if err := data.SeedDatabase(); err != nil {
 			fmt.Fprintf(os.Stderr, "Error seeding database: %v\n", err)
