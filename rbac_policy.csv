@@ -13,7 +13,6 @@ p, admin, inventories, update, allow
 p, admin, inventories, delete, allow
 
 p, admin, inventory-submissions, create, allow
-p, staff, inventory-submissions, create, allow
 p, admin, inventory-submissions, update, allow
 p, admin, inventory-submissions, delete, allow
 p, admin, inventory-submissions, approve, allow
@@ -40,6 +39,7 @@ p, admin, payment-receipt-forms, update, allow
 
 p, admin, revenue-expenses, create, allow
 
+p, admin, permissions, view, allow
 p, admin, excel, view, allow
 p, admin, excel, create, allow
 p, admin, excel, update, allow
@@ -50,12 +50,12 @@ p, admin, settings, create, allow
 p, admin, settings, update, allow
 p, admin, settings, delete, allow
 p, admin, prices, view, allow
-p, admin, permissions, view, allow
 p, admin, users, view, allow
 p, admin, users, create, allow
 p, admin, users, update, allow
 p, admin, users, delete, allow
 
+p, accountant, permissions, view, allow
 p, accountant, products, view, allow
 p, accountant, products, create, allow
 p, accountant, products, update, allow
@@ -79,13 +79,13 @@ p, accountant, settings, view, allow
 p, accountant, settings, create, allow
 p, accountant, settings, update, allow
 p, accountant, prices, view, allow
-p, accountant, permissions, view, allow
 
 p, accountant, purchase-orders, view_status_completed, allow
 p, accountant, payment-receipt-forms, view, allow
 p, accountant, payment-receipt-forms, create, allow
 p, accountant, payment-receipt-forms, update, allow
 
+p, staff, permissions, view, allow
 p, staff, purchase-orders, view, allow
 p, staff, purchase-orders, confirm, allow
 p, staff, purchase-orders, cancel, allow
@@ -95,14 +95,13 @@ p, staff, purchase-order-items, update, allow
 p, staff, purchase-order-items, delete, allow
 p, staff, inventories, view, allow
 p, staff, inventory-items, view, allow
-p, staff, permissions, view, allow
 p, staff, settings, view, allow
-
+p, staff, inventory-submissions, create, allow
 p, staff, payment-receipt-forms, update, allow
 
-p, bot_form, payment-receipt-forms, update, allow
-p, bot_form, payment-receipt-forms, submit, allow
 p, bot_form, permissions, view, allow
+p, bot_form, payment-receipt-forms, view-pending, allow
+p, bot_form, payment-receipt-forms, submit, allow
 
 g, demoAdminUid0000000000000000, admin
 g, demoAccountantUid00000000000, accountant

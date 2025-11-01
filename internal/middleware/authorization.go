@@ -151,9 +151,9 @@ var customRouteMappings = []RouteMapping{
 	},
 	{
 		Method:      "GET",
-		PathPattern: "/payment-receipt-forms/*/pending",
+		PathPattern: "/payment-receipt-forms/pending",
 		Resource:    "payment-receipt-forms",
-		Action:      "submit",
+		Action:      "view-pending",
 	},
 	{
 		Method:      "*",
