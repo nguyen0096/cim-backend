@@ -226,10 +226,6 @@ func main() {
 
 	// Excel routes
 	excel := api.Group("/excel")
-	excel.POST("/import-products", excelHandler.ImportProducts)
-	excel.POST("/import-inventory", excelHandler.ImportInventory)
-	excel.GET("/template-products", excelHandler.GetProductTemplate)
-	excel.GET("/template-inventory", excelHandler.GetInventoryTemplate)
 	excel.POST("/verify", excelHandler.VerifyFileAndSheet)
 
 	// Settings routes

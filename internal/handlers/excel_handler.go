@@ -8,7 +8,6 @@ import (
 	"strings"
 
 	"github.com/labstack/echo/v4"
-	"github.com/xuri/excelize/v2"
 )
 
 type ExcelHandler struct {
@@ -19,99 +18,6 @@ func NewExcelHandler(excelService services.ExcelService) *ExcelHandler {
 	return &ExcelHandler{
 		excelService: excelService,
 	}
-}
-
-func (h *ExcelHandler) ImportProducts(c echo.Context) error {
-	file, err := c.FormFile("file")
-	if err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "No file uploaded"})
-	}
-
-	src, err := file.Open()
-	if err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Failed to open file"})
-	}
-	defer src.Close()
-
-	// Read file content
-	buffer := make([]byte, file.Size)
-	_, err = src.Read(buffer)
-	if err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Failed to read file"})
-	}
-
-	// Parse Excel file
-	excelFile, err := excelize.OpenReader(src)
-	if err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Failed to parse Excel file"})
-	}
-
-	if err := h.excelService.ImportProducts(c.Request().Context(), excelFile); err != nil {
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to import products"})
-	}
-
-	return c.JSON(http.StatusOK, map[string]string{"message": "Products imported successfully"})
-}
-
-func (h *ExcelHandler) ImportInventory(c echo.Context) error {
-	file, err := c.FormFile("file")
-	if err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "No file uploaded"})
-	}
-
-	src, err := file.Open()
-	if err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Failed to open file"})
-	}
-	defer src.Close()
-
-	// Parse Excel file
-	excelFile, err := excelize.OpenReader(src)
-	if err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Failed to parse Excel file"})
-	}
-
-	if err := h.excelService.ImportInventory(c.Request().Context(), excelFile); err != nil {
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to import inventory"})
-	}
-
-	return c.JSON(http.StatusOK, map[string]string{"message": "Inventory imported successfully"})
-}
-
-func (h *ExcelHandler) GetProductTemplate(c echo.Context) error {
-	file, err := h.excelService.GetProductTemplate(c.Request().Context())
-	if err != nil {
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to generate product template"})
-	}
-
-	c.Response().Header().Set("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-	c.Response().Header().Set("Content-Disposition", "attachment; filename=product_template.xlsx")
-
-	// Convert excelize.File to bytes
-	buffer, err := file.WriteToBuffer()
-	if err != nil {
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to generate Excel file"})
-	}
-
-	return c.Blob(http.StatusOK, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", buffer.Bytes())
-}
-
-func (h *ExcelHandler) GetInventoryTemplate(c echo.Context) error {
-	file, err := h.excelService.GetInventoryTemplate(c.Request().Context())
-	if err != nil {
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to generate inventory template"})
-	}
-
-	c.Response().Header().Set("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-	c.Response().Header().Set("Content-Disposition", "attachment; filename=inventory_template.xlsx")
-
-	// Convert excelize.File to bytes
-	buffer, err := file.WriteToBuffer()
-	if err != nil {
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to generate Excel file"})
-	}
-
-	return c.Blob(http.StatusOK, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", buffer.Bytes())
 }
 
 // VerifyFileAndSheet verifies that the file (local or Google Sheets) and sheetname exist
