@@ -17,6 +17,7 @@ import (
 type PaymentReceiptFormRepository interface {
 	Create(ctx context.Context, form *models.PaymentReceiptForm) error
 	GetByID(ctx context.Context, id uint) (*models.PaymentReceiptForm, error)
+	GetByIDFull(ctx context.Context, id uint) (*models.PaymentReceiptForm, error)
 	List(ctx context.Context, req *dto.PaymentReceiptFormListRequest) ([]models.PaymentReceiptForm, int64, error)
 	Update(ctx context.Context, form *models.PaymentReceiptForm) error
 	UpdateStatus(ctx context.Context, id uint, status models.PaymentReceiptFormStatus) error
@@ -49,6 +50,22 @@ func (r *paymentReceiptFormRepository) Create(ctx context.Context, form *models.
 func (r *paymentReceiptFormRepository) GetByID(ctx context.Context, id uint) (*models.PaymentReceiptForm, error) {
 	var form models.PaymentReceiptForm
 	if err := r.db.WithContext(ctx).First(&form, id).Error; err != nil {
+		if err == gorm.ErrRecordNotFound {
+			return nil, pkg.NewAppError(pkg.ErrorCodeNotFound, "Payment receipt form not found", nil)
+		}
+		return nil, fmt.Errorf("failed to get payment receipt form: %w", err)
+	}
+	return &form, nil
+}
+
+func (r *paymentReceiptFormRepository) GetByIDFull(ctx context.Context, id uint) (*models.PaymentReceiptForm, error) {
+	var form models.PaymentReceiptForm
+	if err := r.db.WithContext(ctx).
+		Preload("PurchaseOrder").
+		Preload("PurchaseOrder.Items").
+		Preload("PurchaseOrder.Items.Product").
+		Preload("PurchaseOrder.Items.Supplier").
+		First(&form, id).Error; err != nil {
 		if err == gorm.ErrRecordNotFound {
 			return nil, pkg.NewAppError(pkg.ErrorCodeNotFound, "Payment receipt form not found", nil)
 		}
