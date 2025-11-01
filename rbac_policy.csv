@@ -32,7 +32,6 @@ p, admin, purchase-order-items, update, allow
 p, admin, purchase-order-items, delete, allow
 
 p, admin, purchase-orders, view_status_completed, allow
-p, admin, payment-receipt-forms, view_page, allow
 p, admin, payment-receipt-forms, view, allow
 p, admin, payment-receipt-forms, create, allow
 p, admin, payment-receipt-forms, update, allow
@@ -79,7 +78,6 @@ p, accountant, settings, view, allow
 p, accountant, settings, create, allow
 p, accountant, settings, update, allow
 p, accountant, prices, view, allow
-
 p, accountant, purchase-orders, view_status_completed, allow
 p, accountant, payment-receipt-forms, view, allow
 p, accountant, payment-receipt-forms, create, allow
