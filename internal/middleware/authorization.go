@@ -122,6 +122,76 @@ func AuthorizationMiddleware(casbinService *auth.CasbinService, userService *ser
 	}
 }
 
+// RouteMapping defines custom resource and action mappings for specific routes
+type RouteMapping struct {
+	Method      string // HTTP method (GET, POST, etc.). Empty means match any method
+	PathPattern string // The path pattern to match (supports * as wildcard for path segments)
+	Resource    string // The resource name for RBAC
+	Action      string // Optional: custom action (if empty, use methodToAction)
+}
+
+// customRouteMappings defines special routing rules that override default behavior
+// Add new mappings here to customize resource/action extraction
+//
+// Example usage:
+//   {
+//       Method:      "POST",                    // Specific HTTP method (or "" for any)
+//       PathPattern: "/inventories/*/reconcile", // Path with * wildcards
+//       Resource:    "inventory-submissions",    // RBAC resource name
+//       Action:      "create",                   // Custom action (or "" to use HTTP method mapping)
+//   }
+var customRouteMappings = []RouteMapping{
+	// Payment receipt form submissions
+	{
+		Method:      "POST",
+		PathPattern: "/payment-receipt-forms/*/submit",
+		Resource:    "payment-receipt-forms",
+		Action:      "submit",
+	},
+	{
+		Method:      "GET",
+		PathPattern: "/payment-receipt-forms/*/pending",
+		Resource:    "payment-receipt-forms",
+		Action:      "submit",
+	},
+	// Inventory reconciliation - matches any HTTP method
+	{
+		Method:      "", // Empty = match any method
+		PathPattern: "/inventories/*/reconcile",
+		Resource:    "inventory-submissions",
+		Action:      "", // Will use methodToAction based on HTTP method
+	},
+}
+
+// matchPathPattern checks if a path matches a pattern (supports * as wildcard for path segments)
+func matchPathPattern(path, pattern string) bool {
+	pathParts := strings.Split(strings.Trim(path, "/"), "/")
+	patternParts := strings.Split(strings.Trim(pattern, "/"), "/")
+
+	if len(pathParts) != len(patternParts) {
+		return false
+	}
+
+	for i := range patternParts {
+		if patternParts[i] != "*" && patternParts[i] != pathParts[i] {
+			return false
+		}
+	}
+
+	return true
+}
+
+// matchRouteMapping checks if a request matches a route mapping
+func matchRouteMapping(method, path string, mapping RouteMapping) bool {
+	// Check method match (empty Method matches any)
+	if mapping.Method != "" && mapping.Method != method {
+		return false
+	}
+
+	// Check path pattern match
+	return matchPathPattern(path, mapping.PathPattern)
+}
+
 // extractResourceAndAction extracts the resource and action from the HTTP request
 func extractResourceAndAction(c echo.Context) (string, string) {
 	path := c.Request().URL.Path
@@ -130,18 +200,24 @@ func extractResourceAndAction(c echo.Context) (string, string) {
 	// Remove API prefix
 	path = strings.TrimPrefix(path, "/api/v1")
 
-	// Extract resource from path
+	// Check custom route mappings first
+	for _, mapping := range customRouteMappings {
+		if matchRouteMapping(method, path, mapping) {
+			action := mapping.Action
+			if action == "" {
+				action = methodToAction(method)
+			}
+			return mapping.Resource, action
+		}
+	}
+
+	// Fall back to default resource extraction
 	resource := pathToResource(path)
 	if resource == "" {
 		return "", ""
 	}
 
-	switch {
-	case resource == "payment-receipt-forms" && (strings.HasSuffix(path, "/submit") || strings.HasSuffix(path, "/pending")):
-		return "payment-receipt-forms", "submit"
-	default:
-		return resource, methodToAction(method)
-	}
+	return resource, methodToAction(method)
 }
 
 // methodToAction maps HTTP methods to Casbin actions

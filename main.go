@@ -176,8 +176,8 @@ func main() {
 	inventories.PUT("/submissions/:id", inventoryHandler.UpdateSubmission)
 	inventories.GET("/:id/submissions", inventoryHandler.ListSubmissions)
 	inventories.POST("/transfer", inventoryHandler.TransferInventory)
-	inventories.PUT("/:id/dispose", inventoryHandler.DisposeInventoryItems)
-	inventories.PUT("/:id/reconcile", inventoryHandler.ReconcileInventory)
+	inventories.POST("/:id/dispose", inventoryHandler.DisposeInventoryItems)
+	inventories.POST("/:id/reconcile", inventoryHandler.ReconcileInventory)
 
 	// Nested inventory items routes
 	inventories.GET("/:id/inventory-items", inventoryItemHandler.GetInventoryItemsByInventoryID)
