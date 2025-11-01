@@ -701,7 +701,7 @@ func (s *purchaseOrderService) handleRevenueExpenseAsync(ctx context.Context, pu
 	}
 
 	// Create expense data and add to excel
-	expensesData, cellColors := s.createExpenseData(purchaseOrder.Items)
+	expensesData, cellColors := s.createExpenseData(purchaseOrder)
 	if err := s.excelService.AddExpenses(ctx, sheetName, expensesData, cellColors); err != nil {
 		duration := time.Since(startTime)
 		logger.WithFields(logrus.Fields{
@@ -791,13 +791,13 @@ func (s *purchaseOrderService) handleRevenueExpenseGoogleSheetsAsync(ctx context
 
 	// Create expense data and add to Google Sheets
 	logger.WithFields(logrus.Fields{
-		"items_count": len(purchaseOrder.Items),
-		"spreadsheet_id": spreadsheetID,
-		"sheet_name":     sheetName,
+		"items_count":       len(purchaseOrder.Items),
+		"spreadsheet_id":    spreadsheetID,
+		"sheet_name":        sheetName,
 		"purchase_order_id": purchaseOrderID,
 	}).Info("Creating expense data from purchase order items")
 
-	expensesData, cellColors := s.createExpenseData(purchaseOrder.Items)
+	expensesData, cellColors := s.createExpenseData(purchaseOrder)
 	if err := s.excelService.AddExpensesToGoogleSheets(ctx, sheetName, expensesData, cellColors); err != nil {
 		duration := time.Since(startTime)
 		logger.WithFields(logrus.Fields{
@@ -839,37 +839,45 @@ func extractSpreadsheetID(input string) string {
 }
 
 // createExpenseData creates expense data and cell colors from purchase order items
-func (s *purchaseOrderService) createExpenseData(items []*models.PurchaseOrderItem) ([]map[string]interface{}, []string) {
-	expensesData := make([]map[string]interface{}, len(items))
-	cellColors := make([]string, len(items))
+func (s *purchaseOrderService) createExpenseData(purchaseOrder *models.PurchaseOrder) ([]map[string]interface{}, []string) {
+	expensesData := make([]map[string]interface{}, 1)
+	cellColors := make([]string, 1)
 
-	for i, item := range items {
-		// Add nil checks to prevent panics
-		if item == nil {
-			s.logger.WithFields(logrus.Fields{
-				"operation":  "createExpenseData",
-				"item_index": i,
-			}).Warn("Skipping nil purchase order item")
-			continue
-		}
-
-		productName := "Unknown Product"
-		productType := "Unknown"
-
-		if item.Product != nil {
-			productName = item.Product.Name
-			productType = item.Product.ProductType
-		}
-
-		expensesData[i] = map[string]interface{}{
-			pkg.RevenueExpenseColumnName: productName,
-		}
-
-		itemTotalPrice := item.CalculateTotalAmount()
-		header, color := s.getHeaderAndColorFromProductType(productType)
-		expensesData[i][header] = itemTotalPrice
-		cellColors[i] = color
+	expensesData[0] = map[string]interface{}{
+		pkg.RevenueExpenseColumnName: purchaseOrder.Items[0].Supplier.Name,
 	}
+	productType := purchaseOrder.Items[0].Product.ProductType
+	header, color := s.getHeaderAndColorFromProductType(productType)
+	expensesData[0][header] = purchaseOrder.Items[0].CalculateTotalAmount()
+	cellColors[0] = color
+
+	// for i, item := range items {
+	// 	// Add nil checks to prevent panics
+	// 	if item == nil {
+	// 		s.logger.WithFields(logrus.Fields{
+	// 			"operation":  "createExpenseData",
+	// 			"item_index": i,
+	// 		}).Warn("Skipping nil purchase order item")
+	// 		continue
+	// 	}
+
+	// 	productName := "Unknown Product"
+	// 	productType := "Unknown"
+
+	// 	if item.Product != nil {
+	// 		productName = item.Product.Name
+	// 		productType = item.Product.ProductType
+	// 	}
+
+	// 	expensesData[i] = map[string]interface{}{
+	// 		pkg.RevenueExpenseColumnName: productName,
+	// 	}
+
+	// 	itemTotalPrice := item.CalculateTotalAmount()
+	// 	header, color := s.getHeaderAndColorFromProductType(productType)
+	// 	expensesData[i][header] = itemTotalPrice
+	// 	cellColors[i] = color
+	// }
 
 	return expensesData, cellColors
 }
