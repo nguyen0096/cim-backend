@@ -251,7 +251,7 @@ func getTestFileConfig() FileConfig {
 		HeaderStartCol: 1,
 		HeaderHeight:   3,
 		FooterHeight:   3,
-		IndexColumnNames: []TreeHeader{
+		IndexColumnNames: []HeaderBranch{
 			{fmt.Sprintf("%s%s", MetadataHeaderPrefix, "product_id")},
 		},
 	}
@@ -491,7 +491,7 @@ func TestFile_UpsertRow(t *testing.T) {
 		fc.SheetConfigs[0].InternalID,
 		"__product_id",
 		"test-product-id3",
-		map[TreeHeaderStr]interface{}{
+		map[HeaderBranchStr]interface{}{
 			"Ngày.2.SL": 11,
 		})
 	require.NoError(t, err)
@@ -503,7 +503,7 @@ func TestFile_UpsertRow(t *testing.T) {
 		fc.SheetConfigs[0].InternalID,
 		"__product_id",
 		"insert-product-id",
-		map[TreeHeaderStr]interface{}{
+		map[HeaderBranchStr]interface{}{
 			"Ngày.4.SL": 1,
 		})
 	require.NoError(t, err)
@@ -513,7 +513,7 @@ func TestFile_UpsertRow(t *testing.T) {
 	require.NotNil(t, sheet, "sheet should exist")
 
 	// Verify that test-product-id-3 exists in the index
-	productIDCol, err := sheet.GetColByExactHeaders(fc.SheetConfigs[0].InternalID, TreeHeader{fmt.Sprintf("%s%s", MetadataHeaderPrefix, "product_id")})
+	productIDCol, err := sheet.GetColByExactHeaders(fc.SheetConfigs[0].InternalID, HeaderBranch{fmt.Sprintf("%s%s", MetadataHeaderPrefix, "product_id")})
 	require.NoError(t, err)
 
 	productIDIndex := sheet.ColumnIndices[productIDCol]

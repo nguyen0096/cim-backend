@@ -3,7 +3,10 @@ package spreadsheet
 import (
 	"context"
 	"fmt"
+	"log"
+	"os"
 	"sync"
+	"sync/atomic"
 	"time"
 
 
@@ -26,6 +29,51 @@ type cachedData struct {
 }
 
 const cacheTTL = 1 * time.Minute
+
+// Debug logging for API requests
+var (
+	debugAPIRequests = os.Getenv("DEBUG_SHEETS_API") == "1"
+	apiRequestCount  int64
+	apiStartTime     = time.Now()
+)
+
+// logAPIRequest logs API requests when DEBUG_SHEETS_API=1
+func logAPIRequest(requestType, details string) {
+	if !debugAPIRequests {
+		return
+	}
+
+	count := atomic.AddInt64(&apiRequestCount, 1)
+	elapsed := time.Since(apiStartTime).Seconds()
+
+	log.Printf("[SHEETS-API] #%d @ %.3fs: %s - %s",
+		count, elapsed, requestType, details)
+}
+
+// LogAPIRequestSummary logs a summary of all API requests when DEBUG_SHEETS_API=1
+// Call this manually at the end of operations to see total request statistics
+func LogAPIRequestSummary() {
+	if !debugAPIRequests {
+		return
+	}
+
+	count := atomic.LoadInt64(&apiRequestCount)
+	if count == 0 {
+		log.Printf("[SHEETS-API] SUMMARY: No API requests made")
+		return
+	}
+
+	elapsed := time.Since(apiStartTime).Seconds()
+	avgRatePerMin := float64(count) / elapsed * 60.0
+
+	warning := ""
+	if avgRatePerMin > 50 {
+		warning = " ⚠️ APPROACHING/EXCEEDING QUOTA"
+	}
+
+	log.Printf("[SHEETS-API] SUMMARY: %d requests in %.1fs (%.1f req/min average)%s",
+		count, elapsed, avgRatePerMin, warning)
+}
 
 // NewGoogleSheetsFileProvider creates a new Google Sheets file provider
 // spreadsheetIDOrURL can be either the full Google Sheets URL or just the spreadsheet ID
@@ -70,6 +118,7 @@ func (g *GoogleSheetsFileProvider) Close(ctx context.Context) error {
 
 // GetSheetIndex returns the index of a sheet by name
 func (g *GoogleSheetsFileProvider) GetSheetIndex(ctx context.Context, name string) (int, error) {
+	logAPIRequest("spreadsheets.get", fmt.Sprintf("GetSheetIndex(sheet=%s)", name))
 	spreadsheetData, err := g.sheetsService.Spreadsheets.Get(g.spreadsheetID).Do()
 	if err != nil {
 		return -1, fmt.Errorf("google sheets provider: failed to get spreadsheet: %w", err)
@@ -146,6 +195,7 @@ func (g *GoogleSheetsFileProvider) SetCellValue(ctx context.Context, sheet, cell
 // GetCellValue gets the value of a cell
 func (g *GoogleSheetsFileProvider) GetCellValue(ctx context.Context, sheet, cell string) (string, error) {
 	cellRange := fmt.Sprintf("%s!%s", sheet, cell)
+	logAPIRequest("values.get", cellRange)
 
 	resp, err := g.sheetsService.Spreadsheets.Values.Get(g.spreadsheetID, cellRange).Context(ctx).Do()
 	if err != nil {
@@ -177,6 +227,7 @@ func (g *GoogleSheetsFileProvider) GetRows(ctx context.Context, sheet string) ([
 
 	// Fetch from API
 	rangeStr := fmt.Sprintf("%s!A1:ZZ", sheet) // Adjust range as needed
+	logAPIRequest("values.get", rangeStr)
 
 	resp, err := g.sheetsService.Spreadsheets.Values.Get(g.spreadsheetID, rangeStr).Context(ctx).Do()
 	if err != nil {
@@ -211,6 +262,7 @@ func (g *GoogleSheetsFileProvider) GetRows(ctx context.Context, sheet string) ([
 
 // GetMergeCells gets all merged cells in a sheet
 func (g *GoogleSheetsFileProvider) GetMergeCells(ctx context.Context, sheet string) ([]MergeCell, error) {
+	logAPIRequest("spreadsheets.get", fmt.Sprintf("GetMergeCells(sheet=%s)", sheet))
 	spreadsheetData, err := g.sheetsService.Spreadsheets.Get(g.spreadsheetID).Context(ctx).Do()
 	if err != nil {
 		return nil, fmt.Errorf("google sheets provider: failed to get spreadsheet: %w", err)

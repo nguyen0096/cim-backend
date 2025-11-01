@@ -45,9 +45,9 @@ type File struct {
 func (f *File) UpsertRow(
 	ctx context.Context,
 	sheetInternalID SheetInternalID,
-	indexColHeaderStr TreeHeaderStr,
+	indexColHeaderStr HeaderBranchStr,
 	indexValue string,
-	rowData map[TreeHeaderStr]interface{},
+	rowData map[HeaderBranchStr]interface{},
 ) error {
 	f.Lock()
 	defer f.Unlock()
@@ -60,7 +60,7 @@ func (f *File) UpsertRow(
 		return fmt.Errorf("sheet internal id [%s] not found", sheetInternalID)
 	}
 
-	row, ok, err := f.findRowByIndex(sheet.InternalID, indexColHeaderStr.TreeHeader(), indexValue)
+	row, ok, err := f.findRowByIndex(sheet.InternalID, indexColHeaderStr.ToBranch(), indexValue)
 	if err != nil {
 		return fmt.Errorf("failed to find row by index: %w", err)
 	}
@@ -81,7 +81,7 @@ func (f *File) UpsertRow(
 
 func (f *File) findRowByIndex(
 	sheetInternalID SheetInternalID,
-	indexColHeader TreeHeader,
+	indexColHeader HeaderBranch,
 	indexValue string,
 ) (int, bool, error) {
 	if f.Sheets == nil {
@@ -150,7 +150,8 @@ func (f *File) Connect(ctx context.Context) (err error) {
 
 func (f *File) parseSheets(ctx context.Context) error {
 	for _, sheetCfg := range f.SheetConfigs {
-		targetSheet := sheetCfg.NamePattern.Parse(sheetCfg.NameParams)
+		// Resolve parameters dynamically using GetResolvedParams
+		targetSheet := sheetCfg.NamePattern.Parse(sheetCfg.GetResolvedParams())
 		idx, err := f.Provider.GetSheetIndex(ctx, targetSheet)
 		if err != nil {
 			continue

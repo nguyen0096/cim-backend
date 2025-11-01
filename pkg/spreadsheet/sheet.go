@@ -21,6 +21,10 @@ func (s SheetNamePattern) Parse(params map[string]string) string {
 	return result
 }
 
+// NameParamResolver is a function that returns the current parameter map
+// This allows parameters to be resolved dynamically (e.g., for time-based parameters)
+type NameParamResolver func() map[string]string
+
 // SheetConfig contains the configuration for a sheet, used as anchor to let
 // repository how to parse the sheet.
 type SheetConfig struct {
@@ -28,8 +32,11 @@ type SheetConfig struct {
 
 	// Naming
 
-	NamePattern SheetNamePattern  `json:"name_pattern" validate:"required"`
-	NameParams  map[string]string `json:"name_params" validate:"-"`
+	NamePattern SheetNamePattern `json:"name_pattern" validate:"required"`
+	// Deprecated: Use NameParamResolver for dynamic parameters
+	NameParams map[string]string `json:"name_params" validate:"-"`
+	// NameParamResolver returns dynamic parameters for sheet name pattern
+	NameParamResolver NameParamResolver `json:"-" validate:"-"`
 
 	// Header
 	HeaderStartRow int `json:"header_start_row" validate:"required,min=1"`
@@ -44,9 +51,56 @@ type SheetConfig struct {
 	DataStartRow int `json:"data_start_row" validate:"-"`
 
 	// IndexColumnNames are names of columns that will be indexed for lookup.
-	IndexColumnNames []TreeHeader `json:"index_columns" validate:"-"`
+	IndexColumnNames []HeaderBranch `json:"index_columns" validate:"-"`
 }
 
+// GetResolvedParams returns the current parameter map, using resolver if available
+func (sc *SheetConfig) GetResolvedParams() map[string]string {
+	if sc.NameParamResolver != nil {
+		return sc.NameParamResolver()
+	}
+	return sc.NameParams
+}
+
+// WithSheetNameTimeParams returns a NameParamResolver that provides time-based parameters
+// This resolver is dynamic and will use the current time when called
+func WithSheetNameTimeParams(t time.Time) NameParamResolver {
+	return func() map[string]string {
+		return map[string]string{
+			"{MM}":   t.Format("01"),
+			"{M}":    t.Format("1"),
+			"{DD}":   t.Format("02"),
+			"{D}":    t.Format("2"),
+			"{YYYY}": t.Format("2006"),
+			"{YY}":   t.Format("06"),
+		}
+	}
+}
+
+// WithSheetNameStaticParams returns a NameParamResolver for static parameters
+func WithSheetNameStaticParams(params map[string]string) NameParamResolver {
+	return func() map[string]string {
+		return params
+	}
+}
+
+// WithSheetNameCombinedParams combines multiple NameParamResolvers
+// Later resolvers will override earlier ones for duplicate keys
+func WithSheetNameCombinedParams(resolvers ...NameParamResolver) NameParamResolver {
+	return func() map[string]string {
+		combined := make(map[string]string)
+		for _, resolver := range resolvers {
+			if resolver != nil {
+				for k, v := range resolver() {
+					combined[k] = v
+				}
+			}
+		}
+		return combined
+	}
+}
+
+// Deprecated: Use NameParamResolver with WithSheetNameTimeParams instead
 func (sc *SheetConfig) SetSheetNameTimeParams(t time.Time) {
 	timeParams := map[string]string{
 		"{MM}":   t.Format("01"),
@@ -84,7 +138,7 @@ type Sheet struct {
 func (s *Sheet) PrependRowData(
 	ctx context.Context,
 	rowNumber int,
-	rowData map[TreeHeaderStr]interface{},
+	rowData map[HeaderBranchStr]interface{},
 ) error {
 	if rowNumber < s.DataStartRow {
 		return fmt.Errorf("row number is less than data start row")
@@ -100,10 +154,10 @@ func (s *Sheet) PrependRowData(
 func (s *Sheet) UpdateRow(
 	ctx context.Context,
 	rowNumber int,
-	rowData map[TreeHeaderStr]interface{},
+	rowData map[HeaderBranchStr]interface{},
 ) error {
 	for header, value := range rowData {
-		col, err := s.GetColByExactHeaders(s.InternalID, header.TreeHeader())
+		col, err := s.GetColByExactHeaders(s.InternalID, header.ToBranch())
 		if err != nil {
 			return fmt.Errorf("failed to get column index: %w", err)
 		}

@@ -3,7 +3,6 @@ package spreadsheet
 import (
 	"testing"
 
-
 	"github.com/stretchr/testify/assert"
 )
 
@@ -28,7 +27,7 @@ func Test_trimFileConfigValues(t *testing.T) {
 						HeaderStartRow:   1,
 						HeaderStartCol:   1,
 						HeaderHeight:     2,
-						IndexColumnNames: []TreeHeader{{"  col1  "}, {"col2"}, {"  col3  "}},
+						IndexColumnNames: []HeaderBranch{{"  col1  "}, {"col2"}, {"  col3  "}},
 					},
 				},
 			},
@@ -45,7 +44,7 @@ func Test_trimFileConfigValues(t *testing.T) {
 						HeaderStartRow:   1,
 						HeaderStartCol:   1,
 						HeaderHeight:     2,
-						IndexColumnNames: []TreeHeader{{"col1"}, {"col2"}, {"col3"}},
+						IndexColumnNames: []HeaderBranch{{"col1"}, {"col2"}, {"col3"}},
 					},
 				},
 			},
@@ -62,7 +61,7 @@ func Test_trimFileConfigValues(t *testing.T) {
 						HeaderStartRow:   1,
 						HeaderStartCol:   1,
 						HeaderHeight:     1,
-						IndexColumnNames: []TreeHeader{},
+						IndexColumnNames: []HeaderBranch{},
 					},
 				},
 			},
@@ -76,7 +75,7 @@ func Test_trimFileConfigValues(t *testing.T) {
 						HeaderStartRow:   1,
 						HeaderStartCol:   1,
 						HeaderHeight:     1,
-						IndexColumnNames: []TreeHeader{},
+						IndexColumnNames: []HeaderBranch{},
 					},
 				},
 			},
@@ -143,7 +142,7 @@ func Test_validateFileConfig(t *testing.T) {
 						HeaderStartRow:   1,
 						HeaderStartCol:   1,
 						HeaderHeight:     2,
-						IndexColumnNames: []TreeHeader{{"col1"}, {"col2"}},
+						IndexColumnNames: []HeaderBranch{{"col1"}, {"col2"}},
 					},
 				},
 			},
@@ -311,7 +310,7 @@ func Test_validateFileConfig(t *testing.T) {
 						HeaderStartRow:   1,
 						HeaderStartCol:   1,
 						HeaderHeight:     2,
-						IndexColumnNames: []TreeHeader{},
+						IndexColumnNames: []HeaderBranch{},
 					},
 				},
 			},
