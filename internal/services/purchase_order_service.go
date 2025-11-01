@@ -10,7 +10,6 @@ import (
 	"crypto/rand"
 	"encoding/json"
 	"fmt"
-	"os"
 	"strings"
 	"time"
 
@@ -767,18 +766,8 @@ func (s *purchaseOrderService) handleRevenueExpenseGoogleSheetsAsync(ctx context
 		return
 	}
 
-	// Get service account file path from environment variable
-	serviceAccountFilePath := os.Getenv("GOOGLE_SERVICE_ACCOUNT")
-	if serviceAccountFilePath == "" {
-		duration := time.Since(startTime)
-		logger.WithFields(logrus.Fields{
-			"duration_ms": duration.Milliseconds(),
-		}).Error("Service account file path not configured in environment")
-		return
-	}
-
 	// Initialize Google Sheets repository
-	if err := s.excelService.InitializeRevenueExpenseGoogleSheets(ctx, serviceAccountFilePath, spreadsheetID); err != nil {
+	if err := s.excelService.InitializeRevenueExpenseGoogleSheets(ctx, spreadsheetID); err != nil {
 		duration := time.Since(startTime)
 		logger.WithFields(logrus.Fields{
 			"spreadsheet_id": spreadsheetID,

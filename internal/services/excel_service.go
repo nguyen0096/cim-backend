@@ -153,9 +153,9 @@ type ExcelService interface {
 	VerifyFileAndSheet(ctx context.Context, filePath string, sheetName string) error
 	FinalizeRevenueExpense(ctx context.Context, date time.Time) error
 	// Revenue/Expense Google Sheets operations
-	InitializeRevenueExpenseGoogleSheets(ctx context.Context, serviceAccountFilePath string, spreadsheetID string) error
+	InitializeRevenueExpenseGoogleSheets(ctx context.Context, spreadsheetID string) error
 	AddExpensesToGoogleSheets(ctx context.Context, sheetName string, expensesData []map[string]interface{}, cellColors []string) error
-	VerifyGoogleSheetAndSheet(ctx context.Context, serviceAccountFilePath string, spreadsheetID string, sheetName string) error
+	VerifyGoogleSheetAndSheet(ctx context.Context, spreadsheetID string, sheetName string) error
 }
 
 type excelService struct {
@@ -164,6 +164,7 @@ type excelService struct {
 	revenueExpenseExcelRepo        excel.RevenueExpenseExcelRepository
 	revenueExpenseGoogleSheetsRepo googlesheets.RevenueExpenseGoogleSheetsRepository
 	settingsService                SettingsService
+	googleServiceAccount           string
 }
 
 func NewExcelService(productRepo repository.ProductRepository, inventoryRepo repository.InventoryRepository, settingsService SettingsService) ExcelService {
@@ -173,6 +174,7 @@ func NewExcelService(productRepo repository.ProductRepository, inventoryRepo rep
 		revenueExpenseExcelRepo:        excel.NewRevenueExpenseExcelRepository(),
 		revenueExpenseGoogleSheetsRepo: googlesheets.NewRevenueExpenseGoogleSheetsRepository(),
 		settingsService:                settingsService,
+		googleServiceAccount:           os.Getenv("GOOGLE_SERVICE_ACCOUNT"),
 	}
 }
 
@@ -236,17 +238,11 @@ func (s *excelService) FinalizeRevenueExpense(ctx context.Context, date time.Tim
 			return fmt.Errorf("invalid Google Sheets URL: %w", err)
 		}
 
-		// Get service account file path from settings or environment
-		serviceAccountFilePath, ok := settingsValue["serviceAccountFilePath"].(string)
-		if !ok || serviceAccountFilePath == "" {
-			serviceAccountFilePath = os.Getenv("GOOGLE_SERVICE_ACCOUNT")
-			if serviceAccountFilePath == "" {
-				return fmt.Errorf("service account file path not configured")
-			}
-		}
-
 		// Initialize repository
-		if err := s.revenueExpenseGoogleSheetsRepo.InitializeWithSpreadsheet(ctx, serviceAccountFilePath, spreadsheetID, sheetName); err != nil {
+		if s.googleServiceAccount == "" {
+			return fmt.Errorf("service account file path not configured")
+		}
+		if err := s.revenueExpenseGoogleSheetsRepo.InitializeWithSpreadsheet(ctx, s.googleServiceAccount, spreadsheetID, sheetName); err != nil {
 			return fmt.Errorf("failed to initialize Google Sheets repository: %w", err)
 		}
 
@@ -271,8 +267,11 @@ func (s *excelService) FinalizeRevenueExpense(ctx context.Context, date time.Tim
 }
 
 // InitializeRevenueExpenseGoogleSheets initializes the Google Sheets repository for revenue/expense tracking
-func (s *excelService) InitializeRevenueExpenseGoogleSheets(ctx context.Context, serviceAccountFilePath string, spreadsheetID string) error {
-	return s.revenueExpenseGoogleSheetsRepo.InitializeWithSpreadsheet(ctx, serviceAccountFilePath, spreadsheetID)
+func (s *excelService) InitializeRevenueExpenseGoogleSheets(ctx context.Context, spreadsheetID string) error {
+	if s.googleServiceAccount == "" {
+		return fmt.Errorf("service account file path not configured")
+	}
+	return s.revenueExpenseGoogleSheetsRepo.InitializeWithSpreadsheet(ctx, s.googleServiceAccount, spreadsheetID)
 }
 
 // AddExpensesToGoogleSheets adds expense entries to the Google Sheets
@@ -281,6 +280,9 @@ func (s *excelService) AddExpensesToGoogleSheets(ctx context.Context, sheetName 
 }
 
 // VerifyGoogleSheetAndSheet verifies that the spreadsheet ID and sheet name exist
-func (s *excelService) VerifyGoogleSheetAndSheet(ctx context.Context, serviceAccountFilePath string, spreadsheetID string, sheetName string) error {
-	return s.revenueExpenseGoogleSheetsRepo.VerifySpreadsheetAndSheet(ctx, serviceAccountFilePath, spreadsheetID, sheetName)
+func (s *excelService) VerifyGoogleSheetAndSheet(ctx context.Context, spreadsheetID string, sheetName string) error {
+	if s.googleServiceAccount == "" {
+		return fmt.Errorf("service account file path not configured")
+	}
+	return s.revenueExpenseGoogleSheetsRepo.VerifySpreadsheetAndSheet(ctx, s.googleServiceAccount, spreadsheetID, sheetName)
 }

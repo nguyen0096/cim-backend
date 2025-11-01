@@ -4,7 +4,6 @@ import (
 	"cim-backend/internal/services"
 	"cim-backend/pkg"
 	"net/http"
-	"os"
 	"strings"
 
 	"github.com/labstack/echo/v4"
@@ -61,14 +60,8 @@ func (h *ExcelHandler) VerifyFileAndSheet(c echo.Context) error {
 			return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid Google Sheets URL: " + err.Error()})
 		}
 
-		// Get service account file path from environment variable
-		serviceAccountFilePath := os.Getenv("GOOGLE_SERVICE_ACCOUNT")
-		if serviceAccountFilePath == "" {
-			return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Service account file path not configured"})
-		}
-
 		// Verify the spreadsheet and sheet
-		if err := h.excelService.VerifyGoogleSheetAndSheet(c.Request().Context(), serviceAccountFilePath, spreadsheetID, request.SheetName); err != nil {
+		if err := h.excelService.VerifyGoogleSheetAndSheet(c.Request().Context(), spreadsheetID, request.SheetName); err != nil {
 			return c.JSON(http.StatusNotFound, map[string]string{"error": "Google Sheets verification failed: " + err.Error()})
 		}
 

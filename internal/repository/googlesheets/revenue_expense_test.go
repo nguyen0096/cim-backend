@@ -42,12 +42,12 @@ func TestRevenueExpenseGoogleSheetsRepository(t *testing.T) {
 	t.Log("=== Google Sheets test: handling with THU CHI Google Sheets ===")
 	t.Logf("Spreadsheet ID: %s", spreadsheetID)
 	ctx := context.Background()
-	sheetName := "TIỀN MẶT"
+	sheetName := "TIỀN MẶT "
 	revenueExpenseGoogleSheetsRepo := NewRevenueExpenseGoogleSheetsRepository()
 
 	t.Cleanup(func() {
 		t.Log("Cleaning up...")
-		// Delete two last rows 
+		// Delete two last rows
 		revenueExpenseGoogleSheetsRepo.DeleteLastNthRows(ctx, sheetName, 2)
 		revenueExpenseGoogleSheetsRepo.Close()
 		t.Log("✅ Cleanup completed")
@@ -132,7 +132,7 @@ func TestRevenueExpenseGoogleSheetsRepository(t *testing.T) {
 	t.Log("\n🔍 Comparing last expense with expected expense...")
 	expectedExpense := map[string]interface{}{
 		pkg.RevenueExpenseColumnName:  "TEST EXPENSE",
-		pkg.RevenueExpenseColumnWater: "15000",
+		pkg.RevenueExpenseColumnWater: "15.000",
 		// Note: STT (ordinal number) is not checked because it depends on existing data in the sheet
 	}
 	compareExpenses(t, expectedExpense, lastExpense)
@@ -217,8 +217,6 @@ func TestAddNewDateRow_GoogleSheets(t *testing.T) {
 
 	t.Logf("✅ AddNewDateRow and last transaction date verified for date: %v", lastDate.Format("2006-01-02"))
 }
-
-
 
 // compareExpenses compares two expense maps and returns true if they match
 // It only checks that all expected keys exist in actual with matching values
