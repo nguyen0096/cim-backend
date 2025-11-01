@@ -14,11 +14,20 @@ type User struct {
 	Email     string         `json:"email" gorm:"uniqueIndex;not null"`
 	Name      string         `json:"name"`
 	Role      UserRole       `json:"role" gorm:"default:'staff'"`                                                    // admin, accountant, staff, bot_form
+	Type      UserType       `json:"type" gorm:"default:'user'"`                                                     // developer, user
 	Status    string         `json:"status" gorm:"default:active;check:status IN ('active', 'pending', 'inactive')"` // active, pending, inactive
 	CreatedAt time.Time      `json:"created_at"`
 	UpdatedAt time.Time      `json:"updated_at"`
 	DeletedAt gorm.DeletedAt `json:"deleted_at,omitempty" gorm:"index"`
 }
+
+// UserType represents the type of user in the system
+type UserType string
+
+const (
+	UserTypeDeveloper UserType = "developer"
+	UserTypeUser      UserType = "user"
+)
 
 // UserRole represents the available roles in the system
 type UserRole string
@@ -27,7 +36,7 @@ const (
 	RoleAdmin      UserRole = "admin"
 	RoleAccountant UserRole = "accountant"
 	RoleStaff      UserRole = "staff"
-	RoleBotForm  UserRole = "bot_form"
+	RoleBotForm    UserRole = "bot_form"
 )
 
 // IsValidRole checks if the role is valid

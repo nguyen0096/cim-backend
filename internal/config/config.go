@@ -9,6 +9,7 @@ import (
 )
 
 type Config struct {
+	Environment  string
 	Database     DatabaseConfig
 	Server       ServerConfig
 	JWT          JWTConfig
@@ -62,6 +63,7 @@ func Load(filePath ...string) *Config {
 	godotenv.Load(filePath...)
 
 	return &Config{
+		Environment: getEnv("ENV", "development"),
 		Database: DatabaseConfig{
 			Host:     getEnv("DB_HOST", "localhost"),
 			Port:     getEnv("DB_PORT", "5432"),

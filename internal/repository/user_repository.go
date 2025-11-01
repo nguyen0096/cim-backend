@@ -10,13 +10,15 @@ import (
 
 // UserRepository handles user data operations
 type UserRepository struct {
-	db *gorm.DB
+	db          *gorm.DB
+	environment string
 }
 
 // NewUserRepository creates a new user repository
-func NewUserRepository(db *gorm.DB) *UserRepository {
+func NewUserRepository(db *gorm.DB, environment string) *UserRepository {
 	return &UserRepository{
-		db: db,
+		db:          db,
+		environment: environment,
 	}
 }
 
@@ -74,6 +76,11 @@ func (r *UserRepository) List(ctx context.Context, limit, offset int, excludeUse
 	// Exclude current user if provided
 	if excludeUserID != "" {
 		baseQuery = baseQuery.Where("uid != ?", excludeUserID)
+	}
+
+	// In production, exclude developer users
+	if r.environment == "production" {
+		baseQuery = baseQuery.Where("type != ? OR type IS NULL", "developer")
 	}
 
 	// Get total count
@@ -138,6 +145,11 @@ func (r *UserRepository) Search(ctx context.Context, query string, limit, offset
 	// Exclude current user if provided
 	if excludeUserID != "" {
 		baseQuery = baseQuery.Where("uid != ?", excludeUserID)
+	}
+
+	// In production, exclude developer users
+	if r.environment == "production" {
+		baseQuery = baseQuery.Where("type != ? OR type IS NULL", "developer")
 	}
 
 	// Get total count

@@ -45,6 +45,7 @@ func main() {
 	// Initialize logger
 	logger := logrus.New()
 	logger.SetLevel(logrus.InfoLevel)
+	logger.Infof("Starting application in %s environment", cfg.Environment)
 
 	// Initialize Firebase Auth
 	firebaseAuth, err := auth.NewFirebaseAuthService(cfg.Firebase.ServiceAccountPath)
@@ -70,7 +71,7 @@ func main() {
 	}
 
 	// Initialize repositories
-	userRepo := repository.NewUserRepository(db)
+	userRepo := repository.NewUserRepository(db, cfg.Environment)
 	supplierRepo := repository.NewSupplierRepository(db)
 	productRepo := repository.NewProductRepository(db)
 	inventoryRepo := repository.NewInventoryRepository(db)
