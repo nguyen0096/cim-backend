@@ -36,6 +36,7 @@ func (c *ClientConnection) Close() {
 
 type PaymentReceiptFormHandler struct {
 	paymentReceiptFormService services.PaymentReceiptFormService
+	settingsService           services.SettingsService
 	logger                    *logrus.Logger
 	// Notification system
 	clients   sync.Map
@@ -43,9 +44,10 @@ type PaymentReceiptFormHandler struct {
 }
 
 // NewPaymentReceiptFormHandler creates a new payment receipt form handler
-func NewPaymentReceiptFormHandler(paymentReceiptFormService services.PaymentReceiptFormService, logger *logrus.Logger) *PaymentReceiptFormHandler {
+func NewPaymentReceiptFormHandler(paymentReceiptFormService services.PaymentReceiptFormService, settingsService services.SettingsService, logger *logrus.Logger) *PaymentReceiptFormHandler {
 	handler := &PaymentReceiptFormHandler{
 		paymentReceiptFormService: paymentReceiptFormService,
+		settingsService:           settingsService,
 		logger:                    logger,
 		broadcast:                 make(chan NotificationMessage),
 	}
@@ -157,7 +159,22 @@ func (h *PaymentReceiptFormHandler) CreatePaymentReceiptForm(c echo.Context) err
 		return c.JSON(http.StatusConflict, map[string]string{"error": "There is already a pending payment receipt form. Please complete or cancel the existing form before creating a new one."})
 	}
 
-	form, err := h.paymentReceiptFormService.CreatePaymentReceiptForm(c.Request().Context(), &payload)
+	form, err := payload.ToPaymentReceiptForm()
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid request body", "details": err.Error()})
+	}
+
+	form.Date = pkg.GetTodayDate()
+
+	// if err := h.settingsService.GetSettingValue(c.Request().Context(), config.LastFinalizedDateSettingsKey, &form.Date); err != nil {
+	// 	h.logger.WithFields(logrus.Fields{
+	// 		"error":   err.Error(),
+	// 		"details": "Failed to get last finalized date",
+	// 	}).Error("Failed to get last finalized date")
+	// 	// Continue with the current date
+	// }
+
+	form, err = h.paymentReceiptFormService.CreatePaymentReceiptForm(c.Request().Context(), form)
 	if err != nil {
 		if appErr, ok := err.(*pkg.AppError); ok {
 			return c.JSON(appErr.HTTPStatus(), map[string]string{"error": appErr.Message})

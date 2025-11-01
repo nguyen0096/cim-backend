@@ -101,7 +101,7 @@ func main() {
 	purchaseOrderHandler := handlers.NewPurchaseOrderHandler(purchaseOrderRepo, purchaseOrderService, logger)
 	excelHandler := handlers.NewExcelHandler(excelService)
 	settingsHandler := handlers.NewSettingsHandler(settingsService)
-	paymentReceiptFormHandler := handlers.NewPaymentReceiptFormHandler(paymentReceiptFormService, logger)
+	paymentReceiptFormHandler := handlers.NewPaymentReceiptFormHandler(paymentReceiptFormService, settingsService, logger)
 	revenueExpenseHandler := handlers.NewRevenueExpenseHandler(excelService, settingsService, logger)
 
 	// Initialize Echo

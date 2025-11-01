@@ -128,7 +128,7 @@ func (r *paymentReceiptFormRepository) List(ctx context.Context, req *dto.Paymen
 func (r *paymentReceiptFormRepository) Update(ctx context.Context, form *models.PaymentReceiptForm) error {
 	if err := r.db.WithContext(ctx).
 		Model(form).
-		Select("full_name", "date", "department", "details", "total_amount", "status").
+		Select("full_name", "date", "department", "details", "total_amount", "status", "form_number").
 		Where("id = ?", form.ID).
 		Updates(form).Error; err != nil {
 		return pkg.NewAppError(pkg.ErrorCodeInternal, "Failed to update payment receipt form", err)
