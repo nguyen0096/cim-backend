@@ -147,22 +147,8 @@ func (s *paymentReceiptFormService) ApprovePaymentReceiptForm(ctx context.Contex
 
 // RejectPaymentReceiptForm rejects a payment receipt form
 func (s *paymentReceiptFormService) RejectPaymentReceiptForm(ctx context.Context, id uint) error {
-	// Get the form to check if it exists and current status
-	form, err := s.paymentReceiptFormRepo.GetByID(ctx, id)
-	if err != nil {
-		return fmt.Errorf("failed to reject payment receipt form: %w", err)
-	}
-
-	// Validate that the form can be rejected
-	if form.Status == models.PaymentReceiptFormStatusRejected {
-		return pkg.NewAppError(pkg.ErrorCodeValidation, "Payment receipt form is already rejected", nil)
-	}
-	if form.Status == models.PaymentReceiptFormStatusApproved {
-		return pkg.NewAppError(pkg.ErrorCodeValidation, "Cannot reject an approved payment receipt form", nil)
-	}
-
-	// Update status to rejected
-	if err := s.paymentReceiptFormRepo.UpdateStatus(ctx, id, models.PaymentReceiptFormStatusRejected); err != nil {
+	// Delete the form from database
+	if err := s.paymentReceiptFormRepo.DeletePermanently(ctx, id); err != nil {
 		return fmt.Errorf("failed to reject payment receipt form: %w", err)
 	}
 
@@ -177,7 +163,7 @@ func (s *paymentReceiptFormService) DeletePaymentReceiptForm(ctx context.Context
 		return fmt.Errorf("failed to delete payment receipt form: %w", err)
 	}
 
-	if err := s.paymentReceiptFormRepo.Delete(ctx, id); err != nil {
+	if err := s.paymentReceiptFormRepo.DeletePermanently(ctx, id); err != nil {
 		return fmt.Errorf("failed to delete payment receipt form: %w", err)
 	}
 

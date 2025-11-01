@@ -198,21 +198,27 @@ func (r *BaseGoogleSheetsRepository) FindLastTransactionRow(rows [][]interface{}
 	if headerRow < 0 || headerRow >= len(rows) {
 		return nil, 0, fmt.Errorf("no header row found")
 	}
+	// Get index of column with header RevenueExpenseColumnName
+	headerRowData := rows[headerRow]
+	targetColumnIndex := -1
+	for idx, cell := range headerRowData {
+		if getCellValueAsString(cell) == pkg.RevenueExpenseColumnName {
+			targetColumnIndex = idx
+			break
+		}
+	}
 
 	// Find the last data row (scan from bottom up, starting after the header)
 	var lastRow []interface{}
 	var lastRowIndex int
 	for i := len(rows) - 1; i >= headerRow+1; i-- {
-		if len(rows[i]) == 0 {
+		if getCellValueAsString(rows[i][0]) == "" && getCellValueAsString(rows[i][targetColumnIndex]) == "" {
 			continue
 		}
 
-		// Check if this row has any non-empty data (optimized)
-		if HasNonEmptyData(rows[i]) {
-			lastRow = rows[i]
-			lastRowIndex = i
-			break
-		}
+		lastRow = rows[i]
+		lastRowIndex = i + 1
+		break
 	}
 
 	if len(lastRow) == 0 {
@@ -279,7 +285,7 @@ func (r *BaseGoogleSheetsRepository) GetLastTransactionDate(ctx context.Context,
 }
 
 // AddTransactionDateRow adds a new row with today's date if needed
-func (r *BaseGoogleSheetsRepository) AddTransactionDateRow(sheetName string, targetRow int, today time.Time, dateFormat string) error {
+func (r *BaseGoogleSheetsRepository) AddTransactionDateRow(sheetName string, targetRow int, transactionDate time.Time, dateFormat string) error {
 	// Find the sheet metadata for the specified sheet
 	sheetMetadata := r.findSheetMetadata(sheetName)
 	if sheetMetadata == nil || len(sheetMetadata.Headers) == 0 {
@@ -287,7 +293,7 @@ func (r *BaseGoogleSheetsRepository) AddTransactionDateRow(sheetName string, tar
 	}
 
 	// Format the date according to the detected format
-	dateStr := today.Format(dateFormat)
+	dateStr := transactionDate.Format(dateFormat)
 
 	// The date column is ALWAYS at column index 0 (column A), regardless of where headers start
 	// This is because the date row has no header - it's in column A before the other data columns
@@ -305,6 +311,8 @@ func (r *BaseGoogleSheetsRepository) AddTransactionDateRow(sheetName string, tar
 	if err != nil {
 		return fmt.Errorf("failed to add transaction date row: %w", err)
 	}
+
+	r.ForceCacheRefresh()
 
 	return nil
 }
@@ -343,6 +351,8 @@ func (r *BaseGoogleSheetsRepository) AddDataRow(sheetName string, targetRow int,
 	if err != nil {
 		return fmt.Errorf("failed to add data row: %w", err)
 	}
+
+	r.ForceCacheRefresh()
 
 	return nil
 }
@@ -448,6 +458,8 @@ func (r *BaseGoogleSheetsRepository) AddDataRowWithColor(sheetName string, targe
 			}
 		}
 	}
+
+	r.ForceCacheRefresh()
 
 	return nil
 }

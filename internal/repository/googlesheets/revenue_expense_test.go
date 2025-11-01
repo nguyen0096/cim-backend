@@ -42,7 +42,7 @@ func TestRevenueExpenseGoogleSheetsRepository(t *testing.T) {
 	t.Log("=== Google Sheets test: handling with THU CHI Google Sheets ===")
 	t.Logf("Spreadsheet ID: %s", spreadsheetID)
 	ctx := context.Background()
-	sheetName := "TIỀN MẶT "
+	sheetName := "TIỀN MẶT"
 	revenueExpenseGoogleSheetsRepo := NewRevenueExpenseGoogleSheetsRepository()
 
 	t.Cleanup(func() {
@@ -80,39 +80,14 @@ func TestRevenueExpenseGoogleSheetsRepository(t *testing.T) {
 			}
 		}
 	}
-
-	// Display detected columns to show what the Google Sheets actually contains
-	t.Log("\n📋 Available columns for writing data:")
-	t.Logf("   Total columns detected: %d\n", len(schema.Sheets[0].Headers))
-	for i, header := range schema.Sheets[0].Headers {
-		requiredText := ""
-		if header.Required {
-			requiredText = " (REQUIRED)"
-		}
-		t.Logf("   %d. %s [%s]%s\n", i+1, header.ColumnName, header.DataType, requiredText)
-	}
+	_, rows, err := revenueExpenseGoogleSheetsRepo.GetSheetData(sheetName)
+	require.Nil(t, err)
+	lastTransactionRow, lastTransactionRowIndex, err := revenueExpenseGoogleSheetsRepo.FindLastTransactionRow(rows)
+	require.Nil(t, err)
+	t.Logf("   Last transaction row index: %v", lastTransactionRowIndex)
+	t.Logf("   Last transaction row: %v", lastTransactionRow)
 
 	t.Log("\n=== Test Add First Expense ===")
-
-	for _, header := range schema.Sheets[0].Headers {
-		switch header.ColumnName {
-		case "THÁNG 04+05/2023":
-			t.Logf("   %s → Date/period description\n", header.ColumnName)
-		case "CƠM":
-			t.Logf("   %s → Rice/meal expenses\n", header.ColumnName)
-		case "ĂN NHẸ":
-			t.Logf("   %s → Light meal/snack expenses\n", header.ColumnName)
-		case "NƯỚC":
-			t.Logf("   %s → Water/beverage expenses\n", header.ColumnName)
-		case "DƯ,THIẾU":
-			t.Logf("   %s → Surplus/deficit amount\n", header.ColumnName)
-		case "TỔNG CỘNG":
-			t.Logf("   %s → Total amount\n", header.ColumnName)
-		default:
-			t.Logf("   %s → %s field\n", header.ColumnName, header.ColumnName)
-		}
-	}
-
 	// Attempt to add expense using detected columns - test what actually works
 	sampleExpense := map[string]interface{}{
 		pkg.RevenueExpenseColumnName:  "Test expense",
@@ -142,7 +117,7 @@ func TestRevenueExpenseGoogleSheetsRepository(t *testing.T) {
 
 	sampleExpense2 := map[string]interface{}{
 		pkg.RevenueExpenseColumnName:          "Test expense 2",
-		pkg.RevenueExpenseColumnSnackAndRice:  1000000,
+		pkg.RevenueExpenseColumnSnackAndRice:  "1.000.000",
 		pkg.RevenueExpenseColumnOrdinalNumber: 2,
 	}
 
@@ -164,7 +139,7 @@ func TestRevenueExpenseGoogleSheetsRepository(t *testing.T) {
 	t.Log("\n🔍 Comparing last expense with expected expense...")
 	expectedExpense2 := map[string]interface{}{
 		pkg.RevenueExpenseColumnName:         "TEST EXPENSE 2",
-		pkg.RevenueExpenseColumnSnackAndRice: "1000000",
+		pkg.RevenueExpenseColumnSnackAndRice: "1.000.000",
 		// Note: STT (ordinal number) is not checked because it depends on existing data in the sheet
 	}
 	compareExpenses(t, expectedExpense2, lastExpense2)

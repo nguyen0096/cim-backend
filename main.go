@@ -102,7 +102,7 @@ func main() {
 	excelHandler := handlers.NewExcelHandler(excelService)
 	settingsHandler := handlers.NewSettingsHandler(settingsService)
 	paymentReceiptFormHandler := handlers.NewPaymentReceiptFormHandler(paymentReceiptFormService, logger)
-	revenueExpenseHandler := handlers.NewRevenueExpenseHandler(excelService)
+	revenueExpenseHandler := handlers.NewRevenueExpenseHandler(excelService, settingsService, logger)
 
 	// Initialize Echo
 	e := echo.New()

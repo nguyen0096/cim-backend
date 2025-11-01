@@ -1,22 +1,28 @@
 package handlers
 
 import (
+	"cim-backend/internal/config"
 	"cim-backend/internal/services"
 	"cim-backend/pkg"
 	"net/http"
 	"time"
 
 	"github.com/labstack/echo/v4"
+	"github.com/sirupsen/logrus"
 )
 
 type RevenueExpenseHandler struct {
-	excelService services.ExcelService
+	excelService    services.ExcelService
+	settingsService services.SettingsService
+	logger          *logrus.Logger
 }
 
 // NewRevenueExpenseHandler creates a new RevenueExpenseHandler
-func NewRevenueExpenseHandler(excelService services.ExcelService) *RevenueExpenseHandler {
+func NewRevenueExpenseHandler(excelService services.ExcelService, settingsService services.SettingsService, logger *logrus.Logger) *RevenueExpenseHandler {
 	return &RevenueExpenseHandler{
-		excelService: excelService,
+		excelService:    excelService,
+		settingsService: settingsService,
+		logger:          logger,
 	}
 }
 
@@ -61,33 +67,44 @@ func (h *RevenueExpenseHandler) FinalizeRevenueExpense(c echo.Context) error {
 		})
 	}
 
-	// Parse date (expecting format: YYYY-MM-DD)
-	date, err := time.Parse("2006-01-02", req.Date)
-	if err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]string{
-			"error":   "Invalid date format",
-			"details": "Expected format: YYYY-MM-DD",
-		})
+	var lastFinalizedDate time.Time
+	if err := h.settingsService.GetSettingValue(c.Request().Context(), config.LastFinalizedDateSettingsKey, &lastFinalizedDate); err != nil {
+		h.logger.WithFields(logrus.Fields{
+			"error":   err.Error(),
+			"details": "Failed to get last finalized date",
+		}).Error("Failed to get last finalized date")
+		// Continue with the current date
+	}
+
+	if lastFinalizedDate.IsZero() {
+		lastFinalizedDate = time.Now()
 	}
 
 	// Call service to finalize
-	if err := h.excelService.FinalizeRevenueExpense(c.Request().Context(), date); err != nil {
+	if err := h.excelService.FinalizeRevenueExpense(c.Request().Context(), lastFinalizedDate); err != nil {
 		if appErr, ok := err.(*pkg.AppError); ok {
 			return c.JSON(appErr.HTTPStatus(), map[string]string{
 				"error": appErr.Message,
 			})
 		}
+
 		return c.JSON(http.StatusInternalServerError, map[string]string{
 			"error":   "Failed to finalize revenue expense",
 			"details": err.Error(),
 		})
 	}
 
-	nextDay := date.AddDate(0, 0, 1)
+	nextDay := lastFinalizedDate.AddDate(0, 0, 1)
+	if err := h.settingsService.SetSetting(c.Request().Context(), config.LastFinalizedDateSettingsKey, nextDay); err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{
+			"error":   "Failed to set last finalized date",
+			"details": err.Error(),
+		})
+	}
 
 	response := FinalizeRevenueExpenseResponse{
 		Message: "Revenue expense finalized successfully",
-		Date:    req.Date,
+		Date:    lastFinalizedDate.Format("2006-01-02"),
 		NextDay: nextDay.Format("2006-01-02"),
 	}
 

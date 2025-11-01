@@ -10,6 +10,7 @@ import (
 	"crypto/rand"
 	"encoding/json"
 	"fmt"
+	"runtime/debug"
 	"strings"
 	"time"
 
@@ -532,6 +533,7 @@ func (s *purchaseOrderService) handleRevenueExpenseAsyncBySettingsWithRetry(ctx 
 						"attempt":           attempt,
 						"max_retries":       maxRetries,
 						"panic":             r,
+						"stack_trace":       string(debug.Stack()),
 					}).Error("Panic occurred in revenue expense handler")
 				}
 			}()

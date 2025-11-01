@@ -116,7 +116,7 @@ func (r *revenueExpenseExcelRepository) AddExpenses(ctx context.Context, sheetNa
 			ordinalNumber++
 		}
 	}
-	
+
 	// Add all expense data rows
 	for i, expenseData := range expensesData {
 		expenseData[pkg.RevenueExpenseColumnOrdinalNumber] = ordinalNumber
@@ -233,9 +233,13 @@ func (r *revenueExpenseExcelRepository) AddNewDateRow(ctx context.Context, sheet
 
 	// Get the date format from the last date row
 	_, detectedDateFormat := FindLastTransactionDateInfo(rows, headerRow, date)
+	_, lastRowIndex, err := r.FindLastTransactionRow(rows)
+	if err != nil {
+		return fmt.Errorf("failed to find last transaction row: %w", err)
+	}
 
 	// Calculate the target row (append at the end)
-	targetRow := len(rows) + 1
+	targetRow := lastRowIndex + 1
 
 	// Add the date row
 	if err := r.AddTransactionDateRow(file, sheetName, targetRow, date, detectedDateFormat); err != nil {

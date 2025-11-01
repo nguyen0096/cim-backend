@@ -191,20 +191,26 @@ func (r *BaseExcelRepository) FindLastTransactionRow(rows [][]string) ([]string,
 		return nil, 0, fmt.Errorf("no header row found")
 	}
 
+	headerRowData := rows[headerRow]
+	targetColumnIndex := -1
+	for idx, cell := range headerRowData {
+		if cell == pkg.RevenueExpenseColumnName {
+			targetColumnIndex = idx
+			break
+		}
+	}
+
 	// Find the last data row (scan from bottom up, starting after the header)
 	var lastRow []string
 	var lastRowIndex int
 	for i := len(rows) - 1; i >= headerRow+1; i-- {
-		if len(rows[i]) == 0 {
+		if rows[i][0] == "" && rows[i][targetColumnIndex] == "" {
 			continue
 		}
 
-		// Check if this row has any non-empty data (optimized)
-		if HasNonEmptyData(rows[i]) {
-			lastRow = rows[i]
-			lastRowIndex = i
-			break
-		}
+		lastRow = rows[i]
+		lastRowIndex = i + 1
+		break
 	}
 
 	if len(lastRow) == 0 {

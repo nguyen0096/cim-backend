@@ -21,6 +21,7 @@ type PaymentReceiptFormRepository interface {
 	Update(ctx context.Context, form *models.PaymentReceiptForm) error
 	UpdateStatus(ctx context.Context, id uint, status models.PaymentReceiptFormStatus) error
 	Delete(ctx context.Context, id uint) error
+	DeletePermanently(ctx context.Context, id uint) error
 	Search(ctx context.Context, query string, req *dto.PaymentReceiptFormListRequest) ([]models.PaymentReceiptForm, int64, error)
 	GetLatestPaymentReceiptForm(ctx context.Context, purchaseOrderID uint, status models.PaymentReceiptFormStatus) (*models.PaymentReceiptForm, error)
 }
@@ -132,6 +133,14 @@ func (r *paymentReceiptFormRepository) UpdateStatus(ctx context.Context, id uint
 // Delete soft deletes a payment receipt form
 func (r *paymentReceiptFormRepository) Delete(ctx context.Context, id uint) error {
 	if err := r.db.WithContext(ctx).Delete(&models.PaymentReceiptForm{}, id).Error; err != nil {
+		return fmt.Errorf("failed to delete payment receipt form: %w", err)
+	}
+	return nil
+}
+
+// Delete permanently deletes a payment receipt form from the database
+func (r *paymentReceiptFormRepository) DeletePermanently(ctx context.Context, id uint) error {
+	if err := r.db.WithContext(ctx).Unscoped().Delete(&models.PaymentReceiptForm{}, id).Error; err != nil {
 		return fmt.Errorf("failed to delete payment receipt form: %w", err)
 	}
 	return nil

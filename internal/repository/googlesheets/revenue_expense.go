@@ -17,8 +17,10 @@ type RevenueExpenseGoogleSheetsRepository interface {
 	InitializeWithSpreadsheet(ctx context.Context, serviceAccountFilePath string, spreadsheetID string, sheetNames ...string) error
 	AddExpenses(ctx context.Context, sheetName string, expensesData []map[string]interface{}, cellColors []string) error
 	GetLastExpense(ctx context.Context, sheetName string) (map[string]interface{}, error)
+	FindLastTransactionRow(rows [][]interface{}) ([]interface{}, int, error)
 	GetLastTransactionDate(ctx context.Context, sheetName string) (time.Time, error)
 	GetSchema(ctx context.Context) *models.FileMetadata
+	GetSheetData(sheetName string) (*models.ExcelSheetMetadata, [][]interface{}, error)
 	VerifySpreadsheetAndSheet(ctx context.Context, serviceAccountFilePath string, spreadsheetID string, sheetName string) error
 	AddNewDateRow(ctx context.Context, sheetName string, date time.Time) error
 	DeleteLastNthRows(ctx context.Context, sheetName string, n int) error
@@ -114,13 +116,17 @@ func (r *revenueExpenseGoogleSheetsRepository) AddExpenses(ctx context.Context, 
 	}
 
 	// Find header row
-	headerRow := r.FindHeaderRow(rows)
-	if headerRow < 0 || headerRow >= len(rows) {
-		return fmt.Errorf("no header row found")
-	}
+	// headerRow := r.FindHeaderRow(rows)
+	// if headerRow < 0 || headerRow >= len(rows) {
+	// 	return fmt.Errorf("no header row found")
+	// }
 
 	// Prepare date and row information
-	targetRow := len(rows) + 1
+	lastRow, lastRowIndex, err := r.FindLastTransactionRow(rows)
+	if err != nil {
+		return fmt.Errorf("failed to find last transaction row: %w", err)
+	}
+	targetRow := lastRowIndex + 1
 	ordinalNumber := 1
 
 	// Add transaction date row if needed
@@ -162,11 +168,6 @@ func (r *revenueExpenseGoogleSheetsRepository) AddExpenses(ctx context.Context, 
 	// 	}
 	// }
 
-	lastRow, _, err := r.FindLastTransactionRow(rows)
-	if err != nil {
-		return fmt.Errorf("failed to find last transaction row: %w", err)
-	}
-
 	// Check if lastRow has enough columns to access the ordinal number (STT column at index 1)
 	if len(lastRow) < 2 {
 		// If no ordinal number found, start from 1
@@ -198,9 +199,6 @@ func (r *revenueExpenseGoogleSheetsRepository) AddExpenses(ctx context.Context, 
 		targetRow++
 	}
 
-	// Invalidate cache after saving to ensure next read gets fresh data
-	r.ForceCacheRefresh()
-
 	return nil
 }
 
@@ -213,13 +211,14 @@ func (r *revenueExpenseGoogleSheetsRepository) GetLastExpense(ctx context.Contex
 	}
 
 	// Find the last data row
-	lastDataRow, _, err := r.FindLastTransactionRow(rows)
+	lastDataRow, lastRowIndex, err := r.FindLastTransactionRow(rows)
 	if err != nil {
 		return nil, err
 	}
 
 	// Build the expense data map using the headers
 	expenseData := make(map[string]interface{})
+	expenseData["@last_transaction_row_index"] = lastRowIndex // for testing only
 
 	// Find the sheet metadata for the specified sheet
 	sheetMetadata := r.findSheetMetadata(sheetName)
@@ -261,17 +260,21 @@ func (r *revenueExpenseGoogleSheetsRepository) AddNewDateRow(ctx context.Context
 
 	// Get the date format from the last date row
 	_, detectedDateFormat := FindLastTransactionDateInfo(rows, headerRow, date)
+	lastRow, lastRowIndex, err := r.FindLastTransactionRow(rows)
+	if err != nil {
+		return fmt.Errorf("failed to find last transaction row: %w", err)
+	}
+
+	fmt.Printf("lastRow: %v\n", lastRow)
+	fmt.Printf("lastRowIndex: %v\n", lastRowIndex)
 
 	// Calculate the target row (append at the end)
-	targetRow := len(rows) + 1
+	targetRow := lastRowIndex + 1
 
 	// Add the date row
 	if err := r.AddTransactionDateRow(sheetName, targetRow, date, detectedDateFormat); err != nil {
 		return fmt.Errorf("failed to add transaction date row: %w", err)
 	}
-
-	// Invalidate cache after saving to ensure next read gets fresh data
-	r.ForceCacheRefresh()
 
 	return nil
 }
@@ -309,7 +312,12 @@ func (r *revenueExpenseGoogleSheetsRepository) VerifySpreadsheetAndSheet(ctx con
 	}
 
 	if !sheetExists {
-		return fmt.Errorf("sheet %s not found in spreadsheet", sheetName)
+		// Get available sheet names for error message
+		availableSheets := make([]string, len(schema.Sheets))
+		for i, sheet := range schema.Sheets {
+			availableSheets[i] = sheet.SheetName
+		}
+		return fmt.Errorf("sheet %s not found in spreadsheet. available sheets: %v", sheetName, availableSheets)
 	}
 
 	return nil
