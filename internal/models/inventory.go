@@ -11,11 +11,12 @@ const (
 // Inventory represents a warehouse or storage location
 type Inventory struct {
 	Base
-	Name        string           `json:"name" gorm:"not null;unique"`
-	Description string           `json:"description"`
-	Location    string           `json:"location" gorm:"not null"`
-	Status      InventoryStatus  `json:"status" gorm:"default:active"`
-	Items       []*InventoryItem `json:"items,omitempty" gorm:"foreignKey:InventoryID" validate:"-"`
+	Name                    string           `json:"name" gorm:"not null;unique"`
+	Description             string           `json:"description"`
+	Location                string           `json:"location" gorm:"not null"`
+	Status                  InventoryStatus  `json:"status" gorm:"default:active"`
+	RestrictedDeliveryHours string           `json:"restricted_delivery_hours"`
+	Items                   []*InventoryItem `json:"items,omitempty" gorm:"foreignKey:InventoryID" validate:"-"`
 }
 
 // GetTotalItems returns the total number of items in this inventory

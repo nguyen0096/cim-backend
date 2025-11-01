@@ -43,7 +43,7 @@ func (r *purchaseOrderRepository) Create(ctx context.Context, purchaseOrder *mod
 
 func (r *purchaseOrderRepository) GetByID(id uint) (*models.PurchaseOrder, error) {
 	var purchaseOrder models.PurchaseOrder
-	err := r.db.Preload("Items").Preload("Items.Product").Preload("Items.Supplier").First(&purchaseOrder, "id = ?", id).Error
+	err := r.db.Preload("Items").Preload("Items.Product").Preload("Items.Supplier").Preload("Inventory").First(&purchaseOrder, "id = ?", id).Error
 	if err != nil {
 		return nil, err
 	}

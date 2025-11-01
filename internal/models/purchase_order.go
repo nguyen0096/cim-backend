@@ -29,6 +29,7 @@ type PurchaseOrder struct {
 	Base
 	OrderNumber       string               `json:"order_number" gorm:"unique;not null" example:"PO-2023-001"`
 	InventoryID       *uint                `json:"inventory_id" gorm:"not null" validate:"required"`
+	Inventory         *Inventory           `json:"inventory,omitempty" gorm:"foreignKey:InventoryID" validate:"-"`
 	Status            PurchaseOrderStatus  `json:"status" gorm:"default:order_placed;check:status IN ('order_placed', 'partially_delivered', 'fully_delivered', 'completed', 'cancelled')" example:"order_placed"`
 	TotalAmount       float64              `json:"total_amount" gorm:"-" example:"999.99"` // Calculated field, not stored in DB
 	Notes             string               `json:"notes" example:"Purchase order notes"`
