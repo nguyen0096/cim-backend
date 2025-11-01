@@ -35,6 +35,21 @@ func GetUserEmailFromContext(ctx context.Context) (string, error) {
 	return userEmail, nil
 }
 
+// GetUserIDFromContext gets the user ID from the context
+func GetUserIDFromContext(ctx context.Context) (string, error) {
+	userIDIntf := ctx.Value(AuthContextKeyUserID)
+	if userIDIntf == nil {
+		return "", fmt.Errorf("user not authenticated")
+	}
+
+	userID, ok := userIDIntf.(string)
+	if !ok {
+		return "", fmt.Errorf("invalid user ID format")
+	}
+
+	return userID, nil
+}
+
 // WithUserEmail adds user email to the context
 func WithUserEmail(ctx context.Context, email string) context.Context {
 	return context.WithValue(ctx, AuthContextKeyUserEmail, email)

@@ -103,7 +103,7 @@ Users are managed through:
 - `GET /api/v1/users` - List all users
 - `GET /api/v1/users/search` - Search users by name or email
 - `GET /api/v1/users/role/:role` - Get users by role
-- `PUT /api/v1/users/:id` - Update user
+- `PUT /api/v1/users/:uid/role` - Update user role
 - `DELETE /api/v1/users/:id` - Delete user
 
 ## Usage Examples
@@ -120,11 +120,11 @@ curl -X POST "http://localhost:8080/api/v1/auth/verify-token" \
 ### 2. Updating user role (Admin only)
 
 ```bash
-# Update user
-curl -X PUT "http://localhost:8080/api/v1/users/user-uuid" \
+# Promote user to admin
+curl -X PUT "http://localhost:8080/api/v1/users/firebase-uid/role" \
   -H "Authorization: Bearer admin-token" \
   -H "Content-Type: application/json" \
-  -d '{"name": "Admin User", "role": "admin", "status": "active"}'
+  -d '{"role": "admin"}'
 ```
 
 ### 3. Testing permissions
@@ -144,10 +144,11 @@ curl -X POST "http://localhost:8080/api/v1/purchase-orders" \
 ```sql
 CREATE TABLE users (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    uid VARCHAR UNIQUE NOT NULL,
     email VARCHAR UNIQUE NOT NULL,
     name VARCHAR,
     role VARCHAR DEFAULT 'staff',
-    status VARCHAR DEFAULT 'active',
+    active BOOLEAN DEFAULT true,
     created_at TIMESTAMP,
     updated_at TIMESTAMP,
     deleted_at TIMESTAMP

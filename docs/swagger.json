@@ -1,2901 +1,3202 @@
 {
-  "swagger": "2.0",
-  "info": {
-    "description": "This is an Import Export Backend API server for managing products, inventory, suppliers, and orders.",
-    "title": "Import Export Backend API",
-    "termsOfService": "http://swagger.io/terms/",
-    "contact": {
-      "name": "API Support",
-      "url": "http://www.swagger.io/support",
-      "email": "support@swagger.io"
+    "swagger": "2.0",
+    "info": {
+        "description": "This is an Import Export Backend API server for managing products, inventory, suppliers, and orders.",
+        "title": "Import Export Backend API",
+        "termsOfService": "http://swagger.io/terms/",
+        "contact": {
+            "name": "API Support",
+            "url": "http://www.swagger.io/support",
+            "email": "support@swagger.io"
+        },
+        "license": {
+            "name": "Apache 2.0",
+            "url": "http://www.apache.org/licenses/LICENSE-2.0.html"
+        },
+        "version": "1.0"
     },
-    "license": {
-      "name": "Apache 2.0",
-      "url": "http://www.apache.org/licenses/LICENSE-2.0.html"
-    },
-    "version": "1.0"
-  },
-  "host": "localhost:8080",
-  "basePath": "/api/v1",
-  "paths": {
-    "/api/purchase-orders": {
-      "get": {
-        "security": [
-          {
-            "BearerAuth": []
-          }
-        ],
-        "description": "Retrieve a paginated list of purchase orders with optional search, sorting, and date range filtering",
-        "consumes": ["application/json"],
-        "produces": ["application/json"],
-        "tags": ["purchase-orders"],
-        "summary": "List purchase orders",
-        "parameters": [
-          {
-            "type": "integer",
-            "description": "Page number (default: 1, minimum: 1)",
-            "name": "page",
-            "in": "query"
-          },
-          {
-            "type": "integer",
-            "description": "Number of items per page (default: 20, minimum: 1, maximum: 100)",
-            "name": "limit",
-            "in": "query"
-          },
-          {
-            "type": "string",
-            "description": "Search term for order number or notes",
-            "name": "q",
-            "in": "query"
-          },
-          {
-            "type": "string",
-            "description": "Sort field (order_number, status, total_amount, created_at, updated_at)",
-            "name": "sort",
-            "in": "query"
-          },
-          {
-            "type": "string",
-            "description": "Sort direction (asc, desc, default: asc)",
-            "name": "order",
-            "in": "query"
-          },
-          {
-            "type": "string",
-            "description": "Start date for filtering (format: YYYY-MM-DD)",
-            "name": "start_date",
-            "in": "query"
-          },
-          {
-            "type": "string",
-            "description": "End date for filtering (format: YYYY-MM-DD)",
-            "name": "end_date",
-            "in": "query"
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successfully retrieved purchase orders",
-            "schema": {
-              "type": "object",
-              "additionalProperties": true
-            }
-          },
-          "400": {
-            "description": "Invalid request parameters",
-            "schema": {
-              "type": "object",
-              "additionalProperties": {
-                "type": "string"
-              }
-            }
-          },
-          "500": {
-            "description": "Failed to fetch purchase orders",
-            "schema": {
-              "type": "object",
-              "additionalProperties": {
-                "type": "string"
-              }
-            }
-          }
-        }
-      },
-      "post": {
-        "security": [
-          {
-            "BearerAuth": []
-          }
-        ],
-        "description": "Create a new purchase order with the provided details",
-        "consumes": ["application/json"],
-        "produces": ["application/json"],
-        "tags": ["purchase-orders"],
-        "summary": "Create a new purchase order",
-        "parameters": [
-          {
-            "description": "Purchase order data",
-            "name": "purchase_order",
-            "in": "body",
-            "required": true,
-            "schema": {
-              "$ref": "#/definitions/models.PurchaseOrder"
-            }
-          }
-        ],
-        "responses": {
-          "201": {
-            "description": "Successfully created purchase order",
-            "schema": {
-              "$ref": "#/definitions/models.PurchaseOrder"
-            }
-          },
-          "400": {
-            "description": "Invalid request body",
-            "schema": {
-              "type": "object",
-              "additionalProperties": {
-                "type": "string"
-              }
-            }
-          },
-          "500": {
-            "description": "Failed to create purchase order",
-            "schema": {
-              "type": "object",
-              "additionalProperties": {
-                "type": "string"
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/purchase-orders/delivery-status": {
-      "put": {
-        "security": [
-          {
-            "BearerAuth": []
-          }
-        ],
-        "description": "Update the delivery status of purchase order items by recording received quantities",
-        "consumes": ["application/json"],
-        "produces": ["application/json"],
-        "tags": ["purchase-orders"],
-        "summary": "Update purchase order delivery status",
-        "parameters": [
-          {
-            "description": "Delivery status update request",
-            "name": "request",
-            "in": "body",
-            "required": true,
-            "schema": {
-              "$ref": "#/definitions/dto.UpdatePurchaseOrderDeliveryStatusRequest"
-            }
-          }
-        ],
-        "responses": {
-          "204": {
-            "description": "Successfully updated purchase order delivery status"
-          },
-          "400": {
-            "description": "Invalid request body or validation failed",
-            "schema": {
-              "type": "object",
-              "additionalProperties": {
-                "type": "string"
-              }
-            }
-          },
-          "404": {
-            "description": "Purchase order not found",
-            "schema": {
-              "type": "object",
-              "additionalProperties": {
-                "type": "string"
-              }
-            }
-          },
-          "500": {
-            "description": "Failed to update purchase order delivery status",
-            "schema": {
-              "type": "object",
-              "additionalProperties": {
-                "type": "string"
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/purchase-orders/{id}/confirm": {
-      "post": {
-        "security": [
-          {
-            "BearerAuth": []
-          }
-        ],
-        "description": "Confirm a purchase order with confirmation notes",
-        "consumes": ["application/json"],
-        "produces": ["application/json"],
-        "tags": ["purchase-orders"],
-        "summary": "Confirm a purchase order",
-        "parameters": [
-          {
-            "type": "integer",
-            "description": "Purchase Order ID",
-            "name": "id",
-            "in": "path",
-            "required": true
-          },
-          {
-            "description": "Confirmation request with notes",
-            "name": "request",
-            "in": "body",
-            "required": true,
-            "schema": {
-              "type": "object",
-              "properties": {
-                "confirmation_notes": {
-                  "type": "string"
+    "host": "localhost:8080",
+    "basePath": "/api/v1",
+    "paths": {
+        "/api/purchase-orders": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Retrieve a paginated list of purchase orders with optional search, sorting, and date range filtering",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "purchase-orders"
+                ],
+                "summary": "List purchase orders",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Page number (default: 1, minimum: 1)",
+                        "name": "page",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Number of items per page (default: 20, minimum: 1, maximum: 100)",
+                        "name": "limit",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Search term for order number or notes",
+                        "name": "q",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Sort field (order_number, status, total_amount, created_at, updated_at)",
+                        "name": "sort",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Sort direction (asc, desc, default: asc)",
+                        "name": "order",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Start date for filtering (format: YYYY-MM-DD)",
+                        "name": "start_date",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "End date for filtering (format: YYYY-MM-DD)",
+                        "name": "end_date",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successfully retrieved purchase orders",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid request parameters",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Failed to fetch purchase orders",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
                 }
-              }
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successfully confirmed purchase order",
-            "schema": {
-              "type": "object",
-              "additionalProperties": {
-                "type": "string"
-              }
-            }
-          },
-          "400": {
-            "description": "Invalid request body or validation failed",
-            "schema": {
-              "type": "object",
-              "additionalProperties": {
-                "type": "string"
-              }
-            }
-          },
-          "403": {
-            "description": "Access denied",
-            "schema": {
-              "type": "object",
-              "additionalProperties": {
-                "type": "string"
-              }
-            }
-          },
-          "404": {
-            "description": "Purchase order not found",
-            "schema": {
-              "type": "object",
-              "additionalProperties": {
-                "type": "string"
-              }
-            }
-          },
-          "409": {
-            "description": "Purchase order already confirmed",
-            "schema": {
-              "type": "object",
-              "additionalProperties": {
-                "type": "string"
-              }
-            }
-          },
-          "500": {
-            "description": "Failed to confirm purchase order",
-            "schema": {
-              "type": "object",
-              "additionalProperties": {
-                "type": "string"
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/purchase-orders/{id}/items/{item_id}/status": {
-      "put": {
-        "security": [
-          {
-            "BearerAuth": []
-          }
-        ],
-        "description": "Update the status of a specific item in a purchase order",
-        "consumes": ["application/json"],
-        "produces": ["application/json"],
-        "tags": ["purchase-orders"],
-        "summary": "Update purchase order item status",
-        "parameters": [
-          {
-            "type": "integer",
-            "description": "Purchase Order ID",
-            "name": "id",
-            "in": "path",
-            "required": true
-          },
-          {
-            "type": "integer",
-            "description": "Purchase Order Item ID",
-            "name": "item_id",
-            "in": "path",
-            "required": true
-          },
-          {
-            "description": "Status update request",
-            "name": "status",
-            "in": "body",
-            "required": true,
-            "schema": {
-              "type": "object",
-              "properties": {
-                "status": {
-                  "type": "string"
+            },
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Create a new purchase order with the provided details",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "purchase-orders"
+                ],
+                "summary": "Create a new purchase order",
+                "parameters": [
+                    {
+                        "description": "Purchase order data",
+                        "name": "purchase_order",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/models.PurchaseOrder"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Successfully created purchase order",
+                        "schema": {
+                            "$ref": "#/definitions/models.PurchaseOrder"
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid request body",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Failed to create purchase order",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
                 }
-              }
             }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successfully updated purchase order item status",
-            "schema": {
-              "$ref": "#/definitions/dto.UpdatePurchaseOrderItemStatusResponse"
-            }
-          },
-          "400": {
-            "description": "Invalid request parameters",
-            "schema": {
-              "type": "object",
-              "additionalProperties": {
-                "type": "string"
-              }
-            }
-          },
-          "404": {
-            "description": "Purchase order or item not found",
-            "schema": {
-              "type": "object",
-              "additionalProperties": {
-                "type": "string"
-              }
-            }
-          },
-          "500": {
-            "description": "Failed to update purchase order item status",
-            "schema": {
-              "type": "object",
-              "additionalProperties": {
-                "type": "string"
-              }
-            }
-          }
-        }
-      }
-    },
-    "/excel/verify": {
-      "post": {
-        "description": "Verifies that the specified filepath and sheetname exist and are valid",
-        "consumes": ["application/json"],
-        "produces": ["application/json"],
-        "tags": ["excel"],
-        "summary": "Verify Excel file and sheet",
-        "parameters": [
-          {
-            "description": "File verification request",
-            "name": "request",
-            "in": "body",
-            "required": true,
-            "schema": {
-              "type": "object"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Verification successful",
-            "schema": {
-              "type": "object",
-              "additionalProperties": {
-                "type": "string"
-              }
-            }
-          },
-          "400": {
-            "description": "Invalid request",
-            "schema": {
-              "type": "object",
-              "additionalProperties": {
-                "type": "string"
-              }
-            }
-          },
-          "404": {
-            "description": "File or sheet not found",
-            "schema": {
-              "type": "object",
-              "additionalProperties": {
-                "type": "string"
-              }
-            }
-          },
-          "500": {
-            "description": "Internal server error",
-            "schema": {
-              "type": "object",
-              "additionalProperties": {
-                "type": "string"
-              }
-            }
-          }
-        }
-      }
-    },
-    "/inventories": {
-      "get": {
-        "security": [
-          {
-            "BearerAuth": []
-          }
-        ],
-        "description": "List all inventories with pagination",
-        "consumes": ["application/json"],
-        "produces": ["application/json"],
-        "tags": ["inventories"],
-        "summary": "List inventories",
-        "parameters": [
-          {
-            "type": "integer",
-            "default": 1,
-            "description": "Page number",
-            "name": "page",
-            "in": "query"
-          },
-          {
-            "type": "integer",
-            "default": 20,
-            "description": "Items per page",
-            "name": "limit",
-            "in": "query"
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "OK",
-            "schema": {
-              "type": "object",
-              "additionalProperties": true
-            }
-          },
-          "500": {
-            "description": "Internal Server Error",
-            "schema": {
-              "type": "object",
-              "additionalProperties": {
-                "type": "string"
-              }
-            }
-          }
-        }
-      },
-      "post": {
-        "security": [
-          {
-            "BearerAuth": []
-          }
-        ],
-        "description": "Create a new inventory",
-        "consumes": ["application/json"],
-        "produces": ["application/json"],
-        "tags": ["inventories"],
-        "summary": "Create inventory",
-        "parameters": [
-          {
-            "description": "Inventory data",
-            "name": "inventory",
-            "in": "body",
-            "required": true,
-            "schema": {
-              "$ref": "#/definitions/models.Inventory"
-            }
-          }
-        ],
-        "responses": {
-          "201": {
-            "description": "Created",
-            "schema": {
-              "$ref": "#/definitions/models.Inventory"
-            }
-          },
-          "400": {
-            "description": "Bad Request",
-            "schema": {
-              "type": "object",
-              "additionalProperties": {
-                "type": "string"
-              }
-            }
-          },
-          "500": {
-            "description": "Internal Server Error",
-            "schema": {
-              "type": "object",
-              "additionalProperties": {
-                "type": "string"
-              }
-            }
-          }
-        }
-      }
-    },
-    "/inventories/confirm": {
-      "put": {
-        "security": [
-          {
-            "BearerAuth": []
-          }
-        ],
-        "description": "Confirm the actual inventory count for multiple inventory items",
-        "consumes": ["application/json"],
-        "produces": ["application/json"],
-        "tags": ["inventory-items"],
-        "summary": "Confirm inventory items",
-        "parameters": [
-          {
-            "description": "Confirmation data",
-            "name": "confirmation",
-            "in": "body",
-            "required": true,
-            "schema": {
-              "$ref": "#/definitions/dto.ReconcileInventoryRequest"
-            }
-          }
-        ],
-        "responses": {
-          "204": {
-            "description": "No Content"
-          },
-          "400": {
-            "description": "Bad Request",
-            "schema": {
-              "type": "object",
-              "additionalProperties": {
-                "type": "string"
-              }
-            }
-          },
-          "404": {
-            "description": "Not Found",
-            "schema": {
-              "type": "object",
-              "additionalProperties": {
-                "type": "string"
-              }
-            }
-          },
-          "500": {
-            "description": "Internal Server Error",
-            "schema": {
-              "type": "object",
-              "additionalProperties": {
-                "type": "string"
-              }
-            }
-          }
-        }
-      }
-    },
-    "/inventories/dispose": {
-      "put": {
-        "security": [
-          {
-            "BearerAuth": []
-          }
-        ],
-        "description": "Dispose multiple inventory items by reducing their quantities",
-        "consumes": ["application/json"],
-        "produces": ["application/json"],
-        "tags": ["inventory-items"],
-        "summary": "Dispose inventory items",
-        "parameters": [
-          {
-            "description": "Disposal data",
-            "name": "disposal",
-            "in": "body",
-            "required": true,
-            "schema": {
-              "$ref": "#/definitions/dto.DisposeInventoryRequest"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "OK",
-            "schema": {
-              "type": "object",
-              "additionalProperties": true
-            }
-          },
-          "400": {
-            "description": "Bad Request",
-            "schema": {
-              "type": "object",
-              "additionalProperties": {
-                "type": "string"
-              }
-            }
-          },
-          "404": {
-            "description": "Not Found",
-            "schema": {
-              "type": "object",
-              "additionalProperties": {
-                "type": "string"
-              }
-            }
-          },
-          "500": {
-            "description": "Internal Server Error",
-            "schema": {
-              "type": "object",
-              "additionalProperties": {
-                "type": "string"
-              }
-            }
-          }
-        }
-      }
-    },
-    "/inventories/last-purchase-prices": {
-      "get": {
-        "security": [
-          {
-            "BearerAuth": []
-          }
-        ],
-        "description": "Get the last purchase transaction price for each Supplier Product as a nested map (product_id -\u003e supplier_id -\u003e price)",
-        "consumes": ["application/json"],
-        "produces": ["application/json"],
-        "tags": ["inventories"],
-        "summary": "Get last purchase prices",
-        "responses": {
-          "200": {
-            "description": "OK",
-            "schema": {
-              "$ref": "#/definitions/dto.LastPurchasePriceMap"
-            }
-          },
-          "500": {
-            "description": "Internal Server Error",
-            "schema": {
-              "type": "object",
-              "additionalProperties": {
-                "type": "string"
-              }
-            }
-          }
-        }
-      }
-    },
-    "/inventories/{id}": {
-      "get": {
-        "security": [
-          {
-            "BearerAuth": []
-          }
-        ],
-        "description": "Get an inventory by ID",
-        "consumes": ["application/json"],
-        "produces": ["application/json"],
-        "tags": ["inventories"],
-        "summary": "Get inventory",
-        "parameters": [
-          {
-            "type": "integer",
-            "description": "Inventory ID",
-            "name": "id",
-            "in": "path",
-            "required": true
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "OK",
-            "schema": {
-              "$ref": "#/definitions/models.Inventory"
-            }
-          },
-          "400": {
-            "description": "Bad Request",
-            "schema": {
-              "type": "object",
-              "additionalProperties": {
-                "type": "string"
-              }
-            }
-          },
-          "404": {
-            "description": "Not Found",
-            "schema": {
-              "type": "object",
-              "additionalProperties": {
-                "type": "string"
-              }
-            }
-          },
-          "500": {
-            "description": "Internal Server Error",
-            "schema": {
-              "type": "object",
-              "additionalProperties": {
-                "type": "string"
-              }
-            }
-          }
-        }
-      },
-      "put": {
-        "security": [
-          {
-            "BearerAuth": []
-          }
-        ],
-        "description": "Update an inventory",
-        "consumes": ["application/json"],
-        "produces": ["application/json"],
-        "tags": ["inventories"],
-        "summary": "Update inventory",
-        "parameters": [
-          {
-            "type": "integer",
-            "description": "Inventory ID",
-            "name": "id",
-            "in": "path",
-            "required": true
-          },
-          {
-            "description": "Inventory data",
-            "name": "inventory",
-            "in": "body",
-            "required": true,
-            "schema": {
-              "$ref": "#/definitions/models.Inventory"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "OK",
-            "schema": {
-              "$ref": "#/definitions/models.Inventory"
-            }
-          },
-          "400": {
-            "description": "Bad Request",
-            "schema": {
-              "type": "object",
-              "additionalProperties": {
-                "type": "string"
-              }
-            }
-          },
-          "404": {
-            "description": "Not Found",
-            "schema": {
-              "type": "object",
-              "additionalProperties": {
-                "type": "string"
-              }
-            }
-          },
-          "500": {
-            "description": "Internal Server Error",
-            "schema": {
-              "type": "object",
-              "additionalProperties": {
-                "type": "string"
-              }
-            }
-          }
-        }
-      },
-      "delete": {
-        "security": [
-          {
-            "BearerAuth": []
-          }
-        ],
-        "description": "Delete an inventory",
-        "consumes": ["application/json"],
-        "produces": ["application/json"],
-        "tags": ["inventories"],
-        "summary": "Delete inventory",
-        "parameters": [
-          {
-            "type": "integer",
-            "description": "Inventory ID",
-            "name": "id",
-            "in": "path",
-            "required": true
-          }
-        ],
-        "responses": {
-          "204": {
-            "description": "No Content"
-          },
-          "400": {
-            "description": "Bad Request",
-            "schema": {
-              "type": "object",
-              "additionalProperties": {
-                "type": "string"
-              }
-            }
-          },
-          "404": {
-            "description": "Not Found",
-            "schema": {
-              "type": "object",
-              "additionalProperties": {
-                "type": "string"
-              }
-            }
-          },
-          "500": {
-            "description": "Internal Server Error",
-            "schema": {
-              "type": "object",
-              "additionalProperties": {
-                "type": "string"
-              }
-            }
-          }
-        }
-      }
-    },
-    "/inventories/{id}/inventory-items": {
-      "get": {
-        "security": [
-          {
-            "BearerAuth": []
-          }
-        ],
-        "description": "List inventory items for a specific inventory with pagination and sorting",
-        "consumes": ["application/json"],
-        "produces": ["application/json"],
-        "tags": ["inventory-items"],
-        "summary": "Get inventory items by inventory ID",
-        "parameters": [
-          {
-            "type": "integer",
-            "description": "Inventory ID",
-            "name": "id",
-            "in": "path",
-            "required": true
-          },
-          {
-            "type": "integer",
-            "default": 1,
-            "description": "Page number",
-            "name": "page",
-            "in": "query"
-          },
-          {
-            "type": "integer",
-            "default": 20,
-            "description": "Items per page",
-            "name": "limit",
-            "in": "query"
-          },
-          {
-            "type": "string",
-            "description": "Filter by status (active/inactive)",
-            "name": "status",
-            "in": "query"
-          },
-          {
-            "type": "string",
-            "description": "Filter by product type",
-            "name": "product_type",
-            "in": "query"
-          },
-          {
-            "enum": ["updated_at", "created_at", "quantity", "product_name"],
-            "type": "string",
-            "default": "updated_at",
-            "description": "Sort by field (updated_at, created_at, quantity, product_name)",
-            "name": "sort",
-            "in": "query"
-          },
-          {
-            "enum": ["asc", "desc"],
-            "type": "string",
-            "default": "desc",
-            "description": "Sort order (asc/desc)",
-            "name": "order",
-            "in": "query"
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "OK",
-            "schema": {
-              "type": "object",
-              "additionalProperties": true
-            }
-          },
-          "400": {
-            "description": "Bad Request",
-            "schema": {
-              "type": "object",
-              "additionalProperties": {
-                "type": "string"
-              }
-            }
-          },
-          "404": {
-            "description": "Not Found",
-            "schema": {
-              "type": "object",
-              "additionalProperties": {
-                "type": "string"
-              }
-            }
-          },
-          "500": {
-            "description": "Internal Server Error",
-            "schema": {
-              "type": "object",
-              "additionalProperties": {
-                "type": "string"
-              }
-            }
-          }
-        }
-      },
-      "post": {
-        "security": [
-          {
-            "BearerAuth": []
-          }
-        ],
-        "description": "Create a new inventory item",
-        "consumes": ["application/json"],
-        "produces": ["application/json"],
-        "tags": ["inventory-items"],
-        "summary": "Create inventory item",
-        "parameters": [
-          {
-            "type": "integer",
-            "description": "Inventory ID",
-            "name": "id",
-            "in": "path",
-            "required": true
-          },
-          {
-            "description": "Inventory item data",
-            "name": "inventoryItem",
-            "in": "body",
-            "required": true,
-            "schema": {
-              "$ref": "#/definitions/models.InventoryItem"
-            }
-          }
-        ],
-        "responses": {
-          "201": {
-            "description": "Created",
-            "schema": {
-              "$ref": "#/definitions/models.InventoryItem"
-            }
-          },
-          "400": {
-            "description": "Bad Request",
-            "schema": {
-              "type": "object",
-              "additionalProperties": {
-                "type": "string"
-              }
-            }
-          },
-          "500": {
-            "description": "Internal Server Error",
-            "schema": {
-              "type": "object",
-              "additionalProperties": {
-                "type": "string"
-              }
-            }
-          }
-        }
-      }
-    },
-    "/inventories/{id}/inventory-items/{item_id}": {
-      "get": {
-        "security": [
-          {
-            "BearerAuth": []
-          }
-        ],
-        "description": "Get an inventory item by ID",
-        "consumes": ["application/json"],
-        "produces": ["application/json"],
-        "tags": ["inventory-items"],
-        "summary": "Get inventory item",
-        "parameters": [
-          {
-            "type": "integer",
-            "description": "Inventory ID",
-            "name": "id",
-            "in": "path",
-            "required": true
-          },
-          {
-            "type": "integer",
-            "description": "Inventory item ID",
-            "name": "item_id",
-            "in": "path",
-            "required": true
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "OK",
-            "schema": {
-              "$ref": "#/definitions/models.InventoryItem"
-            }
-          },
-          "400": {
-            "description": "Bad Request",
-            "schema": {
-              "type": "object",
-              "additionalProperties": {
-                "type": "string"
-              }
-            }
-          },
-          "404": {
-            "description": "Not Found",
-            "schema": {
-              "type": "object",
-              "additionalProperties": {
-                "type": "string"
-              }
-            }
-          },
-          "500": {
-            "description": "Internal Server Error",
-            "schema": {
-              "type": "object",
-              "additionalProperties": {
-                "type": "string"
-              }
-            }
-          }
-        }
-      },
-      "put": {
-        "security": [
-          {
-            "BearerAuth": []
-          }
-        ],
-        "description": "Update an inventory item",
-        "consumes": ["application/json"],
-        "produces": ["application/json"],
-        "tags": ["inventory-items"],
-        "summary": "Update inventory item",
-        "parameters": [
-          {
-            "type": "integer",
-            "description": "Inventory ID",
-            "name": "id",
-            "in": "path",
-            "required": true
-          },
-          {
-            "type": "integer",
-            "description": "Inventory item ID",
-            "name": "item_id",
-            "in": "path",
-            "required": true
-          },
-          {
-            "description": "Inventory item data",
-            "name": "inventoryItem",
-            "in": "body",
-            "required": true,
-            "schema": {
-              "$ref": "#/definitions/models.InventoryItem"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "OK",
-            "schema": {
-              "$ref": "#/definitions/models.InventoryItem"
-            }
-          },
-          "400": {
-            "description": "Bad Request",
-            "schema": {
-              "type": "object",
-              "additionalProperties": {
-                "type": "string"
-              }
-            }
-          },
-          "404": {
-            "description": "Not Found",
-            "schema": {
-              "type": "object",
-              "additionalProperties": {
-                "type": "string"
-              }
-            }
-          },
-          "500": {
-            "description": "Internal Server Error",
-            "schema": {
-              "type": "object",
-              "additionalProperties": {
-                "type": "string"
-              }
-            }
-          }
-        }
-      },
-      "delete": {
-        "security": [
-          {
-            "BearerAuth": []
-          }
-        ],
-        "description": "Delete an inventory item",
-        "consumes": ["application/json"],
-        "produces": ["application/json"],
-        "tags": ["inventory-items"],
-        "summary": "Delete inventory item",
-        "parameters": [
-          {
-            "type": "integer",
-            "description": "Inventory ID",
-            "name": "id",
-            "in": "path",
-            "required": true
-          },
-          {
-            "type": "integer",
-            "description": "Inventory item ID",
-            "name": "item_id",
-            "in": "path",
-            "required": true
-          }
-        ],
-        "responses": {
-          "204": {
-            "description": "No Content"
-          },
-          "400": {
-            "description": "Bad Request",
-            "schema": {
-              "type": "object",
-              "additionalProperties": {
-                "type": "string"
-              }
-            }
-          },
-          "404": {
-            "description": "Not Found",
-            "schema": {
-              "type": "object",
-              "additionalProperties": {
-                "type": "string"
-              }
-            }
-          },
-          "500": {
-            "description": "Internal Server Error",
-            "schema": {
-              "type": "object",
-              "additionalProperties": {
-                "type": "string"
-              }
-            }
-          }
-        }
-      }
-    },
-    "/inventories/{id}/inventory-items/{item_id}/adjust": {
-      "put": {
-        "security": [
-          {
-            "BearerAuth": []
-          }
-        ],
-        "description": "Adjust the quantity of an inventory item",
-        "consumes": ["application/json"],
-        "produces": ["application/json"],
-        "tags": ["inventory-items"],
-        "summary": "Adjust inventory item quantity",
-        "parameters": [
-          {
-            "type": "integer",
-            "description": "Inventory ID",
-            "name": "id",
-            "in": "path",
-            "required": true
-          },
-          {
-            "type": "integer",
-            "description": "Inventory item ID",
-            "name": "item_id",
-            "in": "path",
-            "required": true
-          },
-          {
-            "description": "Adjustment data",
-            "name": "adjustment",
-            "in": "body",
-            "required": true,
-            "schema": {
-              "type": "object",
-              "additionalProperties": true
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "OK",
-            "schema": {
-              "$ref": "#/definitions/models.InventoryItem"
-            }
-          },
-          "400": {
-            "description": "Bad Request",
-            "schema": {
-              "type": "object",
-              "additionalProperties": {
-                "type": "string"
-              }
-            }
-          },
-          "404": {
-            "description": "Not Found",
-            "schema": {
-              "type": "object",
-              "additionalProperties": {
-                "type": "string"
-              }
-            }
-          },
-          "500": {
-            "description": "Internal Server Error",
-            "schema": {
-              "type": "object",
-              "additionalProperties": {
-                "type": "string"
-              }
-            }
-          }
-        }
-      }
-    },
-    "/inventory-items": {
-      "get": {
-        "security": [
-          {
-            "BearerAuth": []
-          }
-        ],
-        "description": "List all inventory items with pagination",
-        "consumes": ["application/json"],
-        "produces": ["application/json"],
-        "tags": ["inventory-items"],
-        "summary": "List inventory items",
-        "parameters": [
-          {
-            "type": "integer",
-            "default": 1,
-            "description": "Page number",
-            "name": "page",
-            "in": "query"
-          },
-          {
-            "type": "integer",
-            "default": 20,
-            "description": "Items per page",
-            "name": "limit",
-            "in": "query"
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "OK",
-            "schema": {
-              "type": "object",
-              "additionalProperties": true
-            }
-          },
-          "500": {
-            "description": "Internal Server Error",
-            "schema": {
-              "type": "object",
-              "additionalProperties": {
-                "type": "string"
-              }
-            }
-          }
-        }
-      }
-    },
-    "/inventory-items/low-stock": {
-      "get": {
-        "security": [
-          {
-            "BearerAuth": []
-          }
-        ],
-        "description": "List inventory items that are below reorder level",
-        "consumes": ["application/json"],
-        "produces": ["application/json"],
-        "tags": ["inventory-items"],
-        "summary": "Get low stock items",
-        "parameters": [
-          {
-            "type": "integer",
-            "default": 1,
-            "description": "Page number",
-            "name": "page",
-            "in": "query"
-          },
-          {
-            "type": "integer",
-            "default": 20,
-            "description": "Items per page",
-            "name": "limit",
-            "in": "query"
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "OK",
-            "schema": {
-              "type": "object",
-              "additionalProperties": true
-            }
-          },
-          "500": {
-            "description": "Internal Server Error",
-            "schema": {
-              "type": "object",
-              "additionalProperties": {
-                "type": "string"
-              }
-            }
-          }
-        }
-      }
-    },
-    "/inventory-items/product/{product_id}": {
-      "get": {
-        "security": [
-          {
-            "BearerAuth": []
-          }
-        ],
-        "description": "Get an inventory item by product ID",
-        "consumes": ["application/json"],
-        "produces": ["application/json"],
-        "tags": ["inventory-items"],
-        "summary": "Get inventory item by product ID",
-        "parameters": [
-          {
-            "type": "integer",
-            "description": "Product ID",
-            "name": "product_id",
-            "in": "path",
-            "required": true
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "OK",
-            "schema": {
-              "$ref": "#/definitions/models.InventoryItem"
-            }
-          },
-          "400": {
-            "description": "Bad Request",
-            "schema": {
-              "type": "object",
-              "additionalProperties": {
-                "type": "string"
-              }
-            }
-          },
-          "404": {
-            "description": "Not Found",
-            "schema": {
-              "type": "object",
-              "additionalProperties": {
-                "type": "string"
-              }
-            }
-          },
-          "500": {
-            "description": "Internal Server Error",
-            "schema": {
-              "type": "object",
-              "additionalProperties": {
-                "type": "string"
-              }
-            }
-          }
-        }
-      }
-    },
-    "/products": {
-      "get": {
-        "security": [
-          {
-            "BearerAuth": []
-          }
-        ],
-        "description": "Get a list of all products with pagination and sorting",
-        "consumes": ["application/json"],
-        "produces": ["application/json"],
-        "tags": ["products"],
-        "summary": "Get all products",
-        "parameters": [
-          {
-            "type": "integer",
-            "default": 20,
-            "description": "Number of items per page",
-            "name": "limit",
-            "in": "query"
-          },
-          {
-            "type": "integer",
-            "default": 1,
-            "description": "Page number",
-            "name": "page",
-            "in": "query"
-          },
-          {
-            "type": "string",
-            "default": "\"created_at\"",
-            "description": "Sort field",
-            "name": "sort",
-            "in": "query"
-          },
-          {
-            "type": "string",
-            "default": "\"desc\"",
-            "description": "Sort order (asc/desc)",
-            "name": "order",
-            "in": "query"
-          },
-          {
-            "type": "string",
-            "default": "\"active\"",
-            "description": "Filter by status (active/inactive)",
-            "name": "status",
-            "in": "query"
-          },
-          {
-            "type": "string",
-            "description": "Filter by product type (electronics, clothing, food, etc.)",
-            "name": "product_type",
-            "in": "query"
-          },
-          {
-            "type": "integer",
-            "description": "Filter by supplier ID",
-            "name": "supplier_id",
-            "in": "query"
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "List of products with pagination info",
-            "schema": {
-              "type": "object",
-              "additionalProperties": true
-            }
-          },
-          "500": {
-            "description": "Internal server error",
-            "schema": {
-              "type": "object",
-              "additionalProperties": true
-            }
-          }
-        }
-      },
-      "post": {
-        "security": [
-          {
-            "BearerAuth": []
-          }
-        ],
-        "description": "Create a new product with the provided information",
-        "consumes": ["application/json"],
-        "produces": ["application/json"],
-        "tags": ["products"],
-        "summary": "Create a new product",
-        "parameters": [
-          {
-            "description": "Product information",
-            "name": "product",
-            "in": "body",
-            "required": true,
-            "schema": {
-              "$ref": "#/definitions/models.Product"
-            }
-          }
-        ],
-        "responses": {
-          "201": {
-            "description": "Created product",
-            "schema": {
-              "$ref": "#/definitions/models.Product"
-            }
-          },
-          "400": {
-            "description": "Bad request",
-            "schema": {
-              "type": "object",
-              "additionalProperties": true
-            }
-          },
-          "500": {
-            "description": "Internal server error",
-            "schema": {
-              "type": "object",
-              "additionalProperties": true
-            }
-          }
-        }
-      }
-    },
-    "/products/import-csv": {
-      "post": {
-        "security": [
-          {
-            "BearerAuth": []
-          }
-        ],
-        "description": "Import products and their suppliers from a CSV or Excel file upload. Files must have headers: Name, Description, ProductType, Suppliers, ContactEmail, ContactPhone, Address. CSV uses semicolon (;) as delimiter. Products can have multiple suppliers by repeating rows with empty product fields.",
-        "consumes": ["multipart/form-data"],
-        "produces": ["application/json"],
-        "tags": ["products"],
-        "summary": "Import products with suppliers from CSV or Excel",
-        "parameters": [
-          {
-            "type": "file",
-            "description": "CSV or Excel file to upload",
-            "name": "file",
-            "in": "formData",
-            "required": true
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Import successful",
-            "schema": {
-              "type": "object",
-              "additionalProperties": true
-            }
-          },
-          "400": {
-            "description": "Bad request",
-            "schema": {
-              "type": "object",
-              "additionalProperties": true
-            }
-          },
-          "500": {
-            "description": "Internal server error",
-            "schema": {
-              "type": "object",
-              "additionalProperties": true
-            }
-          }
-        }
-      }
-    },
-    "/products/search": {
-      "get": {
-        "security": [
-          {
-            "BearerAuth": []
-          }
-        ],
-        "description": "Search products with pagination and sorting",
-        "consumes": ["application/json"],
-        "produces": ["application/json"],
-        "tags": ["products"],
-        "summary": "Search products",
-        "parameters": [
-          {
-            "type": "string",
-            "description": "Search query",
-            "name": "q",
-            "in": "query",
-            "required": true
-          },
-          {
-            "type": "integer",
-            "default": 20,
-            "description": "Number of items per page",
-            "name": "limit",
-            "in": "query"
-          },
-          {
-            "type": "integer",
-            "default": 1,
-            "description": "Page number",
-            "name": "page",
-            "in": "query"
-          },
-          {
-            "type": "string",
-            "default": "\"created_at\"",
-            "description": "Sort field",
-            "name": "sort",
-            "in": "query"
-          },
-          {
-            "type": "string",
-            "default": "\"desc\"",
-            "description": "Sort order (asc/desc)",
-            "name": "order",
-            "in": "query"
-          },
-          {
-            "type": "string",
-            "default": "\"active\"",
-            "description": "Filter by status (active/inactive)",
-            "name": "status",
-            "in": "query"
-          },
-          {
-            "type": "string",
-            "description": "Filter by product type (electronics, clothing, food, etc.)",
-            "name": "product_type",
-            "in": "query"
-          },
-          {
-            "type": "integer",
-            "description": "Filter by supplier ID",
-            "name": "supplier_id",
-            "in": "query"
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Search results with pagination info",
-            "schema": {
-              "type": "object",
-              "additionalProperties": true
-            }
-          },
-          "400": {
-            "description": "Bad request",
-            "schema": {
-              "type": "object",
-              "additionalProperties": true
-            }
-          },
-          "500": {
-            "description": "Internal server error",
-            "schema": {
-              "type": "object",
-              "additionalProperties": true
-            }
-          }
-        }
-      }
-    },
-    "/products/{id}/status": {
-      "put": {
-        "security": [
-          {
-            "BearerAuth": []
-          }
-        ],
-        "description": "Update the status of a product (active, inactive)",
-        "consumes": ["application/json"],
-        "produces": ["application/json"],
-        "tags": ["products"],
-        "summary": "Update product status",
-        "parameters": [
-          {
-            "type": "integer",
-            "description": "Product ID",
-            "name": "id",
-            "in": "path",
-            "required": true
-          },
-          {
-            "description": "Status update request",
-            "name": "status",
-            "in": "body",
-            "required": true,
-            "schema": {
-              "type": "object",
-              "additionalProperties": {
-                "type": "string"
-              }
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Product status updated successfully",
-            "schema": {
-              "type": "object",
-              "additionalProperties": true
-            }
-          },
-          "400": {
-            "description": "Bad request",
-            "schema": {
-              "type": "object",
-              "additionalProperties": true
-            }
-          },
-          "404": {
-            "description": "Product not found",
-            "schema": {
-              "type": "object",
-              "additionalProperties": true
-            }
-          },
-          "500": {
-            "description": "Internal server error",
-            "schema": {
-              "type": "object",
-              "additionalProperties": true
-            }
-          }
-        }
-      }
-    },
-    "/settings": {
-      "get": {
-        "description": "Retrieves all settings in the system",
-        "consumes": ["application/json"],
-        "produces": ["application/json"],
-        "tags": ["Settings"],
-        "summary": "Get all settings",
-        "responses": {
-          "200": {
-            "description": "OK",
-            "schema": {
-              "$ref": "#/definitions/models.GetSettingsResponse"
-            }
-          },
-          "500": {
-            "description": "Internal Server Error",
-            "schema": {
-              "type": "object",
-              "additionalProperties": {
-                "type": "string"
-              }
-            }
-          }
-        }
-      }
-    },
-    "/settings/{key}": {
-      "get": {
-        "description": "Retrieves a specific setting by its key",
-        "consumes": ["application/json"],
-        "produces": ["application/json"],
-        "tags": ["Settings"],
-        "summary": "Get setting by key",
-        "parameters": [
-          {
-            "type": "string",
-            "description": "Setting key",
-            "name": "key",
-            "in": "path",
-            "required": true
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "OK",
-            "schema": {
-              "$ref": "#/definitions/models.Settings"
-            }
-          },
-          "400": {
-            "description": "Bad Request",
-            "schema": {
-              "type": "object",
-              "additionalProperties": {
-                "type": "string"
-              }
-            }
-          },
-          "404": {
-            "description": "Not Found",
-            "schema": {
-              "type": "object",
-              "additionalProperties": {
-                "type": "string"
-              }
-            }
-          },
-          "500": {
-            "description": "Internal Server Error",
-            "schema": {
-              "type": "object",
-              "additionalProperties": {
-                "type": "string"
-              }
-            }
-          }
-        }
-      },
-      "post": {
-        "description": "Creates or updates a setting with the specified key and value",
-        "consumes": ["application/json"],
-        "produces": ["application/json"],
-        "tags": ["Settings"],
-        "summary": "Set setting",
-        "parameters": [
-          {
-            "type": "string",
-            "description": "Setting key",
-            "name": "key",
-            "in": "path",
-            "required": true
-          },
-          {
-            "description": "Set setting value request",
-            "name": "request",
-            "in": "body",
-            "required": true,
-            "schema": {
-              "type": "object",
-              "additionalProperties": true
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "OK",
-            "schema": {
-              "$ref": "#/definitions/models.SetSettingResponse"
-            }
-          },
-          "400": {
-            "description": "Bad Request",
-            "schema": {
-              "type": "object",
-              "additionalProperties": {
-                "type": "string"
-              }
-            }
-          },
-          "500": {
-            "description": "Internal Server Error",
-            "schema": {
-              "type": "object",
-              "additionalProperties": {
-                "type": "string"
-              }
-            }
-          }
-        }
-      },
-      "delete": {
-        "description": "Deletes a setting by its key",
-        "consumes": ["application/json"],
-        "produces": ["application/json"],
-        "tags": ["Settings"],
-        "summary": "Delete setting",
-        "parameters": [
-          {
-            "type": "string",
-            "description": "Setting key",
-            "name": "key",
-            "in": "path",
-            "required": true
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "OK",
-            "schema": {
-              "type": "object",
-              "additionalProperties": {
-                "type": "string"
-              }
-            }
-          },
-          "400": {
-            "description": "Bad Request",
-            "schema": {
-              "type": "object",
-              "additionalProperties": {
-                "type": "string"
-              }
-            }
-          },
-          "500": {
-            "description": "Internal Server Error",
-            "schema": {
-              "type": "object",
-              "additionalProperties": {
-                "type": "string"
-              }
-            }
-          }
-        }
-      }
-    },
-    "/suppliers/{id}/status": {
-      "put": {
-        "security": [
-          {
-            "BearerAuth": []
-          }
-        ],
-        "description": "Update the status of a supplier (active, inactive)",
-        "consumes": ["application/json"],
-        "produces": ["application/json"],
-        "tags": ["suppliers"],
-        "summary": "Update supplier status",
-        "parameters": [
-          {
-            "type": "integer",
-            "description": "Supplier ID",
-            "name": "id",
-            "in": "path",
-            "required": true
-          },
-          {
-            "description": "Status update request",
-            "name": "status",
-            "in": "body",
-            "required": true,
-            "schema": {
-              "type": "object",
-              "additionalProperties": {
-                "type": "string"
-              }
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Supplier status updated successfully",
-            "schema": {
-              "type": "object",
-              "additionalProperties": true
-            }
-          },
-          "400": {
-            "description": "Bad request",
-            "schema": {
-              "type": "object",
-              "additionalProperties": true
-            }
-          },
-          "404": {
-            "description": "Supplier not found",
-            "schema": {
-              "type": "object",
-              "additionalProperties": true
-            }
-          },
-          "500": {
-            "description": "Internal server error",
-            "schema": {
-              "type": "object",
-              "additionalProperties": true
-            }
-          }
-        }
-      }
-    },
-    "/users": {
-      "post": {
-        "security": [
-          {
-            "BearerAuth": []
-          }
-        ],
-        "description": "Create a new user with specified email, name, and role",
-        "consumes": ["application/json"],
-        "produces": ["application/json"],
-        "tags": ["users"],
-        "summary": "Create a new user",
-        "parameters": [
-          {
-            "description": "User creation data",
-            "name": "user",
-            "in": "body",
-            "required": true,
-            "schema": {
-              "$ref": "#/definitions/dto.CreateUserRequest"
-            }
-          }
-        ],
-        "responses": {
-          "201": {
-            "description": "User created successfully",
-            "schema": {
-              "$ref": "#/definitions/dto.CreateUserResponse"
-            }
-          },
-          "400": {
-            "description": "Bad request",
-            "schema": {
-              "type": "object",
-              "additionalProperties": {
-                "type": "string"
-              }
-            }
-          },
-          "409": {
-            "description": "User already exists",
-            "schema": {
-              "type": "object",
-              "additionalProperties": {
-                "type": "string"
-              }
-            }
-          },
-          "500": {
-            "description": "Internal server error",
-            "schema": {
-              "type": "object",
-              "additionalProperties": {
-                "type": "string"
-              }
-            }
-          }
-        }
-      }
-    },
-    "/users/permissions": {
-      "get": {
-        "security": [
-          {
-            "BearerAuth": []
-          }
-        ],
-        "description": "Get all permissions for the current authenticated user based on their roles in Casbin",
-        "consumes": ["application/json"],
-        "produces": ["application/json"],
-        "tags": ["users"],
-        "summary": "Get current user permissions",
-        "responses": {
-          "200": {
-            "description": "User permissions",
-            "schema": {
-              "type": "object",
-              "additionalProperties": true
-            }
-          },
-          "400": {
-            "description": "Bad request",
-            "schema": {
-              "type": "object",
-              "additionalProperties": {
-                "type": "string"
-              }
-            }
-          },
-          "404": {
-            "description": "User not found",
-            "schema": {
-              "type": "object",
-              "additionalProperties": {
-                "type": "string"
-              }
-            }
-          },
-          "500": {
-            "description": "Internal server error",
-            "schema": {
-              "type": "object",
-              "additionalProperties": {
-                "type": "string"
-              }
-            }
-          }
-        }
-      }
-    },
-    "/users/search": {
-      "get": {
-        "security": [
-          {
-            "BearerAuth": []
-          }
-        ],
-        "description": "Search users by name or email with pagination support",
-        "consumes": ["application/json"],
-        "produces": ["application/json"],
-        "tags": ["users"],
-        "summary": "Search users",
-        "parameters": [
-          {
-            "type": "string",
-            "description": "Search query for name or email",
-            "name": "query",
-            "in": "query"
-          },
-          {
-            "type": "integer",
-            "description": "Number of results per page (default: 20)",
-            "name": "limit",
-            "in": "query"
-          },
-          {
-            "type": "integer",
-            "description": "Page number (default: 1)",
-            "name": "page",
-            "in": "query"
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Search results with pagination",
-            "schema": {
-              "type": "object",
-              "additionalProperties": true
-            }
-          },
-          "400": {
-            "description": "Bad request",
-            "schema": {
-              "type": "object",
-              "additionalProperties": {
-                "type": "string"
-              }
-            }
-          },
-          "500": {
-            "description": "Internal server error",
-            "schema": {
-              "type": "object",
-              "additionalProperties": {
-                "type": "string"
-              }
-            }
-          }
-        }
-      }
-    },
-    "/users/{id}": {
-      "put": {
-        "security": [
-          {
-            "BearerAuth": []
-          }
-        ],
-        "description": "Update all properties of a user including email, name, role, and status",
-        "consumes": ["application/json"],
-        "produces": ["application/json"],
-        "tags": ["users"],
-        "summary": "Update user",
-        "parameters": [
-          {
-            "type": "string",
-            "description": "User ID",
-            "name": "id",
-            "in": "path",
-            "required": true
-          },
-          {
-            "description": "User update data",
-            "name": "user",
-            "in": "body",
-            "required": true,
-            "schema": {
-              "$ref": "#/definitions/dto.UpdateUserRequest"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "User updated successfully",
-            "schema": {
-              "type": "object",
-              "additionalProperties": {
-                "type": "string"
-              }
-            }
-          },
-          "400": {
-            "description": "Bad request",
-            "schema": {
-              "type": "object",
-              "additionalProperties": {
-                "type": "string"
-              }
-            }
-          },
-          "404": {
-            "description": "User not found",
-            "schema": {
-              "type": "object",
-              "additionalProperties": {
-                "type": "string"
-              }
-            }
-          },
-          "500": {
-            "description": "Internal server error",
-            "schema": {
-              "type": "object",
-              "additionalProperties": {
-                "type": "string"
-              }
-            }
-          }
-        }
-      }
-    }
-  },
-  "definitions": {
-    "dto.CreateUserRequest": {
-      "type": "object",
-      "required": ["email", "role", "status"],
-      "properties": {
-        "email": {
-          "type": "string",
-          "example": "user@example.com"
         },
-        "name": {
-          "type": "string",
-          "example": "John Doe"
+        "/api/purchase-orders/delivery-status": {
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Update the delivery status of purchase order items by recording received quantities",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "purchase-orders"
+                ],
+                "summary": "Update purchase order delivery status",
+                "parameters": [
+                    {
+                        "description": "Delivery status update request",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/dto.UpdatePurchaseOrderDeliveryStatusRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "Successfully updated purchase order delivery status"
+                    },
+                    "400": {
+                        "description": "Invalid request body or validation failed",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Purchase order not found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Failed to update purchase order delivery status",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
         },
-        "role": {
-          "type": "string",
-          "enum": ["admin", "accountant", "staff"],
-          "example": "staff"
+        "/api/purchase-orders/{id}/confirm": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Confirm a purchase order with confirmation notes",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "purchase-orders"
+                ],
+                "summary": "Confirm a purchase order",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Purchase Order ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Confirmation request with notes",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "confirmation_notes": {
+                                    "type": "string"
+                                }
+                            }
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successfully confirmed purchase order",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid request body or validation failed",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Access denied",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Purchase order not found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "409": {
+                        "description": "Purchase order already confirmed",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Failed to confirm purchase order",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
         },
-        "status": {
-          "type": "string",
-          "enum": ["active", "pending", "inactive"],
-          "example": "active"
+        "/api/purchase-orders/{id}/items/{item_id}/status": {
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Update the status of a specific item in a purchase order",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "purchase-orders"
+                ],
+                "summary": "Update purchase order item status",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Purchase Order ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Purchase Order Item ID",
+                        "name": "item_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Status update request",
+                        "name": "status",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "status": {
+                                    "type": "string"
+                                }
+                            }
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successfully updated purchase order item status",
+                        "schema": {
+                            "$ref": "#/definitions/dto.UpdatePurchaseOrderItemStatusResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid request parameters",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Purchase order or item not found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Failed to update purchase order item status",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/excel/verify": {
+            "post": {
+                "description": "Verifies that the specified filepath and sheetname exist and are valid",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "excel"
+                ],
+                "summary": "Verify Excel file and sheet",
+                "parameters": [
+                    {
+                        "description": "File verification request",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "type": "object"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Verification successful",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "File or sheet not found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/inventories": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "List all inventories with pagination",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "inventories"
+                ],
+                "summary": "List inventories",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "default": 1,
+                        "description": "Page number",
+                        "name": "page",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "default": 20,
+                        "description": "Items per page",
+                        "name": "limit",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Create a new inventory",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "inventories"
+                ],
+                "summary": "Create inventory",
+                "parameters": [
+                    {
+                        "description": "Inventory data",
+                        "name": "inventory",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/models.Inventory"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/models.Inventory"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/inventories/confirm": {
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Confirm the actual inventory count for multiple inventory items",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "inventory-items"
+                ],
+                "summary": "Confirm inventory items",
+                "parameters": [
+                    {
+                        "description": "Confirmation data",
+                        "name": "confirmation",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/dto.ReconcileInventoryRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/inventories/dispose": {
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Dispose multiple inventory items by reducing their quantities",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "inventory-items"
+                ],
+                "summary": "Dispose inventory items",
+                "parameters": [
+                    {
+                        "description": "Disposal data",
+                        "name": "disposal",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/dto.DisposeInventoryRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/inventories/last-purchase-prices": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Get the last purchase transaction price for each Supplier Product as a nested map (product_id -\u003e supplier_id -\u003e price)",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "inventories"
+                ],
+                "summary": "Get last purchase prices",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/dto.LastPurchasePriceMap"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/inventories/{id}": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Get an inventory by ID",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "inventories"
+                ],
+                "summary": "Get inventory",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Inventory ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.Inventory"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            },
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Update an inventory",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "inventories"
+                ],
+                "summary": "Update inventory",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Inventory ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Inventory data",
+                        "name": "inventory",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/models.Inventory"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.Inventory"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Delete an inventory",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "inventories"
+                ],
+                "summary": "Delete inventory",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Inventory ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/inventories/{id}/inventory-items": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "List inventory items for a specific inventory with pagination and sorting",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "inventory-items"
+                ],
+                "summary": "Get inventory items by inventory ID",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Inventory ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "default": 1,
+                        "description": "Page number",
+                        "name": "page",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "default": 20,
+                        "description": "Items per page",
+                        "name": "limit",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filter by status (active/inactive)",
+                        "name": "status",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filter by product type",
+                        "name": "product_type",
+                        "in": "query"
+                    },
+                    {
+                        "enum": [
+                            "updated_at",
+                            "created_at",
+                            "quantity",
+                            "product_name"
+                        ],
+                        "type": "string",
+                        "default": "updated_at",
+                        "description": "Sort by field (updated_at, created_at, quantity, product_name)",
+                        "name": "sort",
+                        "in": "query"
+                    },
+                    {
+                        "enum": [
+                            "asc",
+                            "desc"
+                        ],
+                        "type": "string",
+                        "default": "desc",
+                        "description": "Sort order (asc/desc)",
+                        "name": "order",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Create a new inventory item",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "inventory-items"
+                ],
+                "summary": "Create inventory item",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Inventory ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Inventory item data",
+                        "name": "inventoryItem",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/models.InventoryItem"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/models.InventoryItem"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/inventories/{id}/inventory-items/{item_id}": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Get an inventory item by ID",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "inventory-items"
+                ],
+                "summary": "Get inventory item",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Inventory ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Inventory item ID",
+                        "name": "item_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.InventoryItem"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            },
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Update an inventory item",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "inventory-items"
+                ],
+                "summary": "Update inventory item",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Inventory ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Inventory item ID",
+                        "name": "item_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Inventory item data",
+                        "name": "inventoryItem",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/models.InventoryItem"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.InventoryItem"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Delete an inventory item",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "inventory-items"
+                ],
+                "summary": "Delete inventory item",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Inventory ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Inventory item ID",
+                        "name": "item_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/inventories/{id}/inventory-items/{item_id}/adjust": {
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Adjust the quantity of an inventory item",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "inventory-items"
+                ],
+                "summary": "Adjust inventory item quantity",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Inventory ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Inventory item ID",
+                        "name": "item_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Adjustment data",
+                        "name": "adjustment",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.InventoryItem"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/inventory-items": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "List all inventory items with pagination",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "inventory-items"
+                ],
+                "summary": "List inventory items",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "default": 1,
+                        "description": "Page number",
+                        "name": "page",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "default": 20,
+                        "description": "Items per page",
+                        "name": "limit",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/inventory-items/low-stock": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "List inventory items that are below reorder level",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "inventory-items"
+                ],
+                "summary": "Get low stock items",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "default": 1,
+                        "description": "Page number",
+                        "name": "page",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "default": 20,
+                        "description": "Items per page",
+                        "name": "limit",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/inventory-items/product/{product_id}": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Get an inventory item by product ID",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "inventory-items"
+                ],
+                "summary": "Get inventory item by product ID",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Product ID",
+                        "name": "product_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.InventoryItem"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/products": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Get a list of all products with pagination and sorting",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "products"
+                ],
+                "summary": "Get all products",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "default": 20,
+                        "description": "Number of items per page",
+                        "name": "limit",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "default": 1,
+                        "description": "Page number",
+                        "name": "page",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "default": "\"created_at\"",
+                        "description": "Sort field",
+                        "name": "sort",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "default": "\"desc\"",
+                        "description": "Sort order (asc/desc)",
+                        "name": "order",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "default": "\"active\"",
+                        "description": "Filter by status (active/inactive)",
+                        "name": "status",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filter by product type (electronics, clothing, food, etc.)",
+                        "name": "product_type",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Filter by supplier ID",
+                        "name": "supplier_id",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "List of products with pagination info",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Create a new product with the provided information",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "products"
+                ],
+                "summary": "Create a new product",
+                "parameters": [
+                    {
+                        "description": "Product information",
+                        "name": "product",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/models.Product"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created product",
+                        "schema": {
+                            "$ref": "#/definitions/models.Product"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
+        "/products/import-csv": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Import products and their suppliers from a CSV or Excel file upload. Files must have headers: Name, Description, ProductType, Suppliers, ContactEmail, ContactPhone, Address. CSV uses semicolon (;) as delimiter. Products can have multiple suppliers by repeating rows with empty product fields.",
+                "consumes": [
+                    "multipart/form-data"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "products"
+                ],
+                "summary": "Import products with suppliers from CSV or Excel",
+                "parameters": [
+                    {
+                        "type": "file",
+                        "description": "CSV or Excel file to upload",
+                        "name": "file",
+                        "in": "formData",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Import successful",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "400": {
+                        "description": "Bad request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
+        "/products/search": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Search products with pagination and sorting",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "products"
+                ],
+                "summary": "Search products",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Search query",
+                        "name": "q",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "default": 20,
+                        "description": "Number of items per page",
+                        "name": "limit",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "default": 1,
+                        "description": "Page number",
+                        "name": "page",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "default": "\"created_at\"",
+                        "description": "Sort field",
+                        "name": "sort",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "default": "\"desc\"",
+                        "description": "Sort order (asc/desc)",
+                        "name": "order",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "default": "\"active\"",
+                        "description": "Filter by status (active/inactive)",
+                        "name": "status",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filter by product type (electronics, clothing, food, etc.)",
+                        "name": "product_type",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Filter by supplier ID",
+                        "name": "supplier_id",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Search results with pagination info",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "400": {
+                        "description": "Bad request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
+        "/products/{id}/status": {
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Update the status of a product (active, inactive)",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "products"
+                ],
+                "summary": "Update product status",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Product ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Status update request",
+                        "name": "status",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Product status updated successfully",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "400": {
+                        "description": "Bad request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "404": {
+                        "description": "Product not found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
+        "/settings": {
+            "get": {
+                "description": "Retrieves all settings in the system",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Settings"
+                ],
+                "summary": "Get all settings",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.GetSettingsResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/settings/{key}": {
+            "get": {
+                "description": "Retrieves a specific setting by its key",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Settings"
+                ],
+                "summary": "Get setting by key",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Setting key",
+                        "name": "key",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.Settings"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            },
+            "post": {
+                "description": "Creates or updates a setting with the specified key and value",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Settings"
+                ],
+                "summary": "Set setting",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Setting key",
+                        "name": "key",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Set setting value request",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.SetSettingResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "description": "Deletes a setting by its key",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Settings"
+                ],
+                "summary": "Delete setting",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Setting key",
+                        "name": "key",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/suppliers/{id}/status": {
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Update the status of a supplier (active, inactive)",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "suppliers"
+                ],
+                "summary": "Update supplier status",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Supplier ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Status update request",
+                        "name": "status",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Supplier status updated successfully",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "400": {
+                        "description": "Bad request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "404": {
+                        "description": "Supplier not found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
+        "/users": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Create a new user with specified UID, email, name, and role",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "users"
+                ],
+                "summary": "Create a new user",
+                "parameters": [
+                    {
+                        "description": "User creation data",
+                        "name": "user",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/dto.CreateUserRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "User created successfully",
+                        "schema": {
+                            "$ref": "#/definitions/dto.CreateUserResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "409": {
+                        "description": "User already exists",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/users/permissions": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Get all permissions for the current authenticated user based on their roles in Casbin",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "users"
+                ],
+                "summary": "Get current user permissions",
+                "responses": {
+                    "200": {
+                        "description": "User permissions",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "400": {
+                        "description": "Bad request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "User not found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/users/search": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Search users by name or email with pagination support",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "users"
+                ],
+                "summary": "Search users",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Search query for name or email",
+                        "name": "query",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Number of results per page (default: 20)",
+                        "name": "limit",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Page number (default: 1)",
+                        "name": "page",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Search results with pagination",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "400": {
+                        "description": "Bad request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/users/{uid}": {
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Update all properties of a user including email, name, role, and status",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "users"
+                ],
+                "summary": "Update user",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "User UID",
+                        "name": "uid",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "User update data",
+                        "name": "user",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/dto.UpdateUserRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "User updated successfully",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Bad request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "User not found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
         }
-      }
     },
-    "dto.CreateUserResponse": {
-      "type": "object",
-      "properties": {
-        "created_at": {
-          "type": "string",
-          "example": "2023-01-01T00:00:00Z"
-        },
-        "email": {
-          "type": "string",
-          "example": "user@example.com"
-        },
-        "id": {
-          "type": "string",
-          "example": "550e8400-e29b-41d4-a716-446655440000"
-        },
-        "name": {
-          "type": "string",
-          "example": "John Doe"
-        },
-        "role": {
-          "type": "string",
-          "example": "staff"
-        },
-        "status": {
-          "type": "string",
-          "example": "active"
-        }
-      }
-    },
-    "dto.DisposeInventoryRequest": {
-      "type": "object",
-      "required": ["inventory_id", "items"],
-      "properties": {
-        "inventory_id": {
-          "type": "integer"
-        },
-        "items": {
-          "type": "array",
-          "minItems": 1,
-          "items": {
-            "$ref": "#/definitions/dto.DisposeItem"
-          }
-        }
-      }
-    },
-    "dto.DisposeItem": {
-      "type": "object",
-      "required": ["inventory_item_id", "prev_quantity", "quantity"],
-      "properties": {
-        "inventory_item_id": {
-          "type": "integer"
-        },
-        "prev_quantity": {
-          "type": "integer",
-          "minimum": 1
-        },
-        "quantity": {
-          "type": "integer",
-          "minimum": 1
-        }
-      }
-    },
-    "dto.LastPurchasePriceMap": {
-      "type": "object",
-      "additionalProperties": {
-        "type": "object",
-        "additionalProperties": {
-          "type": "number",
-          "format": "float64"
-        }
-      }
-    },
-    "dto.ReconcileInventoryRequest": {
-      "type": "object",
-      "required": ["inventory_id", "items"],
-      "properties": {
-        "inventory_id": {
-          "type": "integer"
-        },
-        "items": {
-          "type": "array",
-          "minItems": 1,
-          "items": {
-            "$ref": "#/definitions/dto.ReconcileItem"
-          }
-        }
-      }
-    },
-    "dto.ReconcileItem": {
-      "type": "object",
-      "required": ["actual_quantity", "inventory_item_id", "prev_quantity"],
-      "properties": {
-        "actual_quantity": {
-          "type": "integer",
-          "minimum": 0
-        },
-        "inventory_item_id": {
-          "type": "integer"
-        },
-        "prev_quantity": {
-          "type": "integer",
-          "minimum": 1
-        }
-      }
-    },
-    "dto.UpdatePurchaseOrderDeliveryStatusRequest": {
-      "type": "object",
-      "required": ["items", "purchase_order_id"],
-      "properties": {
-        "items": {
-          "type": "array",
-          "minItems": 1,
-          "items": {
+    "definitions": {
+        "dto.CreateUserRequest": {
             "type": "object",
-            "required": ["id", "received_quantity"],
+            "required": [
+                "email",
+                "role",
+                "status"
+            ],
             "properties": {
-              "id": {
-                "type": "integer"
-              },
-              "received_quantity": {
-                "type": "integer",
-                "minimum": 1
-              }
+                "email": {
+                    "type": "string",
+                    "example": "user@example.com"
+                },
+                "name": {
+                    "type": "string",
+                    "example": "John Doe"
+                },
+                "role": {
+                    "type": "string",
+                    "enum": [
+                        "admin",
+                        "accountant",
+                        "staff"
+                    ],
+                    "example": "staff"
+                },
+                "status": {
+                    "type": "string",
+                    "enum": [
+                        "active",
+                        "pending",
+                        "inactive"
+                    ],
+                    "example": "active"
+                },
+                "uid": {
+                    "type": "string",
+                    "example": "firebase-uid-123"
+                }
             }
-          }
         },
-        "purchase_order_id": {
-          "type": "integer"
-        }
-      }
-    },
-    "dto.UpdatePurchaseOrderItemStatusResponse": {
-      "type": "object",
-      "properties": {
-        "item_status": {
-          "allOf": [
-            {
-              "$ref": "#/definitions/models.PurchaseOrderItemStatus"
+        "dto.CreateUserResponse": {
+            "type": "object",
+            "properties": {
+                "created_at": {
+                    "type": "string",
+                    "example": "2023-01-01T00:00:00Z"
+                },
+                "email": {
+                    "type": "string",
+                    "example": "user@example.com"
+                },
+                "id": {
+                    "type": "string",
+                    "example": "550e8400-e29b-41d4-a716-446655440000"
+                },
+                "name": {
+                    "type": "string",
+                    "example": "John Doe"
+                },
+                "role": {
+                    "type": "string",
+                    "example": "staff"
+                },
+                "status": {
+                    "type": "string",
+                    "example": "active"
+                },
+                "uid": {
+                    "type": "string",
+                    "example": "firebase-uid-123"
+                }
             }
-          ],
-          "example": "delivered"
         },
-        "order_status": {
-          "allOf": [
-            {
-              "$ref": "#/definitions/models.PurchaseOrderStatus"
+        "dto.DisposeInventoryRequest": {
+            "type": "object",
+            "required": [
+                "inventory_id",
+                "items"
+            ],
+            "properties": {
+                "inventory_id": {
+                    "type": "integer"
+                },
+                "items": {
+                    "type": "array",
+                    "minItems": 1,
+                    "items": {
+                        "$ref": "#/definitions/dto.DisposeItem"
+                    }
+                }
             }
-          ],
-          "example": "fully_delivered"
-        }
-      }
-    },
-    "dto.UpdateUserRequest": {
-      "type": "object",
-      "required": ["role", "status"],
-      "properties": {
-        "name": {
-          "type": "string",
-          "example": "John Doe"
         },
-        "role": {
-          "type": "string",
-          "enum": ["admin", "accountant", "staff"],
-          "example": "staff"
-        },
-        "status": {
-          "type": "string",
-          "enum": ["active", "pending", "inactive"],
-          "example": "active"
-        }
-      }
-    },
-    "models.GetSettingsResponse": {
-      "description": "Response containing all application settings",
-      "type": "object",
-      "properties": {
-        "data": {
-          "type": "array",
-          "items": {
-            "$ref": "#/definitions/models.Settings"
-          }
-        }
-      }
-    },
-    "models.Inventory": {
-      "type": "object",
-      "properties": {
-        "created_at": {
-          "type": "string"
-        },
-        "created_by": {
-          "type": "string"
-        },
-        "deleted_at": {
-          "type": "string"
-        },
-        "description": {
-          "type": "string"
-        },
-        "id": {
-          "type": "integer"
-        },
-        "items": {
-          "type": "array",
-          "items": {
-            "$ref": "#/definitions/models.InventoryItem"
-          }
-        },
-        "location": {
-          "type": "string"
-        },
-        "name": {
-          "type": "string"
-        },
-        "status": {
-          "$ref": "#/definitions/models.InventoryStatus"
-        },
-        "updated_at": {
-          "type": "string"
-        }
-      }
-    },
-    "models.InventoryItem": {
-      "type": "object",
-      "properties": {
-        "active_purchase_transactions": {
-          "type": "array",
-          "items": {
-            "$ref": "#/definitions/models.InventoryTransaction"
-          }
-        },
-        "consuming_transaction_id": {
-          "type": "integer"
-        },
-        "created_at": {
-          "type": "string"
-        },
-        "created_by": {
-          "type": "string"
-        },
-        "deleted_at": {
-          "type": "string"
-        },
-        "id": {
-          "type": "integer"
-        },
-        "inventory": {
-          "$ref": "#/definitions/models.Inventory"
-        },
-        "inventory_id": {
-          "type": "integer"
-        },
-        "product": {
-          "$ref": "#/definitions/models.Product"
-        },
-        "product_id": {
-          "type": "integer"
-        },
-        "quantity": {
-          "type": "integer"
-        },
-        "status": {
-          "$ref": "#/definitions/models.InventoryItemStatus"
-        },
-        "updated_at": {
-          "type": "string"
-        }
-      }
-    },
-    "models.InventoryItemStatus": {
-      "type": "string",
-      "enum": ["active", "inactive"],
-      "x-enum-varnames": [
-        "InventoryItemStatusActive",
-        "InventoryItemStatusInactive"
-      ]
-    },
-    "models.InventoryStatus": {
-      "type": "string",
-      "enum": ["active", "inactive"],
-      "x-enum-varnames": ["InventoryStatusActive", "InventoryStatusInactive"]
-    },
-    "models.InventoryTransaction": {
-      "type": "object",
-      "properties": {
-        "consumed_quantity": {
-          "type": "integer"
-        },
-        "counter_transaction_id": {
-          "type": "integer"
-        },
-        "created_at": {
-          "type": "string"
-        },
-        "created_by": {
-          "type": "string"
-        },
-        "deleted_at": {
-          "type": "string"
-        },
-        "id": {
-          "type": "integer"
-        },
-        "inventory_item": {
-          "$ref": "#/definitions/models.InventoryItem"
-        },
-        "inventory_item_id": {
-          "type": "integer"
-        },
-        "price": {
-          "type": "number"
-        },
-        "purchase_order_item_id": {
-          "type": "integer"
-        },
-        "quantity": {
-          "type": "integer"
-        },
-        "supplier": {
-          "$ref": "#/definitions/models.Supplier"
-        },
-        "supplier_id": {
-          "type": "integer"
-        },
-        "transaction_type": {
-          "$ref": "#/definitions/models.InventoryTransactionType"
-        },
-        "updated_at": {
-          "type": "string"
-        }
-      }
-    },
-    "models.InventoryTransactionType": {
-      "type": "string",
-      "enum": ["purchase", "disposal", "sell"],
-      "x-enum-varnames": [
-        "InventoryTransactionTypePurchase",
-        "InventoryTransactionTypeDisposal",
-        "InventoryTransactionTypeSell"
-      ]
-    },
-    "models.Product": {
-      "type": "object",
-      "properties": {
-        "created_at": {
-          "type": "string"
-        },
-        "created_by": {
-          "type": "string"
-        },
-        "deleted_at": {
-          "type": "string"
-        },
-        "description": {
-          "type": "string"
-        },
-        "id": {
-          "type": "integer"
-        },
-        "inventory_items": {
-          "type": "array",
-          "items": {
-            "$ref": "#/definitions/models.InventoryItem"
-          }
-        },
-        "name": {
-          "type": "string"
-        },
-        "product_type": {
-          "type": "string"
-        },
-        "status": {
-          "type": "string"
-        },
-        "suppliers": {
-          "type": "array",
-          "items": {
-            "$ref": "#/definitions/models.Supplier"
-          }
-        },
-        "unit": {
-          "type": "string"
-        },
-        "updated_at": {
-          "type": "string"
-        }
-      }
-    },
-    "models.PurchaseOrder": {
-      "description": "Purchase order entity with items and status tracking",
-      "type": "object",
-      "required": ["inventory_id", "items"],
-      "properties": {
-        "confirmation_notes": {
-          "type": "string",
-          "example": "Purchase order confirmed with supplier"
-        },
-        "confirmed_at": {
-          "type": "string",
-          "example": "2023-01-01T12:00:00Z"
-        },
-        "confirmed_by": {
-          "type": "integer"
-        },
-        "created_at": {
-          "type": "string"
-        },
-        "created_by": {
-          "type": "string"
-        },
-        "deleted_at": {
-          "type": "string"
-        },
-        "id": {
-          "type": "integer"
-        },
-        "inventory_id": {
-          "type": "integer"
-        },
-        "items": {
-          "type": "array",
-          "minItems": 1,
-          "items": {
-            "$ref": "#/definitions/models.PurchaseOrderItem"
-          }
-        },
-        "notes": {
-          "type": "string",
-          "example": "Purchase order notes"
-        },
-        "order_number": {
-          "type": "string",
-          "example": "PO-2023-001"
-        },
-        "status": {
-          "allOf": [
-            {
-              "$ref": "#/definitions/models.PurchaseOrderStatus"
+        "dto.DisposeItem": {
+            "type": "object",
+            "required": [
+                "inventory_item_id",
+                "prev_quantity",
+                "quantity"
+            ],
+            "properties": {
+                "inventory_item_id": {
+                    "type": "integer"
+                },
+                "prev_quantity": {
+                    "type": "integer",
+                    "minimum": 1
+                },
+                "quantity": {
+                    "type": "integer",
+                    "minimum": 1
+                }
             }
-          ],
-          "example": "order_placed"
         },
-        "total_amount": {
-          "description": "Calculated field, not stored in DB",
-          "type": "number",
-          "example": 999.99
-        },
-        "updated_at": {
-          "type": "string"
-        }
-      }
-    },
-    "models.PurchaseOrderItem": {
-      "type": "object",
-      "required": ["product_id", "quantity", "supplier_id"],
-      "properties": {
-        "created_at": {
-          "type": "string"
-        },
-        "created_by": {
-          "type": "string"
-        },
-        "deleted_at": {
-          "type": "string"
-        },
-        "id": {
-          "type": "integer"
-        },
-        "product": {
-          "$ref": "#/definitions/models.Product"
-        },
-        "product_id": {
-          "type": "integer"
-        },
-        "purchase_order": {
-          "$ref": "#/definitions/models.PurchaseOrder"
-        },
-        "purchase_order_id": {
-          "type": "integer"
-        },
-        "quantity": {
-          "type": "integer",
-          "minimum": 1
-        },
-        "received_quantity": {
-          "type": "integer"
-        },
-        "status": {
-          "allOf": [
-            {
-              "$ref": "#/definitions/models.PurchaseOrderItemStatus"
+        "dto.LastPurchasePriceMap": {
+            "type": "object",
+            "additionalProperties": {
+                "type": "object",
+                "additionalProperties": {
+                    "type": "number",
+                    "format": "float64"
+                }
             }
-          ],
-          "example": "delivering"
         },
-        "supplier": {
-          "$ref": "#/definitions/models.Supplier"
+        "dto.ReconcileInventoryRequest": {
+            "type": "object",
+            "required": [
+                "inventory_id",
+                "items"
+            ],
+            "properties": {
+                "inventory_id": {
+                    "type": "integer"
+                },
+                "items": {
+                    "type": "array",
+                    "minItems": 1,
+                    "items": {
+                        "$ref": "#/definitions/dto.ReconcileItem"
+                    }
+                }
+            }
         },
-        "supplier_id": {
-          "type": "integer"
+        "dto.ReconcileItem": {
+            "type": "object",
+            "required": [
+                "actual_quantity",
+                "inventory_item_id",
+                "prev_quantity"
+            ],
+            "properties": {
+                "actual_quantity": {
+                    "type": "integer",
+                    "minimum": 0
+                },
+                "inventory_item_id": {
+                    "type": "integer"
+                },
+                "prev_quantity": {
+                    "type": "integer",
+                    "minimum": 1
+                }
+            }
         },
-        "total_amount": {
-          "description": "Calculated field, not stored in DB",
-          "type": "number"
+        "dto.UpdatePurchaseOrderDeliveryStatusRequest": {
+            "type": "object",
+            "required": [
+                "items",
+                "purchase_order_id"
+            ],
+            "properties": {
+                "items": {
+                    "type": "array",
+                    "minItems": 1,
+                    "items": {
+                        "type": "object",
+                        "required": [
+                            "id",
+                            "received_quantity"
+                        ],
+                        "properties": {
+                            "id": {
+                                "type": "integer"
+                            },
+                            "received_quantity": {
+                                "type": "integer",
+                                "minimum": 1
+                            }
+                        }
+                    }
+                },
+                "purchase_order_id": {
+                    "type": "integer"
+                }
+            }
         },
-        "unit_price": {
-          "type": "number",
-          "minimum": 0
+        "dto.UpdatePurchaseOrderItemStatusResponse": {
+            "type": "object",
+            "properties": {
+                "item_status": {
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/models.PurchaseOrderItemStatus"
+                        }
+                    ],
+                    "example": "delivered"
+                },
+                "order_status": {
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/models.PurchaseOrderStatus"
+                        }
+                    ],
+                    "example": "fully_delivered"
+                }
+            }
         },
-        "updated_at": {
-          "type": "string"
+        "dto.UpdateUserRequest": {
+            "type": "object",
+            "required": [
+                "role",
+                "status"
+            ],
+            "properties": {
+                "name": {
+                    "type": "string",
+                    "example": "John Doe"
+                },
+                "role": {
+                    "type": "string",
+                    "enum": [
+                        "admin",
+                        "accountant",
+                        "staff"
+                    ],
+                    "example": "staff"
+                },
+                "status": {
+                    "type": "string",
+                    "enum": [
+                        "active",
+                        "pending",
+                        "inactive"
+                    ],
+                    "example": "active"
+                }
+            }
+        },
+        "models.GetSettingsResponse": {
+            "description": "Response containing all application settings",
+            "type": "object",
+            "properties": {
+                "data": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/models.Settings"
+                    }
+                }
+            }
+        },
+        "models.Inventory": {
+            "type": "object",
+            "properties": {
+                "created_at": {
+                    "type": "string"
+                },
+                "created_by": {
+                    "type": "string"
+                },
+                "deleted_at": {
+                    "type": "string"
+                },
+                "description": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "items": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/models.InventoryItem"
+                    }
+                },
+                "location": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "status": {
+                    "$ref": "#/definitions/models.InventoryStatus"
+                },
+                "updated_at": {
+                    "type": "string"
+                }
+            }
+        },
+        "models.InventoryItem": {
+            "type": "object",
+            "properties": {
+                "active_purchase_transactions": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/models.InventoryTransaction"
+                    }
+                },
+                "consuming_transaction_id": {
+                    "type": "integer"
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "created_by": {
+                    "type": "string"
+                },
+                "deleted_at": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "inventory": {
+                    "$ref": "#/definitions/models.Inventory"
+                },
+                "inventory_id": {
+                    "type": "integer"
+                },
+                "product": {
+                    "$ref": "#/definitions/models.Product"
+                },
+                "product_id": {
+                    "type": "integer"
+                },
+                "quantity": {
+                    "type": "integer"
+                },
+                "status": {
+                    "$ref": "#/definitions/models.InventoryItemStatus"
+                },
+                "updated_at": {
+                    "type": "string"
+                }
+            }
+        },
+        "models.InventoryItemStatus": {
+            "type": "string",
+            "enum": [
+                "active",
+                "inactive"
+            ],
+            "x-enum-varnames": [
+                "InventoryItemStatusActive",
+                "InventoryItemStatusInactive"
+            ]
+        },
+        "models.InventoryStatus": {
+            "type": "string",
+            "enum": [
+                "active",
+                "inactive"
+            ],
+            "x-enum-varnames": [
+                "InventoryStatusActive",
+                "InventoryStatusInactive"
+            ]
+        },
+        "models.InventoryTransaction": {
+            "type": "object",
+            "properties": {
+                "consumed_quantity": {
+                    "type": "integer"
+                },
+                "counter_transaction_id": {
+                    "type": "integer"
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "created_by": {
+                    "type": "string"
+                },
+                "deleted_at": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "inventory_item": {
+                    "$ref": "#/definitions/models.InventoryItem"
+                },
+                "inventory_item_id": {
+                    "type": "integer"
+                },
+                "price": {
+                    "type": "number"
+                },
+                "purchase_order_item_id": {
+                    "type": "integer"
+                },
+                "quantity": {
+                    "type": "integer"
+                },
+                "supplier": {
+                    "$ref": "#/definitions/models.Supplier"
+                },
+                "supplier_id": {
+                    "type": "integer"
+                },
+                "transaction_type": {
+                    "$ref": "#/definitions/models.InventoryTransactionType"
+                },
+                "updated_at": {
+                    "type": "string"
+                }
+            }
+        },
+        "models.InventoryTransactionType": {
+            "type": "string",
+            "enum": [
+                "purchase",
+                "disposal",
+                "sell"
+            ],
+            "x-enum-varnames": [
+                "InventoryTransactionTypePurchase",
+                "InventoryTransactionTypeDisposal",
+                "InventoryTransactionTypeSell"
+            ]
+        },
+        "models.Product": {
+            "type": "object",
+            "properties": {
+                "created_at": {
+                    "type": "string"
+                },
+                "created_by": {
+                    "type": "string"
+                },
+                "deleted_at": {
+                    "type": "string"
+                },
+                "description": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "inventory_items": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/models.InventoryItem"
+                    }
+                },
+                "name": {
+                    "type": "string"
+                },
+                "product_type": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                },
+                "suppliers": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/models.Supplier"
+                    }
+                },
+                "unit": {
+                    "type": "string"
+                },
+                "updated_at": {
+                    "type": "string"
+                }
+            }
+        },
+        "models.PurchaseOrder": {
+            "description": "Purchase order entity with items and status tracking",
+            "type": "object",
+            "required": [
+                "inventory_id",
+                "items"
+            ],
+            "properties": {
+                "confirmation_notes": {
+                    "type": "string",
+                    "example": "Purchase order confirmed with supplier"
+                },
+                "confirmed_at": {
+                    "type": "string",
+                    "example": "2023-01-01T12:00:00Z"
+                },
+                "confirmed_by": {
+                    "type": "integer"
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "created_by": {
+                    "type": "string"
+                },
+                "deleted_at": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "inventory_id": {
+                    "type": "integer"
+                },
+                "items": {
+                    "type": "array",
+                    "minItems": 1,
+                    "items": {
+                        "$ref": "#/definitions/models.PurchaseOrderItem"
+                    }
+                },
+                "notes": {
+                    "type": "string",
+                    "example": "Purchase order notes"
+                },
+                "order_number": {
+                    "type": "string",
+                    "example": "PO-2023-001"
+                },
+                "status": {
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/models.PurchaseOrderStatus"
+                        }
+                    ],
+                    "example": "order_placed"
+                },
+                "total_amount": {
+                    "description": "Calculated field, not stored in DB",
+                    "type": "number",
+                    "example": 999.99
+                },
+                "updated_at": {
+                    "type": "string"
+                }
+            }
+        },
+        "models.PurchaseOrderItem": {
+            "type": "object",
+            "required": [
+                "product_id",
+                "quantity",
+                "supplier_id"
+            ],
+            "properties": {
+                "created_at": {
+                    "type": "string"
+                },
+                "created_by": {
+                    "type": "string"
+                },
+                "deleted_at": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "product": {
+                    "$ref": "#/definitions/models.Product"
+                },
+                "product_id": {
+                    "type": "integer"
+                },
+                "purchase_order": {
+                    "$ref": "#/definitions/models.PurchaseOrder"
+                },
+                "purchase_order_id": {
+                    "type": "integer"
+                },
+                "quantity": {
+                    "type": "integer",
+                    "minimum": 1
+                },
+                "received_quantity": {
+                    "type": "integer"
+                },
+                "status": {
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/models.PurchaseOrderItemStatus"
+                        }
+                    ],
+                    "example": "delivering"
+                },
+                "supplier": {
+                    "$ref": "#/definitions/models.Supplier"
+                },
+                "supplier_id": {
+                    "type": "integer"
+                },
+                "total_amount": {
+                    "description": "Calculated field, not stored in DB",
+                    "type": "number"
+                },
+                "unit_price": {
+                    "type": "number",
+                    "minimum": 0
+                },
+                "updated_at": {
+                    "type": "string"
+                }
+            }
+        },
+        "models.PurchaseOrderItemStatus": {
+            "type": "string",
+            "enum": [
+                "awaiting_delivery",
+                "partially_delivered",
+                "delivered",
+                "cancelled"
+            ],
+            "x-enum-varnames": [
+                "PurchaseOrderItemStatusAwaitingDelivery",
+                "PurchaseOrderItemStatusPartiallyDelivered",
+                "PurchaseOrderItemStatusDelivered",
+                "PurchaseOrderItemStatusCancelled"
+            ]
+        },
+        "models.PurchaseOrderStatus": {
+            "type": "string",
+            "enum": [
+                "order_placed",
+                "partially_delivered",
+                "fully_delivered",
+                "completed",
+                "cancelled"
+            ],
+            "x-enum-varnames": [
+                "PurchaseOrderStatusOrderPlaced",
+                "PurchaseOrderStatusPartiallyDelivered",
+                "PurchaseOrderStatusFullyDelivered",
+                "PurchaseOrderStatusCompleted",
+                "PurchaseOrderStatusCancelled"
+            ]
+        },
+        "models.SetSettingResponse": {
+            "description": "Response after successfully setting a configuration value",
+            "type": "object",
+            "properties": {
+                "message": {
+                    "type": "string",
+                    "example": "Setting updated successfully"
+                }
+            }
+        },
+        "models.Settings": {
+            "type": "object",
+            "properties": {
+                "key": {
+                    "type": "string",
+                    "example": "app_name"
+                },
+                "value": {
+                    "type": "object"
+                }
+            }
+        },
+        "models.Supplier": {
+            "type": "object",
+            "properties": {
+                "address": {
+                    "type": "string"
+                },
+                "contact_email": {
+                    "type": "string"
+                },
+                "contact_phone": {
+                    "type": "string"
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "created_by": {
+                    "type": "string"
+                },
+                "deleted_at": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "products": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/models.Product"
+                    }
+                },
+                "status": {
+                    "type": "string"
+                },
+                "updated_at": {
+                    "type": "string"
+                }
+            }
         }
-      }
     },
-    "models.PurchaseOrderItemStatus": {
-      "type": "string",
-      "enum": [
-        "awaiting_delivery",
-        "partially_delivered",
-        "delivered",
-        "cancelled"
-      ],
-      "x-enum-varnames": [
-        "PurchaseOrderItemStatusAwaitingDelivery",
-        "PurchaseOrderItemStatusPartiallyDelivered",
-        "PurchaseOrderItemStatusDelivered",
-        "PurchaseOrderItemStatusCancelled"
-      ]
-    },
-    "models.PurchaseOrderStatus": {
-      "type": "string",
-      "enum": [
-        "order_placed",
-        "partially_delivered",
-        "fully_delivered",
-        "completed",
-        "cancelled"
-      ],
-      "x-enum-varnames": [
-        "PurchaseOrderStatusOrderPlaced",
-        "PurchaseOrderStatusPartiallyDelivered",
-        "PurchaseOrderStatusFullyDelivered",
-        "PurchaseOrderStatusCompleted",
-        "PurchaseOrderStatusCancelled"
-      ]
-    },
-    "models.SetSettingResponse": {
-      "description": "Response after successfully setting a configuration value",
-      "type": "object",
-      "properties": {
-        "message": {
-          "type": "string",
-          "example": "Setting updated successfully"
+    "securityDefinitions": {
+        "BearerAuth": {
+            "description": "Type \"Bearer\" followed by a space and JWT token.",
+            "type": "apiKey",
+            "name": "Authorization",
+            "in": "header"
         }
-      }
-    },
-    "models.Settings": {
-      "type": "object",
-      "properties": {
-        "key": {
-          "type": "string",
-          "example": "app_name"
-        },
-        "value": {
-          "type": "object"
-        }
-      }
-    },
-    "models.Supplier": {
-      "type": "object",
-      "properties": {
-        "address": {
-          "type": "string"
-        },
-        "contact_email": {
-          "type": "string"
-        },
-        "contact_phone": {
-          "type": "string"
-        },
-        "created_at": {
-          "type": "string"
-        },
-        "created_by": {
-          "type": "string"
-        },
-        "deleted_at": {
-          "type": "string"
-        },
-        "id": {
-          "type": "integer"
-        },
-        "name": {
-          "type": "string"
-        },
-        "products": {
-          "type": "array",
-          "items": {
-            "$ref": "#/definitions/models.Product"
-          }
-        },
-        "status": {
-          "type": "string"
-        },
-        "updated_at": {
-          "type": "string"
-        }
-      }
     }
-  },
-  "securityDefinitions": {
-    "BearerAuth": {
-      "description": "Type \"Bearer\" followed by a space and JWT token.",
-      "type": "apiKey",
-      "name": "Authorization",
-      "in": "header"
-    }
-  }
 }

@@ -104,9 +104,8 @@ p, bot_form, payment-receipt-forms, update, allow
 p, bot_form, payment-receipt-forms, submit, allow
 p, bot_form, permissions, view, allow
 
-g, admin@example.com, admin
-g, admin2@example.com, admin
-g, test@cim.local, admin
-g, accountant@cim.local, accountant
-g, staff@cim.local, staff
-g, form@cim.local, bot_form
+g, demoAdminUid0000000000000000, admin
+g, demoAccountantUid00000000000, accountant
+g, demoStaffUid0000000000000000, staff
+g, demoMaintAdminUid00000000000, admin
+g, demoBotFormUid00000000000000, bot_form

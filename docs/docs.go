@@ -2232,7 +2232,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Create a new user with specified email, name, and role",
+                "description": "Create a new user with specified UID, email, name, and role",
                 "consumes": [
                     "application/json"
                 ],
@@ -2414,7 +2414,7 @@ const docTemplate = `{
                 }
             }
         },
-        "/users/{id}": {
+        "/users/{uid}": {
             "put": {
                 "security": [
                     {
@@ -2435,8 +2435,8 @@ const docTemplate = `{
                 "parameters": [
                     {
                         "type": "string",
-                        "description": "User ID",
-                        "name": "id",
+                        "description": "User UID",
+                        "name": "uid",
                         "in": "path",
                         "required": true
                     },
@@ -2526,6 +2526,10 @@ const docTemplate = `{
                     ],
                     "example": "active"
                 },
+                "uid": {
+                    "type": "string",
+                    "example": "firebase-uid-123"
+                }
             }
         },
         "dto.CreateUserResponse": {
@@ -2555,6 +2559,10 @@ const docTemplate = `{
                     "type": "string",
                     "example": "active"
                 },
+                "uid": {
+                    "type": "string",
+                    "example": "firebase-uid-123"
+                }
             }
         },
         "dto.DisposeInventoryRequest": {

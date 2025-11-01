@@ -442,7 +442,7 @@ func (h *PaymentReceiptFormHandler) LatestPendingPaymentReceiptFormStream(c echo
 	c.Response().Header().Set("Access-Control-Allow-Headers", "Cache-Control")
 
 	// Create a unique client ID
-	clientID, err := pkg.GetUserEmailFromContext(c.Request().Context())
+	clientID, err := pkg.GetUserIDFromContext(c.Request().Context())
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to get user ID"})
 	}

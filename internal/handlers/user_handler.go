@@ -27,12 +27,12 @@ func NewUserHandler(userService *services.UserService, firebaseAuth *auth.Fireba
 
 // GetProfile retrieves the current user's profile
 func (h *UserHandler) GetProfile(c echo.Context) error {
-	userEmail, _ := c.Get(pkg.AuthContextKeyUserEmail).(string)
-	if userEmail == "" {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid user email"})
+	userID, _ := c.Get(pkg.AuthContextKeyUserID).(string)
+	if userID == "" {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid user ID"})
 	}
 
-	user, err := h.userService.GetUserByEmail(c.Request().Context(), userEmail)
+	user, err := h.userService.GetUserByUID(c.Request().Context(), userID)
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to get user"})
 	}
@@ -42,6 +42,7 @@ func (h *UserHandler) GetProfile(c echo.Context) error {
 
 	return c.JSON(http.StatusOK, map[string]interface{}{
 		"id":    user.ID,
+		"uid":   user.UID,
 		"email": user.Email,
 		"name":  user.Name,
 		"role":  user.Role,
@@ -65,10 +66,10 @@ func (h *UserHandler) ListUsers(c echo.Context) error {
 	// Calculate offset
 	offset := (page - 1) * limit
 
-	// Get current user email to exclude from results
-	currentUserEmail, _ := c.Get(pkg.AuthContextKeyUserEmail).(string)
+	// Get current user ID to exclude from results
+	currentUserID, _ := c.Get(pkg.AuthContextKeyUserID).(string)
 
-	users, total, err := h.userService.ListUsers(c.Request().Context(), limit, offset, currentUserEmail)
+	users, total, err := h.userService.ListUsers(c.Request().Context(), limit, offset, currentUserID)
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to list users"})
 	}
@@ -94,7 +95,7 @@ func (h *UserHandler) ListUsers(c echo.Context) error {
 // @Tags users
 // @Accept json
 // @Produce json
-// @Param id path string true "User ID"
+// @Param uid path string true "User UID"
 // @Param user body dto.UpdateUserRequest true "User update data"
 // @Success 200 {object} map[string]string "User updated successfully"
 // @Failure 400 {object} map[string]string "Bad request"
@@ -119,12 +120,20 @@ func (h *UserHandler) UpdateUser(c echo.Context) error {
 	}
 
 	// Get current user (admin performing the action)
-	err := h.userService.UpdateUser(c.Request().Context(), userID, req.Name, req.Role, req.Status, false)
+	err := h.userService.UpdateUser(c.Request().Context(), userID, "", req.Name, req.Role, req.Status, false)
 	if err != nil {
 		if appErr, ok := err.(*pkg.AppError); ok {
 			return c.JSON(appErr.HTTPStatus(), map[string]string{"error": appErr.Message})
 		}
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to update user"})
+	}
+
+	// Update Firebase custom claims
+	claims := map[string]interface{}{
+		"role": req.Role,
+	}
+	if err := h.firebaseAuth.SetCustomClaims(c.Request().Context(), userID, claims); err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to update Firebase claims"})
 	}
 
 	return c.JSON(http.StatusOK, map[string]string{"message": "User updated successfully"})
@@ -186,7 +195,7 @@ func (h *UserHandler) GetUserPermissions(c echo.Context) error {
 
 // CreateUser creates a new user (admin only)
 // @Summary Create a new user
-// @Description Create a new user with specified email, name, and role
+// @Description Create a new user with specified UID, email, name, and role
 // @Tags users
 // @Accept json
 // @Produce json
@@ -209,7 +218,7 @@ func (h *UserHandler) CreateUser(c echo.Context) error {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Validation failed", "details": err.Error()})
 	}
 
-	user, err := h.userService.CreateUser(c.Request().Context(), req.Email, req.Name, req.Role, req.Status)
+	user, err := h.userService.CreateUser(c.Request().Context(), req.UID, req.Email, req.Name, req.Role, req.Status)
 	if err != nil {
 		if appErr, ok := err.(*pkg.AppError); ok {
 			return c.JSON(appErr.HTTPStatus(), map[string]string{"error": appErr.Message})
@@ -220,6 +229,7 @@ func (h *UserHandler) CreateUser(c echo.Context) error {
 	// Convert to response DTO
 	response := dto.CreateUserResponse{
 		ID:        user.ID.String(),
+		UID:       user.UID,
 		Email:     user.Email,
 		Name:      user.Name,
 		Role:      string(user.Role),
@@ -279,10 +289,10 @@ func (h *UserHandler) SearchUsers(c echo.Context) error {
 	// Calculate offset
 	offset := (page - 1) * limit
 
-	// Get current user email to exclude from results
-	currentUserEmail, _ := c.Get(pkg.AuthContextKeyUserEmail).(string)
+	// Get current user ID to exclude from results
+	currentUserID, _ := c.Get(pkg.AuthContextKeyUserID).(string)
 
-	users, total, err := h.userService.SearchUsers(c.Request().Context(), query, limit, offset, currentUserEmail)
+	users, total, err := h.userService.SearchUsers(c.Request().Context(), query, limit, offset, currentUserID)
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to search users"})
 	}
