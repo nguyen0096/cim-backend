@@ -10,7 +10,6 @@ import (
 // User represents a user in the system
 type User struct {
 	ID        uuid.UUID      `json:"id" gorm:"type:uuid;primary_key;default:gen_random_uuid()"`
-	UID       string         `json:"uid" gorm:"uniqueIndex"` // Firebase UID
 	Email     string         `json:"email" gorm:"uniqueIndex;not null"`
 	Name      string         `json:"name"`
 	Role      UserRole       `json:"role" gorm:"default:'staff'"`                                                    // admin, accountant, staff, bot_form

@@ -1496,37 +1496,31 @@ func seedUsers(db *gorm.DB) error {
 
 	// Define default users
 	defaultUsers := []struct {
-		UID   string
 		Email string
 		Name  string
 		Role  string
 	}{
 		{
-			UID:   "demoAdminUid0000000000000000",
 			Email: "test@cim.local",
 			Name:  "Admin User",
 			Role:  string(models.RoleAdmin),
 		},
 		{
-			UID:   "demoRootAdminUid000000000000",
 			Email: "admin@example.com",
 			Name:  "Admin User",
 			Role:  string(models.RoleAdmin),
 		},
 		{
-			UID:   "demoRootAdminUid200000000000",
 			Email: "admin2@example.com",
 			Name:  "Admin User",
 			Role:  string(models.RoleAdmin),
 		},
 		{
-			UID:   "demoAccountantUid00000000000",
 			Email: "accountant@cim.local",
 			Name:  "Accountant User",
 			Role:  string(models.RoleAccountant),
 		},
 		{
-			UID:   "demoStaffUid0000000000000000",
 			Email: "staff@cim.local",
 			Name:  "Staff User",
 			Role:  string(models.RoleStaff),
@@ -1536,7 +1530,7 @@ func seedUsers(db *gorm.DB) error {
 	// Seed each user
 	for _, userData := range defaultUsers {
 		// Create user
-		_, err = userService.CreateUser(ctx, userData.UID, userData.Email, userData.Name, userData.Role, "active")
+		_, err = userService.CreateUser(ctx, userData.Email, userData.Name, userData.Role, "active")
 		if err != nil {
 			log.Printf("Failed to create user %s: %v", userData.Email, err)
 			continue

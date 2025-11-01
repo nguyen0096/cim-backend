@@ -10,25 +10,22 @@ definitions:
         type: string
       role:
         enum:
-        - admin
-        - accountant
-        - staff
+          - admin
+          - accountant
+          - staff
         example: staff
         type: string
       status:
         enum:
-        - active
-        - pending
-        - inactive
+          - active
+          - pending
+          - inactive
         example: active
         type: string
-      uid:
-        example: firebase-uid-123
-        type: string
     required:
-    - email
-    - role
-    - status
+      - email
+      - role
+      - status
     type: object
   dto.CreateUserResponse:
     properties:
@@ -50,9 +47,6 @@ definitions:
       status:
         example: active
         type: string
-      uid:
-        example: firebase-uid-123
-        type: string
     type: object
   dto.DisposeInventoryRequest:
     properties:
@@ -60,12 +54,12 @@ definitions:
         type: integer
       items:
         items:
-          $ref: '#/definitions/dto.DisposeItem'
+          $ref: "#/definitions/dto.DisposeItem"
         minItems: 1
         type: array
     required:
-    - inventory_id
-    - items
+      - inventory_id
+      - items
     type: object
   dto.DisposeItem:
     properties:
@@ -78,9 +72,9 @@ definitions:
         minimum: 1
         type: integer
     required:
-    - inventory_item_id
-    - prev_quantity
-    - quantity
+      - inventory_item_id
+      - prev_quantity
+      - quantity
     type: object
   dto.LastPurchasePriceMap:
     additionalProperties:
@@ -95,12 +89,12 @@ definitions:
         type: integer
       items:
         items:
-          $ref: '#/definitions/dto.ReconcileItem'
+          $ref: "#/definitions/dto.ReconcileItem"
         minItems: 1
         type: array
     required:
-    - inventory_id
-    - items
+      - inventory_id
+      - items
     type: object
   dto.ReconcileItem:
     properties:
@@ -113,9 +107,9 @@ definitions:
         minimum: 1
         type: integer
     required:
-    - actual_quantity
-    - inventory_item_id
-    - prev_quantity
+      - actual_quantity
+      - inventory_item_id
+      - prev_quantity
     type: object
   dto.UpdatePurchaseOrderDeliveryStatusRequest:
     properties:
@@ -128,26 +122,26 @@ definitions:
               minimum: 1
               type: integer
           required:
-          - id
-          - received_quantity
+            - id
+            - received_quantity
           type: object
         minItems: 1
         type: array
       purchase_order_id:
         type: integer
     required:
-    - items
-    - purchase_order_id
+      - items
+      - purchase_order_id
     type: object
   dto.UpdatePurchaseOrderItemStatusResponse:
     properties:
       item_status:
         allOf:
-        - $ref: '#/definitions/models.PurchaseOrderItemStatus'
+          - $ref: "#/definitions/models.PurchaseOrderItemStatus"
         example: delivered
       order_status:
         allOf:
-        - $ref: '#/definitions/models.PurchaseOrderStatus'
+          - $ref: "#/definitions/models.PurchaseOrderStatus"
         example: fully_delivered
     type: object
   dto.UpdateUserRequest:
@@ -157,28 +151,28 @@ definitions:
         type: string
       role:
         enum:
-        - admin
-        - accountant
-        - staff
+          - admin
+          - accountant
+          - staff
         example: staff
         type: string
       status:
         enum:
-        - active
-        - pending
-        - inactive
+          - active
+          - pending
+          - inactive
         example: active
         type: string
     required:
-    - role
-    - status
+      - role
+      - status
     type: object
   models.GetSettingsResponse:
     description: Response containing all application settings
     properties:
       data:
         items:
-          $ref: '#/definitions/models.Settings'
+          $ref: "#/definitions/models.Settings"
         type: array
     type: object
   models.Inventory:
@@ -195,14 +189,14 @@ definitions:
         type: integer
       items:
         items:
-          $ref: '#/definitions/models.InventoryItem'
+          $ref: "#/definitions/models.InventoryItem"
         type: array
       location:
         type: string
       name:
         type: string
       status:
-        $ref: '#/definitions/models.InventoryStatus'
+        $ref: "#/definitions/models.InventoryStatus"
       updated_at:
         type: string
     type: object
@@ -210,7 +204,7 @@ definitions:
     properties:
       active_purchase_transactions:
         items:
-          $ref: '#/definitions/models.InventoryTransaction'
+          $ref: "#/definitions/models.InventoryTransaction"
         type: array
       consuming_transaction_id:
         type: integer
@@ -223,36 +217,36 @@ definitions:
       id:
         type: integer
       inventory:
-        $ref: '#/definitions/models.Inventory'
+        $ref: "#/definitions/models.Inventory"
       inventory_id:
         type: integer
       product:
-        $ref: '#/definitions/models.Product'
+        $ref: "#/definitions/models.Product"
       product_id:
         type: integer
       quantity:
         type: integer
       status:
-        $ref: '#/definitions/models.InventoryItemStatus'
+        $ref: "#/definitions/models.InventoryItemStatus"
       updated_at:
         type: string
     type: object
   models.InventoryItemStatus:
     enum:
-    - active
-    - inactive
+      - active
+      - inactive
     type: string
     x-enum-varnames:
-    - InventoryItemStatusActive
-    - InventoryItemStatusInactive
+      - InventoryItemStatusActive
+      - InventoryItemStatusInactive
   models.InventoryStatus:
     enum:
-    - active
-    - inactive
+      - active
+      - inactive
     type: string
     x-enum-varnames:
-    - InventoryStatusActive
-    - InventoryStatusInactive
+      - InventoryStatusActive
+      - InventoryStatusInactive
   models.InventoryTransaction:
     properties:
       consumed_quantity:
@@ -268,7 +262,7 @@ definitions:
       id:
         type: integer
       inventory_item:
-        $ref: '#/definitions/models.InventoryItem'
+        $ref: "#/definitions/models.InventoryItem"
       inventory_item_id:
         type: integer
       price:
@@ -278,24 +272,24 @@ definitions:
       quantity:
         type: integer
       supplier:
-        $ref: '#/definitions/models.Supplier'
+        $ref: "#/definitions/models.Supplier"
       supplier_id:
         type: integer
       transaction_type:
-        $ref: '#/definitions/models.InventoryTransactionType'
+        $ref: "#/definitions/models.InventoryTransactionType"
       updated_at:
         type: string
     type: object
   models.InventoryTransactionType:
     enum:
-    - purchase
-    - disposal
-    - sell
+      - purchase
+      - disposal
+      - sell
     type: string
     x-enum-varnames:
-    - InventoryTransactionTypePurchase
-    - InventoryTransactionTypeDisposal
-    - InventoryTransactionTypeSell
+      - InventoryTransactionTypePurchase
+      - InventoryTransactionTypeDisposal
+      - InventoryTransactionTypeSell
   models.Product:
     properties:
       created_at:
@@ -310,7 +304,7 @@ definitions:
         type: integer
       inventory_items:
         items:
-          $ref: '#/definitions/models.InventoryItem'
+          $ref: "#/definitions/models.InventoryItem"
         type: array
       name:
         type: string
@@ -320,7 +314,7 @@ definitions:
         type: string
       suppliers:
         items:
-          $ref: '#/definitions/models.Supplier'
+          $ref: "#/definitions/models.Supplier"
         type: array
       unit:
         type: string
@@ -350,7 +344,7 @@ definitions:
         type: integer
       items:
         items:
-          $ref: '#/definitions/models.PurchaseOrderItem'
+          $ref: "#/definitions/models.PurchaseOrderItem"
         minItems: 1
         type: array
       notes:
@@ -361,7 +355,7 @@ definitions:
         type: string
       status:
         allOf:
-        - $ref: '#/definitions/models.PurchaseOrderStatus'
+          - $ref: "#/definitions/models.PurchaseOrderStatus"
         example: order_placed
       total_amount:
         description: Calculated field, not stored in DB
@@ -370,8 +364,8 @@ definitions:
       updated_at:
         type: string
     required:
-    - inventory_id
-    - items
+      - inventory_id
+      - items
     type: object
   models.PurchaseOrderItem:
     properties:
@@ -384,11 +378,11 @@ definitions:
       id:
         type: integer
       product:
-        $ref: '#/definitions/models.Product'
+        $ref: "#/definitions/models.Product"
       product_id:
         type: integer
       purchase_order:
-        $ref: '#/definitions/models.PurchaseOrder'
+        $ref: "#/definitions/models.PurchaseOrder"
       purchase_order_id:
         type: integer
       quantity:
@@ -398,10 +392,10 @@ definitions:
         type: integer
       status:
         allOf:
-        - $ref: '#/definitions/models.PurchaseOrderItemStatus'
+          - $ref: "#/definitions/models.PurchaseOrderItemStatus"
         example: delivering
       supplier:
-        $ref: '#/definitions/models.Supplier'
+        $ref: "#/definitions/models.Supplier"
       supplier_id:
         type: integer
       total_amount:
@@ -413,36 +407,36 @@ definitions:
       updated_at:
         type: string
     required:
-    - product_id
-    - quantity
-    - supplier_id
+      - product_id
+      - quantity
+      - supplier_id
     type: object
   models.PurchaseOrderItemStatus:
     enum:
-    - awaiting_delivery
-    - partially_delivered
-    - delivered
-    - cancelled
+      - awaiting_delivery
+      - partially_delivered
+      - delivered
+      - cancelled
     type: string
     x-enum-varnames:
-    - PurchaseOrderItemStatusAwaitingDelivery
-    - PurchaseOrderItemStatusPartiallyDelivered
-    - PurchaseOrderItemStatusDelivered
-    - PurchaseOrderItemStatusCancelled
+      - PurchaseOrderItemStatusAwaitingDelivery
+      - PurchaseOrderItemStatusPartiallyDelivered
+      - PurchaseOrderItemStatusDelivered
+      - PurchaseOrderItemStatusCancelled
   models.PurchaseOrderStatus:
     enum:
-    - order_placed
-    - partially_delivered
-    - fully_delivered
-    - completed
-    - cancelled
+      - order_placed
+      - partially_delivered
+      - fully_delivered
+      - completed
+      - cancelled
     type: string
     x-enum-varnames:
-    - PurchaseOrderStatusOrderPlaced
-    - PurchaseOrderStatusPartiallyDelivered
-    - PurchaseOrderStatusFullyDelivered
-    - PurchaseOrderStatusCompleted
-    - PurchaseOrderStatusCancelled
+      - PurchaseOrderStatusOrderPlaced
+      - PurchaseOrderStatusPartiallyDelivered
+      - PurchaseOrderStatusFullyDelivered
+      - PurchaseOrderStatusCompleted
+      - PurchaseOrderStatusCancelled
   models.SetSettingResponse:
     description: Response after successfully setting a configuration value
     properties:
@@ -478,7 +472,7 @@ definitions:
         type: string
       products:
         items:
-          $ref: '#/definitions/models.Product'
+          $ref: "#/definitions/models.Product"
         type: array
       status:
         type: string
@@ -491,7 +485,8 @@ info:
     email: support@swagger.io
     name: API Support
     url: http://www.swagger.io/support
-  description: This is an Import Export Backend API server for managing products,
+  description:
+    This is an Import Export Backend API server for managing products,
     inventory, suppliers, and orders.
   license:
     name: Apache 2.0
@@ -503,41 +498,43 @@ paths:
   /api/purchase-orders:
     get:
       consumes:
-      - application/json
-      description: Retrieve a paginated list of purchase orders with optional search,
+        - application/json
+      description:
+        Retrieve a paginated list of purchase orders with optional search,
         sorting, and date range filtering
       parameters:
-      - description: 'Page number (default: 1, minimum: 1)'
-        in: query
-        name: page
-        type: integer
-      - description: 'Number of items per page (default: 20, minimum: 1, maximum:
-          100)'
-        in: query
-        name: limit
-        type: integer
-      - description: Search term for order number or notes
-        in: query
-        name: q
-        type: string
-      - description: Sort field (order_number, status, total_amount, created_at, updated_at)
-        in: query
-        name: sort
-        type: string
-      - description: 'Sort direction (asc, desc, default: asc)'
-        in: query
-        name: order
-        type: string
-      - description: 'Start date for filtering (format: YYYY-MM-DD)'
-        in: query
-        name: start_date
-        type: string
-      - description: 'End date for filtering (format: YYYY-MM-DD)'
-        in: query
-        name: end_date
-        type: string
+        - description: "Page number (default: 1, minimum: 1)"
+          in: query
+          name: page
+          type: integer
+        - description:
+            "Number of items per page (default: 20, minimum: 1, maximum:
+            100)"
+          in: query
+          name: limit
+          type: integer
+        - description: Search term for order number or notes
+          in: query
+          name: q
+          type: string
+        - description: Sort field (order_number, status, total_amount, created_at, updated_at)
+          in: query
+          name: sort
+          type: string
+        - description: "Sort direction (asc, desc, default: asc)"
+          in: query
+          name: order
+          type: string
+        - description: "Start date for filtering (format: YYYY-MM-DD)"
+          in: query
+          name: start_date
+          type: string
+        - description: "End date for filtering (format: YYYY-MM-DD)"
+          in: query
+          name: end_date
+          type: string
       produces:
-      - application/json
+        - application/json
       responses:
         "200":
           description: Successfully retrieved purchase orders
@@ -557,28 +554,28 @@ paths:
               type: string
             type: object
       security:
-      - BearerAuth: []
+        - BearerAuth: []
       summary: List purchase orders
       tags:
-      - purchase-orders
+        - purchase-orders
     post:
       consumes:
-      - application/json
+        - application/json
       description: Create a new purchase order with the provided details
       parameters:
-      - description: Purchase order data
-        in: body
-        name: purchase_order
-        required: true
-        schema:
-          $ref: '#/definitions/models.PurchaseOrder'
+        - description: Purchase order data
+          in: body
+          name: purchase_order
+          required: true
+          schema:
+            $ref: "#/definitions/models.PurchaseOrder"
       produces:
-      - application/json
+        - application/json
       responses:
         "201":
           description: Successfully created purchase order
           schema:
-            $ref: '#/definitions/models.PurchaseOrder'
+            $ref: "#/definitions/models.PurchaseOrder"
         "400":
           description: Invalid request body
           schema:
@@ -592,32 +589,32 @@ paths:
               type: string
             type: object
       security:
-      - BearerAuth: []
+        - BearerAuth: []
       summary: Create a new purchase order
       tags:
-      - purchase-orders
+        - purchase-orders
   /api/purchase-orders/{id}/confirm:
     post:
       consumes:
-      - application/json
+        - application/json
       description: Confirm a purchase order with confirmation notes
       parameters:
-      - description: Purchase Order ID
-        in: path
-        name: id
-        required: true
-        type: integer
-      - description: Confirmation request with notes
-        in: body
-        name: request
-        required: true
-        schema:
-          properties:
-            confirmation_notes:
-              type: string
-          type: object
+        - description: Purchase Order ID
+          in: path
+          name: id
+          required: true
+          type: integer
+        - description: Confirmation request with notes
+          in: body
+          name: request
+          required: true
+          schema:
+            properties:
+              confirmation_notes:
+                type: string
+            type: object
       produces:
-      - application/json
+        - application/json
       responses:
         "200":
           description: Successfully confirmed purchase order
@@ -656,42 +653,42 @@ paths:
               type: string
             type: object
       security:
-      - BearerAuth: []
+        - BearerAuth: []
       summary: Confirm a purchase order
       tags:
-      - purchase-orders
+        - purchase-orders
   /api/purchase-orders/{id}/items/{item_id}/status:
     put:
       consumes:
-      - application/json
+        - application/json
       description: Update the status of a specific item in a purchase order
       parameters:
-      - description: Purchase Order ID
-        in: path
-        name: id
-        required: true
-        type: integer
-      - description: Purchase Order Item ID
-        in: path
-        name: item_id
-        required: true
-        type: integer
-      - description: Status update request
-        in: body
-        name: status
-        required: true
-        schema:
-          properties:
-            status:
-              type: string
-          type: object
+        - description: Purchase Order ID
+          in: path
+          name: id
+          required: true
+          type: integer
+        - description: Purchase Order Item ID
+          in: path
+          name: item_id
+          required: true
+          type: integer
+        - description: Status update request
+          in: body
+          name: status
+          required: true
+          schema:
+            properties:
+              status:
+                type: string
+            type: object
       produces:
-      - application/json
+        - application/json
       responses:
         "200":
           description: Successfully updated purchase order item status
           schema:
-            $ref: '#/definitions/dto.UpdatePurchaseOrderItemStatusResponse'
+            $ref: "#/definitions/dto.UpdatePurchaseOrderItemStatusResponse"
         "400":
           description: Invalid request parameters
           schema:
@@ -711,25 +708,26 @@ paths:
               type: string
             type: object
       security:
-      - BearerAuth: []
+        - BearerAuth: []
       summary: Update purchase order item status
       tags:
-      - purchase-orders
+        - purchase-orders
   /api/purchase-orders/delivery-status:
     put:
       consumes:
-      - application/json
-      description: Update the delivery status of purchase order items by recording
+        - application/json
+      description:
+        Update the delivery status of purchase order items by recording
         received quantities
       parameters:
-      - description: Delivery status update request
-        in: body
-        name: request
-        required: true
-        schema:
-          $ref: '#/definitions/dto.UpdatePurchaseOrderDeliveryStatusRequest'
+        - description: Delivery status update request
+          in: body
+          name: request
+          required: true
+          schema:
+            $ref: "#/definitions/dto.UpdatePurchaseOrderDeliveryStatusRequest"
       produces:
-      - application/json
+        - application/json
       responses:
         "204":
           description: Successfully updated purchase order delivery status
@@ -752,25 +750,26 @@ paths:
               type: string
             type: object
       security:
-      - BearerAuth: []
+        - BearerAuth: []
       summary: Update purchase order delivery status
       tags:
-      - purchase-orders
+        - purchase-orders
   /excel/verify:
     post:
       consumes:
-      - application/json
-      description: Verifies that the specified filepath and sheetname exist and are
+        - application/json
+      description:
+        Verifies that the specified filepath and sheetname exist and are
         valid
       parameters:
-      - description: File verification request
-        in: body
-        name: request
-        required: true
-        schema:
-          type: object
+        - description: File verification request
+          in: body
+          name: request
+          required: true
+          schema:
+            type: object
       produces:
-      - application/json
+        - application/json
       responses:
         "200":
           description: Verification successful
@@ -798,25 +797,25 @@ paths:
             type: object
       summary: Verify Excel file and sheet
       tags:
-      - excel
+        - excel
   /inventories:
     get:
       consumes:
-      - application/json
+        - application/json
       description: List all inventories with pagination
       parameters:
-      - default: 1
-        description: Page number
-        in: query
-        name: page
-        type: integer
-      - default: 20
-        description: Items per page
-        in: query
-        name: limit
-        type: integer
+        - default: 1
+          description: Page number
+          in: query
+          name: page
+          type: integer
+        - default: 20
+          description: Items per page
+          in: query
+          name: limit
+          type: integer
       produces:
-      - application/json
+        - application/json
       responses:
         "200":
           description: OK
@@ -830,28 +829,28 @@ paths:
               type: string
             type: object
       security:
-      - BearerAuth: []
+        - BearerAuth: []
       summary: List inventories
       tags:
-      - inventories
+        - inventories
     post:
       consumes:
-      - application/json
+        - application/json
       description: Create a new inventory
       parameters:
-      - description: Inventory data
-        in: body
-        name: inventory
-        required: true
-        schema:
-          $ref: '#/definitions/models.Inventory'
+        - description: Inventory data
+          in: body
+          name: inventory
+          required: true
+          schema:
+            $ref: "#/definitions/models.Inventory"
       produces:
-      - application/json
+        - application/json
       responses:
         "201":
           description: Created
           schema:
-            $ref: '#/definitions/models.Inventory'
+            $ref: "#/definitions/models.Inventory"
         "400":
           description: Bad Request
           schema:
@@ -865,23 +864,23 @@ paths:
               type: string
             type: object
       security:
-      - BearerAuth: []
+        - BearerAuth: []
       summary: Create inventory
       tags:
-      - inventories
+        - inventories
   /inventories/{id}:
     delete:
       consumes:
-      - application/json
+        - application/json
       description: Delete an inventory
       parameters:
-      - description: Inventory ID
-        in: path
-        name: id
-        required: true
-        type: integer
+        - description: Inventory ID
+          in: path
+          name: id
+          required: true
+          type: integer
       produces:
-      - application/json
+        - application/json
       responses:
         "204":
           description: No Content
@@ -904,27 +903,27 @@ paths:
               type: string
             type: object
       security:
-      - BearerAuth: []
+        - BearerAuth: []
       summary: Delete inventory
       tags:
-      - inventories
+        - inventories
     get:
       consumes:
-      - application/json
+        - application/json
       description: Get an inventory by ID
       parameters:
-      - description: Inventory ID
-        in: path
-        name: id
-        required: true
-        type: integer
+        - description: Inventory ID
+          in: path
+          name: id
+          required: true
+          type: integer
       produces:
-      - application/json
+        - application/json
       responses:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/models.Inventory'
+            $ref: "#/definitions/models.Inventory"
         "400":
           description: Bad Request
           schema:
@@ -944,33 +943,33 @@ paths:
               type: string
             type: object
       security:
-      - BearerAuth: []
+        - BearerAuth: []
       summary: Get inventory
       tags:
-      - inventories
+        - inventories
     put:
       consumes:
-      - application/json
+        - application/json
       description: Update an inventory
       parameters:
-      - description: Inventory ID
-        in: path
-        name: id
-        required: true
-        type: integer
-      - description: Inventory data
-        in: body
-        name: inventory
-        required: true
-        schema:
-          $ref: '#/definitions/models.Inventory'
+        - description: Inventory ID
+          in: path
+          name: id
+          required: true
+          type: integer
+        - description: Inventory data
+          in: body
+          name: inventory
+          required: true
+          schema:
+            $ref: "#/definitions/models.Inventory"
       produces:
-      - application/json
+        - application/json
       responses:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/models.Inventory'
+            $ref: "#/definitions/models.Inventory"
         "400":
           description: Bad Request
           schema:
@@ -990,60 +989,61 @@ paths:
               type: string
             type: object
       security:
-      - BearerAuth: []
+        - BearerAuth: []
       summary: Update inventory
       tags:
-      - inventories
+        - inventories
   /inventories/{id}/inventory-items:
     get:
       consumes:
-      - application/json
-      description: List inventory items for a specific inventory with pagination and
+        - application/json
+      description:
+        List inventory items for a specific inventory with pagination and
         sorting
       parameters:
-      - description: Inventory ID
-        in: path
-        name: id
-        required: true
-        type: integer
-      - default: 1
-        description: Page number
-        in: query
-        name: page
-        type: integer
-      - default: 20
-        description: Items per page
-        in: query
-        name: limit
-        type: integer
-      - description: Filter by status (active/inactive)
-        in: query
-        name: status
-        type: string
-      - description: Filter by product type
-        in: query
-        name: product_type
-        type: string
-      - default: updated_at
-        description: Sort by field (updated_at, created_at, quantity, product_name)
-        enum:
-        - updated_at
-        - created_at
-        - quantity
-        - product_name
-        in: query
-        name: sort
-        type: string
-      - default: desc
-        description: Sort order (asc/desc)
-        enum:
-        - asc
-        - desc
-        in: query
-        name: order
-        type: string
+        - description: Inventory ID
+          in: path
+          name: id
+          required: true
+          type: integer
+        - default: 1
+          description: Page number
+          in: query
+          name: page
+          type: integer
+        - default: 20
+          description: Items per page
+          in: query
+          name: limit
+          type: integer
+        - description: Filter by status (active/inactive)
+          in: query
+          name: status
+          type: string
+        - description: Filter by product type
+          in: query
+          name: product_type
+          type: string
+        - default: updated_at
+          description: Sort by field (updated_at, created_at, quantity, product_name)
+          enum:
+            - updated_at
+            - created_at
+            - quantity
+            - product_name
+          in: query
+          name: sort
+          type: string
+        - default: desc
+          description: Sort order (asc/desc)
+          enum:
+            - asc
+            - desc
+          in: query
+          name: order
+          type: string
       produces:
-      - application/json
+        - application/json
       responses:
         "200":
           description: OK
@@ -1069,33 +1069,33 @@ paths:
               type: string
             type: object
       security:
-      - BearerAuth: []
+        - BearerAuth: []
       summary: Get inventory items by inventory ID
       tags:
-      - inventory-items
+        - inventory-items
     post:
       consumes:
-      - application/json
+        - application/json
       description: Create a new inventory item
       parameters:
-      - description: Inventory ID
-        in: path
-        name: id
-        required: true
-        type: integer
-      - description: Inventory item data
-        in: body
-        name: inventoryItem
-        required: true
-        schema:
-          $ref: '#/definitions/models.InventoryItem'
+        - description: Inventory ID
+          in: path
+          name: id
+          required: true
+          type: integer
+        - description: Inventory item data
+          in: body
+          name: inventoryItem
+          required: true
+          schema:
+            $ref: "#/definitions/models.InventoryItem"
       produces:
-      - application/json
+        - application/json
       responses:
         "201":
           description: Created
           schema:
-            $ref: '#/definitions/models.InventoryItem'
+            $ref: "#/definitions/models.InventoryItem"
         "400":
           description: Bad Request
           schema:
@@ -1109,28 +1109,28 @@ paths:
               type: string
             type: object
       security:
-      - BearerAuth: []
+        - BearerAuth: []
       summary: Create inventory item
       tags:
-      - inventory-items
+        - inventory-items
   /inventories/{id}/inventory-items/{item_id}:
     delete:
       consumes:
-      - application/json
+        - application/json
       description: Delete an inventory item
       parameters:
-      - description: Inventory ID
-        in: path
-        name: id
-        required: true
-        type: integer
-      - description: Inventory item ID
-        in: path
-        name: item_id
-        required: true
-        type: integer
+        - description: Inventory ID
+          in: path
+          name: id
+          required: true
+          type: integer
+        - description: Inventory item ID
+          in: path
+          name: item_id
+          required: true
+          type: integer
       produces:
-      - application/json
+        - application/json
       responses:
         "204":
           description: No Content
@@ -1153,32 +1153,32 @@ paths:
               type: string
             type: object
       security:
-      - BearerAuth: []
+        - BearerAuth: []
       summary: Delete inventory item
       tags:
-      - inventory-items
+        - inventory-items
     get:
       consumes:
-      - application/json
+        - application/json
       description: Get an inventory item by ID
       parameters:
-      - description: Inventory ID
-        in: path
-        name: id
-        required: true
-        type: integer
-      - description: Inventory item ID
-        in: path
-        name: item_id
-        required: true
-        type: integer
+        - description: Inventory ID
+          in: path
+          name: id
+          required: true
+          type: integer
+        - description: Inventory item ID
+          in: path
+          name: item_id
+          required: true
+          type: integer
       produces:
-      - application/json
+        - application/json
       responses:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/models.InventoryItem'
+            $ref: "#/definitions/models.InventoryItem"
         "400":
           description: Bad Request
           schema:
@@ -1198,38 +1198,38 @@ paths:
               type: string
             type: object
       security:
-      - BearerAuth: []
+        - BearerAuth: []
       summary: Get inventory item
       tags:
-      - inventory-items
+        - inventory-items
     put:
       consumes:
-      - application/json
+        - application/json
       description: Update an inventory item
       parameters:
-      - description: Inventory ID
-        in: path
-        name: id
-        required: true
-        type: integer
-      - description: Inventory item ID
-        in: path
-        name: item_id
-        required: true
-        type: integer
-      - description: Inventory item data
-        in: body
-        name: inventoryItem
-        required: true
-        schema:
-          $ref: '#/definitions/models.InventoryItem'
+        - description: Inventory ID
+          in: path
+          name: id
+          required: true
+          type: integer
+        - description: Inventory item ID
+          in: path
+          name: item_id
+          required: true
+          type: integer
+        - description: Inventory item data
+          in: body
+          name: inventoryItem
+          required: true
+          schema:
+            $ref: "#/definitions/models.InventoryItem"
       produces:
-      - application/json
+        - application/json
       responses:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/models.InventoryItem'
+            $ref: "#/definitions/models.InventoryItem"
         "400":
           description: Bad Request
           schema:
@@ -1249,40 +1249,40 @@ paths:
               type: string
             type: object
       security:
-      - BearerAuth: []
+        - BearerAuth: []
       summary: Update inventory item
       tags:
-      - inventory-items
+        - inventory-items
   /inventories/{id}/inventory-items/{item_id}/adjust:
     put:
       consumes:
-      - application/json
+        - application/json
       description: Adjust the quantity of an inventory item
       parameters:
-      - description: Inventory ID
-        in: path
-        name: id
-        required: true
-        type: integer
-      - description: Inventory item ID
-        in: path
-        name: item_id
-        required: true
-        type: integer
-      - description: Adjustment data
-        in: body
-        name: adjustment
-        required: true
-        schema:
-          additionalProperties: true
-          type: object
+        - description: Inventory ID
+          in: path
+          name: id
+          required: true
+          type: integer
+        - description: Inventory item ID
+          in: path
+          name: item_id
+          required: true
+          type: integer
+        - description: Adjustment data
+          in: body
+          name: adjustment
+          required: true
+          schema:
+            additionalProperties: true
+            type: object
       produces:
-      - application/json
+        - application/json
       responses:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/models.InventoryItem'
+            $ref: "#/definitions/models.InventoryItem"
         "400":
           description: Bad Request
           schema:
@@ -1302,24 +1302,24 @@ paths:
               type: string
             type: object
       security:
-      - BearerAuth: []
+        - BearerAuth: []
       summary: Adjust inventory item quantity
       tags:
-      - inventory-items
+        - inventory-items
   /inventories/confirm:
     put:
       consumes:
-      - application/json
+        - application/json
       description: Confirm the actual inventory count for multiple inventory items
       parameters:
-      - description: Confirmation data
-        in: body
-        name: confirmation
-        required: true
-        schema:
-          $ref: '#/definitions/dto.ReconcileInventoryRequest'
+        - description: Confirmation data
+          in: body
+          name: confirmation
+          required: true
+          schema:
+            $ref: "#/definitions/dto.ReconcileInventoryRequest"
       produces:
-      - application/json
+        - application/json
       responses:
         "204":
           description: No Content
@@ -1342,24 +1342,24 @@ paths:
               type: string
             type: object
       security:
-      - BearerAuth: []
+        - BearerAuth: []
       summary: Confirm inventory items
       tags:
-      - inventory-items
+        - inventory-items
   /inventories/dispose:
     put:
       consumes:
-      - application/json
+        - application/json
       description: Dispose multiple inventory items by reducing their quantities
       parameters:
-      - description: Disposal data
-        in: body
-        name: disposal
-        required: true
-        schema:
-          $ref: '#/definitions/dto.DisposeInventoryRequest'
+        - description: Disposal data
+          in: body
+          name: disposal
+          required: true
+          schema:
+            $ref: "#/definitions/dto.DisposeInventoryRequest"
       produces:
-      - application/json
+        - application/json
       responses:
         "200":
           description: OK
@@ -1385,23 +1385,24 @@ paths:
               type: string
             type: object
       security:
-      - BearerAuth: []
+        - BearerAuth: []
       summary: Dispose inventory items
       tags:
-      - inventory-items
+        - inventory-items
   /inventories/last-purchase-prices:
     get:
       consumes:
-      - application/json
-      description: Get the last purchase transaction price for each Supplier Product
+        - application/json
+      description:
+        Get the last purchase transaction price for each Supplier Product
         as a nested map (product_id -> supplier_id -> price)
       produces:
-      - application/json
+        - application/json
       responses:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/dto.LastPurchasePriceMap'
+            $ref: "#/definitions/dto.LastPurchasePriceMap"
         "500":
           description: Internal Server Error
           schema:
@@ -1409,28 +1410,28 @@ paths:
               type: string
             type: object
       security:
-      - BearerAuth: []
+        - BearerAuth: []
       summary: Get last purchase prices
       tags:
-      - inventories
+        - inventories
   /inventory-items:
     get:
       consumes:
-      - application/json
+        - application/json
       description: List all inventory items with pagination
       parameters:
-      - default: 1
-        description: Page number
-        in: query
-        name: page
-        type: integer
-      - default: 20
-        description: Items per page
-        in: query
-        name: limit
-        type: integer
+        - default: 1
+          description: Page number
+          in: query
+          name: page
+          type: integer
+        - default: 20
+          description: Items per page
+          in: query
+          name: limit
+          type: integer
       produces:
-      - application/json
+        - application/json
       responses:
         "200":
           description: OK
@@ -1444,28 +1445,28 @@ paths:
               type: string
             type: object
       security:
-      - BearerAuth: []
+        - BearerAuth: []
       summary: List inventory items
       tags:
-      - inventory-items
+        - inventory-items
   /inventory-items/low-stock:
     get:
       consumes:
-      - application/json
+        - application/json
       description: List inventory items that are below reorder level
       parameters:
-      - default: 1
-        description: Page number
-        in: query
-        name: page
-        type: integer
-      - default: 20
-        description: Items per page
-        in: query
-        name: limit
-        type: integer
+        - default: 1
+          description: Page number
+          in: query
+          name: page
+          type: integer
+        - default: 20
+          description: Items per page
+          in: query
+          name: limit
+          type: integer
       produces:
-      - application/json
+        - application/json
       responses:
         "200":
           description: OK
@@ -1479,28 +1480,28 @@ paths:
               type: string
             type: object
       security:
-      - BearerAuth: []
+        - BearerAuth: []
       summary: Get low stock items
       tags:
-      - inventory-items
+        - inventory-items
   /inventory-items/product/{product_id}:
     get:
       consumes:
-      - application/json
+        - application/json
       description: Get an inventory item by product ID
       parameters:
-      - description: Product ID
-        in: path
-        name: product_id
-        required: true
-        type: integer
+        - description: Product ID
+          in: path
+          name: product_id
+          required: true
+          type: integer
       produces:
-      - application/json
+        - application/json
       responses:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/models.InventoryItem'
+            $ref: "#/definitions/models.InventoryItem"
         "400":
           description: Bad Request
           schema:
@@ -1520,51 +1521,51 @@ paths:
               type: string
             type: object
       security:
-      - BearerAuth: []
+        - BearerAuth: []
       summary: Get inventory item by product ID
       tags:
-      - inventory-items
+        - inventory-items
   /products:
     get:
       consumes:
-      - application/json
+        - application/json
       description: Get a list of all products with pagination and sorting
       parameters:
-      - default: 20
-        description: Number of items per page
-        in: query
-        name: limit
-        type: integer
-      - default: 1
-        description: Page number
-        in: query
-        name: page
-        type: integer
-      - default: '"created_at"'
-        description: Sort field
-        in: query
-        name: sort
-        type: string
-      - default: '"desc"'
-        description: Sort order (asc/desc)
-        in: query
-        name: order
-        type: string
-      - default: '"active"'
-        description: Filter by status (active/inactive)
-        in: query
-        name: status
-        type: string
-      - description: Filter by product type (electronics, clothing, food, etc.)
-        in: query
-        name: product_type
-        type: string
-      - description: Filter by supplier ID
-        in: query
-        name: supplier_id
-        type: integer
+        - default: 20
+          description: Number of items per page
+          in: query
+          name: limit
+          type: integer
+        - default: 1
+          description: Page number
+          in: query
+          name: page
+          type: integer
+        - default: '"created_at"'
+          description: Sort field
+          in: query
+          name: sort
+          type: string
+        - default: '"desc"'
+          description: Sort order (asc/desc)
+          in: query
+          name: order
+          type: string
+        - default: '"active"'
+          description: Filter by status (active/inactive)
+          in: query
+          name: status
+          type: string
+        - description: Filter by product type (electronics, clothing, food, etc.)
+          in: query
+          name: product_type
+          type: string
+        - description: Filter by supplier ID
+          in: query
+          name: supplier_id
+          type: integer
       produces:
-      - application/json
+        - application/json
       responses:
         "200":
           description: List of products with pagination info
@@ -1577,28 +1578,28 @@ paths:
             additionalProperties: true
             type: object
       security:
-      - BearerAuth: []
+        - BearerAuth: []
       summary: Get all products
       tags:
-      - products
+        - products
     post:
       consumes:
-      - application/json
+        - application/json
       description: Create a new product with the provided information
       parameters:
-      - description: Product information
-        in: body
-        name: product
-        required: true
-        schema:
-          $ref: '#/definitions/models.Product'
+        - description: Product information
+          in: body
+          name: product
+          required: true
+          schema:
+            $ref: "#/definitions/models.Product"
       produces:
-      - application/json
+        - application/json
       responses:
         "201":
           description: Created product
           schema:
-            $ref: '#/definitions/models.Product'
+            $ref: "#/definitions/models.Product"
         "400":
           description: Bad request
           schema:
@@ -1610,31 +1611,31 @@ paths:
             additionalProperties: true
             type: object
       security:
-      - BearerAuth: []
+        - BearerAuth: []
       summary: Create a new product
       tags:
-      - products
+        - products
   /products/{id}/status:
     put:
       consumes:
-      - application/json
+        - application/json
       description: Update the status of a product (active, inactive)
       parameters:
-      - description: Product ID
-        in: path
-        name: id
-        required: true
-        type: integer
-      - description: Status update request
-        in: body
-        name: status
-        required: true
-        schema:
-          additionalProperties:
-            type: string
-          type: object
+        - description: Product ID
+          in: path
+          name: id
+          required: true
+          type: integer
+        - description: Status update request
+          in: body
+          name: status
+          required: true
+          schema:
+            additionalProperties:
+              type: string
+            type: object
       produces:
-      - application/json
+        - application/json
       responses:
         "200":
           description: Product status updated successfully
@@ -1657,26 +1658,27 @@ paths:
             additionalProperties: true
             type: object
       security:
-      - BearerAuth: []
+        - BearerAuth: []
       summary: Update product status
       tags:
-      - products
+        - products
   /products/import-csv:
     post:
       consumes:
-      - multipart/form-data
-      description: 'Import products and their suppliers from a CSV or Excel file upload.
+        - multipart/form-data
+      description:
+        "Import products and their suppliers from a CSV or Excel file upload.
         Files must have headers: Name, Description, ProductType, Suppliers, ContactEmail,
         ContactPhone, Address. CSV uses semicolon (;) as delimiter. Products can have
-        multiple suppliers by repeating rows with empty product fields.'
+        multiple suppliers by repeating rows with empty product fields."
       parameters:
-      - description: CSV or Excel file to upload
-        in: formData
-        name: file
-        required: true
-        type: file
+        - description: CSV or Excel file to upload
+          in: formData
+          name: file
+          required: true
+          type: file
       produces:
-      - application/json
+        - application/json
       responses:
         "200":
           description: Import successful
@@ -1694,56 +1696,56 @@ paths:
             additionalProperties: true
             type: object
       security:
-      - BearerAuth: []
+        - BearerAuth: []
       summary: Import products with suppliers from CSV or Excel
       tags:
-      - products
+        - products
   /products/search:
     get:
       consumes:
-      - application/json
+        - application/json
       description: Search products with pagination and sorting
       parameters:
-      - description: Search query
-        in: query
-        name: q
-        required: true
-        type: string
-      - default: 20
-        description: Number of items per page
-        in: query
-        name: limit
-        type: integer
-      - default: 1
-        description: Page number
-        in: query
-        name: page
-        type: integer
-      - default: '"created_at"'
-        description: Sort field
-        in: query
-        name: sort
-        type: string
-      - default: '"desc"'
-        description: Sort order (asc/desc)
-        in: query
-        name: order
-        type: string
-      - default: '"active"'
-        description: Filter by status (active/inactive)
-        in: query
-        name: status
-        type: string
-      - description: Filter by product type (electronics, clothing, food, etc.)
-        in: query
-        name: product_type
-        type: string
-      - description: Filter by supplier ID
-        in: query
-        name: supplier_id
-        type: integer
+        - description: Search query
+          in: query
+          name: q
+          required: true
+          type: string
+        - default: 20
+          description: Number of items per page
+          in: query
+          name: limit
+          type: integer
+        - default: 1
+          description: Page number
+          in: query
+          name: page
+          type: integer
+        - default: '"created_at"'
+          description: Sort field
+          in: query
+          name: sort
+          type: string
+        - default: '"desc"'
+          description: Sort order (asc/desc)
+          in: query
+          name: order
+          type: string
+        - default: '"active"'
+          description: Filter by status (active/inactive)
+          in: query
+          name: status
+          type: string
+        - description: Filter by product type (electronics, clothing, food, etc.)
+          in: query
+          name: product_type
+          type: string
+        - description: Filter by supplier ID
+          in: query
+          name: supplier_id
+          type: integer
       produces:
-      - application/json
+        - application/json
       responses:
         "200":
           description: Search results with pagination info
@@ -1761,22 +1763,22 @@ paths:
             additionalProperties: true
             type: object
       security:
-      - BearerAuth: []
+        - BearerAuth: []
       summary: Search products
       tags:
-      - products
+        - products
   /settings:
     get:
       consumes:
-      - application/json
+        - application/json
       description: Retrieves all settings in the system
       produces:
-      - application/json
+        - application/json
       responses:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/models.GetSettingsResponse'
+            $ref: "#/definitions/models.GetSettingsResponse"
         "500":
           description: Internal Server Error
           schema:
@@ -1785,20 +1787,20 @@ paths:
             type: object
       summary: Get all settings
       tags:
-      - Settings
+        - Settings
   /settings/{key}:
     delete:
       consumes:
-      - application/json
+        - application/json
       description: Deletes a setting by its key
       parameters:
-      - description: Setting key
-        in: path
-        name: key
-        required: true
-        type: string
+        - description: Setting key
+          in: path
+          name: key
+          required: true
+          type: string
       produces:
-      - application/json
+        - application/json
       responses:
         "200":
           description: OK
@@ -1820,24 +1822,24 @@ paths:
             type: object
       summary: Delete setting
       tags:
-      - Settings
+        - Settings
     get:
       consumes:
-      - application/json
+        - application/json
       description: Retrieves a specific setting by its key
       parameters:
-      - description: Setting key
-        in: path
-        name: key
-        required: true
-        type: string
+        - description: Setting key
+          in: path
+          name: key
+          required: true
+          type: string
       produces:
-      - application/json
+        - application/json
       responses:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/models.Settings'
+            $ref: "#/definitions/models.Settings"
         "400":
           description: Bad Request
           schema:
@@ -1858,31 +1860,31 @@ paths:
             type: object
       summary: Get setting by key
       tags:
-      - Settings
+        - Settings
     post:
       consumes:
-      - application/json
+        - application/json
       description: Creates or updates a setting with the specified key and value
       parameters:
-      - description: Setting key
-        in: path
-        name: key
-        required: true
-        type: string
-      - description: Set setting value request
-        in: body
-        name: request
-        required: true
-        schema:
-          additionalProperties: true
-          type: object
+        - description: Setting key
+          in: path
+          name: key
+          required: true
+          type: string
+        - description: Set setting value request
+          in: body
+          name: request
+          required: true
+          schema:
+            additionalProperties: true
+            type: object
       produces:
-      - application/json
+        - application/json
       responses:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/models.SetSettingResponse'
+            $ref: "#/definitions/models.SetSettingResponse"
         "400":
           description: Bad Request
           schema:
@@ -1897,28 +1899,28 @@ paths:
             type: object
       summary: Set setting
       tags:
-      - Settings
+        - Settings
   /suppliers/{id}/status:
     put:
       consumes:
-      - application/json
+        - application/json
       description: Update the status of a supplier (active, inactive)
       parameters:
-      - description: Supplier ID
-        in: path
-        name: id
-        required: true
-        type: integer
-      - description: Status update request
-        in: body
-        name: status
-        required: true
-        schema:
-          additionalProperties:
-            type: string
-          type: object
+        - description: Supplier ID
+          in: path
+          name: id
+          required: true
+          type: integer
+        - description: Status update request
+          in: body
+          name: status
+          required: true
+          schema:
+            additionalProperties:
+              type: string
+            type: object
       produces:
-      - application/json
+        - application/json
       responses:
         "200":
           description: Supplier status updated successfully
@@ -1941,29 +1943,29 @@ paths:
             additionalProperties: true
             type: object
       security:
-      - BearerAuth: []
+        - BearerAuth: []
       summary: Update supplier status
       tags:
-      - suppliers
+        - suppliers
   /users:
     post:
       consumes:
-      - application/json
-      description: Create a new user with specified UID, email, name, and role
+        - application/json
+      description: Create a new user with specified email, name, and role
       parameters:
-      - description: User creation data
-        in: body
-        name: user
-        required: true
-        schema:
-          $ref: '#/definitions/dto.CreateUserRequest'
+        - description: User creation data
+          in: body
+          name: user
+          required: true
+          schema:
+            $ref: "#/definitions/dto.CreateUserRequest"
       produces:
-      - application/json
+        - application/json
       responses:
         "201":
           description: User created successfully
           schema:
-            $ref: '#/definitions/dto.CreateUserResponse'
+            $ref: "#/definitions/dto.CreateUserResponse"
         "400":
           description: Bad request
           schema:
@@ -1983,30 +1985,31 @@ paths:
               type: string
             type: object
       security:
-      - BearerAuth: []
+        - BearerAuth: []
       summary: Create a new user
       tags:
-      - users
-  /users/{uid}:
+        - users
+  /users/{id}:
     put:
       consumes:
-      - application/json
-      description: Update all properties of a user including email, name, role, and
+        - application/json
+      description:
+        Update all properties of a user including email, name, role, and
         status
       parameters:
-      - description: User UID
-        in: path
-        name: uid
-        required: true
-        type: string
-      - description: User update data
-        in: body
-        name: user
-        required: true
-        schema:
-          $ref: '#/definitions/dto.UpdateUserRequest'
+        - description: User ID
+          in: path
+          name: id
+          required: true
+          type: string
+        - description: User update data
+          in: body
+          name: user
+          required: true
+          schema:
+            $ref: "#/definitions/dto.UpdateUserRequest"
       produces:
-      - application/json
+        - application/json
       responses:
         "200":
           description: User updated successfully
@@ -2033,18 +2036,19 @@ paths:
               type: string
             type: object
       security:
-      - BearerAuth: []
+        - BearerAuth: []
       summary: Update user
       tags:
-      - users
+        - users
   /users/permissions:
     get:
       consumes:
-      - application/json
-      description: Get all permissions for the current authenticated user based on
+        - application/json
+      description:
+        Get all permissions for the current authenticated user based on
         their roles in Casbin
       produces:
-      - application/json
+        - application/json
       responses:
         "200":
           description: User permissions
@@ -2070,30 +2074,30 @@ paths:
               type: string
             type: object
       security:
-      - BearerAuth: []
+        - BearerAuth: []
       summary: Get current user permissions
       tags:
-      - users
+        - users
   /users/search:
     get:
       consumes:
-      - application/json
+        - application/json
       description: Search users by name or email with pagination support
       parameters:
-      - description: Search query for name or email
-        in: query
-        name: query
-        type: string
-      - description: 'Number of results per page (default: 20)'
-        in: query
-        name: limit
-        type: integer
-      - description: 'Page number (default: 1)'
-        in: query
-        name: page
-        type: integer
+        - description: Search query for name or email
+          in: query
+          name: query
+          type: string
+        - description: "Number of results per page (default: 20)"
+          in: query
+          name: limit
+          type: integer
+        - description: "Page number (default: 1)"
+          in: query
+          name: page
+          type: integer
       produces:
-      - application/json
+        - application/json
       responses:
         "200":
           description: Search results with pagination
@@ -2113,10 +2117,10 @@ paths:
               type: string
             type: object
       security:
-      - BearerAuth: []
+        - BearerAuth: []
       summary: Search users
       tags:
-      - users
+        - users
 securityDefinitions:
   BearerAuth:
     description: Type "Bearer" followed by a space and JWT token.

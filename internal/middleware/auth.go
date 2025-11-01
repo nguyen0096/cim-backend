@@ -35,15 +35,19 @@ func AuthMiddleware(firebaseAuth *auth.FirebaseAuthService) echo.MiddlewareFunc 
 			}
 
 			// Extract user information from Firebase token and set in both echo and request context
+			email, ok := token.Claims["email"].(string)
+			if !ok || email == "" {
+				return c.JSON(http.StatusUnauthorized, map[string]string{"error": "Email not found in token"})
+			}
+
+			// Set email as user identifier in context (used instead of UID)
 			c.Set(pkg.AuthContextKeyUserID, token.UID)
-			c.Set(pkg.AuthContextKeyUserEmail, token.Claims["email"])
+			c.Set(pkg.AuthContextKeyUserEmail, email)
 
 			// Add user information to the request context for GORM hooks and other services
 			reqCtx := c.Request().Context()
-			reqCtx = context.WithValue(reqCtx, pkg.AuthContextKeyUserID, token.UID)
-			if email, ok := token.Claims["email"].(string); ok {
-				reqCtx = pkg.WithUserEmail(reqCtx, email)
-			}
+			reqCtx = pkg.WithUserID(reqCtx, token.UID)
+			reqCtx = pkg.WithUserEmail(reqCtx, email)
 
 			// Set additional Firebase claims
 			if name, ok := token.Claims["name"].(string); ok {

@@ -30,18 +30,6 @@ func (r *UserRepository) Create(ctx context.Context, user *models.User) error {
 	return nil
 }
 
-// GetByUID retrieves a user by Firebase UID
-func (r *UserRepository) GetByUID(ctx context.Context, uid string) (*models.User, error) {
-	var user models.User
-	if err := r.db.WithContext(ctx).Where("uid = ? AND deleted_at IS NULL", uid).First(&user).Error; err != nil {
-		if err == gorm.ErrRecordNotFound {
-			return nil, nil
-		}
-		return nil, fmt.Errorf("failed to get user by UID: %w", err)
-	}
-	return &user, nil
-}
-
 // GetByEmail retrieves a user by email
 func (r *UserRepository) GetByEmail(ctx context.Context, email string) (*models.User, error) {
 	var user models.User
@@ -67,15 +55,15 @@ func (r *UserRepository) GetByID(ctx context.Context, id string) (*models.User, 
 }
 
 // List retrieves all users with pagination
-func (r *UserRepository) List(ctx context.Context, limit, offset int, excludeUserID string) ([]*models.User, int64, error) {
+func (r *UserRepository) List(ctx context.Context, limit, offset int, excludeUserEmail string) ([]*models.User, int64, error) {
 	var users []*models.User
 	var total int64
 
 	baseQuery := r.db.WithContext(ctx).Model(&models.User{}).Where("deleted_at IS NULL")
 
 	// Exclude current user if provided
-	if excludeUserID != "" {
-		baseQuery = baseQuery.Where("uid != ?", excludeUserID)
+	if excludeUserEmail != "" {
+		baseQuery = baseQuery.Where("email != ?", excludeUserEmail)
 	}
 
 	// In production, exclude developer users
@@ -104,14 +92,6 @@ func (r *UserRepository) Update(ctx context.Context, user *models.User) error {
 	return nil
 }
 
-// UpdateRole updates a user's role
-func (r *UserRepository) UpdateRole(ctx context.Context, uid, role string) error {
-	if err := r.db.WithContext(ctx).Model(&models.User{}).Where("uid = ?", uid).Update("role", role).Error; err != nil {
-		return fmt.Errorf("failed to update user role: %w", err)
-	}
-	return nil
-}
-
 // Delete soft deletes a user
 func (r *UserRepository) Delete(ctx context.Context, id string) error {
 	if err := r.db.WithContext(ctx).Where("id = ?", id).Delete(&models.User{}).Error; err != nil {
@@ -130,7 +110,7 @@ func (r *UserRepository) GetByRole(ctx context.Context, role string) ([]*models.
 }
 
 // Search searches users by name or email with pagination
-func (r *UserRepository) Search(ctx context.Context, query string, limit, offset int, excludeUserID string) ([]*models.User, int64, error) {
+func (r *UserRepository) Search(ctx context.Context, query string, limit, offset int, excludeUserEmail string) ([]*models.User, int64, error) {
 	var users []*models.User
 	var total int64
 
@@ -143,8 +123,8 @@ func (r *UserRepository) Search(ctx context.Context, query string, limit, offset
 	}
 
 	// Exclude current user if provided
-	if excludeUserID != "" {
-		baseQuery = baseQuery.Where("uid != ?", excludeUserID)
+	if excludeUserEmail != "" {
+		baseQuery = baseQuery.Where("email != ?", excludeUserEmail)
 	}
 
 	// In production, exclude developer users

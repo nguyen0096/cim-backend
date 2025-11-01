@@ -16,25 +16,17 @@ import (
 func AuthorizationMiddleware(casbinService *auth.CasbinService, userService *services.UserService) echo.MiddlewareFunc {
 	return func(next echo.HandlerFunc) echo.HandlerFunc {
 		return func(c echo.Context) error {
-			// Get user ID from context (set by AuthMiddleware)
-			userUID, _ := c.Get(pkg.AuthContextKeyUserID).(string)
-			if userUID == "" {
+			// Get user email from context (set by AuthMiddleware, used as identifier)
+			userEmail, _ := c.Get(pkg.AuthContextKeyUserEmail).(string)
+			if userEmail == "" {
 				return c.JSON(http.StatusUnauthorized, map[string]string{
-					"error": "User ID not found",
+					"error": "User email not found",
 				})
 			}
 
 			// Check if user role already exists in context (skip database query if available)
 			userRole, exists := c.Get(pkg.AuthContextKeyUserRole).(string)
 			if !exists || userRole == "" {
-				// Get user email from context
-				userEmail, exists := c.Get(pkg.AuthContextKeyUserEmail).(string)
-				if !exists || userEmail == "" {
-					return c.JSON(http.StatusUnauthorized, map[string]string{
-						"error": "User email not found in token",
-					})
-				}
-
 				// Fetch user role from database using email
 				user, err := userService.GetUserByEmail(c.Request().Context(), userEmail)
 				if err != nil {
@@ -58,17 +50,9 @@ func AuthorizationMiddleware(casbinService *auth.CasbinService, userService *ser
 					userRole = string(user.Role)
 				}
 
-				if user.UID != userUID {
-					// Update UID and handle Casbin policy updates
-					user.UID = userUID
-					if err := userService.UpdateUser(c.Request().Context(), user.ID.String(), userUID, user.Name, string(user.Role), user.Status, true); err != nil {
-						fmt.Printf("Error updating user UID: %v\n", err)
-						// Continue anyway, this is not critical for authorization
-					}
-				}
-
-				if roles, err := casbinService.GetRolesForUser(userUID); err == nil && len(roles) == 0 {
-					if err := casbinService.AddRoleForUser(userUID, string(user.Role)); err != nil {
+				// Ensure user has role in Casbin (using email as identifier)
+				if roles, err := casbinService.GetRolesForUser(userEmail); err == nil && len(roles) == 0 {
+					if err := casbinService.AddRoleForUser(userEmail, string(user.Role)); err != nil {
 						fmt.Printf("Error adding role to user: %v\n", err)
 						// Continue anyway, this is not critical for authorization
 					}
@@ -89,14 +73,14 @@ func AuthorizationMiddleware(casbinService *auth.CasbinService, userService *ser
 			// Check authorization using Casbin
 			allowed, err := casbinService.Enforce(userRole, resource, action)
 			if err != nil {
-				fmt.Printf("Authorization error for user %s: %v\n", userUID, err)
+				fmt.Printf("Authorization error for user %s: %v\n", userEmail, err)
 				return c.JSON(http.StatusInternalServerError, map[string]string{
 					"error": "Authorization check failed",
 				})
 			}
 
 			if !allowed {
-				fmt.Printf("Access denied for user %s (role: %s) to %s %s\n", userUID, userRole, action, resource)
+				fmt.Printf("Access denied for user %s (role: %s) to %s %s\n", userEmail, userRole, action, resource)
 				return c.JSON(http.StatusForbidden, map[string]string{
 					"error": fmt.Sprintf("Access denied: %s role cannot %s %s", userRole, action, resource),
 				})
