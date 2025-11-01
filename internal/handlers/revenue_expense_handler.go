@@ -81,7 +81,8 @@ func (h *RevenueExpenseHandler) FinalizeRevenueExpense(c echo.Context) error {
 	}
 
 	// Call service to finalize
-	if err := h.excelService.FinalizeRevenueExpense(c.Request().Context(), lastFinalizedDate); err != nil {
+	finalizedDate, err := h.excelService.FinalizeRevenueExpense(c.Request().Context(), lastFinalizedDate)
+	if err != nil {
 		if appErr, ok := err.(*pkg.AppError); ok {
 			return c.JSON(appErr.HTTPStatus(), map[string]string{
 				"error": appErr.Message,
@@ -94,8 +95,7 @@ func (h *RevenueExpenseHandler) FinalizeRevenueExpense(c echo.Context) error {
 		})
 	}
 
-	nextDay := lastFinalizedDate.AddDate(0, 0, 1)
-	if err := h.settingsService.SetSetting(c.Request().Context(), config.LastFinalizedDateSettingsKey, nextDay); err != nil {
+	if err := h.settingsService.SetSetting(c.Request().Context(), config.LastFinalizedDateSettingsKey, *finalizedDate); err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{
 			"error":   "Failed to set last finalized date",
 			"details": err.Error(),
@@ -105,7 +105,7 @@ func (h *RevenueExpenseHandler) FinalizeRevenueExpense(c echo.Context) error {
 	response := FinalizeRevenueExpenseResponse{
 		Message: "Revenue expense finalized successfully",
 		Date:    lastFinalizedDate.Format("2006-01-02"),
-		NextDay: nextDay.Format("2006-01-02"),
+		NextDay: finalizedDate.Format("2006-01-02"),
 	}
 
 	return c.JSON(http.StatusOK, response)

@@ -151,7 +151,7 @@ type ExcelService interface {
 	AddExpenses(ctx context.Context, sheetName string, expensesData []map[string]interface{}, cellColors []string) error
 	GetRevenueExpenseSchema(ctx context.Context) *models.FileMetadata
 	VerifyFileAndSheet(ctx context.Context, filePath string, sheetName string) error
-	FinalizeRevenueExpense(ctx context.Context, date time.Time) error
+	FinalizeRevenueExpense(ctx context.Context, date time.Time) (*time.Time, error)
 	// Revenue/Expense Google Sheets operations
 	InitializeRevenueExpenseGoogleSheets(ctx context.Context, spreadsheetID string) error
 	AddExpensesToGoogleSheets(ctx context.Context, sheetName string, expensesData []map[string]interface{}, cellColors []string) error
@@ -199,30 +199,30 @@ func (s *excelService) VerifyFileAndSheet(ctx context.Context, filePath string, 
 }
 
 // FinalizeRevenueExpense adds a new date row to the revenue expense file/sheet
-func (s *excelService) FinalizeRevenueExpense(ctx context.Context, date time.Time) error {
+func (s *excelService) FinalizeRevenueExpense(ctx context.Context, date time.Time) (*time.Time, error) {
 	// Get settings to determine file type and sheet name
 	settings, err := s.settingsService.GetSetting(ctx, config.RevenueExpenseExcelSettingsKey)
 	if err != nil {
-		return fmt.Errorf("failed to get revenue expense settings: %w", err)
+		return nil, fmt.Errorf("failed to get revenue expense settings: %w", err)
 	}
 
 	if settings == nil {
-		return fmt.Errorf("revenue expense settings not configured")
+		return nil, fmt.Errorf("revenue expense settings not configured")
 	}
 
 	var settingsValue map[string]interface{}
 	if err := json.Unmarshal([]byte(settings.Value), &settingsValue); err != nil {
-		return fmt.Errorf("failed to parse revenue expense settings: %w", err)
+		return nil, fmt.Errorf("failed to parse revenue expense settings: %w", err)
 	}
 
 	filePath, ok := settingsValue["filePath"].(string)
 	if !ok || filePath == "" {
-		return fmt.Errorf("filePath not found in revenue expense settings")
+		return nil, fmt.Errorf("filePath not found in revenue expense settings")
 	}
 
 	sheetName, ok := settingsValue["sheetName"].(string)
 	if !ok || sheetName == "" {
-		return fmt.Errorf("sheetName not found in revenue expense settings")
+		return nil, fmt.Errorf("sheetName not found in revenue expense settings")
 	}
 
 	// Calculate next day
@@ -235,35 +235,43 @@ func (s *excelService) FinalizeRevenueExpense(ctx context.Context, date time.Tim
 		// Handle Google Sheets
 		spreadsheetID, err := pkg.ExtractSpreadsheetID(filePath)
 		if err != nil {
-			return fmt.Errorf("invalid Google Sheets URL: %w", err)
+			return nil, fmt.Errorf("invalid Google Sheets URL: %w", err)
 		}
 
 		// Initialize repository
 		if s.googleServiceAccount == "" {
-			return fmt.Errorf("service account file path not configured")
+			return nil, fmt.Errorf("service account file path not configured")
 		}
 		if err := s.revenueExpenseGoogleSheetsRepo.InitializeWithSpreadsheet(ctx, s.googleServiceAccount, spreadsheetID, sheetName); err != nil {
-			return fmt.Errorf("failed to initialize Google Sheets repository: %w", err)
+			return nil, fmt.Errorf("failed to initialize Google Sheets repository: %w", err)
+		}
+
+		lastTransactionDate, err := s.revenueExpenseGoogleSheetsRepo.GetLastTransactionDate(ctx, sheetName)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get last transaction date: %w", err)
+		}
+		if lastTransactionDate.After(nextDay) {
+			nextDay = lastTransactionDate.AddDate(0, 0, 1)
 		}
 
 		// Add new date row
 		if err := s.revenueExpenseGoogleSheetsRepo.AddNewDateRow(ctx, sheetName, nextDay); err != nil {
-			return fmt.Errorf("failed to add new date row to Google Sheets: %w", err)
+			return nil, fmt.Errorf("failed to add new date row to Google Sheets: %w", err)
 		}
 	} else {
 		// Handle local file
 		// Initialize repository
 		if err := s.revenueExpenseExcelRepo.InitializeWithFile(ctx, filePath, sheetName); err != nil {
-			return fmt.Errorf("failed to initialize Excel repository: %w", err)
+			return nil, fmt.Errorf("failed to initialize Excel repository: %w", err)
 		}
 
 		// Add new date row
 		if err := s.revenueExpenseExcelRepo.AddNewDateRow(ctx, sheetName, nextDay); err != nil {
-			return fmt.Errorf("failed to add new date row to Excel: %w", err)
+			return nil, fmt.Errorf("failed to add new date row to Excel: %w", err)
 		}
 	}
 
-	return nil
+	return &nextDay, nil
 }
 
 // InitializeRevenueExpenseGoogleSheets initializes the Google Sheets repository for revenue/expense tracking

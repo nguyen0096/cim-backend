@@ -3,7 +3,6 @@ package googlesheets
 import (
 	"context"
 	"fmt"
-	"strconv"
 	"time"
 
 	"cim-backend/internal/models"
@@ -122,12 +121,11 @@ func (r *revenueExpenseGoogleSheetsRepository) AddExpenses(ctx context.Context, 
 	// }
 
 	// Prepare date and row information
-	lastRow, lastRowIndex, err := r.FindLastTransactionRow(rows)
+	_, lastRowIndex, err := r.FindLastTransactionRow(rows)
 	if err != nil {
 		return fmt.Errorf("failed to find last transaction row: %w", err)
 	}
 	targetRow := lastRowIndex + 1
-	ordinalNumber := 1
 
 	// Add transaction date row if needed
 	// today := pkg.GetTodayDate()
@@ -165,34 +163,14 @@ func (r *revenueExpenseGoogleSheetsRepository) AddExpenses(ctx context.Context, 
 	// 				ordinalNumber++
 	// 			}
 	// 		}
-	// 	}
+	// 	  }
 	// }
-
-	// Check if lastRow has enough columns to access the ordinal number (STT column at index 1)
-	if len(lastRow) < 2 {
-		// If no ordinal number found, start from 1
-		ordinalNumber = 1
-	} else {
-		// convert the ordinal number to int
-		ordinalNumberStr := getCellValueAsString(lastRow[1])
-		if ordinalNumberStr == "" {
-			// If ordinal number is empty, start from 1
-			ordinalNumber = 1
-		} else {
-			ordinalNumber, err = strconv.Atoi(ordinalNumberStr)
-			if err != nil {
-				// If conversion fails, start from 1
-				ordinalNumber = 1
-			} else {
-				ordinalNumber++
-			}
-		}
-	}
 
 	// Add all expense data rows
 	for i, expenseData := range expensesData {
-		expenseData[pkg.RevenueExpenseColumnOrdinalNumber] = ordinalNumber
-		ordinalNumber++
+		if _, found := expenseData[pkg.RevenueExpenseColumnOrdinalNumber]; !found {
+			expenseData[pkg.RevenueExpenseColumnOrdinalNumber] = 1
+		}
 		if err := r.AddDataRowWithColor(sheetName, targetRow, expenseData, cellColors[i]); err != nil {
 			return fmt.Errorf("failed to add expense data row at index %d: %w", i, err)
 		}
