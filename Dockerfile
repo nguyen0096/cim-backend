@@ -15,8 +15,11 @@ RUN go mod download
 # Copy source code
 COPY . .
 
-# Build the application
+# Build the main application
 RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o main .
+
+# Build the utility CLI (for migrations and seeding)
+RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o util ./cmd/util
 
 # Final stage
 FROM alpine:latest
@@ -26,9 +29,11 @@ RUN apk --no-cache add ca-certificates
 
 WORKDIR /root/
 
-# Copy the binary from builder stage
+# Copy the binaries from builder stage
 COPY --from=builder /app/main .
+COPY --from=builder /app/util .
 
+# Copy configuration and migration files
 COPY --from=builder /app/rbac_model.conf .
 COPY --from=builder /app/rbac_policy.csv .
 COPY --from=builder /app/database/migrations ./database/migrations

@@ -9,12 +9,6 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var (
-	apiKey          string
-	defaultUsername string
-	defaultPassword string
-)
-
 var rootCmd = &cobra.Command{
 	Use:   "util",
 	Short: "Utility CLI for cim-backend",
@@ -84,16 +78,10 @@ func init() {
 		fmt.Fprintf(os.Stderr, "Warning: Could not load .env file: %v\n", err)
 	}
 
-	// Load Firebase environment variables (only needed for auth command)
-	apiKey = os.Getenv("FIREBASE_WEB_API_KEY")
-	defaultUsername = os.Getenv("FIREBASE_TEST_USER")
-	defaultPassword = os.Getenv("FIREBASE_TEST_PASSWORD")
-
 	// Add subcommands to migrate command
 	migrateCmd.AddCommand(migrateUpCmd)
 	migrateCmd.AddCommand(migrateDownCmd)
 
-	rootCmd.AddCommand(authCmd)
 	rootCmd.AddCommand(seedCmd)
 	rootCmd.AddCommand(migrateCmd)
 }

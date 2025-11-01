@@ -11,7 +11,7 @@ const (
 // Inventory represents a warehouse or storage location
 type Inventory struct {
 	Base
-	Name        string           `json:"name" gorm:"not null"`
+	Name        string           `json:"name" gorm:"not null,unique"`
 	Description string           `json:"description"`
 	Location    string           `json:"location" gorm:"not null"`
 	Status      InventoryStatus  `json:"status" gorm:"default:active"`

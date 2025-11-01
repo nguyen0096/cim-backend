@@ -28,10 +28,14 @@ func Initialize(cfg config.DatabaseConfig) (*gorm.DB, error) {
 	return db, nil
 }
 
-// MigrateUp runs SQL migrations from migration directory (up) and then GORM auto migrations
-func MigrateUp(db *gorm.DB, migrationDir string) error {
-	// Run GORM auto migrations
-	if err := db.AutoMigrate(
+// MigrateSQLUp runs SQL migrations from migration directory (up)
+func MigrateSQLUp(db *gorm.DB, migrationDir string) error {
+	return runSQLMigration(db, migrationDir, "up")
+}
+
+// AutoMigrate runs GORM auto migrations
+func AutoMigrate(db *gorm.DB) error {
+	return db.AutoMigrate(
 		&models.User{},
 		&models.Supplier{},
 		&models.Product{},
@@ -43,11 +47,18 @@ func MigrateUp(db *gorm.DB, migrationDir string) error {
 		&models.Settings{},
 		&models.PaymentReceiptForm{},
 		&models.InventorySubmission{},
-	); err != nil {
+	)
+}
+
+// MigrateUp runs SQL migrations from migration directory (up) and then GORM auto migrations
+func MigrateUp(db *gorm.DB, migrationDir string) error {
+	// Run SQL migrations first
+	if err := MigrateSQLUp(db, migrationDir); err != nil {
 		return err
 	}
 
-	if err := runSQLMigration(db, migrationDir, "up"); err != nil {
+	// Run GORM auto migrations
+	if err := AutoMigrate(db); err != nil {
 		return err
 	}
 

@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 
+	"github.com/joho/godotenv"
 	"github.com/spf13/cobra"
 )
 
@@ -25,16 +26,21 @@ type SignInResponse struct {
 	LocalID      string `json:"localId"`
 }
 
-var authCmd = &cobra.Command{
+var (
+	apiKey          string
+	defaultUsername string
+	defaultPassword string
+)
+
+var rootCmd = &cobra.Command{
 	Use:   "auth [email] [password]",
 	Short: "Get Firebase authentication token",
-	Long:  "Get Firebase authentication token using email and password credentials. If no arguments provided, uses default credentials.",
+	Long:  "Get Firebase authentication token using email and password credentials. If no arguments provided, uses default credentials from .env file.",
 	Args:  cobra.RangeArgs(0, 2),
-	Run: func(cmd *cobra.Command, args []string) {
+	RunE: func(cmd *cobra.Command, args []string) error {
 		// Validate Firebase environment variables
 		if apiKey == "" {
-			fmt.Fprintf(os.Stderr, "Error: FIREBASE_WEB_API_KEY environment variable is not set\n")
-			os.Exit(1)
+			return fmt.Errorf("FIREBASE_WEB_API_KEY environment variable is not set")
 		}
 
 		var email, password string
@@ -42,12 +48,10 @@ var authCmd = &cobra.Command{
 		if len(args) == 0 {
 			// Use default credentials
 			if defaultUsername == "" {
-				fmt.Fprintf(os.Stderr, "Error: FIREBASE_TEST_USER environment variable is not set\n")
-				os.Exit(1)
+				return fmt.Errorf("FIREBASE_TEST_USER environment variable is not set")
 			}
 			if defaultPassword == "" {
-				fmt.Fprintf(os.Stderr, "Error: FIREBASE_TEST_PASSWORD environment variable is not set\n")
-				os.Exit(1)
+				return fmt.Errorf("FIREBASE_TEST_PASSWORD environment variable is not set")
 			}
 			email = defaultUsername
 			password = defaultPassword
@@ -57,25 +61,44 @@ var authCmd = &cobra.Command{
 			email = args[0]
 			password = args[1]
 		} else {
-			fmt.Fprintf(os.Stderr, "Error: Please provide either no arguments (for default credentials) or both email and password\n")
-			os.Exit(1)
+			return fmt.Errorf("please provide either no arguments (for default credentials) or both email and password")
 		}
 
 		token, err := getFirebaseToken(email, password)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error getting Firebase token: %v\n", err)
-			os.Exit(1)
+			return fmt.Errorf("failed to get Firebase token: %w", err)
 		}
 
 		fmt.Println(token)
 
-		// Copy to clipboard using pbcopy
+		// Copy to clipboard using pbcopy (macOS/Linux)
 		if err := copyToClipboard(token); err != nil {
 			fmt.Fprintf(os.Stderr, "Warning: Could not copy to clipboard: %v\n", err)
 		} else {
 			fmt.Println("✓ Token copied to clipboard")
 		}
+
+		return nil
 	},
+}
+
+func init() {
+	// Load environment variables from .env file
+	if err := godotenv.Load(); err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: Could not load .env file: %v\n", err)
+	}
+
+	// Load Firebase environment variables
+	apiKey = os.Getenv("FIREBASE_WEB_API_KEY")
+	defaultUsername = os.Getenv("FIREBASE_TEST_USER")
+	defaultPassword = os.Getenv("FIREBASE_TEST_PASSWORD")
+}
+
+func main() {
+	if err := rootCmd.Execute(); err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
 }
 
 // getFirebaseToken authenticates with Firebase and returns the ID token
@@ -107,7 +130,7 @@ func getFirebaseToken(email, password string) (string, error) {
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("authentication failed: %s", string(data))
+		return "", fmt.Errorf("authentication failed (status %d): %s", resp.StatusCode, string(data))
 	}
 
 	var res SignInResponse
@@ -118,9 +141,24 @@ func getFirebaseToken(email, password string) (string, error) {
 	return res.IDToken, nil
 }
 
-// copyToClipboard copies text to the clipboard using pbcopy
+// copyToClipboard copies text to the clipboard using pbcopy (macOS) or xclip (Linux)
 func copyToClipboard(text string) error {
+	// Try pbcopy (macOS)
 	cmd := exec.Command("pbcopy")
+	cmd.Stdin = bytes.NewBufferString(text)
+	if err := cmd.Run(); err == nil {
+		return nil
+	}
+
+	// Try xclip (Linux)
+	cmd = exec.Command("xclip", "-selection", "clipboard")
+	cmd.Stdin = bytes.NewBufferString(text)
+	if err := cmd.Run(); err == nil {
+		return nil
+	}
+
+	// Try xsel (Linux alternative)
+	cmd = exec.Command("xsel", "--clipboard", "--input")
 	cmd.Stdin = bytes.NewBufferString(text)
 	return cmd.Run()
 }
