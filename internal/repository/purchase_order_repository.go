@@ -67,7 +67,7 @@ func (r *purchaseOrderRepository) List(ctx context.Context, params models.ListPa
 	var total int64
 
 	// Build base query for both count and data
-	baseQuery := r.db.WithContext(ctx).Model(&models.PurchaseOrder{})
+	baseQuery := r.db.WithContext(ctx).Model(&models.PurchaseOrder{}).Preload("Inventory")
 
 	// Apply search filter
 	if params.Search != "" {
