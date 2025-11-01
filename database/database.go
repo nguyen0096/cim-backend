@@ -28,12 +28,7 @@ func Initialize(cfg config.DatabaseConfig) (*gorm.DB, error) {
 	return db, nil
 }
 
-// MigrateSQLUp runs SQL migrations from migration directory (up)
-func MigrateSQLUp(db *gorm.DB, migrationDir string) error {
-	return runSQLMigration(db, migrationDir, "up")
-}
-
-// AutoMigrate runs GORM auto migrations
+// AutoMigrate runs GORM auto migrations to create/update table schemas
 func AutoMigrate(db *gorm.DB) error {
 	return db.AutoMigrate(
 		&models.User{},
@@ -50,27 +45,32 @@ func AutoMigrate(db *gorm.DB) error {
 	)
 }
 
-// MigrateUp runs SQL migrations from migration directory (up) and then GORM auto migrations
+// MigrateScripts runs SQL migration scripts from migration directory (up)
+func MigrateScripts(db *gorm.DB, migrationDir string) error {
+	return runSQLMigration(db, migrationDir, "up")
+}
+
+// MigrateUp runs GORM auto migrations first, then SQL migration scripts
 func MigrateUp(db *gorm.DB, migrationDir string) error {
-	// Run SQL migrations first
-	if err := MigrateSQLUp(db, migrationDir); err != nil {
+	// Run GORM auto migrations first to create tables
+	if err := AutoMigrate(db); err != nil {
 		return err
 	}
 
-	// Run GORM auto migrations
-	if err := AutoMigrate(db); err != nil {
+	// Then run SQL migration scripts for data migrations and other SQL-based changes
+	if err := MigrateScripts(db, migrationDir); err != nil {
 		return err
 	}
 
 	return nil
 }
 
-// MigrateDown rolls back SQL migrations from migration directory (down one step)
+// MigrateDown rolls back SQL migration scripts from migration directory (down one step)
 func MigrateDown(db *gorm.DB, migrationDir string) error {
 	return runSQLMigration(db, migrationDir, "down")
 }
 
-// Migrate runs SQL migrations from migration directory and then GORM auto migrations (for backward compatibility)
+// Migrate runs both auto migrations and SQL scripts (for backward compatibility)
 func Migrate(db *gorm.DB) error {
 	return MigrateUp(db, "database/migrations")
 }
