@@ -18,10 +18,16 @@ fi
 
 echo "Backup restore completed successfully"
 
-# Load crontab if exists in config volume
+# Set default cron schedule if not provided (every 3 hours)
+: "${BACKUP_CRON_SCHEDULE:=0 */3 * * *}"
+
+# Load crontab if exists in config volume, otherwise generate from environment variable
 if [ -f /backup/config/crontab ]; then
-    echo "Loading custom crontab..."
+    echo "Loading custom crontab from /backup/config/crontab..."
     crontab /backup/config/crontab
+else
+    echo "Generating crontab with schedule: ${BACKUP_CRON_SCHEDULE}"
+    echo "${BACKUP_CRON_SCHEDULE} /usr/local/bin/backup-db.sh >> ${LOG_DIR}/backup.log 2>&1" | crontab -
 fi
 
 # Tail log files to docker logs (in background)

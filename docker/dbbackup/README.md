@@ -4,7 +4,7 @@ Automated PostgreSQL database backup system with Google Drive sync using rclone.
 
 ## Features
 
-- **Automated backups** every 3 minutes via cron
+- **Automated backups** with configurable cron schedule (default: every 3 hours)
 - **Google Drive sync** using rclone service account
 - **Automatic restore** on container startup
 - **Manual recovery** from latest backup
@@ -48,6 +48,7 @@ environment:
   - PGHOST=host.docker.internal
   - RCLONE_REMOTE=cim-backup # Remote name from rclone.conf
   - RCLONE_PATH= # Optional: subfolder path (e.g., "dev", "prod", "backups/db")
+  - BACKUP_CRON_SCHEDULE=0 */3 * * * # Cron schedule (default: every 3 hours)
 ```
 
 ## Usage
@@ -143,7 +144,7 @@ docker exec dbbackup-test ls -lht /backup/dumps
 ## How It Works
 
 1. **Container Startup**: Syncs existing backups from Google Drive to local storage
-2. **Cron Schedule**: Runs backup every 3 minutes (configurable in `build/default-crontab`)
+2. **Cron Schedule**: Runs backup based on `BACKUP_CRON_SCHEDULE` environment variable (default: every 3 hours)
 3. **Backup Process**:
    - Creates PostgreSQL dump
    - Compresses with gzip
@@ -160,16 +161,26 @@ docker exec dbbackup-test ls -lht /backup/dumps
 
 ## Environment Variables
 
-| Variable            | Default                | Description                                               |
-| ------------------- | ---------------------- | --------------------------------------------------------- |
-| `POSTGRES_DB`       | (required)             | Database name                                             |
-| `POSTGRES_USER`     | (required)             | Database user                                             |
-| `POSTGRES_PASSWORD` | (required)             | Database password                                         |
-| `PGHOST`            | `host.docker.internal` | Database host                                             |
-| `RCLONE_REMOTE`     | `cim-backup`           | Rclone remote name from config (without colon)            |
-| `RCLONE_PATH`       | (empty)                | Optional path within remote (e.g., `dev`, `prod/backups`) |
+| Variable               | Default                | Description                                               |
+| ---------------------- | ---------------------- | --------------------------------------------------------- |
+| `POSTGRES_DB`          | (required)             | Database name                                             |
+| `POSTGRES_USER`        | (required)             | Database user                                             |
+| `POSTGRES_PASSWORD`    | (required)             | Database password                                         |
+| `PGHOST`               | `host.docker.internal` | Database host                                             |
+| `RCLONE_REMOTE`        | `cim-backup`           | Rclone remote name from config (without colon)            |
+| `RCLONE_PATH`          | (empty)                | Optional path within remote (e.g., `dev`, `prod/backups`) |
+| `BACKUP_CRON_SCHEDULE` | `0 */3 * * *`          | Cron schedule for automatic backups                       |
 
 **Note:** `BACKUP_DIR` and `LOG_DIR` are set at build time in the Dockerfile and should not be overridden at runtime.
+
+### Cron Schedule Examples
+
+- `0 */3 * * *` - Every 3 hours at minute 0 (default)
+- `0 */6 * * *` - Every 6 hours at minute 0
+- `0 2 * * *` - Daily at 2:00 AM
+- `0 2 * * 0` - Weekly on Sunday at 2:00 AM
+- `*/15 * * * *` - Every 15 minutes
+- `0 0,12 * * *` - Twice daily at midnight and noon
 
 ## Troubleshooting
 

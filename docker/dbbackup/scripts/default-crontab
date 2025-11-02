@@ -1,2 +1,0 @@
-# DB Backup - Every 3 hours - Create database backup and sync to Google Drive
-0 */3 * * * /usr/local/bin/backup-db.sh >> /backup/logs/backup.log 2>&1

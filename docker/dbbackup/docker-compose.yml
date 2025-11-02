@@ -17,6 +17,7 @@ services:
       - PGHOST=host.docker.internal
       - RCLONE_REMOTE=cim-backup
       - RCLONE_PATH=
+      - BACKUP_CRON_SCHEDULE=0 */3 * * * # Every 3 hours
     volumes:
       # Configuration files (read-only)
       - ./test/rclone.conf:/root/.config/rclone/rclone.conf:ro
