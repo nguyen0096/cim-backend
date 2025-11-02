@@ -1,0 +1,51 @@
+version: "3.8"
+
+services:
+  dbbackup:
+    build:
+      context: ../..
+      dockerfile: docker/dbbackup/Dockerfile
+    image: dbbackup:test
+    container_name: dbbackup-test
+    restart: unless-stopped
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    environment:
+      - POSTGRES_DB=cim_db
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=password
+      - PGHOST=host.docker.internal
+    volumes:
+      # Configuration files (read-only)
+      - ./test/rclone.conf:/root/.config/rclone/rclone.conf:ro
+      - ./test/rclone-service-account.json:/root/.config/rclone/rclone-service-account.json:ro
+      # Data volumes
+      - dbbackup-dumps:/backup/dumps
+      - dbbackup-logs:/backup/logs
+
+  dbbackup-manual:
+    build:
+      context: ../..
+      dockerfile: docker/dbbackup/Dockerfile
+    image: dbbackup:test
+    container_name: dbbackup-manual
+    restart: "no"
+    entrypoint: ["/entrypoint-manual.sh"]
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    environment:
+      - POSTGRES_DB=cim_db
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=password
+      - PGHOST=host.docker.internal
+    volumes:
+      # Configuration files (read-only)
+      - ./test/rclone.conf:/root/.config/rclone/rclone.conf:ro
+      - ./test/rclone-service-account.json:/root/.config/rclone/rclone-service-account.json:ro
+      # Data volumes (shared with main service)
+      - dbbackup-dumps:/backup/dumps
+      - dbbackup-logs:/backup/logs
+
+volumes:
+  dbbackup-dumps:
+  dbbackup-logs:
