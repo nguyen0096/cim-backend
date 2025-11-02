@@ -18,11 +18,15 @@ func _() {
 	_ = x[ErrorCodeConflict-9]
 	_ = x[ErrorCodePurchaseOrderNoItems-7]
 	_ = x[ErrorCodeBadInventoryItemState-8]
+	_ = x[ErrorCodeReconcileValidationFailed-10]
+	_ = x[ErrorCodeDisposeValidationFailed-11]
+	_ = x[ErrorCodeTransferValidationFailed-12]
+	_ = x[ErrorCodeConsumeFIFOFailed-13]
 }
 
-const _ErrorCode_name = "internalinvalid-request-bodynot-foundunauthorizedforbiddenvalidationduplicatepurchase-order-no-itemsbad-inventory-item-stateconflict"
+const _ErrorCode_name = "internalinvalid-request-bodynot-foundunauthorizedforbiddenvalidationduplicatepurchase-order-no-itemsbad-inventory-item-stateconflictreconcile-validation-faileddispose-validation-failedtransfer-validation-failedconsume-fifo-failed"
 
-var _ErrorCode_index = [...]uint8{0, 8, 28, 37, 49, 58, 68, 77, 100, 124, 132}
+var _ErrorCode_index = [...]uint8{0, 8, 28, 37, 49, 58, 68, 77, 100, 124, 132, 159, 184, 210, 229}
 
 func (i ErrorCode) String() string {
 	if i < 0 || i >= ErrorCode(len(_ErrorCode_index)-1) {
