@@ -59,11 +59,6 @@ func main() {
 		log.Fatal("Failed to initialize database:", err)
 	}
 
-	// Run migrations
-	if err := database.Migrate(db); err != nil {
-		log.Fatal("Failed to run migrations:", err)
-	}
-
 	// Initialize Casbin service for authorization
 	casbinService, err := auth.NewCasbinService(db)
 	if err != nil {

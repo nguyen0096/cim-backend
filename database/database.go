@@ -70,11 +70,6 @@ func MigrateDown(db *gorm.DB, migrationDir string) error {
 	return runSQLMigration(db, migrationDir, "down")
 }
 
-// Migrate runs both auto migrations and SQL scripts (for backward compatibility)
-func Migrate(db *gorm.DB) error {
-	return MigrateUp(db, "database/migrations")
-}
-
 // runSQLMigration runs SQL migrations in the specified direction
 func runSQLMigration(db *gorm.DB, migrationDir, direction string) error {
 	// Get underlying SQL DB
