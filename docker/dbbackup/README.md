@@ -46,6 +46,8 @@ environment:
   - POSTGRES_USER=your_user
   - POSTGRES_PASSWORD=your_password
   - PGHOST=host.docker.internal
+  - RCLONE_REMOTE=cim-backup # Remote name from rclone.conf
+  - RCLONE_PATH= # Optional: subfolder path (e.g., "dev", "prod", "backups/db")
 ```
 
 ## Usage
@@ -155,6 +157,19 @@ docker exec dbbackup-test ls -lht /backup/dumps
 - `/usr/local/bin/recover-db.sh` - Restore from latest backup
 - `/entrypoint.sh` - Production entrypoint (with cron)
 - `/entrypoint-manual.sh` - Manual testing entrypoint (no cron)
+
+## Environment Variables
+
+| Variable            | Default                | Description                                               |
+| ------------------- | ---------------------- | --------------------------------------------------------- |
+| `POSTGRES_DB`       | (required)             | Database name                                             |
+| `POSTGRES_USER`     | (required)             | Database user                                             |
+| `POSTGRES_PASSWORD` | (required)             | Database password                                         |
+| `PGHOST`            | `host.docker.internal` | Database host                                             |
+| `RCLONE_REMOTE`     | `cim-backup`           | Rclone remote name from config (without colon)            |
+| `RCLONE_PATH`       | (empty)                | Optional path within remote (e.g., `dev`, `prod/backups`) |
+
+**Note:** `BACKUP_DIR` and `LOG_DIR` are set at build time in the Dockerfile and should not be overridden at runtime.
 
 ## Troubleshooting
 

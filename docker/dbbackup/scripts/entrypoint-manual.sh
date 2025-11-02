@@ -1,9 +1,12 @@
 #!/bin/bash
 set -e
 
+# Load shared environment configuration
+source /usr/local/bin/env-config.sh
+
 # Restore existing backups from Google Drive on container startup
 echo "Restoring existing backups from Google Drive..."
-rclone sync cim-backup: /backup/dumps/ \
+rclone sync "${RCLONE_REMOTE}:${RCLONE_PATH}" "${BACKUP_DIR}/" \
     --config /root/.config/rclone/rclone.conf \
     --log-level INFO \
     --stats 1m

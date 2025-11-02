@@ -4,11 +4,10 @@
 
 set -e
 
-# Configuration
-BACKUP_DIR="/backup/dumps"
-DB_HOST="${PGHOST:-host.docker.internal}"
-DB_NAME="${POSTGRES_DB}"
-DB_USER="${POSTGRES_USER}"
+# Load shared environment configuration
+source /usr/local/bin/env-config.sh
+
+# Backup-specific configuration
 BACKUP_DATE=$(date +%Y%m%d_%H%M%S)
 BACKUP_FILE="${BACKUP_DIR}/backup_${DB_NAME}_${BACKUP_DATE}.sql"
 
@@ -19,7 +18,7 @@ mkdir -p "${BACKUP_DIR}"
 echo "[$(date '+%Y-%m-%d %H:%M:%S')] Starting database backup..."
 
 # Create database dump
-PGPASSWORD="${POSTGRES_PASSWORD}" pg_dump \
+PGPASSWORD="${DB_PASSWORD}" pg_dump \
     -h "${DB_HOST}" \
     -U "${DB_USER}" \
     -d "${DB_NAME}" \
@@ -35,7 +34,7 @@ echo "[$(date '+%Y-%m-%d %H:%M:%S')] Backup completed: ${BACKUP_FILE_GZ}"
 # Sync all backup files to Google Drive
 echo "[$(date '+%Y-%m-%d %H:%M:%S')] Starting rclone sync to Google Drive..."
 
-rclone sync "${BACKUP_DIR}/" cim-backup: \
+rclone sync "${BACKUP_DIR}/" "${RCLONE_REMOTE}:${RCLONE_PATH}" \
     --config /root/.config/rclone/rclone.conf \
     --log-level INFO \
     --stats 1m

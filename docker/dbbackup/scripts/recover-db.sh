@@ -3,11 +3,8 @@
 
 set -e
 
-# Configuration
-BACKUP_DIR="/backup/dumps"
-DB_HOST="${PGHOST:-host.docker.internal}"
-DB_NAME="${POSTGRES_DB}"
-DB_USER="${POSTGRES_USER}"
+# Load shared environment configuration
+source /usr/local/bin/env-config.sh
 
 echo "[$(date '+%Y-%m-%d %H:%M:%S')] Starting database recovery..."
 
@@ -32,7 +29,7 @@ echo "[$(date '+%Y-%m-%d %H:%M:%S')] Restoring database from backup..."
 echo "[$(date '+%Y-%m-%d %H:%M:%S')] WARNING: This will overwrite the existing database!"
 
 # Decompress and restore
-gunzip -c "${LATEST_BACKUP}" | PGPASSWORD="${POSTGRES_PASSWORD}" psql \
+gunzip -c "${LATEST_BACKUP}" | PGPASSWORD="${DB_PASSWORD}" psql \
     -h "${DB_HOST}" \
     -U "${DB_USER}" \
     -d "${DB_NAME}" \
