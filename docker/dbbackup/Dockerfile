@@ -19,11 +19,11 @@ RUN mkdir -p /backup/dumps \
 RUN touch /var/log/cron.log
 
 # Copy build files
-COPY docker/dbbackup/build/default-crontab /etc/crontabs/root
-COPY docker/dbbackup/build/backup-db.sh /usr/local/bin/backup-db.sh
-COPY docker/dbbackup/build/recover-db.sh /usr/local/bin/recover-db.sh
-COPY docker/dbbackup/build/entrypoint.sh /entrypoint.sh
-COPY docker/dbbackup/build/entrypoint-manual.sh /entrypoint-manual.sh
+COPY scripts/default-crontab /etc/crontabs/root
+COPY scripts/backup-db.sh /usr/local/bin/backup-db.sh
+COPY scripts/recover-db.sh /usr/local/bin/recover-db.sh
+COPY scripts/entrypoint.sh /entrypoint.sh
+COPY scripts/entrypoint-manual.sh /entrypoint-manual.sh
 
 # Set proper permissions
 RUN chmod 600 /etc/crontabs/root && \
