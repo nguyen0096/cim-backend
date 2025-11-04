@@ -9,21 +9,23 @@ import (
 type PaymentReceiptFormListRequest struct {
 	models.ListParams
 	PurchaseOrderID uint                              `json:"purchase_order_id" query:"purchase_order_id"`
+	InventoryID     uint                              `json:"inventory_id" query:"inventory_id"`
 	Date            string                            `json:"date" query:"date"`
 	Statuses        []models.PaymentReceiptFormStatus `json:"statuses" query:"statuses"`
 }
 
 // PaymentReceiptFormPayload represents the payload for creating a payment receipt form
 type PaymentReceiptFormPayload struct {
-	FormNumber      string                          `json:"form_number,omitempty"`
+	InventoryID     *uint                           `json:"inventory_id,omitempty"`
+	FormNumber      *string                         `json:"form_number,omitempty"`
 	PurchaseOrderID uint                            `json:"purchase_order_id"`
-	FullName        string                          `json:"full_name"`
+	FullName        string                          `json:"full_name" validate:"required"`
 	Date            string                          `json:"date"`
 	Department      string                          `json:"department"`
-	Details         string                          `json:"details"`
-	TotalAmount     float64                         `json:"total_amount"`
+	Details         string                          `json:"details" validate:"required"`
+	TotalAmount     float64                         `json:"total_amount" validate:"required"`
 	AmountInWords   string                          `json:"amount_in_words"`
-	Status          models.PaymentReceiptFormStatus `json:"status" validate:"required,oneof=pending submitted approved rejected"`
+	Status          models.PaymentReceiptFormStatus `json:"status" validate:"omitempty,oneof=pending submitted approved rejected"`
 }
 
 // ToPaymentReceiptForm converts the payload to a PaymentReceiptForm model
@@ -36,6 +38,12 @@ func (p *PaymentReceiptFormPayload) ToPaymentReceiptForm() (*models.PaymentRecei
 		Details:         p.Details,
 		TotalAmount:     p.TotalAmount,
 		Status:          p.Status,
+	}
+
+	if p.InventoryID != nil {
+		model.PurchaseOrder = &models.PurchaseOrder{
+			InventoryID: p.InventoryID,
+		}
 	}
 
 	date, err := time.Parse("2006-01-02", p.Date)

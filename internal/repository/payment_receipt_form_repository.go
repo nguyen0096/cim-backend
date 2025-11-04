@@ -40,7 +40,7 @@ func NewPaymentReceiptFormRepository(db *gorm.DB) PaymentReceiptFormRepository {
 
 // Create creates a new payment receipt form
 func (r *paymentReceiptFormRepository) Create(ctx context.Context, form *models.PaymentReceiptForm) error {
-	if err := r.db.WithContext(ctx).Create(form).Error; err != nil {
+	if err := r.db.WithContext(ctx).Model(&models.PaymentReceiptForm{}).Omit("PurchaseOrder").Create(form).Error; err != nil {
 		return pkg.NewAppError(pkg.ErrorCodeInternal, "Failed to create payment receipt form", err)
 	}
 	return nil
@@ -62,6 +62,7 @@ func (r *paymentReceiptFormRepository) GetByIDFull(ctx context.Context, id uint)
 	var form models.PaymentReceiptForm
 	if err := r.db.WithContext(ctx).
 		Preload("PurchaseOrder").
+		Preload("PurchaseOrder.Inventory").
 		Preload("PurchaseOrder.Items").
 		Preload("PurchaseOrder.Items.Product").
 		Preload("PurchaseOrder.Items.Supplier").
@@ -79,16 +80,22 @@ func (r *paymentReceiptFormRepository) List(ctx context.Context, req *dto.Paymen
 	var forms []models.PaymentReceiptForm
 	var total int64
 
-	query := r.db.WithContext(ctx).Model(&models.PaymentReceiptForm{}).Preload("PurchaseOrder")
+	query := r.db.WithContext(ctx).Model(&models.PaymentReceiptForm{}).Preload("PurchaseOrder").Preload("PurchaseOrder.Inventory")
 
 	// Apply purchase order filter if provided
 	if req.PurchaseOrderID != 0 {
-		query = query.Where("purchase_order_id = ?", req.PurchaseOrderID)
+		query = query.Where("payment_receipt_forms.purchase_order_id = ?", req.PurchaseOrderID)
+	}
+
+	// Apply inventory filter if provided
+	if req.InventoryID != 0 {
+		query = query.Joins("JOIN purchase_orders ON payment_receipt_forms.purchase_order_id = purchase_orders.id").
+			Where("purchase_orders.inventory_id = ?", req.InventoryID)
 	}
 
 	// Apply status filter if provided
 	if len(req.Statuses) > 0 {
-		query = query.Where("status IN ?", req.Statuses)
+		query = query.Where("payment_receipt_forms.status IN ?", req.Statuses)
 	}
 
 	// Count total records
@@ -103,7 +110,7 @@ func (r *paymentReceiptFormRepository) List(ctx context.Context, req *dto.Paymen
 		}
 		startOfDay := date.Truncate(24 * time.Hour)
 		endOfDay := startOfDay.Add(24 * time.Hour)
-		query = query.Where("date >= ? AND date < ?", startOfDay, endOfDay)
+		query = query.Where("payment_receipt_forms.date >= ? AND payment_receipt_forms.date < ?", startOfDay, endOfDay)
 	}
 
 	// Apply pagination and sorting
@@ -112,9 +119,9 @@ func (r *paymentReceiptFormRepository) List(ctx context.Context, req *dto.Paymen
 		if req.Order == "" {
 			req.Order = "asc"
 		}
-		query = query.Order(req.Sort + " " + req.Order)
+		query = query.Order("payment_receipt_forms." + req.Sort + " " + req.Order)
 	} else {
-		query = query.Order("created_at desc")
+		query = query.Order("payment_receipt_forms.created_at desc")
 	}
 
 	if err := query.Offset(offset).Limit(req.Limit).Find(&forms).Error; err != nil {
@@ -169,17 +176,25 @@ func (r *paymentReceiptFormRepository) Search(ctx context.Context, query string,
 	var total int64
 
 	searchQuery := r.db.WithContext(ctx).Model(&models.PaymentReceiptForm{}).
-		Where("full_name ILIKE ? OR department ILIKE ? OR details ILIKE ? OR location ILIKE ?",
-			"%"+query+"%", "%"+query+"%", "%"+query+"%", "%"+query+"%")
+		Preload("PurchaseOrder").
+		Preload("PurchaseOrder.Inventory").
+		Where("payment_receipt_forms.full_name ILIKE ? OR payment_receipt_forms.department ILIKE ? OR payment_receipt_forms.details ILIKE ?",
+			"%"+query+"%", "%"+query+"%", "%"+query+"%")
 
 	// Apply purchase order filter if provided
 	if req.PurchaseOrderID != 0 {
-		searchQuery = searchQuery.Where("purchase_order_id = ?", req.PurchaseOrderID)
+		searchQuery = searchQuery.Where("payment_receipt_forms.purchase_order_id = ?", req.PurchaseOrderID)
+	}
+
+	// Apply inventory filter if provided
+	if req.InventoryID != 0 {
+		searchQuery = searchQuery.Joins("JOIN purchase_orders ON payment_receipt_forms.purchase_order_id = purchase_orders.id").
+			Where("purchase_orders.inventory_id = ?", req.InventoryID)
 	}
 
 	// Apply status filter if provided
 	if len(req.Statuses) > 0 {
-		searchQuery = searchQuery.Where("status IN ?", req.Statuses)
+		searchQuery = searchQuery.Where("payment_receipt_forms.status IN ?", req.Statuses)
 	}
 
 	// Count total records
@@ -195,9 +210,9 @@ func (r *paymentReceiptFormRepository) Search(ctx context.Context, query string,
 		if req.Order == "" {
 			req.Order = "asc"
 		}
-		searchQuery = searchQuery.Order(req.Sort + " " + req.Order)
+		searchQuery = searchQuery.Order("payment_receipt_forms." + req.Sort + " " + req.Order)
 	} else {
-		searchQuery = searchQuery.Order("created_at desc")
+		searchQuery = searchQuery.Order("payment_receipt_forms.created_at desc")
 	}
 
 	if err := searchQuery.Offset(offset).Limit(req.Limit).Find(&forms).Error; err != nil {
@@ -211,6 +226,8 @@ func (r *paymentReceiptFormRepository) Search(ctx context.Context, query string,
 func (r *paymentReceiptFormRepository) GetLatestPaymentReceiptForm(ctx context.Context, purchaseOrderID uint, status models.PaymentReceiptFormStatus) (*models.PaymentReceiptForm, error) {
 	var form models.PaymentReceiptForm
 	query := r.db.WithContext(ctx).
+		Preload("PurchaseOrder").
+		Omit("PurchaseOrder.TotalAmount").
 		Where("status = ?", status).
 		Order("created_at DESC")
 	if purchaseOrderID != 0 {

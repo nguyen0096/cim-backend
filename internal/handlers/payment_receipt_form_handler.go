@@ -107,26 +107,23 @@ func (h *PaymentReceiptFormHandler) getAllClients() []*ClientConnection {
 
 // runNotificationHub manages client connections and broadcasts messages
 func (h *PaymentReceiptFormHandler) runNotificationHub() {
-	for {
-		select {
-		case message := <-h.broadcast:
-			connectionCount := h.getConnectionCount()
-			h.logger.WithFields(logrus.Fields{
-				"message_type":      message.Type,
-				"total_connections": connectionCount,
-			}).Info("Broadcasting message to connected clients")
+	for message := range h.broadcast {
+		connectionCount := h.getConnectionCount()
+		h.logger.WithFields(logrus.Fields{
+			"message_type":      message.Type,
+			"total_connections": connectionCount,
+		}).Info("Broadcasting message to connected clients")
 
-			h.clients.Range(func(key, value interface{}) bool {
-				client := value.(*ClientConnection)
-				select {
-				case client.SendChan <- message:
-				default:
-					// Client channel is full, skip this client
-					h.logger.WithField("client_id", client.ID).Warn("Client channel full, skipping message")
-				}
-				return true
-			})
-		}
+		h.clients.Range(func(key, value interface{}) bool {
+			client := value.(*ClientConnection)
+			select {
+			case client.SendChan <- message:
+			default:
+				// Client channel is full, skip this client
+				h.logger.WithField("client_id", client.ID).Warn("Client channel full, skipping message")
+			}
+			return true
+		})
 	}
 }
 
@@ -145,6 +142,8 @@ func (h *PaymentReceiptFormHandler) runNotificationHub() {
 // @Router /payment-receipt-forms [post]
 func (h *PaymentReceiptFormHandler) CreatePaymentReceiptForm(c echo.Context) error {
 	var payload dto.PaymentReceiptFormPayload
+
+	// Do not validate the request body here, it will be validated later
 	if err := c.Bind(&payload); err != nil {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid request body", "details": err.Error()})
 	}
@@ -186,8 +185,10 @@ func (h *PaymentReceiptFormHandler) CreatePaymentReceiptForm(c echo.Context) err
 	notification := NotificationMessage{
 		Type: "pending_form_update",
 		Data: map[string]interface{}{
-			"status": "pending",
-			"id":     form.ID,
+			"status":            "pending",
+			"id":                form.ID,
+			"purchase_order_id": form.PurchaseOrderID,
+			"purchase_order":    form.PurchaseOrder,
 		},
 		Timestamp: time.Now().UTC(),
 	}
@@ -251,8 +252,9 @@ func (h *PaymentReceiptFormHandler) GetPaymentReceiptForm(c echo.Context) error 
 // @Produce json
 // @Param page query int false "Page number (default: 1, minimum: 1)"
 // @Param limit query int false "Number of items per page (default: 20, minimum: 1, maximum: 100)"
-// @Param q query string false "Search term for full name, department, details, or location"
+// @Param q query string false "Search term for full name, department, or details"
 // @Param purchase_order_id query int false "Filter by purchase order ID"
+// @Param inventory_id query int false "Filter by inventory ID"
 // @Param statuses query []string false "Filter by statuses (pending, submitted, approved, rejected)"
 // @Param sort query string false "Sort field (full_name, department, total_amount, date, created_at, updated_at)"
 // @Param order query string false "Sort direction (asc, desc, default: asc)"
@@ -316,8 +318,13 @@ func (h *PaymentReceiptFormHandler) SubmitPaymentReceiptForm(c echo.Context) err
 	}
 
 	var req dto.PaymentReceiptFormPayload
+
 	if err := c.Bind(&req); err != nil {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid request body", "details": err.Error()})
+	}
+
+	if err := pkg.Validator.Struct(req); err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Request body validation failed", "details": err.Error()})
 	}
 
 	form, err := req.ToPaymentReceiptForm()
@@ -331,6 +338,10 @@ func (h *PaymentReceiptFormHandler) SubmitPaymentReceiptForm(c echo.Context) err
 		if appErr, ok := err.(*pkg.AppError); ok {
 			return c.JSON(appErr.HTTPStatus(), map[string]string{"error": appErr.Message})
 		}
+		h.logger.WithFields(logrus.Fields{
+			"error":   err.Error(),
+			"details": "Failed to update payment receipt form",
+		}).Error("Failed to update payment receipt form")
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to update payment receipt form"})
 	}
 

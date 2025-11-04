@@ -837,7 +837,7 @@ func (s *purchaseOrderService) createExpenseData(paymentReceiptForm *models.Paym
 	header, color := s.getHeaderAndColorFromProductType(productType)
 	expensesData[0][header] = paymentReceiptForm.TotalAmount
 	cellColors[0] = color
-	ordinalNumber, err := strconv.Atoi(strings.Split(paymentReceiptForm.FormNumber, "-")[1])
+	ordinalNumber, err := strconv.Atoi(strings.Split(*paymentReceiptForm.FormNumber, "-")[2])
 	if err != nil {
 		s.logger.WithFields(logrus.Fields{
 			"operation": "createExpenseData",

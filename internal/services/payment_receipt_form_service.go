@@ -38,14 +38,18 @@ func NewPaymentReceiptFormService(paymentReceiptFormRepo repository.PaymentRecei
 	}
 }
 
+func (s *paymentReceiptFormService) buildFormNumber(date time.Time, inventoryID uint, number int64) string {
+	return fmt.Sprintf("%s-%d-%d", date.Format("20060102"), inventoryID, number)
+}
+
 // generateNextFormNumber generates the next available form number in date-increment format
-func (s *paymentReceiptFormService) generateNextFormNumber(ctx context.Context, date time.Time) (string, error) {
+func (s *paymentReceiptFormService) generateNextFormNumber(ctx context.Context, date time.Time, inventoryID uint) (string, error) {
 	dateString := date.Format("20060102")
 	// Count all existing forms to get the next increment number
 	var count int64
 	err := s.db.WithContext(ctx).
 		Model(&models.PaymentReceiptForm{}).
-		Where("form_number LIKE ?", dateString+"-%").
+		Where("form_number LIKE ?", fmt.Sprintf("%s-%d-%%", dateString, inventoryID)).
 		Count(&count).Error
 
 	if err != nil {
@@ -54,7 +58,7 @@ func (s *paymentReceiptFormService) generateNextFormNumber(ctx context.Context, 
 
 	// Generate form number: date-increment (e.g., 20240115-001)
 	increment := count + 1
-	formNumber := fmt.Sprintf("%s-%05d", dateString, increment)
+	formNumber := s.buildFormNumber(date, inventoryID, increment)
 
 	return formNumber, nil
 }
@@ -63,13 +67,6 @@ func (s *paymentReceiptFormService) generateNextFormNumber(ctx context.Context, 
 func (s *paymentReceiptFormService) CreatePaymentReceiptForm(ctx context.Context, form *models.PaymentReceiptForm) (*models.PaymentReceiptForm, error) {
 	// Convert payload to model
 	form.Status = models.PaymentReceiptFormStatusPending
-
-	// Generate form number if not provided
-	formNumber, err := s.generateNextFormNumber(ctx, form.Date)
-	if err != nil {
-		return nil, pkg.NewAppError(pkg.ErrorCodeInternal, "Failed to generate form number", err)
-	}
-	form.FormNumber = formNumber
 
 	if err := s.paymentReceiptFormRepo.Create(ctx, form); err != nil {
 		return nil, pkg.NewAppError(pkg.ErrorCodeInternal, "Failed to create payment receipt form", err)
@@ -109,12 +106,12 @@ func (s *paymentReceiptFormService) SubmitPaymentReceiptForm(ctx context.Context
 		return pkg.NewAppError(pkg.ErrorCodeValidation, "Total amount must be greater than or equal to 0", nil)
 	}
 
-	formNumber, err := s.generateNextFormNumber(ctx, form.Date)
+	formNumber, err := s.generateNextFormNumber(ctx, form.Date, *form.PurchaseOrder.InventoryID)
 	if err != nil {
 		return fmt.Errorf("failed to generate form number: %w", err)
 	}
 
-	form.FormNumber = formNumber
+	form.FormNumber = &formNumber
 	form.Status = models.PaymentReceiptFormStatusSubmitted
 
 	if err := s.paymentReceiptFormRepo.Update(ctx, form); err != nil {
