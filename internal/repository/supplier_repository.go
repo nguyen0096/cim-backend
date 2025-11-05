@@ -88,7 +88,7 @@ func (r *supplierRepository) FindOrCreateByName(ctx context.Context, supplier *m
 }
 
 func (r *supplierRepository) Update(ctx context.Context, supplier *models.Supplier) error {
-	return r.db.WithContext(ctx).Save(supplier).Error
+	return r.db.WithContext(ctx).Model(&models.Supplier{}).Where("id = ?", supplier.ID).Updates(supplier).Error
 }
 
 // UpdateStatus updates the status of a supplier
