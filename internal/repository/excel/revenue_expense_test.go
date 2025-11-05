@@ -82,42 +82,11 @@ func TestRevenueExpenseExcelRepository(t *testing.T) {
 	}
 
 	t.Log("\n=== Test Add First Expense ===")
-
-	// Display detected columns to show what the Excel file actually contains
-	t.Log("\n📋 Available columns for writing data:")
-	t.Logf("   Total columns detected: %d\n", len(schema.Sheets[0].Headers))
-	for i, header := range schema.Sheets[0].Headers {
-		requiredText := ""
-		if header.Required {
-			requiredText = " (REQUIRED)"
-		}
-		t.Logf("   %d. %s [%s]%s\n", i+1, header.ColumnName, header.DataType, requiredText)
-	}
-
-	// Show column mapping for easier understanding
-	t.Log("\n🔍 Column mapping for data entry:")
-	for _, header := range schema.Sheets[0].Headers {
-		switch header.ColumnName {
-		case "THÁNG 04+05/2023":
-			t.Logf("   %s → Date/period description\n", header.ColumnName)
-		case "CƠM":
-			t.Logf("   %s → Rice/meal expenses\n", header.ColumnName)
-		case "ĂN NHẸ":
-			t.Logf("   %s → Light meal/snack expenses\n", header.ColumnName)
-		case "NƯỚC":
-			t.Logf("   %s → Water/beverage expenses\n", header.ColumnName)
-		case "DƯ,THIẾU":
-			t.Logf("   %s → Surplus/deficit amount\n", header.ColumnName)
-		case "TỔNG CỘNG":
-			t.Logf("   %s → Total amount\n", header.ColumnName)
-		default:
-			t.Logf("   %s → %s field\n", header.ColumnName, header.ColumnName)
-		}
-	}
 	// Attempt to add expense using detected columns - test what actually works
 	sampleExpense := map[string]interface{}{
 		pkg.RevenueExpenseColumnName:  "Test expense",
 		pkg.RevenueExpenseColumnWater: 15000,
+		pkg.RevenueExpenseColumnOrdinalNumber: 10,
 	}
 
 	// Add expense
@@ -132,14 +101,14 @@ func TestRevenueExpenseExcelRepository(t *testing.T) {
 	expectedExpense := map[string]interface{}{
 		pkg.RevenueExpenseColumnName:          "Test expense",
 		pkg.RevenueExpenseColumnWater:         15000,
-		pkg.RevenueExpenseColumnOrdinalNumber: 1,
+		pkg.RevenueExpenseColumnOrdinalNumber: 10,
 	}
 	compareExpenses(t, expectedExpense, lastExpense)
 
 	sampleExpense2 := map[string]interface{}{
 		pkg.RevenueExpenseColumnName:          "Test expense 2",
 		pkg.RevenueExpenseColumnSnackAndRice:  1000000,
-		pkg.RevenueExpenseColumnOrdinalNumber: 2,
+		pkg.RevenueExpenseColumnOrdinalNumber: 13,
 	}
 
 	// Add another expense
@@ -156,7 +125,7 @@ func TestRevenueExpenseExcelRepository(t *testing.T) {
 	expectedExpense2 := map[string]interface{}{
 		pkg.RevenueExpenseColumnName:          "Test expense 2",
 		pkg.RevenueExpenseColumnSnackAndRice:  1000000,
-		pkg.RevenueExpenseColumnOrdinalNumber: 2,
+		pkg.RevenueExpenseColumnOrdinalNumber: 13,
 	}
 	compareExpenses(t, expectedExpense2, lastExpense2)
 

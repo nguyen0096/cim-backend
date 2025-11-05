@@ -91,18 +91,6 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Get necessary files
-        run: |
-          echo "$FIREBASE_SERVICE_ACCOUNT" | base64 -d > ./firebase-service-account.json
-          echo "$ENV_FILE" | base64 -d > ./.env
-          echo "$RBAC_MODEL_CONF" | base64 -d > ./rbac_model.conf
-          echo "$RBAC_POLICY_CSV" | base64 -d > ./rbac_policy.csv
-        shell: bash
-        env:
-          RBAC_MODEL_CONF: ${{ env.RBAC_MODEL_CONF }}
-          RBAC_POLICY_CSV: ${{ env.RBAC_POLICY_CSV }}
-          ENV_FILE: ${{ env.ENV_FILE }}
-          FIREBASE_SERVICE_ACCOUNT: ${{ env.FIREBASE_SERVICE_ACCOUNT }}
       - name: Build and push Docker image
         uses: docker/build-push-action@v5
         with:
@@ -111,6 +99,5 @@ jobs:
           platforms: linux/amd64
           push: true
           tags: |
-            ghcr.io/${{ github.repository_owner }}/cim-backend:latest
-            ghcr.io/${{ github.repository_owner }}/cim-backend:${{ github.sha }}
-            ghcr.io/${{ github.repository_owner }}/cim-backend:${{ github.ref_name }}
+            ghcr.io/hn-corp/cim-backend:latest
+            ghcr.io/hn-corp/cim-backend:${{ github.sha }}

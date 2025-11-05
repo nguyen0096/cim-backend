@@ -119,7 +119,6 @@ func (r *revenueExpenseExcelRepository) AddExpenses(ctx context.Context, sheetNa
 
 	// Add all expense data rows
 	for i, expenseData := range expensesData {
-		expenseData[pkg.RevenueExpenseColumnOrdinalNumber] = ordinalNumber
 		ordinalNumber++
 		if err := r.AddDataRowWithColor(file, sheetName, targetRow, expenseData, cellColors[i]); err != nil {
 			return fmt.Errorf("failed to add expense data row at index %d: %w", i, err)
