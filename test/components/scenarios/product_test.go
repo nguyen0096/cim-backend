@@ -3,80 +3,323 @@ package scenarios
 import (
 	"context"
 	"encoding/json"
+	"fmt"
+	"strconv"
 	"testing"
 
 	"cim-backend/internal/models"
 	"cim-backend/pkg"
 	"cim-backend/test/components/helpers"
 
+	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"gorm.io/gorm"
 )
 
 func (suite *ComponentTestSuite) TestCreateAndGetProduct() {
 	t := suite.T()
-	t.Run("Create and Get Product", func(t *testing.T) {
 
-		// Create test user with unique email
-		user, err := helpers.CreateTestUser(context.Background(), suite.sharedTestContainer.DB, "test-product@example.com", "Test User", models.RoleAdmin)
+	productData := map[string]interface{}{
+		"name":         "Test Product",
+		"description":  "Test Description",
+		"product_type": "test",
+		"supplier_ids": []uint{1, 2, 3},
+		"status":       "active",
+	}
+
+	t.Run("should create and get product", func(t *testing.T) {
+		roles := []models.UserRole{models.RoleAdmin, models.RoleAccountant}
+		for _, role := range roles {
+			t.Run(fmt.Sprintf("When user has %s role", role), func(t *testing.T) {
+				uniqueEmail := fmt.Sprintf("test-product-%s@example.com", uuid.New().String())
+				// Create test user with unique email
+				user, err := helpers.CreateTestUser(context.Background(), suite.sharedTestContainer.DB, uniqueEmail, "Test User", role)
+				require.NoError(t, err)
+
+				// Get auth token
+				token := helpers.GetAuthToken(suite.sharedTestContainer.MockAuth, user.UID, user.Email, user.Name)
+				resp, err := helpers.MakeRequest(t, "POST", suite.sharedTestContainer.BaseURL+"/api/v1/products", token, productData)
+				require.NoError(t, err)
+				defer resp.Body.Close()
+
+				assert.Equal(t, 201, resp.StatusCode)
+
+				var productResp map[string]interface{}
+				err = json.NewDecoder(resp.Body).Decode(&productResp)
+				require.NoError(t, err)
+				productID := productResp["id"]
+				assert.NotNil(t, productID)
+				assert.Equal(t, "Test Product", productResp["name"])
+			})
+		}
+	})
+
+	t.Run("should not create product", func(t *testing.T) {
+		roles := []models.UserRole{models.RoleStaff, models.RoleBotForm}
+		for _, role := range roles {
+			t.Run(fmt.Sprintf("When user has %s role", role), func(t *testing.T) {
+				uniqueEmail := fmt.Sprintf("test-product-%s@example.com", uuid.New().String())
+				user, err := helpers.CreateTestUser(context.Background(), suite.sharedTestContainer.DB, uniqueEmail, "Test User", role)
+				require.NoError(t, err)
+
+				// Get auth token
+				token := helpers.GetAuthToken(suite.sharedTestContainer.MockAuth, user.UID, user.Email, user.Name)
+				resp, err := helpers.MakeRequest(t, "POST", suite.sharedTestContainer.BaseURL+"/api/v1/products", token, productData)
+				require.NoError(t, err)
+				defer resp.Body.Close()
+				assert.Equal(t, 403, resp.StatusCode)
+
+				var errorResp map[string]interface{}
+				err = json.NewDecoder(resp.Body).Decode(&errorResp)
+				require.NoError(t, err)
+				assert.Equal(t, "Access denied: "+string(role)+" role cannot create products", errorResp["error"])
+			})
+		}
+	})
+}
+
+func (suite *ComponentTestSuite) TestUpdateProduct() {
+	t := suite.T()
+	ctx := pkg.WithUserEmail(context.Background(), "test@example.com")
+	db := suite.sharedTestContainer.DB
+	testSuppliers := []models.Supplier{
+		{
+			Base: models.Base{ID: 1},
+			Name: "Test Supplier 1",
+		},
+		{
+			Base: models.Base{ID: 2},
+			Name: "Test Supplier 2",
+		},
+		{
+			Base: models.Base{ID: 3},
+			Name: "Test Supplier 3",
+		},
+		{
+			Base: models.Base{ID: 4},
+			Name: "Test Supplier 4",
+		},
+	}
+	err := db.WithContext(ctx).Create(&testSuppliers).Error
+	require.NoError(t, err, "Failed to create suppliers")
+	testProduct := models.Product{
+		Name:        "Test Product",
+		Description: "Test Description",
+		ProductType: "test",
+		Unit:        "test",
+		Status:      "active",
+		Suppliers: []*models.Supplier{
+			{
+				Base: models.Base{ID: 1},
+				Name: "Test Supplier 1",
+			},
+			{
+				Base: models.Base{ID: 2},
+				Name: "Test Supplier 2",
+			},
+		},
+	}
+	err = db.WithContext(ctx).Create(&testProduct).Error
+	require.NoError(t, err, "Failed to create product")
+	productID := testProduct.ID
+
+	updatedProductData := map[string]interface{}{
+		"name":         "Test Product Edited",
+		"description":  "Test Description Edited",
+		"product_type": "test_edited",
+		"supplier_ids": []uint{2, 3, 4},
+		"status":       "inactive",
+	}
+
+	t.Run("should update product", func(t *testing.T) {
+		roles := []models.UserRole{models.RoleAdmin, models.RoleAccountant}
+		for _, role := range roles {
+			t.Run(fmt.Sprintf("When user has %s role", role), func(t *testing.T) {
+				uniqueEmail := fmt.Sprintf("test-product-%s@example.com", uuid.New().String())
+				user, err := helpers.CreateTestUser(context.Background(), suite.sharedTestContainer.DB, uniqueEmail, "Test User", role)
+				require.NoError(t, err)
+
+				// Get auth token
+				token := helpers.GetAuthToken(suite.sharedTestContainer.MockAuth, user.UID, user.Email, user.Name)
+				urlPath := fmt.Sprintf("/api/v1/products/%d", productID)
+				resp, err := helpers.MakeRequest(t, "PUT", suite.sharedTestContainer.BaseURL+urlPath, token, updatedProductData)
+				require.NoError(t, err)
+				defer resp.Body.Close()
+				assert.Equal(t, 200, resp.StatusCode)
+
+				var updatedProductResp map[string]interface{}
+				err = json.NewDecoder(resp.Body).Decode(&updatedProductResp)
+				require.NoError(t, err)
+				assert.Equal(t, "Test Product Edited", updatedProductResp["name"])
+				assert.Equal(t, "Test Description Edited", updatedProductResp["description"])
+				assert.Equal(t, "test_edited", updatedProductResp["product_type"])
+				assert.Equal(t, "inactive", updatedProductResp["status"])
+				suppliers := updatedProductResp["suppliers"].([]interface{})
+				assert.Equal(t, 3, len(suppliers))
+			})
+		}
+	})
+
+	t.Run("should not update product", func(t *testing.T) {
+		roles := []models.UserRole{models.RoleStaff, models.RoleBotForm}
+		for _, role := range roles {
+			t.Run(fmt.Sprintf("When user has %s role", role), func(t *testing.T) {
+				uniqueEmail := fmt.Sprintf("test-product-%s@example.com", uuid.New().String())
+				user, err := helpers.CreateTestUser(context.Background(), suite.sharedTestContainer.DB, uniqueEmail, "Test User", role)
+				require.NoError(t, err)
+
+				// Get auth token
+				token := helpers.GetAuthToken(suite.sharedTestContainer.MockAuth, user.UID, user.Email, user.Name)
+				urlPath := fmt.Sprintf("/api/v1/products/%d", productID)
+				resp, err := helpers.MakeRequest(t, "PUT", suite.sharedTestContainer.BaseURL+urlPath, token, updatedProductData)
+				require.NoError(t, err)
+				defer resp.Body.Close()
+				assert.Equal(t, 403, resp.StatusCode)
+
+				var errorResp map[string]interface{}
+				err = json.NewDecoder(resp.Body).Decode(&errorResp)
+				require.NoError(t, err)
+				assert.Equal(t, "Access denied: "+string(role)+" role cannot update products", errorResp["error"])
+			})
+		}
+	})
+}
+
+func (suite *ComponentTestSuite) TestUpdateProductStatus() {
+	t := suite.T()
+	ctx := pkg.WithUserEmail(context.Background(), "test@example.com")
+	db := suite.sharedTestContainer.DB
+	testProduct := models.Product{
+		Name:        "Test Product",
+		Description: "Test Description",
+	}
+	err := db.WithContext(ctx).Create(&testProduct).Error
+	require.NoError(t, err, "Failed to create product")
+	productID := testProduct.ID
+
+	t.Run("should update product status", func(t *testing.T) {
+		roles := []models.UserRole{models.RoleAdmin, models.RoleAccountant}
+		for _, role := range roles {
+			t.Run(fmt.Sprintf("When user has %s role", role), func(t *testing.T) {
+				uniqueEmail := fmt.Sprintf("test-product-%s@example.com", uuid.New().String())
+				user, err := helpers.CreateTestUser(context.Background(), suite.sharedTestContainer.DB, uniqueEmail, "Test User", role)
+				require.NoError(t, err)
+
+				// Get auth token
+				token := helpers.GetAuthToken(suite.sharedTestContainer.MockAuth, user.UID, user.Email, user.Name)
+				urlPath := fmt.Sprintf("/api/v1/products/%d/status", productID)
+				resp, err := helpers.MakeRequest(t, "PUT", suite.sharedTestContainer.BaseURL+urlPath, token, map[string]interface{}{"status": "inactive"})
+				require.NoError(t, err)
+				defer resp.Body.Close()
+				assert.Equal(t, 200, resp.StatusCode)
+
+				var updatedProductResp map[string]interface{}
+				err = json.NewDecoder(resp.Body).Decode(&updatedProductResp)
+				require.NoError(t, err)
+				assert.Equal(t, "inactive", updatedProductResp["status"])
+
+				var updatedProduct models.Product
+				err = db.WithContext(ctx).First(&updatedProduct, "id = ?", productID).Error
+				require.NoError(t, err)
+				assert.Equal(t, "inactive", updatedProduct.Status)
+			})
+		}
+	})
+
+	t.Run("should not update product status", func(t *testing.T) {
+		roles := []models.UserRole{models.RoleStaff, models.RoleBotForm}
+		for _, role := range roles {
+			t.Run(fmt.Sprintf("When user has %s role", role), func(t *testing.T) {
+				uniqueEmail := fmt.Sprintf("test-product-%s@example.com", uuid.New().String())
+				user, err := helpers.CreateTestUser(context.Background(), suite.sharedTestContainer.DB, uniqueEmail, "Test User", role)
+				require.NoError(t, err)
+
+				// Get auth token
+				token := helpers.GetAuthToken(suite.sharedTestContainer.MockAuth, user.UID, user.Email, user.Name)
+				urlPath := fmt.Sprintf("/api/v1/products/%d/status", productID)
+				resp, err := helpers.MakeRequest(t, "PUT", suite.sharedTestContainer.BaseURL+urlPath, token, map[string]interface{}{"status": "inactive"})
+				require.NoError(t, err)
+				defer resp.Body.Close()
+				assert.Equal(t, 403, resp.StatusCode)
+
+				var errorResp map[string]interface{}
+				err = json.NewDecoder(resp.Body).Decode(&errorResp)
+				require.NoError(t, err)
+				assert.Equal(t, "Access denied: "+string(role)+" role cannot update products", errorResp["error"])
+			})
+		}
+	})
+}
+
+func (suite *ComponentTestSuite) TestDeleteProduct() {
+	t := suite.T()
+	ctx := pkg.WithUserEmail(context.Background(), "test@example.com")
+	db := suite.sharedTestContainer.DB
+	testSuppliers := []models.Supplier{
+		{
+			Base: models.Base{ID: 1},
+			Name: "Test Supplier 1",
+		},
+	}
+	err := db.WithContext(ctx).Create(&testSuppliers).Error
+	require.NoError(t, err, "Failed to create suppliers")
+	testProduct := models.Product{
+		Name:        "Test Product",
+		Description: "Test Description",
+		ProductType: "test",
+		Unit:        "test",
+		Status:      "active",
+		Suppliers: []*models.Supplier{
+			{
+				Base: models.Base{ID: 1},
+				Name: "Test Supplier 1",
+			},
+		},
+	}
+	err = db.WithContext(ctx).Create(&testProduct).Error
+	require.NoError(t, err, "Failed to create product")
+	productID := testProduct.ID
+
+	t.Run("should delete product when user has admin role", func(t *testing.T) {
+		role := models.RoleAdmin
+		uniqueEmail := fmt.Sprintf("test-product-%s@example.com", uuid.New().String())
+		user, err := helpers.CreateTestUser(context.Background(), suite.sharedTestContainer.DB, uniqueEmail, "Test User", role)
 		require.NoError(t, err)
 
 		// Get auth token
 		token := helpers.GetAuthToken(suite.sharedTestContainer.MockAuth, user.UID, user.Email, user.Name)
-
-		// Create a supplier first (products require a supplier)
-		supplierData := map[string]interface{}{
-			"name":          "Test Supplier",
-			"contact_email": "supplier@example.com",
-			"contact_phone": "+1234567890",
-			"address":       "123 Test St",
-		}
-
-		resp, err := helpers.MakeRequest(t, "POST", suite.sharedTestContainer.BaseURL+"/api/v1/suppliers", token, supplierData)
+		resp, err := helpers.MakeRequest(t, "DELETE", suite.sharedTestContainer.BaseURL+"/api/v1/products/"+strconv.Itoa(int(productID)), token, nil)
 		require.NoError(t, err)
 		defer resp.Body.Close()
-
-		assert.Equal(t, 201, resp.StatusCode)
-
-		var supplierResp map[string]interface{}
-		err = json.NewDecoder(resp.Body).Decode(&supplierResp)
-		require.NoError(t, err)
-		supplierID := supplierResp["id"]
-
-		// Create a product
-		productData := map[string]interface{}{
-			"name":         "Test Product",
-			"description":  "Test Description",
-			"product_type": "test",
-			"supplier_id":  supplierID,
-			"status":       "active",
-		}
-
-		resp, err = helpers.MakeRequest(t, "POST", suite.sharedTestContainer.BaseURL+"/api/v1/products", token, productData)
-		require.NoError(t, err)
-		defer resp.Body.Close()
-
-		assert.Equal(t, 201, resp.StatusCode)
-
-		var productResp map[string]interface{}
-		err = json.NewDecoder(resp.Body).Decode(&productResp)
-		require.NoError(t, err)
-
-		productID := productResp["id"]
-		assert.NotNil(t, productID)
-		assert.Equal(t, "Test Product", productResp["name"])
-
-		// Get the product
-		resp, err = helpers.MakeRequest(t, "GET", suite.sharedTestContainer.BaseURL+"/api/v1/products/"+helpers.ToString(productID), token, nil)
-		require.NoError(t, err)
-		defer resp.Body.Close()
-
 		assert.Equal(t, 200, resp.StatusCode)
 
-		var getProductResp map[string]interface{}
-		err = json.NewDecoder(resp.Body).Decode(&getProductResp)
-		require.NoError(t, err)
-		assert.Equal(t, "Test Product", getProductResp["name"])
+		err = db.WithContext(ctx).First(&models.Product{}, "id = ?", productID).Error
+		assert.Equal(t, gorm.ErrRecordNotFound, err)
+	})
+
+	t.Run("should not delete product when user has not admin role", func(t *testing.T) {
+		roles := []models.UserRole{models.RoleAccountant, models.RoleStaff, models.RoleBotForm}
+		for _, role := range roles {
+			t.Run(fmt.Sprintf("When user has %s role", role), func(t *testing.T) {
+				uniqueEmail := fmt.Sprintf("test-product-%s@example.com", uuid.New().String())
+				user, err := helpers.CreateTestUser(context.Background(), suite.sharedTestContainer.DB, uniqueEmail, "Test User", role)
+				require.NoError(t, err)
+
+				// Get auth token
+				token := helpers.GetAuthToken(suite.sharedTestContainer.MockAuth, user.UID, user.Email, user.Name)
+				urlPath := fmt.Sprintf("/api/v1/products/%d", productID)
+				resp, err := helpers.MakeRequest(t, "DELETE", suite.sharedTestContainer.BaseURL+urlPath, token, nil)
+				require.NoError(t, err)
+				defer resp.Body.Close()
+				assert.Equal(t, 403, resp.StatusCode)
+
+				var errorResp map[string]interface{}
+				err = json.NewDecoder(resp.Body).Decode(&errorResp)
+				require.NoError(t, err)
+				assert.Equal(t, "Access denied: "+string(role)+" role cannot delete products", errorResp["error"])
+			})
+		}
 	})
 }
 

@@ -13,6 +13,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"gorm.io/gorm"
 )
 
 func (suite *ComponentTestSuite) TestCreateAndGetSupplier() {
@@ -25,7 +26,7 @@ func (suite *ComponentTestSuite) TestCreateAndGetSupplier() {
 		"address":       "123 Test St",
 	}
 
-	t.Run("Should create and get supplier when user has admin or accountant role", func(t *testing.T) {
+	t.Run("Should create and get supplier", func(t *testing.T) {
 		roles := []models.UserRole{models.RoleAdmin, models.RoleAccountant}
 		for _, role := range roles {
 			t.Run(fmt.Sprintf("When user has %s role", role), func(t *testing.T) {
@@ -66,7 +67,7 @@ func (suite *ComponentTestSuite) TestCreateAndGetSupplier() {
 		}
 	})
 
-	t.Run("Should not create supplier when user has staff or bot_form role", func(t *testing.T) {
+	t.Run("Should not create supplier", func(t *testing.T) {
 		roles := []models.UserRole{models.RoleStaff, models.RoleBotForm}
 		for _, role := range roles {
 			t.Run(fmt.Sprintf("When user has %s role", role), func(t *testing.T) {
@@ -113,7 +114,7 @@ func (suite *ComponentTestSuite) TestUpdateSupplier() {
 		"address":       "123 Test St Edited",
 	}
 
-	t.Run("should update supplier when user has admin or accountant role", func(t *testing.T) {
+	t.Run("should update supplier", func(t *testing.T) {
 		roles := []models.UserRole{models.RoleAdmin, models.RoleAccountant}
 		for _, role := range roles {
 			t.Run(fmt.Sprintf("When user has %s role", role), func(t *testing.T) {
@@ -143,7 +144,7 @@ func (suite *ComponentTestSuite) TestUpdateSupplier() {
 		}
 	})
 
-	t.Run("should not update supplier when user has staff or bot_form role", func(t *testing.T) {
+	t.Run("should not update supplier", func(t *testing.T) {
 		roles := []models.UserRole{models.RoleStaff, models.RoleBotForm}
 		for _, role := range roles {
 			t.Run(fmt.Sprintf("When user has %s role", role), func(t *testing.T) {
@@ -158,6 +159,134 @@ func (suite *ComponentTestSuite) TestUpdateSupplier() {
 				require.NoError(t, err)
 				defer resp.Body.Close()
 
+				assert.Equal(t, 403, resp.StatusCode)
+
+				var errorResp map[string]interface{}
+				err = json.NewDecoder(resp.Body).Decode(&errorResp)
+				require.NoError(t, err)
+				assert.Equal(t, "Access denied: "+string(role)+" role cannot update suppliers", errorResp["error"])
+			})
+		}
+	})
+}
+
+func (suite *ComponentTestSuite) TestDeleteSupplier() {
+	t := suite.T()
+	ctx := pkg.WithUserEmail(context.Background(), "test@example.com")
+	db := suite.sharedTestContainer.DB
+	testSupplier := models.Supplier{
+		Name:         "Test Supplier",
+		ContactEmail: "supplier@example.com",
+		ContactPhone: "+1234567890",
+		Address:      "123 Test St",
+	}
+	err := db.WithContext(ctx).Create(&testSupplier).Error
+	require.NoError(t, err, "Failed to create supplier")
+	supplierID := testSupplier.ID
+
+	t.Run("should delete supplier when user has admin role", func(t *testing.T) {
+		role := models.RoleAdmin
+		uniqueEmail := fmt.Sprintf("test-supplier-%s@example.com", uuid.New().String())
+		user, err := helpers.CreateTestUser(context.Background(), suite.sharedTestContainer.DB, uniqueEmail, "Test User", role)
+		require.NoError(t, err)
+
+		// Get auth token
+		token := helpers.GetAuthToken(suite.sharedTestContainer.MockAuth, user.UID, user.Email, user.Name)
+		urlPath := fmt.Sprintf("/api/v1/suppliers/%d", supplierID)
+		resp, err := helpers.MakeRequest(t, "DELETE", suite.sharedTestContainer.BaseURL+urlPath, token, nil)
+		require.NoError(t, err)
+		defer resp.Body.Close()
+
+		assert.Equal(t, 200, resp.StatusCode)
+
+		err = db.WithContext(ctx).First(&models.Supplier{}, "id = ?", supplierID).Error
+		assert.Equal(t, gorm.ErrRecordNotFound, err)
+	})
+
+	t.Run("should not delete supplier", func(t *testing.T) {
+		roles := []models.UserRole{models.RoleAccountant, models.RoleStaff, models.RoleBotForm}
+		for _, role := range roles {
+			t.Run(fmt.Sprintf("When user has %s role", role), func(t *testing.T) {
+				uniqueEmail := fmt.Sprintf("test-supplier-%s@example.com", uuid.New().String())
+				user, err := helpers.CreateTestUser(context.Background(), suite.sharedTestContainer.DB, uniqueEmail, "Test User", role)
+				require.NoError(t, err)
+
+				// Get auth token
+				token := helpers.GetAuthToken(suite.sharedTestContainer.MockAuth, user.UID, user.Email, user.Name)
+				urlPath := fmt.Sprintf("/api/v1/suppliers/%d", supplierID)
+				resp, err := helpers.MakeRequest(t, "DELETE", suite.sharedTestContainer.BaseURL+urlPath, token, nil)
+				require.NoError(t, err)
+				defer resp.Body.Close()
+
+				assert.Equal(t, 403, resp.StatusCode)
+
+				var errorResp map[string]interface{}
+				err = json.NewDecoder(resp.Body).Decode(&errorResp)
+				require.NoError(t, err)
+				assert.Equal(t, "Access denied: "+string(role)+" role cannot delete suppliers", errorResp["error"])
+			})
+		}
+	})
+}
+
+func (suite *ComponentTestSuite) TestUpdateSupplierStatus() {
+	t := suite.T()
+	ctx := pkg.WithUserEmail(context.Background(), "test@example.com")
+	db := suite.sharedTestContainer.DB
+	testSupplier := models.Supplier{
+		Name:         "Test Supplier",
+		ContactEmail: "supplier@example.com",
+		ContactPhone: "+1234567890",
+		Address:      "123 Test St",
+		Status:       "active",
+	}
+	err := db.WithContext(ctx).Create(&testSupplier).Error
+	require.NoError(t, err, "Failed to create supplier")
+	supplierID := testSupplier.ID
+
+	t.Run("should update supplier status", func(t *testing.T) {
+		roles := []models.UserRole{models.RoleAdmin, models.RoleAccountant}
+		for _, role := range roles {
+			t.Run(fmt.Sprintf("When user has %s role", role), func(t *testing.T) {
+				uniqueEmail := fmt.Sprintf("test-supplier-%s@example.com", uuid.New().String())
+				user, err := helpers.CreateTestUser(context.Background(), suite.sharedTestContainer.DB, uniqueEmail, "Test User", role)
+				require.NoError(t, err)
+
+				// Get auth token
+				token := helpers.GetAuthToken(suite.sharedTestContainer.MockAuth, user.UID, user.Email, user.Name)
+				urlPath := fmt.Sprintf("/api/v1/suppliers/%d/status", supplierID)
+				resp, err := helpers.MakeRequest(t, "PUT", suite.sharedTestContainer.BaseURL+urlPath, token, map[string]interface{}{"status": "inactive"})
+				require.NoError(t, err)
+				defer resp.Body.Close()
+				assert.Equal(t, 200, resp.StatusCode)
+
+				var updatedSupplierResp map[string]interface{}
+				err = json.NewDecoder(resp.Body).Decode(&updatedSupplierResp)
+				require.NoError(t, err)
+				assert.Equal(t, "inactive", updatedSupplierResp["status"])
+
+				var updatedSupplier models.Supplier
+				err = db.WithContext(ctx).First(&updatedSupplier, "id = ?", supplierID).Error
+				require.NoError(t, err)
+				assert.Equal(t, "inactive", updatedSupplier.Status)
+			})
+		}
+	})
+
+	t.Run("should not update supplier status", func(t *testing.T) {
+		roles := []models.UserRole{models.RoleStaff, models.RoleBotForm}
+		for _, role := range roles {
+			t.Run(fmt.Sprintf("When user has %s role", role), func(t *testing.T) {
+				uniqueEmail := fmt.Sprintf("test-supplier-%s@example.com", uuid.New().String())
+				user, err := helpers.CreateTestUser(context.Background(), suite.sharedTestContainer.DB, uniqueEmail, "Test User", role)
+				require.NoError(t, err)
+
+				// Get auth token
+				token := helpers.GetAuthToken(suite.sharedTestContainer.MockAuth, user.UID, user.Email, user.Name)
+				urlPath := fmt.Sprintf("/api/v1/suppliers/%d/status", supplierID)
+				resp, err := helpers.MakeRequest(t, "PUT", suite.sharedTestContainer.BaseURL+urlPath, token, map[string]interface{}{"status": "inactive"})
+				require.NoError(t, err)
+				defer resp.Body.Close()
 				assert.Equal(t, 403, resp.StatusCode)
 
 				var errorResp map[string]interface{}
