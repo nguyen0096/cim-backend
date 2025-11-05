@@ -11,6 +11,7 @@ permissions:
 jobs:
   npm_release:
     runs-on: ubuntu-latest
+    if: false # TODO: Unblock this pipeline once we support protobuf generation
     steps:
       - name: Checkout code
         uses: actions/checkout@v4

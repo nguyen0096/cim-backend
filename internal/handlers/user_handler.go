@@ -15,10 +15,10 @@ import (
 
 type UserHandler struct {
 	userService  *services.UserService
-	firebaseAuth *auth.FirebaseAuthService
+	firebaseAuth auth.FirebaseAuthInterface
 }
 
-func NewUserHandler(userService *services.UserService, firebaseAuth *auth.FirebaseAuthService) *UserHandler {
+func NewUserHandler(userService *services.UserService, firebaseAuth auth.FirebaseAuthInterface) *UserHandler {
 	return &UserHandler{
 		userService:  userService,
 		firebaseAuth: firebaseAuth,

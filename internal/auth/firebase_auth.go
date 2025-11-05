@@ -9,10 +9,20 @@ import (
 	"google.golang.org/api/option"
 )
 
+// FirebaseAuthInterface defines the interface for Firebase authentication
+type FirebaseAuthInterface interface {
+	VerifyToken(ctx context.Context, idToken string) (*auth.Token, error)
+	GetUser(ctx context.Context, uid string) (*auth.UserRecord, error)
+	SetCustomClaims(ctx context.Context, uid string, claims map[string]interface{}) error
+}
+
 // FirebaseAuthService handles Firebase authentication
 type FirebaseAuthService struct {
 	client *auth.Client
 }
+
+// Ensure FirebaseAuthService implements FirebaseAuthInterface
+var _ FirebaseAuthInterface = (*FirebaseAuthService)(nil)
 
 // NewFirebaseAuthService creates a new Firebase Auth service
 func NewFirebaseAuthService(serviceAccountPath string) (*FirebaseAuthService, error) {
@@ -58,4 +68,3 @@ func (f *FirebaseAuthService) SetCustomClaims(ctx context.Context, uid string, c
 	}
 	return nil
 }
-  
