@@ -1,10 +1,12 @@
-Name;Description;ProductType;Unit;Suppliers;ContactEmail;ContactPhone;Address
-Cơm tấm;High-performance laptop;Cơm;Phần;Tech Electronics Inc;contact@techelectronics.com;+1-555-0123;123 Silicon Valley Blvd, San Jose, CA 95110
-;;;;Xiaomi;contact@xiaomi.com;+1-555-0456;456 Business Park Dr, Dallas, TX 75201
-;;;;Global Parts Ltd;orders@globalparts.com;+1-555-0789;789 Industrial Way, Seattle, WA 98101
-Khoai tây chiên;High-performance tablet;Ăn nhẹ;Gói;Tech Electronics Inc;contact@techelectronics.com;+1-555-0123;123 Silicon Valley Blvd, San Jose, CA 95110
-;;;;Apple;contact@apple.com;+1-555-0123;123 Silicon Valley Blvd, San Jose, CA 95110
-;;;;Samsung;contact@samsung.com;+1-555-0123;123 Silicon Valley Blvd, San Jose, CA 95110
-;;;;Google;contact@google.com;+1-555-0123;123 Silicon Valley Blvd, San Jose, CA 95110
-Pepsi;;Nước;Lốc;Công ty TNHH Giải khát Sài Gòn;contact@email.com;0123456789;D5 Khu dân cư Thảo Nguyên
-;;;;Vạn Thịnh Phát;contact@email.com;0123456789;D9 Khu dân cư Thảo Nguyên
+Name;Description;ProductType;Suppliers;ContactEmail;ContactPhone;Address
+PEPSI LON 320 ML;PEPSI LON 320 ML;NƯỚC;PEPSI;;0987513328;"202,QUỐC LỘ 13,PHƯỜNG HIỆP BÌNH THÀNH PHỐ HỒ CHÍ MINH VIỆT NAM"
+PEPSI 390 ml;PEPSI 390 ml;NƯỚC;PEPSI;;0987513328;"202,QUỐC LỘ 13,PHƯỜNG HIỆP BÌNH THÀNH PHỐ HỒ CHÍ MINH VIỆT NAM"
+PEPSI 390 ml;PEPSI 390 ml;NƯỚC;COCACOLA;;0283896100;"LÔ C 12,ĐƯỜNG DỌC 2,KHU CÔNG NGHIỆP PHÚ AN,XÃ BẾN LỨC,TỈNH TÂY NINH,VIỆT NAM"
+FANTA LON XÁ XỊ  320 ML;FANTA LON XÁ XỊ  320 ML;NƯỚC;COCACOLA;;0283896100;"LÔ C 12,ĐƯỜNG DỌC 2,KHU CÔNG NGHIỆP PHÚ AN,XÃ BẾN LỨC,TỈNH TÂY NINH,VIỆT NAM"
+FANTA XÁ XỊ  390 ML;FANTA XÁ XỊ  390 ML;NƯỚC;COCACOLA;;0283896100;"LÔ C 12,ĐƯỜNG DỌC 2,KHU CÔNG NGHIỆP PHÚ AN,XÃ BẾN LỨC,TỈNH TÂY NINH,VIỆT NAM"
+MILO NẮP VẬN 210 ML;MILO NẮP VẬN 210 ML;NƯỚC;SỮA MILO;;;"415/4 A HOÀNG VĂN THỤ, PHƯỜNG TÂN SƠN HÒA, THÀNH PH"
+MILO LON 240 ML;MILO LON 240 ML;NƯỚC;SỮA MILO;;;"415/4 A HOÀNG VĂN THỤ, PHƯỜNG TÂN SƠN HÒA, THÀNH PH"
+SỮA BẮP THÁI SƠN;SỮA BẮP THÁI SƠN;NƯỚC;SỮA THÁI SƠN;;;
+SỮA CHUA PHO MAI HOÀNG;SỮA CHUA PHO MAI HOÀNG;NƯỚC;SỮA THÁI SƠN;;;
+SỮA CHUA TRÁI CÂY PHO MAI HOÀNG;SỮA CHUA TRÁI CÂY PHO MAI HOÀNG;NƯỚC;SỮA THÁI SƠN;;;
+SỮA CHUA NẾP CẨM;SỮA CHUA NẾP CẨM;NƯỚC;SỮA THÁI SƠN;;;

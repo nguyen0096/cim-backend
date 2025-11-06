@@ -95,7 +95,7 @@ func (s *productService) CountSearchProducts(ctx context.Context, query string, 
 
 // ImportProductsFromCSV imports products with suppliers from a CSV file
 // CSV format: Name;Description;ProductType;Suppliers;ContactEmail;ContactPhone;Address
-// Products can have multiple suppliers by repeating rows with empty product fields
+// Product names and supplier names must be unique within the file (n-n relationship)
 func (s *productService) ImportProductsFromCSV(ctx context.Context, csvReader io.Reader) (int, error) {
 	reader := csv.NewReader(csvReader)
 	reader.Comma = ';' // Use semicolon as delimiter
@@ -147,17 +147,18 @@ func (s *productService) ImportProductsFromCSV(ctx context.Context, csvReader io
 	if typeIdx == -1 {
 		return 0, pkg.ErrValidation("CSV header missing required column: 'ProductType'", nil)
 	}
-
-	// Structure to hold products with their suppliers
-	type productWithSuppliers struct {
-		product   models.Product
-		suppliers []models.Supplier
+	if supplierNameIdx == -1 {
+		return 0, pkg.ErrValidation("CSV header missing required column: 'Suppliers'", nil)
 	}
 
-	var productsData []productWithSuppliers
-	var currentProduct *productWithSuppliers
+	// Maps to store unique products and suppliers by name (case-insensitive key)
+	productsMap := make(map[string]*models.Product)        // product name (lowercase) -> product
+	suppliersMap := make(map[string]*models.Supplier)      // supplier name (lowercase) -> supplier
+	productSupplierMap := make(map[string]map[string]bool) // product name (lowercase) -> set of supplier names (lowercase)
+
 	lineNumber := 1 // Start at 1 since we already read the header
 
+	// First pass: collect all products and suppliers, validate uniqueness
 	for {
 		record, err := reader.Read()
 		if err == io.EOF {
@@ -180,118 +181,156 @@ func (s *productService) ImportProductsFromCSV(ctx context.Context, csvReader io
 			continue
 		}
 
-		// Check if this is a product row or a supplier row
-		hasProductData := false
-		if len(record) > nameIdx && strings.TrimSpace(record[nameIdx]) != "" {
-			hasProductData = true
+		// Parse product data
+		productName := ""
+		if len(record) > nameIdx {
+			productName = strings.TrimSpace(record[nameIdx])
+		}
+		if productName == "" {
+			return 0, pkg.ErrValidation(fmt.Sprintf("line %d: product 'Name' is required", lineNumber+1), nil)
 		}
 
-		if hasProductData {
-			// This is a new product row
-			productName := strings.TrimSpace(record[nameIdx])
-			productType := ""
-			if len(record) > typeIdx {
-				productType = strings.TrimSpace(record[typeIdx])
-			}
-			productDescription := ""
-			if len(record) > descIdx {
-				productDescription = strings.TrimSpace(record[descIdx])
-			}
+		productType := ""
+		if len(record) > typeIdx {
+			productType = strings.TrimSpace(record[typeIdx])
+		}
+		if productType == "" {
+			return 0, pkg.ErrValidation(fmt.Sprintf("line %d: product 'ProductType' is required", lineNumber+1), nil)
+		}
 
-			if productName == "" {
-				return 0, pkg.ErrValidation(fmt.Sprintf("line %d: product 'Name' is required", lineNumber+1), nil)
-			}
-			if productType == "" {
-				return 0, pkg.ErrValidation(fmt.Sprintf("line %d: product 'ProductType' is required", lineNumber+1), nil)
-			}
+		productDescription := ""
+		if descIdx != -1 && len(record) > descIdx {
+			productDescription = strings.TrimSpace(record[descIdx])
+		}
 
-			// Create new product
-			product := models.Product{
+		// Parse supplier data
+		supplierName := ""
+		if len(record) > supplierNameIdx {
+			supplierName = strings.TrimSpace(record[supplierNameIdx])
+		}
+		if supplierName == "" {
+			return 0, pkg.ErrValidation(fmt.Sprintf("line %d: supplier 'Suppliers' is required", lineNumber+1), nil)
+		}
+
+		// Check for duplicate product names (case-insensitive)
+		productKey := strings.ToLower(productName)
+		if existingProduct, exists := productsMap[productKey]; exists {
+			// Validate that product data is consistent
+			if existingProduct.ProductType != productType {
+				return 0, pkg.ErrValidation(fmt.Sprintf("line %d: duplicate product name '%s' with different ProductType", lineNumber+1, productName), nil)
+			}
+			// Use the first description if current is empty, otherwise keep existing
+			if productDescription != "" && existingProduct.Description == "" {
+				existingProduct.Description = productDescription
+			}
+		} else {
+			// Create new product entry
+			productsMap[productKey] = &models.Product{
 				Name:        productName,
 				Description: productDescription,
 				ProductType: productType,
 				Status:      "active",
 			}
-
-			// Optional description
-			if descIdx != -1 && len(record) > descIdx {
-				product.Description = strings.TrimSpace(record[descIdx])
-			}
-
-			currentProduct = &productWithSuppliers{
-				product:   product,
-				suppliers: []models.Supplier{},
-			}
-			productsData = append(productsData, *currentProduct)
+			productSupplierMap[productKey] = make(map[string]bool)
 		}
 
-		// Parse supplier information if available
-		if supplierNameIdx != -1 && len(record) > supplierNameIdx {
-			supplierName := strings.TrimSpace(record[supplierNameIdx])
-			if supplierName != "" {
-				if currentProduct == nil {
-					return 0, pkg.ErrValidation(fmt.Sprintf("line %d: supplier data found without a product", lineNumber+1), nil)
-				}
-
-				supplier := models.Supplier{
-					Name:   supplierName,
-					Status: "active",
-				}
-
-				// Optional supplier fields
-				if contactEmailIdx != -1 && len(record) > contactEmailIdx {
-					supplier.ContactEmail = strings.TrimSpace(record[contactEmailIdx])
-				}
-				if contactPhoneIdx != -1 && len(record) > contactPhoneIdx {
-					supplier.ContactPhone = strings.TrimSpace(record[contactPhoneIdx])
-				}
-				if addressIdx != -1 && len(record) > addressIdx {
-					supplier.Address = strings.TrimSpace(record[addressIdx])
-				}
-
-				// Add supplier to current product
-				productsData[len(productsData)-1].suppliers = append(productsData[len(productsData)-1].suppliers, supplier)
+		// Check for duplicate supplier names (case-insensitive)
+		supplierKey := strings.ToLower(supplierName)
+		if existingSupplier, exists := suppliersMap[supplierKey]; exists {
+			// Validate that supplier data is consistent
+			contactEmail := ""
+			if contactEmailIdx != -1 && len(record) > contactEmailIdx {
+				contactEmail = strings.TrimSpace(record[contactEmailIdx])
 			}
+			contactPhone := ""
+			if contactPhoneIdx != -1 && len(record) > contactPhoneIdx {
+				contactPhone = strings.TrimSpace(record[contactPhoneIdx])
+			}
+			address := ""
+			if addressIdx != -1 && len(record) > addressIdx {
+				address = strings.TrimSpace(record[addressIdx])
+			}
+
+			// Update supplier fields if provided and existing is empty
+			if contactEmail != "" && existingSupplier.ContactEmail == "" {
+				existingSupplier.ContactEmail = contactEmail
+			}
+			if contactPhone != "" && existingSupplier.ContactPhone == "" {
+				existingSupplier.ContactPhone = contactPhone
+			}
+			if address != "" && existingSupplier.Address == "" {
+				existingSupplier.Address = address
+			}
+		} else {
+			// Create new supplier entry
+			supplier := &models.Supplier{
+				Name:   supplierName,
+				Status: "active",
+			}
+
+			if contactEmailIdx != -1 && len(record) > contactEmailIdx {
+				supplier.ContactEmail = strings.TrimSpace(record[contactEmailIdx])
+			}
+			if contactPhoneIdx != -1 && len(record) > contactPhoneIdx {
+				supplier.ContactPhone = strings.TrimSpace(record[contactPhoneIdx])
+			}
+			if addressIdx != -1 && len(record) > addressIdx {
+				supplier.Address = strings.TrimSpace(record[addressIdx])
+			}
+
+			suppliersMap[supplierKey] = supplier
 		}
+
+		// Add supplier to product's supplier set (n-n relationship)
+		productSupplierMap[productKey][supplierKey] = true
 	}
 
 	// Check if we have any products to import
-	if len(productsData) == 0 {
+	if len(productsMap) == 0 {
 		return 0, pkg.ErrValidation("CSV file contains no valid product data", nil)
 	}
 
-	// Import products with their suppliers
-	for i := range productsData {
-		// Create product
-		if err := s.productRepo.Create(ctx, &productsData[i].product); err != nil {
-			return 0, fmt.Errorf("failed to create product '%s': %w", productsData[i].product.Name, err)
+	// Second pass: create all unique suppliers first
+	supplierIDMap := make(map[string]*models.Supplier) // supplier key -> created supplier
+	for supplierKey, supplier := range suppliersMap {
+		createdSupplier, err := s.supplierRepo.FindOrCreateByName(ctx, supplier)
+		if err != nil {
+			return 0, fmt.Errorf("failed to create/find supplier '%s': %w", supplier.Name, err)
 		}
-
-		// Create or find suppliers and associate with product
-		if len(productsData[i].suppliers) > 0 {
-			var supplierPointers []*models.Supplier
-			for j := range productsData[i].suppliers {
-				supplier, err := s.supplierRepo.FindOrCreateByName(ctx, &productsData[i].suppliers[j])
-				if err != nil {
-					return 0, fmt.Errorf("failed to create/find supplier '%s': %w", productsData[i].suppliers[j].Name, err)
-				}
-				supplierPointers = append(supplierPointers, supplier)
-			}
-
-			// Associate suppliers with product
-			productsData[i].product.Suppliers = supplierPointers
-			if err := s.productRepo.Update(ctx, &productsData[i].product); err != nil {
-				return 0, fmt.Errorf("failed to associate suppliers with product '%s': %w", productsData[i].product.Name, err)
-			}
-		}
+		supplierIDMap[supplierKey] = createdSupplier
 	}
 
-	return len(productsData), nil
+	// Third pass: create all unique products and associate with suppliers
+	createdCount := 0
+	for productKey, product := range productsMap {
+		// Create product
+		if err := s.productRepo.Create(ctx, product); err != nil {
+			return 0, fmt.Errorf("failed to create product '%s': %w", product.Name, err)
+		}
+
+		// Associate suppliers with product
+		supplierSet := productSupplierMap[productKey]
+		if len(supplierSet) > 0 {
+			var supplierPointers []*models.Supplier
+			for supplierKey := range supplierSet {
+				supplierPointers = append(supplierPointers, supplierIDMap[supplierKey])
+			}
+
+			product.Suppliers = supplierPointers
+			if err := s.productRepo.Update(ctx, product); err != nil {
+				return 0, fmt.Errorf("failed to associate suppliers with product '%s': %w", product.Name, err)
+			}
+		}
+
+		createdCount++
+	}
+
+	return createdCount, nil
 }
 
 // ImportProductsFromExcel imports products with suppliers from an Excel file
 // Excel format: Name;Description;ProductType;Suppliers;ContactEmail;ContactPhone;Address
-// Products can have multiple suppliers by repeating rows with empty product fields
+// Product names and supplier names must be unique within the file (n-n relationship)
 func (s *productService) ImportProductsFromExcel(ctx context.Context, excelReader io.Reader) (int, error) {
 	// Open Excel file
 	f, err := excelize.OpenReader(excelReader)
@@ -364,15 +403,14 @@ func (s *productService) ImportProductsFromExcel(ctx context.Context, excelReade
 	if typeIdx == -1 {
 		return 0, pkg.ErrValidation("Excel header missing required column: 'ProductType'", nil)
 	}
-
-	// Structure to hold products with their suppliers
-	type productWithSuppliers struct {
-		product   models.Product
-		suppliers []models.Supplier
+	if supplierNameIdx == -1 {
+		return 0, pkg.ErrValidation("Excel header missing required column: 'Suppliers'", nil)
 	}
 
-	var productsData []productWithSuppliers
-	var currentProduct *productWithSuppliers
+	// Maps to store unique products and suppliers by name (case-insensitive key)
+	productsMap := make(map[string]*models.Product)        // product name (lowercase) -> product
+	suppliersMap := make(map[string]*models.Supplier)      // supplier name (lowercase) -> supplier
+	productSupplierMap := make(map[string]map[string]bool) // product name (lowercase) -> set of supplier names (lowercase)
 
 	// Process data rows (skip header)
 	for lineNumber, row := range rows[headerInx+1:] {
@@ -388,106 +426,149 @@ func (s *productService) ImportProductsFromExcel(ctx context.Context, excelReade
 			continue
 		}
 
-		// Check if this is a product row or a supplier row
-		hasProductData := false
-		if len(row) > nameIdx && strings.TrimSpace(row[nameIdx]) != "" {
-			hasProductData = true
+		// Parse product data
+		productName := ""
+		if len(row) > nameIdx {
+			productName = strings.TrimSpace(row[nameIdx])
+		}
+		if productName == "" {
+			return 0, pkg.ErrValidation(fmt.Sprintf("line %d: product 'Name' is required", lineNumber+2), nil)
 		}
 
-		if hasProductData {
-			// This is a new product row
-			productName := strings.TrimSpace(row[nameIdx])
-			productType := ""
-			if len(row) > typeIdx {
-				productType = strings.TrimSpace(row[typeIdx])
-			}
-			productDescription := ""
-			if descIdx != -1 && len(row) > descIdx {
-				productDescription = strings.TrimSpace(row[descIdx])
-			}
+		productType := ""
+		if len(row) > typeIdx {
+			productType = strings.TrimSpace(row[typeIdx])
+		}
+		if productType == "" {
+			return 0, pkg.ErrValidation(fmt.Sprintf("line %d: product 'ProductType' is required", lineNumber+2), nil)
+		}
 
-			if productName == "" {
-				return 0, pkg.ErrValidation(fmt.Sprintf("line %d: product 'Name' is required", lineNumber+2), nil)
-			}
-			if productType == "" {
-				return 0, pkg.ErrValidation(fmt.Sprintf("line %d: product 'ProductType' is required", lineNumber+2), nil)
-			}
+		productDescription := ""
+		if descIdx != -1 && len(row) > descIdx {
+			productDescription = strings.TrimSpace(row[descIdx])
+		}
 
-			// Create new product
-			product := models.Product{
+		// Parse supplier data
+		supplierName := ""
+		if len(row) > supplierNameIdx {
+			supplierName = strings.TrimSpace(row[supplierNameIdx])
+		}
+		if supplierName == "" {
+			return 0, pkg.ErrValidation(fmt.Sprintf("line %d: supplier 'Suppliers' is required", lineNumber+2), nil)
+		}
+
+		// Check for duplicate product names (case-insensitive)
+		productKey := strings.ToLower(productName)
+		if existingProduct, exists := productsMap[productKey]; exists {
+			// Validate that product data is consistent
+			if existingProduct.ProductType != productType {
+				return 0, pkg.ErrValidation(fmt.Sprintf("line %d: duplicate product name '%s' with different ProductType", lineNumber+2, productName), nil)
+			}
+			// Use the first description if current is empty, otherwise keep existing
+			if productDescription != "" && existingProduct.Description == "" {
+				existingProduct.Description = productDescription
+			}
+		} else {
+			// Create new product entry
+			productsMap[productKey] = &models.Product{
 				Name:        productName,
 				Description: productDescription,
 				ProductType: productType,
 				Status:      "active",
 			}
-
-			currentProduct = &productWithSuppliers{
-				product:   product,
-				suppliers: []models.Supplier{},
-			}
-			productsData = append(productsData, *currentProduct)
+			productSupplierMap[productKey] = make(map[string]bool)
 		}
 
-		// Parse supplier information if available
-		if supplierNameIdx != -1 && len(row) > supplierNameIdx {
-			supplierName := strings.TrimSpace(row[supplierNameIdx])
-			if supplierName != "" {
-				if currentProduct == nil {
-					return 0, pkg.ErrValidation(fmt.Sprintf("line %d: supplier data found without a product", lineNumber+2), nil)
-				}
-
-				supplier := models.Supplier{
-					Name:   supplierName,
-					Status: "active",
-				}
-
-				// Optional supplier fields
-				if contactEmailIdx != -1 && len(row) > contactEmailIdx {
-					supplier.ContactEmail = strings.TrimSpace(row[contactEmailIdx])
-				}
-				if contactPhoneIdx != -1 && len(row) > contactPhoneIdx {
-					supplier.ContactPhone = strings.TrimSpace(row[contactPhoneIdx])
-				}
-				if addressIdx != -1 && len(row) > addressIdx {
-					supplier.Address = strings.TrimSpace(row[addressIdx])
-				}
-
-				// Add supplier to current product
-				productsData[len(productsData)-1].suppliers = append(productsData[len(productsData)-1].suppliers, supplier)
+		// Check for duplicate supplier names (case-insensitive)
+		supplierKey := strings.ToLower(supplierName)
+		if existingSupplier, exists := suppliersMap[supplierKey]; exists {
+			// Validate that supplier data is consistent
+			contactEmail := ""
+			if contactEmailIdx != -1 && len(row) > contactEmailIdx {
+				contactEmail = strings.TrimSpace(row[contactEmailIdx])
 			}
+			contactPhone := ""
+			if contactPhoneIdx != -1 && len(row) > contactPhoneIdx {
+				contactPhone = strings.TrimSpace(row[contactPhoneIdx])
+			}
+			address := ""
+			if addressIdx != -1 && len(row) > addressIdx {
+				address = strings.TrimSpace(row[addressIdx])
+			}
+
+			// Update supplier fields if provided and existing is empty
+			if contactEmail != "" && existingSupplier.ContactEmail == "" {
+				existingSupplier.ContactEmail = contactEmail
+			}
+			if contactPhone != "" && existingSupplier.ContactPhone == "" {
+				existingSupplier.ContactPhone = contactPhone
+			}
+			if address != "" && existingSupplier.Address == "" {
+				existingSupplier.Address = address
+			}
+		} else {
+			// Create new supplier entry
+			supplier := &models.Supplier{
+				Name:   supplierName,
+				Status: "active",
+			}
+
+			if contactEmailIdx != -1 && len(row) > contactEmailIdx {
+				supplier.ContactEmail = strings.TrimSpace(row[contactEmailIdx])
+			}
+			if contactPhoneIdx != -1 && len(row) > contactPhoneIdx {
+				supplier.ContactPhone = strings.TrimSpace(row[contactPhoneIdx])
+			}
+			if addressIdx != -1 && len(row) > addressIdx {
+				supplier.Address = strings.TrimSpace(row[addressIdx])
+			}
+
+			suppliersMap[supplierKey] = supplier
 		}
+
+		// Add supplier to product's supplier set (n-n relationship)
+		productSupplierMap[productKey][supplierKey] = true
 	}
 
 	// Check if we have any products to import
-	if len(productsData) == 0 {
+	if len(productsMap) == 0 {
 		return 0, pkg.ErrValidation("Excel file contains no valid product data", nil)
 	}
 
-	// Import products with their suppliers
-	for i := range productsData {
-		// Create product
-		if err := s.productRepo.Create(ctx, &productsData[i].product); err != nil {
-			return 0, fmt.Errorf("failed to create product '%s': %w", productsData[i].product.Name, err)
+	// Second pass: create all unique suppliers first
+	supplierIDMap := make(map[string]*models.Supplier) // supplier key -> created supplier
+	for supplierKey, supplier := range suppliersMap {
+		createdSupplier, err := s.supplierRepo.FindOrCreateByName(ctx, supplier)
+		if err != nil {
+			return 0, fmt.Errorf("failed to create/find supplier '%s': %w", supplier.Name, err)
 		}
-
-		// Create or find suppliers and associate with product
-		if len(productsData[i].suppliers) > 0 {
-			var supplierPointers []*models.Supplier
-			for j := range productsData[i].suppliers {
-				supplier, err := s.supplierRepo.FindOrCreateByName(ctx, &productsData[i].suppliers[j])
-				if err != nil {
-					return 0, fmt.Errorf("failed to create/find supplier '%s': %w", productsData[i].suppliers[j].Name, err)
-				}
-				supplierPointers = append(supplierPointers, supplier)
-			}
-
-			// Associate suppliers with product
-			productsData[i].product.Suppliers = supplierPointers
-			if err := s.productRepo.Update(ctx, &productsData[i].product); err != nil {
-				return 0, fmt.Errorf("failed to associate suppliers with product '%s': %w", productsData[i].product.Name, err)
-			}
-		}
+		supplierIDMap[supplierKey] = createdSupplier
 	}
 
-	return len(productsData), nil
+	// Third pass: create all unique products and associate with suppliers
+	createdCount := 0
+	for productKey, product := range productsMap {
+		// Create product
+		if err := s.productRepo.Create(ctx, product); err != nil {
+			return 0, fmt.Errorf("failed to create product '%s': %w", product.Name, err)
+		}
+
+		// Associate suppliers with product
+		supplierSet := productSupplierMap[productKey]
+		if len(supplierSet) > 0 {
+			var supplierPointers []*models.Supplier
+			for supplierKey := range supplierSet {
+				supplierPointers = append(supplierPointers, supplierIDMap[supplierKey])
+			}
+
+			product.Suppliers = supplierPointers
+			if err := s.productRepo.Update(ctx, product); err != nil {
+				return 0, fmt.Errorf("failed to associate suppliers with product '%s': %w", product.Name, err)
+			}
+		}
+
+		createdCount++
+	}
+
+	return createdCount, nil
 }
