@@ -141,6 +141,7 @@ func (s *purchaseOrderService) CreatePurchaseOrder(ctx context.Context, purchase
 		}).Error("Failed to create purchase order")
 		return err
 	}
+	purchaseOrder.TotalAmount = purchaseOrder.CalculateTotalAmount()
 
 	s.logger.WithFields(logrus.Fields{
 		"operation":         "CreatePurchaseOrder",

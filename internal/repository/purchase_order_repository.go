@@ -55,7 +55,7 @@ func (r *purchaseOrderRepository) Update(ctx context.Context, purchaseOrder *mod
 }
 
 func (r *purchaseOrderRepository) UpdateStatus(ctx context.Context, purchaseOrderID uint, status models.PurchaseOrderStatus) error {
-	return r.db.WithContext(ctx).Model(&models.PurchaseOrder{}).Where("id = ?", purchaseOrderID).Update("status", status).Error
+	return r.db.WithContext(ctx).Model(&models.PurchaseOrder{}).Where("id = ?", purchaseOrderID).Where("status != ?", models.PurchaseOrderStatusCompleted).Update("status", status).Error
 }
 
 func (r *purchaseOrderRepository) Delete(id uint) error {

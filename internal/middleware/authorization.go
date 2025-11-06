@@ -263,8 +263,6 @@ func pathToResource(path string) string {
 	resource := segments[0]
 
 	switch {
-	case resource == "purchase-orders" && len(segments) >= 3:
-		return "purchase-order-items"
 	case resource == "inventories" && len(segments) >= 3:
 		return "inventory-items"
 	case resource == "users" && len(segments) > 1 && segments[1] == "permissions":
