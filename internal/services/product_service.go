@@ -186,8 +186,9 @@ func (s *productService) ImportProductsFromCSV(ctx context.Context, csvReader io
 		if len(record) > nameIdx {
 			productName = strings.TrimSpace(record[nameIdx])
 		}
+		// Skip rows with missing product name
 		if productName == "" {
-			return 0, pkg.ErrValidation(fmt.Sprintf("line %d: product 'Name' is required", lineNumber+1), nil)
+			continue
 		}
 
 		productType := ""
@@ -208,8 +209,9 @@ func (s *productService) ImportProductsFromCSV(ctx context.Context, csvReader io
 		if len(record) > supplierNameIdx {
 			supplierName = strings.TrimSpace(record[supplierNameIdx])
 		}
+		// Skip rows with missing supplier name
 		if supplierName == "" {
-			return 0, pkg.ErrValidation(fmt.Sprintf("line %d: supplier 'Suppliers' is required", lineNumber+1), nil)
+			continue
 		}
 
 		// Check for duplicate product names (case-insensitive)
@@ -377,7 +379,6 @@ func (s *productService) ImportProductsFromExcel(ctx context.Context, excelReade
 	addressIdx := -1
 
 	for i, h := range header {
-		fmt.Println("h", h, h == "suppliers")
 		switch h {
 		case "name":
 			nameIdx = i
@@ -431,8 +432,9 @@ func (s *productService) ImportProductsFromExcel(ctx context.Context, excelReade
 		if len(row) > nameIdx {
 			productName = strings.TrimSpace(row[nameIdx])
 		}
+		// Skip rows with missing product name
 		if productName == "" {
-			return 0, pkg.ErrValidation(fmt.Sprintf("line %d: product 'Name' is required", lineNumber+2), nil)
+			continue
 		}
 
 		productType := ""
@@ -453,8 +455,9 @@ func (s *productService) ImportProductsFromExcel(ctx context.Context, excelReade
 		if len(row) > supplierNameIdx {
 			supplierName = strings.TrimSpace(row[supplierNameIdx])
 		}
+		// Skip rows with missing supplier name
 		if supplierName == "" {
-			return 0, pkg.ErrValidation(fmt.Sprintf("line %d: supplier 'Suppliers' is required", lineNumber+2), nil)
+			continue
 		}
 
 		// Check for duplicate product names (case-insensitive)

@@ -330,7 +330,7 @@ func (suite *ComponentTestSuite) TestImportProductsFromCsvAndExcel() {
 	ctx := context.Background()
 
 	files := []string{
-		// "test/data/excel/Products_template.csv",
+		"test/data/excel/Products_template.csv",
 		"test/data/excel/Products_template.xlsx",
 	}
 	user, err := helpers.CreateTestUser(ctx, suite.sharedTestContainer.DB, "test-product-template@example.com", "Test User", models.RoleAdmin)
@@ -367,15 +367,11 @@ func (suite *ComponentTestSuite) TestImportProductsFromCsvAndExcel() {
 			resp, err := helpers.MakeMultipartRequest(t, "POST", suite.sharedTestContainer.BaseURL+"/api/v1/products/import-csv", token, file, "file")
 			require.NoError(t, err)
 			defer resp.Body.Close()
-			var body map[string]interface{}
-			err = json.NewDecoder(resp.Body).Decode(&body)
-			require.NoError(t, err)
-
-			assert.Equal(t, 200, resp.StatusCode, body["error"])
-
 			var importProductsResp map[string]interface{}
 			err = json.NewDecoder(resp.Body).Decode(&importProductsResp)
 			require.NoError(t, err)
+
+			assert.Equal(t, 200, resp.StatusCode, importProductsResp["error"])
 			assert.Equal(t, float64(10), importProductsResp["count"]) // CSV contains 10 unique products
 			assert.Equal(t, "Products imported successfully", importProductsResp["message"])
 
