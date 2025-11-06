@@ -356,13 +356,12 @@ func (s *productService) ImportProductsFromExcel(ctx context.Context, excelReade
 		return 0, pkg.ErrValidation("Excel file is empty", nil)
 	}
 	headerInx := 0
-	if len(rows[headerInx]) < 3 {
+	for headerInx < len(rows) && len(rows[headerInx]) < 6 {
 		headerInx++
 	}
 
 	// Process header
 	header := rows[headerInx]
-
 	// Normalize headers (trim spaces and convert to lowercase)
 	for i := range header {
 		header[i] = strings.ToLower(strings.TrimSpace(header[i]))
@@ -378,6 +377,7 @@ func (s *productService) ImportProductsFromExcel(ctx context.Context, excelReade
 	addressIdx := -1
 
 	for i, h := range header {
+		fmt.Println("h", h, h == "suppliers")
 		switch h {
 		case "name":
 			nameIdx = i

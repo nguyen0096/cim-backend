@@ -367,8 +367,11 @@ func (suite *ComponentTestSuite) TestImportProductsFromCsvAndExcel() {
 			resp, err := helpers.MakeMultipartRequest(t, "POST", suite.sharedTestContainer.BaseURL+"/api/v1/products/import-csv", token, file, "file")
 			require.NoError(t, err)
 			defer resp.Body.Close()
+			var body map[string]interface{}
+			err = json.NewDecoder(resp.Body).Decode(&body)
+			require.NoError(t, err)
 
-			assert.Equal(t, 200, resp.StatusCode)
+			assert.Equal(t, 200, resp.StatusCode, body["error"])
 
 			var importProductsResp map[string]interface{}
 			err = json.NewDecoder(resp.Body).Decode(&importProductsResp)

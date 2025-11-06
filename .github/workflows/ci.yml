@@ -71,8 +71,7 @@ jobs:
       - name: Build application
         run: |
           go mod download
-          make linux_64
-          chmod +x ./out/*
+          go build .
 
   docker-build:
     runs-on: ubuntu-latest

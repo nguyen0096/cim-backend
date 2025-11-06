@@ -37,7 +37,7 @@ func ErrForbidden(message string, cause error) *AppError {
 func ErrValidation(message string, cause error) *AppError {
 	return NewAppError(
 		ErrorCodeValidation,
-		fmt.Sprintf("Validation failed: %s", cause),
+		fmt.Sprintf("Validation failed: %s", message),
 		cause,
 	)
 }
