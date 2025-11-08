@@ -560,7 +560,7 @@ func (h *ProductHandler) GetProductInventory(c echo.Context) error {
 
 // ImportProductsCSV godoc
 // @Summary Import products with suppliers from CSV or Excel
-// @Description Import products and their suppliers from a CSV or Excel file upload. Files must have headers: Name, Description, ProductType, Suppliers, ContactEmail, ContactPhone, Address. CSV uses semicolon (;) as delimiter. Products can have multiple suppliers by repeating rows with empty product fields.
+// @Description Import products and their suppliers from a CSV or Excel file upload. Files must have headers: Name, Description, ProductType, Unit, Suppliers, ContactEmail, ContactPhone, Address. CSV uses semicolon (;) as delimiter. Products can have multiple suppliers by repeating rows with empty product fields.
 // @Tags products
 // @Accept multipart/form-data
 // @Produce json

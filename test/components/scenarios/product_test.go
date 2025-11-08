@@ -383,6 +383,7 @@ func (suite *ComponentTestSuite) TestImportProductsFromCsvAndExcel() {
 			assert.Equal(t, "PEPSI 390 ml", products[0].Description)
 			assert.Equal(t, "NƯỚC", products[0].ProductType)
 			assert.Equal(t, "active", products[0].Status)
+			assert.Equal(t, "Lốc", products[0].Unit)
 			assert.Equal(t, user.Email, products[0].CreatedBy)
 			assert.Equal(t, user.Email, products[0].UpdatedBy)
 			// Verify product has both PEPSI and COCACOLA suppliers (n-n relationship)
@@ -401,6 +402,7 @@ func (suite *ComponentTestSuite) TestImportProductsFromCsvAndExcel() {
 			assert.Equal(t, "PEPSI LON 320 ML", products2[0].Name)
 			assert.Equal(t, "PEPSI LON 320 ML", products2[0].Description)
 			assert.Equal(t, "NƯỚC", products2[0].ProductType)
+			assert.Equal(t, "Thùng", products2[0].Unit)
 			// Verify product has PEPSI supplier
 			assert.Equal(t, 1, len(products2[0].Suppliers))
 			assert.Equal(t, "PEPSI", products2[0].Suppliers[0].Name)
@@ -412,6 +414,7 @@ func (suite *ComponentTestSuite) TestImportProductsFromCsvAndExcel() {
 			assert.Equal(t, "FANTA LON XÁ XỊ  320 ML", products3[0].Name)
 			assert.Equal(t, "FANTA LON XÁ XỊ  320 ML", products3[0].Description)
 			assert.Equal(t, "NƯỚC", products3[0].ProductType)
+			assert.Equal(t, "Lốc", products3[0].Unit)
 			// Verify product has COCACOLA supplier
 			assert.Equal(t, 1, len(products3[0].Suppliers))
 			assert.Equal(t, "COCACOLA", products3[0].Suppliers[0].Name)
@@ -423,6 +426,7 @@ func (suite *ComponentTestSuite) TestImportProductsFromCsvAndExcel() {
 			assert.Equal(t, "MILO NẮP VẬN 210 ML", products4[0].Name)
 			assert.Equal(t, "MILO NẮP VẬN 210 ML", products4[0].Description)
 			assert.Equal(t, "NƯỚC", products4[0].ProductType)
+			assert.Equal(t, "Thùng", products4[0].Unit)
 			// Verify product has SỮA MILO supplier
 			assert.Equal(t, 1, len(products4[0].Suppliers))
 			assert.Equal(t, "SỮA MILO", products4[0].Suppliers[0].Name)
@@ -434,6 +438,7 @@ func (suite *ComponentTestSuite) TestImportProductsFromCsvAndExcel() {
 			assert.Equal(t, "SỮA BẮP THÁI SƠN", products5[0].Name)
 			assert.Equal(t, "SỮA BẮP THÁI SƠN", products5[0].Description)
 			assert.Equal(t, "NƯỚC", products5[0].ProductType)
+			assert.Equal(t, "Chai", products5[0].Unit)
 			// Verify product has SỮA THÁI SƠN supplier
 			assert.Equal(t, 1, len(products5[0].Suppliers))
 			assert.Equal(t, "SỮA THÁI SƠN", products5[0].Suppliers[0].Name)
@@ -445,6 +450,7 @@ func (suite *ComponentTestSuite) TestImportProductsFromCsvAndExcel() {
 			assert.Equal(t, "COCA COLA 500ML", products6[0].Name)
 			assert.Equal(t, "COCA COLA 500ML", products6[0].Description)
 			assert.Equal(t, "NƯỚC", products6[0].ProductType)
+			assert.Equal(t, "Thùng", products6[0].Unit)
 			// Verify product has no suppliers (supplier name was missing in CSV)
 			assert.Equal(t, 0, len(products6[0].Suppliers))
 
@@ -463,7 +469,7 @@ func (suite *ComponentTestSuite) TestImportProductsFromCsvAndExcel() {
 			assert.Equal(t, 1, len(suppliers))
 			assert.Equal(t, "PEPSI", suppliers[0].Name)
 			assert.Equal(t, "", suppliers[0].ContactEmail)
-			assert.Equal(t, "0987513328", suppliers[0].ContactPhone)
+			assert.Equal(t, "098-7513328", suppliers[0].ContactPhone)
 			assert.Equal(t, "202,QUỐC LỘ 13,PHƯỜNG HIỆP BÌNH THÀNH PHỐ HỒ CHÍ MINH VIỆT NAM", suppliers[0].Address)
 			// Verify PEPSI supplier has 2 products (PEPSI LON 320 ML and PEPSI 390 ml)
 			assert.Equal(t, 2, len(suppliers[0].Products))
@@ -477,7 +483,7 @@ func (suite *ComponentTestSuite) TestImportProductsFromCsvAndExcel() {
 			assert.Equal(t, 1, len(suppliers2))
 			assert.Equal(t, "COCACOLA", suppliers2[0].Name)
 			assert.Equal(t, "", suppliers2[0].ContactEmail)
-			assert.Equal(t, "0283896100", suppliers2[0].ContactPhone)
+			assert.Equal(t, "028-3896100", suppliers2[0].ContactPhone)
 			assert.Equal(t, "LÔ C 12,ĐƯỜNG DỌC 2,KHU CÔNG NGHIỆP PHÚ AN,XÃ BẾN LỨC,TỈNH TÂY NINH,VIỆT NAM", suppliers2[0].Address)
 			// Verify COCACOLA supplier has 3 products (FANTA LON XÁ XỊ 320 ML, FANTA XÁ XỊ 390 ML, and PEPSI 390 ml)
 			// Note: Line 14 has supplier name but no product name, so it only updates the supplier but doesn't add a product
@@ -520,7 +526,7 @@ func (suite *ComponentTestSuite) TestImportProductsFromCsvAndExcel() {
 			assert.Equal(t, 1, len(suppliers5))
 			assert.Equal(t, "TH TRUE MILK", suppliers5[0].Name)
 			assert.Equal(t, "", suppliers5[0].ContactEmail)
-			assert.Equal(t, "0283896100", suppliers5[0].ContactPhone)                                                              // From line 14
+			assert.Equal(t, "028-3896100", suppliers5[0].ContactPhone)                                                             // From line 14
 			assert.Equal(t, "LÔ C 12,ĐƯỜNG DỌC 2,KHU CÔNG NGHIỆP PHÚ AN,XÃ BẾN LỨC,TỈNH TÂY NINH,VIỆT NAM", suppliers5[0].Address) // From line 14
 			// Verify TH TRUE MILK supplier has 0 products (line 14 has no product name)
 			assert.Equal(t, 0, len(suppliers5[0].Products))

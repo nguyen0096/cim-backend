@@ -94,7 +94,7 @@ func (s *productService) CountSearchProducts(ctx context.Context, query string, 
 }
 
 // ImportProductsFromCSV imports products with suppliers from a CSV file
-// CSV format: Name;Description;ProductType;Suppliers;ContactEmail;ContactPhone;Address
+// CSV format: Name;Description;ProductType;Unit;Suppliers;ContactEmail;ContactPhone;Address
 // Product names and supplier names must be unique within the file (n-n relationship)
 func (s *productService) ImportProductsFromCSV(ctx context.Context, csvReader io.Reader) (int, error) {
 	reader := csv.NewReader(csvReader)
@@ -116,6 +116,7 @@ func (s *productService) ImportProductsFromCSV(ctx context.Context, csvReader io
 	nameIdx := -1
 	descIdx := -1
 	typeIdx := -1
+	unitIdx := -1
 	supplierNameIdx := -1
 	contactEmailIdx := -1
 	contactPhoneIdx := -1
@@ -129,6 +130,8 @@ func (s *productService) ImportProductsFromCSV(ctx context.Context, csvReader io
 			descIdx = i
 		case "producttype", "product_type", "type":
 			typeIdx = i
+		case "unit":
+			unitIdx = i
 		case "suppliers", "supplier", "suppliername":
 			supplierNameIdx = i
 		case "contactemail", "contact_email", "email":
@@ -146,6 +149,9 @@ func (s *productService) ImportProductsFromCSV(ctx context.Context, csvReader io
 	}
 	if typeIdx == -1 {
 		return 0, pkg.ErrValidation("CSV header missing required column: 'ProductType'", nil)
+	}
+	if unitIdx == -1 {
+		return 0, pkg.ErrValidation("CSV header missing required column: 'Unit'", nil)
 	}
 	if supplierNameIdx == -1 {
 		return 0, pkg.ErrValidation("CSV header missing required column: 'Suppliers'", nil)
@@ -210,6 +216,11 @@ func (s *productService) ImportProductsFromCSV(ctx context.Context, csvReader io
 				productDescription = strings.TrimSpace(record[descIdx])
 			}
 
+			productUnit := ""
+			if unitIdx != -1 && len(record) > unitIdx {
+				productUnit = strings.TrimSpace(record[unitIdx])
+			}
+
 			// Check for duplicate product names (case-insensitive)
 			productKey := strings.ToLower(productName)
 			if _, exists := productsMap[productKey]; !exists {
@@ -218,6 +229,7 @@ func (s *productService) ImportProductsFromCSV(ctx context.Context, csvReader io
 					Name:        productName,
 					Description: productDescription,
 					ProductType: productType,
+					Unit:        productUnit,
 					Status:      "active",
 				}
 				productSupplierMap[productKey] = make(map[string]bool)
@@ -299,7 +311,7 @@ func (s *productService) ImportProductsFromCSV(ctx context.Context, csvReader io
 }
 
 // ImportProductsFromExcel imports products with suppliers from an Excel file
-// Excel format: Name;Description;ProductType;Suppliers;ContactEmail;ContactPhone;Address
+// Excel format: Name;Description;ProductType;Unit;Suppliers;ContactEmail;ContactPhone;Address
 // Product names and supplier names must be unique within the file (n-n relationship)
 func (s *productService) ImportProductsFromExcel(ctx context.Context, excelReader io.Reader) (int, error) {
 	// Open Excel file
@@ -341,6 +353,7 @@ func (s *productService) ImportProductsFromExcel(ctx context.Context, excelReade
 	nameIdx := -1
 	descIdx := -1
 	typeIdx := -1
+	unitIdx := -1
 	supplierNameIdx := -1
 	contactEmailIdx := -1
 	contactPhoneIdx := -1
@@ -354,6 +367,8 @@ func (s *productService) ImportProductsFromExcel(ctx context.Context, excelReade
 			descIdx = i
 		case "producttype", "product_type", "type":
 			typeIdx = i
+		case "unit":
+			unitIdx = i
 		case "suppliers", "supplier", "suppliername":
 			supplierNameIdx = i
 		case "contactemail", "contact_email", "email":
@@ -371,6 +386,9 @@ func (s *productService) ImportProductsFromExcel(ctx context.Context, excelReade
 	}
 	if typeIdx == -1 {
 		return 0, pkg.ErrValidation("Excel header missing required column: 'ProductType'", nil)
+	}
+	if unitIdx == -1 {
+		return 0, pkg.ErrValidation("Excel header missing required column: 'Unit'", nil)
 	}
 	if supplierNameIdx == -1 {
 		return 0, pkg.ErrValidation("Excel header missing required column: 'Suppliers'", nil)
@@ -424,6 +442,11 @@ func (s *productService) ImportProductsFromExcel(ctx context.Context, excelReade
 				productDescription = strings.TrimSpace(row[descIdx])
 			}
 
+			productUnit := ""
+			if unitIdx != -1 && len(row) > unitIdx {
+				productUnit = strings.TrimSpace(row[unitIdx])
+			}
+
 			// Check for duplicate product names (case-insensitive)
 			productKey := strings.ToLower(productName)
 			if _, exists := productsMap[productKey]; !exists {
@@ -432,6 +455,7 @@ func (s *productService) ImportProductsFromExcel(ctx context.Context, excelReade
 					Name:        productName,
 					Description: productDescription,
 					ProductType: productType,
+					Unit:        productUnit,
 					Status:      "active",
 				}
 				productSupplierMap[productKey] = make(map[string]bool)
