@@ -13,15 +13,15 @@ import (
 
 const (
 	// Test configuration constants
-	testEnvFilePath          = "../../../.env"
-	testServiceAccountPath   = "../../../google-service-account.json"
-	testSheetInternalID      = "inventory_sheet"
-	testSheetNamePattern     = "THANG {MM}"
-	testHeaderStartRow       = 5
-	testHeaderStartCol       = 1
-	testHeaderHeight         = 3
-	testMaxDaysToShowInLog   = 5
-	testFloatPrecision       = 2
+	testEnvFilePath        = "../../../.env"
+	testServiceAccountPath = "../../../google-service-account.json"
+	testSheetInternalID    = "inventory_sheet"
+	testSheetNamePattern   = "THANG {MM}"
+	testHeaderStartRow     = 5
+	testHeaderStartCol     = 1
+	testHeaderHeight       = 3
+	testMaxDaysToShowInLog = 5
+	testFloatPrecision     = 2
 )
 
 const (
@@ -40,10 +40,12 @@ func TestNewInventoryGoogleSheetsRepository(t *testing.T) {
 
 	// Check if Google Sheets config is set
 	if cfg.GoogleSheets.ServiceAccountPath == "" {
+		t.Logf(skipMessageServiceAccount)
 		t.Skip(skipMessageServiceAccount)
 	}
 
 	if cfg.GoogleSheets.InventorySpreadsheetID == "" {
+		t.Logf(skipMessageSpreadsheetID)
 		t.Skip(skipMessageSpreadsheetID)
 	}
 
@@ -63,10 +65,12 @@ func TestInventoryGoogleSheetsRepository_Connect(t *testing.T) {
 
 	// Check if Google Sheets config is set
 	if cfg.GoogleSheets.ServiceAccountPath == "" {
+		t.Logf(skipMessageServiceAccount)
 		t.Skip(skipMessageServiceAccount)
 	}
 
 	if cfg.GoogleSheets.InventorySpreadsheetID == "" {
+		t.Logf(skipMessageSpreadsheetID)
 		t.Skip(skipMessageSpreadsheetID)
 	}
 
@@ -114,10 +118,12 @@ func TestInventoryGoogleSheetsRepository_ConnectAndClose(t *testing.T) {
 
 	// Check if Google Sheets config is set
 	if cfg.GoogleSheets.ServiceAccountPath == "" {
+		t.Logf(skipMessageServiceAccount)
 		t.Skip(skipMessageServiceAccount)
 	}
 
 	if cfg.GoogleSheets.InventorySpreadsheetID == "" {
+		t.Logf(skipMessageSpreadsheetID)
 		t.Skip(skipMessageSpreadsheetID)
 	}
 
@@ -165,10 +171,12 @@ func TestInventoryGoogleSheetsRepository_ReadInventoryData(t *testing.T) {
 
 	// Check if Google Sheets config is set
 	if cfg.GoogleSheets.ServiceAccountPath == "" {
+		t.Log("ServiceAccountPath is not configured")
 		t.Skip(skipMessageServiceAccount)
 	}
 
 	if cfg.GoogleSheets.InventorySpreadsheetID == "" {
+		t.Log("InventorySpreadsheetID is not configured")
 		t.Skip(skipMessageSpreadsheetID)
 	}
 
