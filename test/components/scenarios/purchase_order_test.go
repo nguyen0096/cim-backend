@@ -248,7 +248,11 @@ func (suite *ComponentTestSuite) TestCancelPurchaseOrder() {
 			expectedStatus models.PurchaseOrderStatus
 		}{
 			{role: models.RoleStaff, currentStatus: models.PurchaseOrderStatusOrderPlaced, expectedStatus: models.PurchaseOrderStatusOrderPlaced},
+			{role: models.RoleStaff, currentStatus: models.PurchaseOrderStatusPartiallyDelivered, expectedStatus: models.PurchaseOrderStatusOrderPlaced},
+			{role: models.RoleStaff, currentStatus: models.PurchaseOrderStatusFullyDelivered, expectedStatus: models.PurchaseOrderStatusOrderPlaced},
 			{role: models.RoleBotForm, currentStatus: models.PurchaseOrderStatusOrderPlaced, expectedStatus: models.PurchaseOrderStatusOrderPlaced},
+			{role: models.RoleBotForm, currentStatus: models.PurchaseOrderStatusPartiallyDelivered, expectedStatus: models.PurchaseOrderStatusOrderPlaced},
+			{role: models.RoleBotForm, currentStatus: models.PurchaseOrderStatusFullyDelivered, expectedStatus: models.PurchaseOrderStatusOrderPlaced},
 		}
 		for _, testCase := range testCases {
 			currentId++
@@ -285,6 +289,165 @@ func (suite *ComponentTestSuite) TestCancelPurchaseOrder() {
 				err = json.NewDecoder(resp.Body).Decode(&errorResp)
 				require.NoError(t, err)
 				assert.Equal(t, "Access denied: "+string(testCase.role)+" role cannot update purchase-orders", errorResp["error"])
+			})
+		}
+	})
+}
+
+func (suite *ComponentTestSuite) TestReceivePurchaseOrder() {
+	t := suite.T()
+
+	ctx := pkg.WithUserEmail(context.Background(), "test@example.com")
+	db := suite.sharedTestContainer.DB
+	testSuppliers := []models.Supplier{
+		{
+			Base: models.Base{ID: 1},
+			Name: "Test Supplier 1",
+		},
+	}
+	err := db.WithContext(ctx).Create(&testSuppliers).Error
+	require.NoError(t, err, "Failed to create suppliers")
+
+	testProducts := []models.Product{
+		{
+			Base:   models.Base{ID: 1},
+			Name:   "Test Product 1",
+			UnitID: 1,
+		},
+		{
+			Base:   models.Base{ID: 2},
+			Name:   "Test Product 2",
+			UnitID: 1,
+		},
+	}
+	err = db.WithContext(ctx).Create(&testProducts).Error
+	require.NoError(t, err, "Failed to create products")
+
+	testInventories := []models.Inventory{
+		{
+			Base: models.Base{ID: 1},
+			Name: "Test Inventory 1",
+		},
+	}
+	err = db.WithContext(ctx).Create(&testInventories).Error
+	require.NoError(t, err, "Failed to create inventories")
+
+	currentId := uint(2000)
+
+	t.Run("should receive purchase order", func(t *testing.T) {
+		testCases := []struct {
+			role                 models.UserRole
+			currentPOStatus      models.PurchaseOrderStatus
+			currentPOItem1Status  models.PurchaseOrderItemStatus
+			deliveredQuantity1   int
+			deliveredQuantity2   int
+			expectedPOStatus     models.PurchaseOrderStatus
+			expectedPOItem1Status models.PurchaseOrderItemStatus
+		}{
+			{
+				role:                 models.RoleAdmin,
+				currentPOStatus:      models.PurchaseOrderStatusOrderPlaced,
+				currentPOItem1Status:  models.PurchaseOrderItemStatusAwaitingDelivery,
+				deliveredQuantity1:   50,
+				deliveredQuantity2:   50,
+				expectedPOStatus:     models.PurchaseOrderStatusPartiallyDelivered,
+				expectedPOItem1Status: models.PurchaseOrderItemStatusPartiallyDelivered,
+			},
+			{
+				role:                 models.RoleAdmin,
+				currentPOStatus:      models.PurchaseOrderStatusOrderPlaced,
+				currentPOItem1Status:  models.PurchaseOrderItemStatusAwaitingDelivery,
+				deliveredQuantity1:   100,
+				deliveredQuantity2:   50,
+				expectedPOStatus:     models.PurchaseOrderStatusPartiallyDelivered,
+				expectedPOItem1Status: models.PurchaseOrderItemStatusDelivered,
+			},
+			{
+				role:                 models.RoleAdmin,
+				currentPOStatus:      models.PurchaseOrderStatusOrderPlaced,
+				currentPOItem1Status:  models.PurchaseOrderItemStatusAwaitingDelivery,
+				deliveredQuantity1:   100,
+				deliveredQuantity2:   100,
+				expectedPOStatus:     models.PurchaseOrderStatusFullyDelivered,
+				expectedPOItem1Status: models.PurchaseOrderItemStatusDelivered,
+			},
+			{
+				role:                 models.RoleAdmin,
+				currentPOStatus:      models.PurchaseOrderStatusPartiallyDelivered,
+				currentPOItem1Status:  models.PurchaseOrderItemStatusPartiallyDelivered,
+				deliveredQuantity1:   100,
+				deliveredQuantity2:   100,
+				expectedPOStatus:     models.PurchaseOrderStatusFullyDelivered,
+				expectedPOItem1Status: models.PurchaseOrderItemStatusDelivered,
+			},
+		}
+		for _, testCase := range testCases {
+			t.Run(fmt.Sprintf("When current status is %s and user has %s role", testCase.currentPOStatus, testCase.role), func(t *testing.T) {
+				currentId++
+				uniqueEmail := fmt.Sprintf("test-purchase-order-%s@example.com", uuid.New().String())
+				user, err := helpers.CreateTestUser(context.Background(), suite.sharedTestContainer.DB, uniqueEmail, "Test User", testCase.role)
+				require.NoError(t, err)
+				testPurchaseOrder := models.PurchaseOrder{
+					Base:        models.Base{ID: currentId},
+					OrderNumber: uuid.New().String(),
+					Status:      testCase.currentPOStatus,
+					InventoryID: &testInventories[0].ID,
+					Items: []*models.PurchaseOrderItem{
+						{
+							ProductID:  &testProducts[0].ID,
+							SupplierID: &testSuppliers[0].ID,
+							Quantity:   100,
+						},
+						{
+							ProductID:  &testProducts[1].ID,
+							SupplierID: &testSuppliers[0].ID,
+							Quantity:   100,
+						},
+					},
+				}
+
+				err = db.WithContext(ctx).Create(&testPurchaseOrder).Error
+				require.NoError(t, err, "Failed to create purchase order")
+				purchaseOrderID := testPurchaseOrder.ID
+
+				// Get auth token
+				token := helpers.GetAuthToken(suite.sharedTestContainer.MockAuth, user.UID, user.Email, user.Name)
+				var purchaseOrderItems []models.PurchaseOrderItem
+				err = suite.sharedTestContainer.DB.WithContext(ctx).
+					Where("purchase_order_id = ?", purchaseOrderID).
+					Order("id ASC").
+					Find(&purchaseOrderItems).Error
+				require.NoError(t, err)
+				require.Len(t, purchaseOrderItems, len(testPurchaseOrder.Items))
+
+				payload := map[string]interface{}{
+					"purchase_order_id": purchaseOrderID,
+					"items": []map[string]interface{}{
+						{
+							"id":                purchaseOrderItems[0].ID,
+							"received_quantity": testCase.deliveredQuantity1,
+						},
+						{
+							"id":                purchaseOrderItems[1].ID,
+							"received_quantity": testCase.deliveredQuantity2,
+						},
+					},
+				}
+
+				// Receive purchase order
+				urlPath := fmt.Sprintf("/api/v1/purchase-orders/%d/receive", purchaseOrderID)
+				resp, err := helpers.MakeRequest(t, "PUT", suite.sharedTestContainer.BaseURL+urlPath, token, payload)
+				require.NoError(t, err)
+				defer resp.Body.Close()
+				assert.Equal(t, 200, resp.StatusCode)
+				var purchaseOrderResp map[string]interface{}
+				err = json.NewDecoder(resp.Body).Decode(&purchaseOrderResp)
+				require.NoError(t, err)
+
+				var purchaseOrder models.PurchaseOrder
+				err = suite.sharedTestContainer.DB.WithContext(ctx).First(&purchaseOrder, "id = ?", purchaseOrderID).Error
+				require.NoError(t, err)
+				assert.Equal(t, testCase.expectedPOStatus, purchaseOrder.Status)
 			})
 		}
 	})

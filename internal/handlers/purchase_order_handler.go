@@ -233,19 +233,6 @@ func (h *PurchaseOrderHandler) DeletePurchaseOrder(c echo.Context) error {
 	return c.JSON(http.StatusOK, map[string]string{"message": "Purchase order deleted successfully"})
 }
 
-func (h *PurchaseOrderHandler) ReceivePurchaseOrder(c echo.Context) error {
-	id, err := pkg.ExtractIDParam(c)
-	if err != nil {
-		return err
-	}
-
-	if err := h.purchaseOrderService.ReceivePurchaseOrder(c.Request().Context(), id); err != nil {
-		return fmt.Errorf("failed to receive purchase order: %w", err)
-	}
-
-	return c.JSON(http.StatusOK, map[string]string{"message": "Purchase order received successfully"})
-}
-
 func (h *PurchaseOrderHandler) GetPurchaseSummary(c echo.Context) error {
 	// Implementation for purchase summary report
 	return c.JSON(http.StatusOK, map[string]string{"message": "Purchase summary report"})
