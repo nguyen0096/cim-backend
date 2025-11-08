@@ -59,6 +59,7 @@ p, accountant, suppliers, create, allow
 p, accountant, suppliers, update, allow
 p, accountant, inventories, view, allow
 p, accountant, inventory-items, view, allow
+p, accountant, inventory-submissions, create, allow
 p, accountant, purchase-orders, view, allow
 p, accountant, purchase-orders, create, allow
 p, accountant, purchase-orders, update, allow
@@ -81,7 +82,6 @@ p, staff, purchase-orders, confirm, allow
 p, staff, inventories, view, allow
 p, staff, inventory-items, view, allow
 p, staff, settings, view, allow
-p, staff, inventory-submissions, create, allow
 p, staff, payment-receipt-forms, update, allow
 
 p, bot_form, permissions, view, allow
