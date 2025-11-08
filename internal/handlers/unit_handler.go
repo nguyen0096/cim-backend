@@ -138,10 +138,10 @@ func (h *UnitHandler) GetUnit(c echo.Context) error {
 
 type createUnitRequest struct {
 	UnitType         string  `json:"unit_type"`
-	Name             string  `json:"name"`
+	Name             string  `json:"name" validate:"required"`
 	Symbol           string  `json:"symbol"`
-	BaseUnitID       *uint   `json:"base_unit_id"`
-	ConversionFactor float64 `json:"conversion_factor"`
+	BaseUnitID       *uint   `json:"base_unit_id,omitempty"`
+	ConversionFactor float64 `json:"conversion_factor,omitempty" validate:"required,gt=0"`
 }
 
 // CreateUnit godoc
@@ -163,12 +163,20 @@ func (h *UnitHandler) CreateUnit(c echo.Context) error {
 		return pkg.ErrInvalidRequestBody(err)
 	}
 
+	if err := pkg.Validator.Struct(request); err != nil {
+		return pkg.ErrValidation(err.Error(), err)
+	}
+
 	unit := &models.Unit{
 		UnitType:         request.UnitType,
 		Name:             request.Name,
 		Symbol:           request.Symbol,
 		BaseUnitID:       request.BaseUnitID,
 		ConversionFactor: request.ConversionFactor,
+	}
+
+	if unit.Symbol == "" {
+		unit.Symbol = unit.Name
 	}
 
 	if err := h.unitService.CreateUnit(c.Request().Context(), unit); err != nil {

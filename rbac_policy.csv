@@ -11,6 +11,10 @@ p, admin, inventories, view, allow
 p, admin, inventories, create, allow
 p, admin, inventories, update, allow
 p, admin, inventories, delete, allow
+p, admin, units, view, allow
+p, admin, units, create, allow
+p, admin, units, update, allow
+p, admin, units, delete, allow
 
 p, admin, inventory-submissions, create, allow
 p, admin, inventory-submissions, update, allow
@@ -75,6 +79,10 @@ p, accountant, purchase-orders, view_status_completed, allow
 p, accountant, payment-receipt-forms, view, allow
 p, accountant, payment-receipt-forms, create, allow
 p, accountant, payment-receipt-forms, update, allow
+p, accountant, units, view, allow
+p, accountant, units, create, allow
+p, accountant, units, update, allow
+p, accountant, units, delete, allow
 
 p, staff, permissions, view, allow
 p, staff, purchase-orders, view, allow
@@ -83,10 +91,12 @@ p, staff, inventories, view, allow
 p, staff, inventory-items, view, allow
 p, staff, settings, view, allow
 p, staff, payment-receipt-forms, update, allow
+p, staff, units, view, allow
 
 p, bot_form, permissions, view, allow
 p, bot_form, payment-receipt-forms, view-pending, allow
 p, bot_form, payment-receipt-forms, submit, allow
+p, bot_form, units, view, allow
 
 g, demoAdminUid0000000000000000, admin
 g, demoAccountantUid00000000000, accountant

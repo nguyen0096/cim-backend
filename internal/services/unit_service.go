@@ -34,10 +34,6 @@ func NewUnitService(unitRepo repository.UnitRepository) UnitService {
 }
 
 func (s *unitService) CreateUnit(ctx context.Context, unit *models.Unit) error {
-	if err := validateUnit(unit); err != nil {
-		return err
-	}
-
 	if err := s.ensureBaseUnitRelationship(ctx, unit); err != nil {
 		return err
 	}
@@ -82,10 +78,6 @@ func (s *unitService) UpdateUnit(ctx context.Context, unit *models.Unit) error {
 			return pkg.ErrNotFound(fmt.Sprintf("unit %d not found", unit.ID), err)
 		}
 		return fmt.Errorf("failed to load unit %d: %w", unit.ID, err)
-	}
-
-	if err := validateUnit(unit); err != nil {
-		return err
 	}
 
 	if err := s.ensureBaseUnitRelationship(ctx, unit); err != nil {
@@ -152,27 +144,6 @@ func (s *unitService) CountSearchUnits(ctx context.Context, query string, unitTy
 		return 0, fmt.Errorf("failed to count units search result: %w", err)
 	}
 	return count, nil
-}
-
-func validateUnit(unit *models.Unit) *pkg.AppError {
-	unit.UnitType = strings.TrimSpace(unit.UnitType)
-	unit.Name = strings.TrimSpace(unit.Name)
-	unit.Symbol = strings.TrimSpace(unit.Symbol)
-
-	if unit.UnitType == "" {
-		return pkg.ErrValidation("unit_type is required", nil)
-	}
-	if unit.Name == "" {
-		return pkg.ErrValidation("name is required", nil)
-	}
-	if unit.Symbol == "" {
-		unit.Symbol = unit.Name
-	}
-	if unit.ConversionFactor <= 0 {
-		return pkg.ErrValidation("conversion_factor must be greater than zero", nil)
-	}
-
-	return nil
 }
 
 func (s *unitService) ensureBaseUnitRelationship(ctx context.Context, unit *models.Unit) error {
