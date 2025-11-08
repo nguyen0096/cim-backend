@@ -116,7 +116,7 @@ func (r *purchaseOrderRepository) List(ctx context.Context, params models.ListPa
 		baseQuery = baseQuery.Where("order_number ILIKE ? OR notes ILIKE ?", "%"+params.Search+"%", "%"+params.Search+"%")
 	}
 
-	baseQuery = baseQuery.Preload("Items").Preload("Items.Product").Preload("Items.Supplier")
+	baseQuery = baseQuery.Preload("Items").Preload("Items.Product").Preload("Items.Supplier").Preload("Items.Product.Unit")
 
 	// Check if user has permission to view prices
 	if !pkg.HasPermission(ctx, "prices", "view") {
