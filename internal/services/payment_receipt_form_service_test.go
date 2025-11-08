@@ -10,11 +10,26 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
+	"github.com/stretchr/testify/require"
 )
+
+func strPtr(s string) *string {
+	return &s
+}
 
 // MockPaymentReceiptFormRepository is a mock implementation of PaymentReceiptFormRepository
 type MockPaymentReceiptFormRepository struct {
 	mock.Mock
+}
+
+// DeletePermanently implements repository.PaymentReceiptFormRepository.
+func (m *MockPaymentReceiptFormRepository) DeletePermanently(ctx context.Context, id uint) error {
+	panic("unimplemented")
+}
+
+// GetByIDFull implements repository.PaymentReceiptFormRepository.
+func (m *MockPaymentReceiptFormRepository) GetByIDFull(ctx context.Context, id uint) (*models.PaymentReceiptForm, error) {
+	panic("unimplemented")
 }
 
 func (m *MockPaymentReceiptFormRepository) Create(ctx context.Context, form *models.PaymentReceiptForm) error {
@@ -73,7 +88,7 @@ func TestPaymentReceiptFormService_CreatePaymentReceiptForm(t *testing.T) {
 		{
 			name: "should create payment receipt form successfully when all required fields are provided and no pending form exists",
 			payload: &dto.PaymentReceiptFormPayload{
-				FormNumber:    "20240115-001",
+				FormNumber:    strPtr("20240115-001"),
 				FullName:      "John Doe",
 				Date:          "2024-01-15",
 				Department:    "Finance",
@@ -86,7 +101,7 @@ func TestPaymentReceiptFormService_CreatePaymentReceiptForm(t *testing.T) {
 		{
 			name: "should create payment receipt form even when full name is empty (validation happens during submission)",
 			payload: &dto.PaymentReceiptFormPayload{
-				FormNumber:    "20240115-002",
+				FormNumber:    strPtr("20240115-002"),
 				FullName:      "",
 				Date:          "2024-01-15",
 				Department:    "Finance",
@@ -99,7 +114,7 @@ func TestPaymentReceiptFormService_CreatePaymentReceiptForm(t *testing.T) {
 		{
 			name: "should create payment receipt form even when department is empty (validation happens during submission)",
 			payload: &dto.PaymentReceiptFormPayload{
-				FormNumber:    "20240115-003",
+				FormNumber:    strPtr("20240115-003"),
 				FullName:      "John Doe",
 				Date:          "2024-01-15",
 				Department:    "",
@@ -112,7 +127,7 @@ func TestPaymentReceiptFormService_CreatePaymentReceiptForm(t *testing.T) {
 		{
 			name: "should return validation error when date format is invalid",
 			payload: &dto.PaymentReceiptFormPayload{
-				FormNumber:    "20240115-004",
+				FormNumber:    strPtr("20240115-004"),
 				FullName:      "John Doe",
 				Date:          "invalid-date",
 				Department:    "Finance",
@@ -126,7 +141,7 @@ func TestPaymentReceiptFormService_CreatePaymentReceiptForm(t *testing.T) {
 		{
 			name: "should create payment receipt form even when total amount is zero (validation happens during submission)",
 			payload: &dto.PaymentReceiptFormPayload{
-				FormNumber:    "20240115-005",
+				FormNumber:    strPtr("20240115-005"),
 				FullName:      "John Doe",
 				Date:          "2024-01-15",
 				Department:    "Finance",
@@ -139,7 +154,7 @@ func TestPaymentReceiptFormService_CreatePaymentReceiptForm(t *testing.T) {
 		{
 			name: "should create payment receipt form successfully (no pending form validation in create)",
 			payload: &dto.PaymentReceiptFormPayload{
-				FormNumber:    "20240115-006",
+				FormNumber:    strPtr("20240115-006"),
 				FullName:      "John Doe",
 				Date:          "2024-01-15",
 				Department:    "Finance",
@@ -152,7 +167,7 @@ func TestPaymentReceiptFormService_CreatePaymentReceiptForm(t *testing.T) {
 		{
 			name: "should create payment receipt form with provided form number",
 			payload: &dto.PaymentReceiptFormPayload{
-				FormNumber:    "20240115-001", // Provide form number to avoid auto-generation
+				FormNumber:    strPtr("20240115-001"), // Provide form number to avoid auto-generation
 				FullName:      "John Doe",
 				Date:          "2024-01-15",
 				Department:    "Finance",
@@ -180,7 +195,9 @@ func TestPaymentReceiptFormService_CreatePaymentReceiptForm(t *testing.T) {
 			}
 
 			// Act
-			result, err := service.CreatePaymentReceiptForm(context.Background(), tt.payload)
+			form, err := tt.payload.ToPaymentReceiptForm()
+			require.NoError(t, err)
+			result, err := service.CreatePaymentReceiptForm(context.Background(), form)
 
 			// Assert
 			if tt.expectError {
@@ -269,7 +286,6 @@ func TestPaymentReceiptFormService_GetPaymentReceiptForm(t *testing.T) {
 	expectedForm := &models.PaymentReceiptForm{
 		FullName:    "John Doe",
 		Department:  "Finance",
-		Location:    "Office",
 		TotalAmount: 100.50,
 		Status:      models.PaymentReceiptFormStatusPending,
 	}
@@ -294,7 +310,6 @@ func TestPaymentReceiptFormService_ListPaymentReceiptForms(t *testing.T) {
 		{
 			FullName:    "John Doe",
 			Department:  "Finance",
-			Location:    "Office",
 			TotalAmount: 100.50,
 			Status:      models.PaymentReceiptFormStatusPending,
 		},

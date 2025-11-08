@@ -225,6 +225,12 @@ type mockPaymentReceiptFormRepository struct {
 	err          error
 }
 
+func (m *mockPaymentReceiptFormRepository) DeletePermanently(ctx context.Context, id uint) error {
+	return nil
+}
+func (m *mockPaymentReceiptFormRepository) GetByIDFull(ctx context.Context, id uint) (*models.PaymentReceiptForm, error) {
+	return nil, nil
+}
 func (m *mockPaymentReceiptFormRepository) GetLatestPaymentReceiptForm(ctx context.Context, purchaseOrderID uint, status models.PaymentReceiptFormStatus) (*models.PaymentReceiptForm, error) {
 	return m.approvedForm, m.err
 }

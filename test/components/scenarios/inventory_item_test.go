@@ -45,11 +45,11 @@ func (suite *ComponentTestSuite) TestGetActiveInventoryItems() {
 
 	// Create products (without hardcoded IDs)
 	products := []models.Product{
-		{Name: "MacBook Pro 16-inch M3", Description: "Professional laptop with M3 chip, 32GB RAM, 1TB SSD", ProductType: "laptop", Status: "active"},
-		{Name: "LG UltraGear 27\" 4K Gaming Monitor", Description: "27-inch 4K UHD gaming monitor with 144Hz refresh rate", ProductType: "monitor", Status: "active"},
-		{Name: "Keychron K8 Mechanical Keyboard", Description: "Wireless mechanical keyboard with RGB backlight and hot-swappable switches", ProductType: "keyboard", Status: "active"},
-		{Name: "Logitech MX Master 3S", Description: "Advanced wireless mouse with precision scrolling and customizable buttons", ProductType: "mouse", Status: "active"},
-		{Name: "Herman Miller Aeron Chair", Description: "Ergonomic office chair with adjustable lumbar support", ProductType: "chair", Status: "active"},
+		{Name: "MacBook Pro 16-inch M3", Description: "Professional laptop with M3 chip, 32GB RAM, 1TB SSD", ProductType: "laptop", Status: "active", UnitID: 1},
+		{Name: "LG UltraGear 27\" 4K Gaming Monitor", Description: "27-inch 4K UHD gaming monitor with 144Hz refresh rate", ProductType: "monitor", Status: "active", UnitID: 1},
+		{Name: "Keychron K8 Mechanical Keyboard", Description: "Wireless mechanical keyboard with RGB backlight and hot-swappable switches", ProductType: "keyboard", Status: "active", UnitID: 1},
+		{Name: "Logitech MX Master 3S", Description: "Advanced wireless mouse with precision scrolling and customizable buttons", ProductType: "mouse", Status: "active", UnitID: 1},
+		{Name: "Herman Miller Aeron Chair", Description: "Ergonomic office chair with adjustable lumbar support", ProductType: "chair", Status: "active", UnitID: 1},
 	}
 	err = db.WithContext(ctx).Create(&products).Error
 	require.NoError(t, err, "Failed to create products")
@@ -362,9 +362,9 @@ func (suite *ComponentTestSuite) TestSaveInventoryItemChanges() {
 
 	// Create products
 	products := []models.Product{
-		{Name: "Test Product 1", Description: "Test product 1", ProductType: "test", Status: "active"},
-		{Name: "Test Product 2", Description: "Test product 2", ProductType: "test", Status: "active"},
-		{Name: "Test Product 3", Description: "Test product 3", ProductType: "test", Status: "active"},
+		{Name: "Test Product 1", Description: "Test product 1", ProductType: "test", Status: "active", UnitID: 1},
+		{Name: "Test Product 2", Description: "Test product 2", ProductType: "test", Status: "active", UnitID: 1},
+		{Name: "Test Product 3", Description: "Test product 3", ProductType: "test", Status: "active", UnitID: 1},
 	}
 	err = db.WithContext(ctx).Create(&products).Error
 	require.NoError(t, err, "Failed to create products")

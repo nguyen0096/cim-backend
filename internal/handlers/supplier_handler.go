@@ -255,7 +255,11 @@ func (h *SupplierHandler) UpdateSupplierStatus(c echo.Context) error {
 		return fmt.Errorf("failed to update supplier status: %w", err)
 	}
 
-	return c.JSON(http.StatusOK, map[string]string{"message": "Supplier status updated successfully", "status": request.Status, "supplier_id": string(id)})
+	return c.JSON(http.StatusOK, map[string]string{
+		"message":     "Supplier status updated successfully",
+		"status":      request.Status,
+		"supplier_id": strconv.FormatUint(uint64(id), 10),
+	})
 }
 
 func (h *SupplierHandler) DeleteSupplier(c echo.Context) error {
