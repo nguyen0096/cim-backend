@@ -13,7 +13,157 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 	"github.com/xuri/excelize/v2"
+	"gorm.io/gorm"
 )
+
+type stubUnitRepository struct {
+	unitsByID    map[uint]*models.Unit
+	unitsByLabel map[string]*models.Unit
+	nextID       uint
+}
+
+func newStubUnitRepository() *stubUnitRepository {
+	return &stubUnitRepository{
+		unitsByID:    make(map[uint]*models.Unit),
+		unitsByLabel: make(map[string]*models.Unit),
+		nextID:       1,
+	}
+}
+
+func (s *stubUnitRepository) labelKey(unitType, name string) string {
+	return strings.ToLower(unitType) + "::" + strings.ToLower(name)
+}
+
+func (s *stubUnitRepository) Create(_ context.Context, unit *models.Unit) error {
+	if unit.ID == 0 {
+		unit.ID = s.nextID
+		s.nextID++
+	}
+	cloned := *unit
+	s.unitsByID[unit.ID] = &cloned
+	s.unitsByLabel[s.labelKey(unit.UnitType, unit.Name)] = &cloned
+	return nil
+}
+
+func (s *stubUnitRepository) GetByID(_ context.Context, id uint) (*models.Unit, error) {
+	if unit, ok := s.unitsByID[id]; ok {
+		cloned := *unit
+		return &cloned, nil
+	}
+	return nil, gorm.ErrRecordNotFound
+}
+
+func (s *stubUnitRepository) GetByTypeAndName(_ context.Context, unitType, name string) (*models.Unit, error) {
+	if unit, ok := s.unitsByLabel[s.labelKey(unitType, name)]; ok {
+		cloned := *unit
+		return &cloned, nil
+	}
+	return nil, gorm.ErrRecordNotFound
+}
+
+func (s *stubUnitRepository) Update(ctx context.Context, unit *models.Unit) error {
+	if _, err := s.GetByID(ctx, unit.ID); err != nil {
+		return err
+	}
+	return s.Create(ctx, unit)
+}
+
+func (s *stubUnitRepository) Delete(context.Context, uint) error {
+	return nil
+}
+
+func (s *stubUnitRepository) Restore(context.Context, uint) error {
+	return nil
+}
+
+func (s *stubUnitRepository) List(context.Context, int, int, string, string, string) ([]models.Unit, error) {
+	return nil, nil
+}
+
+func (s *stubUnitRepository) Search(context.Context, string, int, int, string, string, string) ([]models.Unit, error) {
+	return nil, nil
+}
+
+func (s *stubUnitRepository) Count(context.Context, string) (int64, error) {
+	return 0, nil
+}
+
+func (s *stubUnitRepository) CountSearch(context.Context, string, string) (int64, error) {
+	return 0, nil
+}
+
+func newProductServiceWithRepos(productRepo *repositorymocks.ProductRepository, supplierRepo *repositorymocks.SupplierRepository) (ProductService, *stubUnitRepository) {
+	unitRepo := newStubUnitRepository()
+	// Seed a default unit so lookups succeed for ID 1
+	_ = unitRepo.Create(context.Background(), &models.Unit{
+		UnitType:         "general",
+		Name:             "unit",
+		Symbol:           "unit",
+		IsBase:           true,
+		ConversionFactor: 1,
+	})
+	return NewProductService(productRepo, supplierRepo, unitRepo), unitRepo
+}
+
+func TestCreateProduct(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("should create product when unit exists", func(t *testing.T) {
+		mockProductRepo := repositorymocks.NewProductRepository(t)
+		mockSupplierRepo := repositorymocks.NewSupplierRepository(t)
+		service, unitRepo := newProductServiceWithRepos(mockProductRepo, mockSupplierRepo)
+
+		unit, err := unitRepo.GetByID(ctx, 1)
+		require.NoError(t, err)
+
+		product := &models.Product{
+			Name:        "Test Product",
+			Description: "desc",
+			ProductType: "general",
+			UnitID:      unit.ID,
+			Status:      "active",
+		}
+
+		mockProductRepo.On("Create", ctx, product).Return(nil).Once()
+
+		err = service.CreateProduct(ctx, product)
+		assert.NoError(t, err)
+		mockProductRepo.AssertExpectations(t)
+	})
+
+	t.Run("should fail when unit_id missing", func(t *testing.T) {
+		mockProductRepo := repositorymocks.NewProductRepository(t)
+		mockSupplierRepo := repositorymocks.NewSupplierRepository(t)
+		service, _ := newProductServiceWithRepos(mockProductRepo, mockSupplierRepo)
+
+		product := &models.Product{
+			Name:        "Test Product",
+			ProductType: "general",
+			Status:      "active",
+		}
+
+		err := service.CreateProduct(ctx, product)
+		assert.Error(t, err)
+		assert.True(t, pkg.IsErrorCode(err, pkg.ErrorCodeValidation))
+	})
+
+	t.Run("should return not found when unit missing", func(t *testing.T) {
+		mockProductRepo := repositorymocks.NewProductRepository(t)
+		mockSupplierRepo := repositorymocks.NewSupplierRepository(t)
+		service, _ := newProductServiceWithRepos(mockProductRepo, mockSupplierRepo)
+
+		product := &models.Product{
+			Name:        "Test Product",
+			ProductType: "general",
+			Status:      "active",
+			UnitID:      9999,
+		}
+
+		err := service.CreateProduct(ctx, product)
+		assert.Error(t, err)
+		assert.True(t, pkg.IsErrorCode(err, pkg.ErrorCodeNotFound))
+	})
+}
 
 func TestImportProductsFromCSV(t *testing.T) {
 	ctx := context.Background()
@@ -22,7 +172,7 @@ func TestImportProductsFromCSV(t *testing.T) {
 		// Setup
 		mockProductRepo := repositorymocks.NewProductRepository(t)
 		mockSupplierRepo := repositorymocks.NewSupplierRepository(t)
-		service := NewProductService(mockProductRepo, mockSupplierRepo)
+		service, _ := newProductServiceWithRepos(mockProductRepo, mockSupplierRepo)
 
 		csvData := `Name;Description;ProductType;Suppliers;ContactEmail;ContactPhone;Address
 Laptop Dell XPS 13;High-performance laptop;Electronics;;;;`
@@ -48,7 +198,7 @@ Laptop Dell XPS 13;High-performance laptop;Electronics;;;;`
 		// Setup
 		mockProductRepo := repositorymocks.NewProductRepository(t)
 		mockSupplierRepo := repositorymocks.NewSupplierRepository(t)
-		service := NewProductService(mockProductRepo, mockSupplierRepo)
+		service, _ := newProductServiceWithRepos(mockProductRepo, mockSupplierRepo)
 
 		csvData := `Name;Description;ProductType;Suppliers;ContactEmail;ContactPhone;Address
 Laptop;High-performance laptop;Electronics;Tech Inc;tech@email.com;+1-555-0123;123 Tech St`
@@ -94,7 +244,7 @@ Laptop;High-performance laptop;Electronics;Tech Inc;tech@email.com;+1-555-0123;1
 		// Setup
 		mockProductRepo := repositorymocks.NewProductRepository(t)
 		mockSupplierRepo := repositorymocks.NewSupplierRepository(t)
-		service := NewProductService(mockProductRepo, mockSupplierRepo)
+		service, _ := newProductServiceWithRepos(mockProductRepo, mockSupplierRepo)
 
 		csvData := `Name;Description;ProductType;Suppliers;ContactEmail;ContactPhone;Address
 Laptop;High-performance laptop;Electronics;Tech Inc;tech@email.com;+1-555-0123;123 Tech St
@@ -137,7 +287,7 @@ Laptop;High-performance laptop;Electronics;Tech Inc;tech@email.com;+1-555-0123;1
 		// Setup
 		mockProductRepo := repositorymocks.NewProductRepository(t)
 		mockSupplierRepo := repositorymocks.NewSupplierRepository(t)
-		service := NewProductService(mockProductRepo, mockSupplierRepo)
+		service, _ := newProductServiceWithRepos(mockProductRepo, mockSupplierRepo)
 
 		csvData := `Name;Description;ProductType;Suppliers;ContactEmail;ContactPhone;Address
 Laptop;High-performance laptop;Electronics;Tech Inc;tech@email.com;;
@@ -191,7 +341,7 @@ Mouse;Wireless mouse;Electronics;;;;`
 		// Setup
 		mockProductRepo := repositorymocks.NewProductRepository(t)
 		mockSupplierRepo := repositorymocks.NewSupplierRepository(t)
-		service := NewProductService(mockProductRepo, mockSupplierRepo)
+		service, _ := newProductServiceWithRepos(mockProductRepo, mockSupplierRepo)
 
 		csvData := ``
 
@@ -210,7 +360,7 @@ Mouse;Wireless mouse;Electronics;;;;`
 		// Setup
 		mockProductRepo := repositorymocks.NewProductRepository(t)
 		mockSupplierRepo := repositorymocks.NewSupplierRepository(t)
-		service := NewProductService(mockProductRepo, mockSupplierRepo)
+		service, _ := newProductServiceWithRepos(mockProductRepo, mockSupplierRepo)
 
 		csvData := `Description;ProductType;Suppliers
 High-performance laptop;Electronics;Tech Inc`
@@ -230,7 +380,7 @@ High-performance laptop;Electronics;Tech Inc`
 		// Setup
 		mockProductRepo := repositorymocks.NewProductRepository(t)
 		mockSupplierRepo := repositorymocks.NewSupplierRepository(t)
-		service := NewProductService(mockProductRepo, mockSupplierRepo)
+		service, _ := newProductServiceWithRepos(mockProductRepo, mockSupplierRepo)
 
 		csvData := `Name;Description;Suppliers
 Laptop;High-performance laptop;Tech Inc`
@@ -250,7 +400,7 @@ Laptop;High-performance laptop;Tech Inc`
 		// Setup
 		mockProductRepo := repositorymocks.NewProductRepository(t)
 		mockSupplierRepo := repositorymocks.NewSupplierRepository(t)
-		service := NewProductService(mockProductRepo, mockSupplierRepo)
+		service, _ := newProductServiceWithRepos(mockProductRepo, mockSupplierRepo)
 
 		csvData := `Name;Description;ProductType;Suppliers
 ;High-performance laptop;Electronics;Tech Inc`
@@ -270,7 +420,7 @@ Laptop;High-performance laptop;Tech Inc`
 		// Setup
 		mockProductRepo := repositorymocks.NewProductRepository(t)
 		mockSupplierRepo := repositorymocks.NewSupplierRepository(t)
-		service := NewProductService(mockProductRepo, mockSupplierRepo)
+		service, _ := newProductServiceWithRepos(mockProductRepo, mockSupplierRepo)
 
 		csvData := `Name;Description;ProductType;Suppliers
 Laptop;High-performance laptop;;Tech Inc`
@@ -290,7 +440,7 @@ Laptop;High-performance laptop;;Tech Inc`
 		// Setup
 		mockProductRepo := repositorymocks.NewProductRepository(t)
 		mockSupplierRepo := repositorymocks.NewSupplierRepository(t)
-		service := NewProductService(mockProductRepo, mockSupplierRepo)
+		service, _ := newProductServiceWithRepos(mockProductRepo, mockSupplierRepo)
 
 		csvData := `Name;Description;ProductType;Suppliers
 ;;;Tech Inc`
@@ -310,7 +460,7 @@ Laptop;High-performance laptop;;Tech Inc`
 		// Setup
 		mockProductRepo := repositorymocks.NewProductRepository(t)
 		mockSupplierRepo := repositorymocks.NewSupplierRepository(t)
-		service := NewProductService(mockProductRepo, mockSupplierRepo)
+		service, _ := newProductServiceWithRepos(mockProductRepo, mockSupplierRepo)
 
 		csvData := `Name;Description;ProductType;Suppliers
 
@@ -331,7 +481,7 @@ Laptop;High-performance laptop;;Tech Inc`
 		// Setup
 		mockProductRepo := repositorymocks.NewProductRepository(t)
 		mockSupplierRepo := repositorymocks.NewSupplierRepository(t)
-		service := NewProductService(mockProductRepo, mockSupplierRepo)
+		service, _ := newProductServiceWithRepos(mockProductRepo, mockSupplierRepo)
 
 		csvData := `Name;Description;ProductType;Suppliers
 
@@ -354,7 +504,7 @@ Laptop;High-performance laptop;Electronics;
 		// Setup
 		mockProductRepo := repositorymocks.NewProductRepository(t)
 		mockSupplierRepo := repositorymocks.NewSupplierRepository(t)
-		service := NewProductService(mockProductRepo, mockSupplierRepo)
+		service, _ := newProductServiceWithRepos(mockProductRepo, mockSupplierRepo)
 
 		csvData := `Name;Description;ProductType;Suppliers
 Laptop;High-performance laptop;Electronics;`
@@ -376,7 +526,7 @@ Laptop;High-performance laptop;Electronics;`
 		// Setup
 		mockProductRepo := repositorymocks.NewProductRepository(t)
 		mockSupplierRepo := repositorymocks.NewSupplierRepository(t)
-		service := NewProductService(mockProductRepo, mockSupplierRepo)
+		service, _ := newProductServiceWithRepos(mockProductRepo, mockSupplierRepo)
 
 		csvData := `Name;Description;ProductType;Suppliers
 Laptop;High-performance laptop;Electronics;Tech Inc`
@@ -401,7 +551,7 @@ Laptop;High-performance laptop;Electronics;Tech Inc`
 		// Setup
 		mockProductRepo := repositorymocks.NewProductRepository(t)
 		mockSupplierRepo := repositorymocks.NewSupplierRepository(t)
-		service := NewProductService(mockProductRepo, mockSupplierRepo)
+		service, _ := newProductServiceWithRepos(mockProductRepo, mockSupplierRepo)
 
 		csvData := `Name;Description;ProductType;Suppliers
 Laptop;High-performance laptop;Electronics;Tech Inc`
@@ -429,7 +579,7 @@ Laptop;High-performance laptop;Electronics;Tech Inc`
 		// Setup
 		mockProductRepo := repositorymocks.NewProductRepository(t)
 		mockSupplierRepo := repositorymocks.NewSupplierRepository(t)
-		service := NewProductService(mockProductRepo, mockSupplierRepo)
+		service, _ := newProductServiceWithRepos(mockProductRepo, mockSupplierRepo)
 
 		csvData := `name;DESCRIPTION;producttype;suppliers
 Laptop;High-performance laptop;Electronics;`
@@ -453,7 +603,7 @@ Laptop;High-performance laptop;Electronics;`
 		// Setup
 		mockProductRepo := repositorymocks.NewProductRepository(t)
 		mockSupplierRepo := repositorymocks.NewSupplierRepository(t)
-		service := NewProductService(mockProductRepo, mockSupplierRepo)
+		service, _ := newProductServiceWithRepos(mockProductRepo, mockSupplierRepo)
 
 		csvData := `Name;Description;ProductType;Suppliers;ContactEmail;ContactPhone;Address
   Laptop  ;  High-performance laptop  ;  Electronics  ;  Tech Inc  ;  tech@email.com  ;  +1-555-0123  ;  123 Tech St  `
@@ -489,7 +639,7 @@ Laptop;High-performance laptop;Electronics;`
 		// Setup
 		mockProductRepo := repositorymocks.NewProductRepository(t)
 		mockSupplierRepo := repositorymocks.NewSupplierRepository(t)
-		service := NewProductService(mockProductRepo, mockSupplierRepo)
+		service, _ := newProductServiceWithRepos(mockProductRepo, mockSupplierRepo)
 
 		csvData := `Name;Description;ProductType;Suppliers;ContactEmail;ContactPhone;Address
 Pepsi;;Nước;Công ty TNHH Giải khát Sài Gòn;contact@email.com;0123456789;D5 Khu dân cư Thảo Nguyên`
@@ -553,7 +703,7 @@ func TestImportProductsFromExcel(t *testing.T) {
 		// Setup
 		mockProductRepo := repositorymocks.NewProductRepository(t)
 		mockSupplierRepo := repositorymocks.NewSupplierRepository(t)
-		service := NewProductService(mockProductRepo, mockSupplierRepo)
+		service, _ := newProductServiceWithRepos(mockProductRepo, mockSupplierRepo)
 
 		// Create Excel file
 		headers := []string{"Name", "Description", "ProductType", "Suppliers", "ContactEmail", "ContactPhone", "Address"}
@@ -587,7 +737,7 @@ func TestImportProductsFromExcel(t *testing.T) {
 		// Setup
 		mockProductRepo := repositorymocks.NewProductRepository(t)
 		mockSupplierRepo := repositorymocks.NewSupplierRepository(t)
-		service := NewProductService(mockProductRepo, mockSupplierRepo)
+		service, _ := newProductServiceWithRepos(mockProductRepo, mockSupplierRepo)
 
 		// Create Excel file
 		headers := []string{"Name", "Description", "ProductType", "Suppliers", "ContactEmail", "ContactPhone", "Address"}
@@ -631,7 +781,7 @@ func TestImportProductsFromExcel(t *testing.T) {
 		// Setup
 		mockProductRepo := repositorymocks.NewProductRepository(t)
 		mockSupplierRepo := repositorymocks.NewSupplierRepository(t)
-		service := NewProductService(mockProductRepo, mockSupplierRepo)
+		service, _ := newProductServiceWithRepos(mockProductRepo, mockSupplierRepo)
 
 		// Create empty Excel file (no sheets)
 		f := excelize.NewFile()
@@ -655,7 +805,7 @@ func TestImportProductsFromExcel(t *testing.T) {
 		// Setup
 		mockProductRepo := repositorymocks.NewProductRepository(t)
 		mockSupplierRepo := repositorymocks.NewSupplierRepository(t)
-		service := NewProductService(mockProductRepo, mockSupplierRepo)
+		service, _ := newProductServiceWithRepos(mockProductRepo, mockSupplierRepo)
 
 		// Create Excel with only headers
 		headers := []string{"Name", "Description", "ProductType", "Suppliers"}
@@ -680,7 +830,7 @@ func TestImportProductsFromExcel(t *testing.T) {
 		// Setup
 		mockProductRepo := repositorymocks.NewProductRepository(t)
 		mockSupplierRepo := repositorymocks.NewSupplierRepository(t)
-		service := NewProductService(mockProductRepo, mockSupplierRepo)
+		service, _ := newProductServiceWithRepos(mockProductRepo, mockSupplierRepo)
 
 		// Create Excel without Name column
 		headers := []string{"Description", "ProductType", "Suppliers"}
@@ -707,7 +857,7 @@ func TestImportProductsFromExcel(t *testing.T) {
 		// Setup
 		mockProductRepo := repositorymocks.NewProductRepository(t)
 		mockSupplierRepo := repositorymocks.NewSupplierRepository(t)
-		service := NewProductService(mockProductRepo, mockSupplierRepo)
+		service, _ := newProductServiceWithRepos(mockProductRepo, mockSupplierRepo)
 
 		// Create Excel with Unicode
 		headers := []string{"Name", "Description", "ProductType", "Suppliers", "ContactEmail", "ContactPhone", "Address"}

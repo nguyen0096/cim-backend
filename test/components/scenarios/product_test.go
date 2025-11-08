@@ -24,6 +24,7 @@ func (suite *ComponentTestSuite) TestCreateAndGetProduct() {
 		"name":         "Test Product",
 		"description":  "Test Description",
 		"product_type": "test",
+		"unit_id":      1,
 		"supplier_ids": []uint{1, 2, 3},
 		"status":       "active",
 	}
@@ -83,6 +84,13 @@ func (suite *ComponentTestSuite) TestUpdateProduct() {
 	t := suite.T()
 	ctx := pkg.WithUserEmail(context.Background(), "test@example.com")
 	db := suite.sharedTestContainer.DB
+
+	testUnit := models.Unit{
+		Base: models.Base{ID: 2},
+		Name: "Test Unit 2",
+	}
+	err := db.WithContext(ctx).Create(&testUnit).Error
+	require.NoError(t, err, "Failed to create units")
 	testSuppliers := []models.Supplier{
 		{
 			Base: models.Base{ID: 1},
@@ -101,14 +109,22 @@ func (suite *ComponentTestSuite) TestUpdateProduct() {
 			Name: "Test Supplier 4",
 		},
 	}
-	err := db.WithContext(ctx).Create(&testSuppliers).Error
+	err = db.WithContext(ctx).Create(&testSuppliers).Error
 	require.NoError(t, err, "Failed to create suppliers")
 	testProduct := models.Product{
 		Name:        "Test Product",
 		Description: "Test Description",
 		ProductType: "test",
-		Unit:        "test",
-		Status:      "active",
+		UnitID:      1,
+		Unit: &models.Unit{
+			Base:             models.Base{ID: 1},
+			UnitType:         "general",
+			Name:             "test",
+			Symbol:           "test",
+			ConversionFactor: 1,
+			IsBase:           true,
+		},
+		Status: "active",
 		Suppliers: []*models.Supplier{
 			{
 				Base: models.Base{ID: 1},
@@ -129,6 +145,7 @@ func (suite *ComponentTestSuite) TestUpdateProduct() {
 		"description":  "Test Description Edited",
 		"product_type": "test_edited",
 		"supplier_ids": []uint{2, 3, 4},
+		"unit_id":      2,
 		"status":       "inactive",
 	}
 
@@ -268,8 +285,16 @@ func (suite *ComponentTestSuite) TestDeleteProduct() {
 		Name:        "Test Product",
 		Description: "Test Description",
 		ProductType: "test",
-		Unit:        "test",
-		Status:      "active",
+		UnitID:      1,
+		Unit: &models.Unit{
+			Base:             models.Base{ID: 1},
+			UnitType:         "general",
+			Name:             "test",
+			Symbol:           "test",
+			ConversionFactor: 1,
+			IsBase:           true,
+		},
+		Status: "active",
 		Suppliers: []*models.Supplier{
 			{
 				Base: models.Base{ID: 1},
@@ -377,13 +402,14 @@ func (suite *ComponentTestSuite) TestImportProductsFromCsvAndExcel() {
 
 			// Verify first product: PEPSI 390 ml (has multiple suppliers due to duplicate name)
 			var products []*models.Product
-			db.WithContext(testCtx).Preload("Suppliers").Where("name = ?", "PEPSI 390 ml").Find(&products)
+			db.WithContext(testCtx).Preload("Unit").Preload("Suppliers").Where("name = ?", "PEPSI 390 ml").Find(&products)
 			assert.Equal(t, 1, len(products))
 			assert.Equal(t, "PEPSI 390 ml", products[0].Name)
 			assert.Equal(t, "PEPSI 390 ml", products[0].Description)
 			assert.Equal(t, "NƯỚC", products[0].ProductType)
 			assert.Equal(t, "active", products[0].Status)
-			assert.Equal(t, "Lốc", products[0].Unit)
+			require.NotNil(t, products[0].Unit)
+			assert.Equal(t, "Lốc", products[0].Unit.Symbol)
 			assert.Equal(t, user.Email, products[0].CreatedBy)
 			assert.Equal(t, user.Email, products[0].UpdatedBy)
 			// Verify product has both PEPSI and COCACOLA suppliers (n-n relationship)
@@ -397,60 +423,65 @@ func (suite *ComponentTestSuite) TestImportProductsFromCsvAndExcel() {
 
 			// Verify second product: PEPSI LON 320 ML
 			var products2 []*models.Product
-			db.WithContext(testCtx).Preload("Suppliers").Where("name = ?", "PEPSI LON 320 ML").Find(&products2)
+			db.WithContext(testCtx).Preload("Unit").Preload("Suppliers").Where("name = ?", "PEPSI LON 320 ML").Find(&products2)
 			assert.Equal(t, 1, len(products2))
 			assert.Equal(t, "PEPSI LON 320 ML", products2[0].Name)
 			assert.Equal(t, "PEPSI LON 320 ML", products2[0].Description)
 			assert.Equal(t, "NƯỚC", products2[0].ProductType)
-			assert.Equal(t, "Thùng", products2[0].Unit)
+			require.NotNil(t, products2[0].Unit)
+			assert.Equal(t, "Thùng", products2[0].Unit.Symbol)
 			// Verify product has PEPSI supplier
 			assert.Equal(t, 1, len(products2[0].Suppliers))
 			assert.Equal(t, "PEPSI", products2[0].Suppliers[0].Name)
 
 			// Verify third product: FANTA LON XÁ XỊ 320 ML
 			var products3 []*models.Product
-			db.WithContext(testCtx).Preload("Suppliers").Where("name = ?", "FANTA LON XÁ XỊ  320 ML").Find(&products3)
+			db.WithContext(testCtx).Preload("Unit").Preload("Suppliers").Where("name = ?", "FANTA LON XÁ XỊ  320 ML").Find(&products3)
 			assert.Equal(t, 1, len(products3))
 			assert.Equal(t, "FANTA LON XÁ XỊ  320 ML", products3[0].Name)
 			assert.Equal(t, "FANTA LON XÁ XỊ  320 ML", products3[0].Description)
 			assert.Equal(t, "NƯỚC", products3[0].ProductType)
-			assert.Equal(t, "Lốc", products3[0].Unit)
+			require.NotNil(t, products3[0].Unit)
+			assert.Equal(t, "Lốc", products3[0].Unit.Symbol)
 			// Verify product has COCACOLA supplier
 			assert.Equal(t, 1, len(products3[0].Suppliers))
 			assert.Equal(t, "COCACOLA", products3[0].Suppliers[0].Name)
 
 			// Verify fourth product: MILO NẮP VẬN 210 ML
 			var products4 []*models.Product
-			db.WithContext(testCtx).Preload("Suppliers").Where("name = ?", "MILO NẮP VẬN 210 ML").Find(&products4)
+			db.WithContext(testCtx).Preload("Unit").Preload("Suppliers").Where("name = ?", "MILO NẮP VẬN 210 ML").Find(&products4)
 			assert.Equal(t, 1, len(products4))
 			assert.Equal(t, "MILO NẮP VẬN 210 ML", products4[0].Name)
 			assert.Equal(t, "MILO NẮP VẬN 210 ML", products4[0].Description)
 			assert.Equal(t, "NƯỚC", products4[0].ProductType)
-			assert.Equal(t, "Thùng", products4[0].Unit)
+			require.NotNil(t, products4[0].Unit)
+			assert.Equal(t, "Thùng", products4[0].Unit.Symbol)
 			// Verify product has SỮA MILO supplier
 			assert.Equal(t, 1, len(products4[0].Suppliers))
 			assert.Equal(t, "SỮA MILO", products4[0].Suppliers[0].Name)
 
 			// Verify fifth product: SỮA BẮP THÁI SƠN
 			var products5 []*models.Product
-			db.WithContext(testCtx).Preload("Suppliers").Where("name = ?", "SỮA BẮP THÁI SƠN").Find(&products5)
+			db.WithContext(testCtx).Preload("Unit").Preload("Suppliers").Where("name = ?", "SỮA BẮP THÁI SƠN").Find(&products5)
 			assert.Equal(t, 1, len(products5))
 			assert.Equal(t, "SỮA BẮP THÁI SƠN", products5[0].Name)
 			assert.Equal(t, "SỮA BẮP THÁI SƠN", products5[0].Description)
 			assert.Equal(t, "NƯỚC", products5[0].ProductType)
-			assert.Equal(t, "Chai", products5[0].Unit)
+			require.NotNil(t, products5[0].Unit)
+			assert.Equal(t, "Chai", products5[0].Unit.Symbol)
 			// Verify product has SỮA THÁI SƠN supplier
 			assert.Equal(t, 1, len(products5[0].Suppliers))
 			assert.Equal(t, "SỮA THÁI SƠN", products5[0].Suppliers[0].Name)
 
 			// Verify product without supplier: COCA COLA 500ML (line 13 has product name but no supplier)
 			var products6 []*models.Product
-			db.WithContext(testCtx).Preload("Suppliers").Where("name = ?", "COCA COLA 500ML").Find(&products6)
+			db.WithContext(testCtx).Preload("Unit").Preload("Suppliers").Where("name = ?", "COCA COLA 500ML").Find(&products6)
 			assert.Equal(t, 1, len(products6))
 			assert.Equal(t, "COCA COLA 500ML", products6[0].Name)
 			assert.Equal(t, "COCA COLA 500ML", products6[0].Description)
 			assert.Equal(t, "NƯỚC", products6[0].ProductType)
-			assert.Equal(t, "Thùng", products6[0].Unit)
+			require.NotNil(t, products6[0].Unit)
+			assert.Equal(t, "Thùng", products6[0].Unit.Symbol)
 			// Verify product has no suppliers (supplier name was missing in CSV)
 			assert.Equal(t, 0, len(products6[0].Suppliers))
 

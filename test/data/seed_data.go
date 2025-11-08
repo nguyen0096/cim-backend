@@ -125,11 +125,138 @@ func Suppliers() []models.Supplier {
 	}
 }
 
-// Products contains all test product data
-func Products(supplierIDs []uint) []models.Product {
+type ProductSeed struct {
+	Base        models.Base
+	Name        string
+	Description string
+	ProductType string
+	UnitSymbol  string
+	Status      string
+}
+
+// Units returns the measurement units used in test data
+func Units() []models.Unit {
 	now := time.Now()
 
-	return []models.Product{
+	return []models.Unit{
+		{
+			Base: models.Base{
+				CreatedAt: now,
+				UpdatedAt: now,
+			},
+			UnitType:         "mass",
+			Name:             "Kilogram",
+			Symbol:           "kg",
+			IsBase:           true,
+			ConversionFactor: 1,
+		},
+		{
+			Base: models.Base{
+				CreatedAt: now,
+				UpdatedAt: now,
+			},
+			UnitType:         "volume",
+			Name:             "Liter",
+			Symbol:           "liter",
+			IsBase:           true,
+			ConversionFactor: 1,
+		},
+		{
+			Base: models.Base{
+				CreatedAt: now,
+				UpdatedAt: now,
+			},
+			UnitType:         "count",
+			Name:             "Piece",
+			Symbol:           "piece",
+			IsBase:           true,
+			ConversionFactor: 1,
+		},
+		{
+			Base: models.Base{
+				CreatedAt: now,
+				UpdatedAt: now,
+			},
+			UnitType:         "count",
+			Name:             "Box",
+			Symbol:           "box",
+			IsBase:           true,
+			ConversionFactor: 1,
+		},
+		{
+			Base: models.Base{
+				CreatedAt: now,
+				UpdatedAt: now,
+			},
+			UnitType:         "count",
+			Name:             "Carton",
+			Symbol:           "carton",
+			IsBase:           true,
+			ConversionFactor: 1,
+		},
+		{
+			Base: models.Base{
+				CreatedAt: now,
+				UpdatedAt: now,
+			},
+			UnitType:         "count",
+			Name:             "Bottle",
+			Symbol:           "bottle",
+			IsBase:           true,
+			ConversionFactor: 1,
+		},
+		{
+			Base: models.Base{
+				CreatedAt: now,
+				UpdatedAt: now,
+			},
+			UnitType:         "count",
+			Name:             "Can",
+			Symbol:           "can",
+			IsBase:           true,
+			ConversionFactor: 1,
+		},
+		{
+			Base: models.Base{
+				CreatedAt: now,
+				UpdatedAt: now,
+			},
+			UnitType:         "count",
+			Name:             "Pack",
+			Symbol:           "pack",
+			IsBase:           true,
+			ConversionFactor: 1,
+		},
+		{
+			Base: models.Base{
+				CreatedAt: now,
+				UpdatedAt: now,
+			},
+			UnitType:         "count",
+			Name:             "Loaf",
+			Symbol:           "loaf",
+			IsBase:           true,
+			ConversionFactor: 1,
+		},
+		{
+			Base: models.Base{
+				CreatedAt: now,
+				UpdatedAt: now,
+			},
+			UnitType:         "count",
+			Name:             "Tray",
+			Symbol:           "tray",
+			IsBase:           true,
+			ConversionFactor: 1,
+		},
+	}
+}
+
+// productSeeds contains all test product data
+func productSeeds() []ProductSeed {
+	now := time.Now()
+
+	return []ProductSeed{
 		// F&B Products (Vietnam)
 		{
 			Base: models.Base{
@@ -139,7 +266,7 @@ func Products(supplierIDs []uint) []models.Product {
 			Name:        "Gạo Tám Thơm ST25",
 			Description: "Gạo thơm ST25 đặc sản xuất khẩu, loại 1",
 			ProductType: "Cơm",
-			Unit:        "kg",
+			UnitSymbol:  "kg",
 			Status:      "active",
 		},
 		{
@@ -150,7 +277,7 @@ func Products(supplierIDs []uint) []models.Product {
 			Name:        "Cà Phê Robusta Đắk Lắk",
 			Description: "Hạt cà phê Robusta nguyên chất từ Tây Nguyên",
 			ProductType: "Nước",
-			Unit:        "kg",
+			UnitSymbol:  "kg",
 			Status:      "active",
 		},
 		{
@@ -161,7 +288,7 @@ func Products(supplierIDs []uint) []models.Product {
 			Name:        "Nước Mắm Phú Quốc 40 Độ Đạm",
 			Description: "Nước mắm truyền thống Phú Quốc, 40 độ đạm đạm protein",
 			ProductType: "Ăn nhẹ",
-			Unit:        "liter",
+			UnitSymbol:  "liter",
 			Status:      "active",
 		},
 		{
@@ -172,7 +299,7 @@ func Products(supplierIDs []uint) []models.Product {
 			Name:        "Bánh Mì Tươi Sài Gòn",
 			Description: "Bánh mì que giòn tươi ngon mỗi ngày",
 			ProductType: "Ăn nhẹ",
-			Unit:        "piece",
+			UnitSymbol:  "piece",
 			Status:      "active",
 		},
 		{
@@ -183,7 +310,7 @@ func Products(supplierIDs []uint) []models.Product {
 			Name:        "Rau Xà Lách Đà Lạt",
 			Description: "Rau xà lách tươi hữu cơ từ Đà Lạt",
 			ProductType: "Ăn nhẹ",
-			Unit:        "kg",
+			UnitSymbol:  "kg",
 			Status:      "active",
 		},
 		{
@@ -194,7 +321,7 @@ func Products(supplierIDs []uint) []models.Product {
 			Name:        "Sữa Tươi Vinamilk 100%",
 			Description: "Sữa tươi thanh trùng không đường",
 			ProductType: "Ăn nhẹ",
-			Unit:        "liter",
+			UnitSymbol:  "liter",
 			Status:      "active",
 		},
 		{
@@ -205,7 +332,7 @@ func Products(supplierIDs []uint) []models.Product {
 			Name:        "Tôm Càng Xanh Cần Thơ",
 			Description: "Tôm càng xanh tươi sống từ đồng bằng sông Cửu Long",
 			ProductType: "Cơm",
-			Unit:        "kg",
+			UnitSymbol:  "kg",
 			Status:      "active",
 		},
 		{
@@ -216,7 +343,7 @@ func Products(supplierIDs []uint) []models.Product {
 			Name:        "Chả Lụa Đặc Biệt",
 			Description: "Chả lụa thượng hạng chất lượng cao",
 			ProductType: "Cơm",
-			Unit:        "kg",
+			UnitSymbol:  "kg",
 			Status:      "active",
 		},
 		{
@@ -227,7 +354,7 @@ func Products(supplierIDs []uint) []models.Product {
 			Name:        "Trà Ô Long Đài Loan",
 			Description: "Trà ô long cao cấp nhập khẩu từ Đài Loan",
 			ProductType: "Nước",
-			Unit:        "kg",
+			UnitSymbol:  "kg",
 			Status:      "active",
 		},
 		{
@@ -238,7 +365,7 @@ func Products(supplierIDs []uint) []models.Product {
 			Name:        "Bánh Quy Bơ Kinh Đô",
 			Description: "Bánh quy bơ thơm ngon đặc biệt",
 			ProductType: "Ăn nhẹ",
-			Unit:        "box",
+			UnitSymbol:  "box",
 			Status:      "active",
 		},
 		// Additional F&B Products
@@ -250,7 +377,7 @@ func Products(supplierIDs []uint) []models.Product {
 			Name:        "Bún Tươi",
 			Description: "Bún tươi dai ngon từ gạo tẻ",
 			ProductType: "Cơm",
-			Unit:        "kg",
+			UnitSymbol:  "kg",
 			Status:      "active",
 		},
 		{
@@ -261,7 +388,7 @@ func Products(supplierIDs []uint) []models.Product {
 			Name:        "Phở Khô",
 			Description: "Bánh phở khô loại 1",
 			ProductType: "Cơm",
-			Unit:        "kg",
+			UnitSymbol:  "kg",
 			Status:      "active",
 		},
 		{
@@ -272,7 +399,7 @@ func Products(supplierIDs []uint) []models.Product {
 			Name:        "Mì Gói Hảo Hảo",
 			Description: "Mì ăn liền vị tôm chua cay",
 			ProductType: "Cơm",
-			Unit:        "carton",
+			UnitSymbol:  "carton",
 			Status:      "active",
 		},
 		{
@@ -283,7 +410,7 @@ func Products(supplierIDs []uint) []models.Product {
 			Name:        "Dầu Ăn Simply",
 			Description: "Dầu ăn cao cấp chai 1L",
 			ProductType: "Ăn nhẹ",
-			Unit:        "liter",
+			UnitSymbol:  "liter",
 			Status:      "active",
 		},
 		{
@@ -294,7 +421,7 @@ func Products(supplierIDs []uint) []models.Product {
 			Name:        "Nước Tương Chinsu",
 			Description: "Nước tương đậm đà hương vị truyền thống",
 			ProductType: "Ăn nhẹ",
-			Unit:        "liter",
+			UnitSymbol:  "liter",
 			Status:      "active",
 		},
 		{
@@ -305,7 +432,7 @@ func Products(supplierIDs []uint) []models.Product {
 			Name:        "Tương Ớt Cholimex",
 			Description: "Tương ớt cay đặc biệt",
 			ProductType: "Ăn nhẹ",
-			Unit:        "bottle",
+			UnitSymbol:  "bottle",
 			Status:      "active",
 		},
 		{
@@ -316,7 +443,7 @@ func Products(supplierIDs []uint) []models.Product {
 			Name:        "Đường Trắng Biên Hòa",
 			Description: "Đường cát trắng tinh luyện",
 			ProductType: "Ăn nhẹ",
-			Unit:        "kg",
+			UnitSymbol:  "kg",
 			Status:      "active",
 		},
 		{
@@ -327,7 +454,7 @@ func Products(supplierIDs []uint) []models.Product {
 			Name:        "Muối I-ốt",
 			Description: "Muối tinh I-ốt sạch",
 			ProductType: "Ăn nhẹ",
-			Unit:        "kg",
+			UnitSymbol:  "kg",
 			Status:      "active",
 		},
 		{
@@ -338,7 +465,7 @@ func Products(supplierIDs []uint) []models.Product {
 			Name:        "Bột Ngọt Aji-ngon",
 			Description: "Bột ngọt tăng vị tự nhiên",
 			ProductType: "Ăn nhẹ",
-			Unit:        "kg",
+			UnitSymbol:  "kg",
 			Status:      "active",
 		},
 		{
@@ -349,7 +476,7 @@ func Products(supplierIDs []uint) []models.Product {
 			Name:        "Hạt Nêm Knorr",
 			Description: "Hạt nêm thịt thăn xương ống heo",
 			ProductType: "Ăn nhẹ",
-			Unit:        "kg",
+			UnitSymbol:  "kg",
 			Status:      "active",
 		},
 		{
@@ -360,7 +487,7 @@ func Products(supplierIDs []uint) []models.Product {
 			Name:        "Cá Ngừ Đóng Hộp VisanFoods",
 			Description: "Cá ngừ xốt cà chua 170g",
 			ProductType: "Ăn nhẹ",
-			Unit:        "can",
+			UnitSymbol:  "can",
 			Status:      "active",
 		},
 		{
@@ -371,7 +498,7 @@ func Products(supplierIDs []uint) []models.Product {
 			Name:        "Sữa Đặc Ông Thọ",
 			Description: "Sữa đặc có đường truyền thống",
 			ProductType: "Ăn nhẹ",
-			Unit:        "can",
+			UnitSymbol:  "can",
 			Status:      "active",
 		},
 		{
@@ -382,7 +509,7 @@ func Products(supplierIDs []uint) []models.Product {
 			Name:        "Sữa Chua Vinamilk",
 			Description: "Sữa chua có đường lốc 4 hộp",
 			ProductType: "Ăn nhẹ",
-			Unit:        "pack",
+			UnitSymbol:  "pack",
 			Status:      "active",
 		},
 		{
@@ -393,7 +520,7 @@ func Products(supplierIDs []uint) []models.Product {
 			Name:        "Trứng Gà Tươi",
 			Description: "Trứng gà sạch các loại",
 			ProductType: "Cơm",
-			Unit:        "tray",
+			UnitSymbol:  "tray",
 			Status:      "active",
 		},
 		{
@@ -404,7 +531,7 @@ func Products(supplierIDs []uint) []models.Product {
 			Name:        "Thịt Ba Chỉ Heo",
 			Description: "Thịt ba chỉ heo tươi VietGAP",
 			ProductType: "Cơm",
-			Unit:        "kg",
+			UnitSymbol:  "kg",
 			Status:      "active",
 		},
 		{
@@ -415,7 +542,7 @@ func Products(supplierIDs []uint) []models.Product {
 			Name:        "Thịt Nạc Vai Heo",
 			Description: "Thịt nạc vai heo tươi",
 			ProductType: "Cơm",
-			Unit:        "kg",
+			UnitSymbol:  "kg",
 			Status:      "active",
 		},
 		{
@@ -426,7 +553,7 @@ func Products(supplierIDs []uint) []models.Product {
 			Name:        "Thịt Gà Ta",
 			Description: "Thịt gà ta sạch",
 			ProductType: "Cơm",
-			Unit:        "kg",
+			UnitSymbol:  "kg",
 			Status:      "active",
 		},
 		{
@@ -437,7 +564,7 @@ func Products(supplierIDs []uint) []models.Product {
 			Name:        "Cá Basa Phi Lê",
 			Description: "Cá basa phi lê đông lạnh",
 			ProductType: "Cơm",
-			Unit:        "kg",
+			UnitSymbol:  "kg",
 			Status:      "active",
 		},
 		{
@@ -448,7 +575,7 @@ func Products(supplierIDs []uint) []models.Product {
 			Name:        "Cá Thu Tươi",
 			Description: "Cá thu biển tươi ngon",
 			ProductType: "Cơm",
-			Unit:        "kg",
+			UnitSymbol:  "kg",
 			Status:      "active",
 		},
 		{
@@ -459,7 +586,7 @@ func Products(supplierIDs []uint) []models.Product {
 			Name:        "Mực Ống Đông Lạnh",
 			Description: "Mực ống sạch đông lạnh",
 			ProductType: "Cơm",
-			Unit:        "kg",
+			UnitSymbol:  "kg",
 			Status:      "active",
 		},
 		{
@@ -470,7 +597,7 @@ func Products(supplierIDs []uint) []models.Product {
 			Name:        "Rau Muống",
 			Description: "Rau muống tươi",
 			ProductType: "Ăn nhẹ",
-			Unit:        "kg",
+			UnitSymbol:  "kg",
 			Status:      "active",
 		},
 		{
@@ -481,7 +608,7 @@ func Products(supplierIDs []uint) []models.Product {
 			Name:        "Cải Thảo",
 			Description: "Cải thảo Đà Lạt",
 			ProductType: "Ăn nhẹ",
-			Unit:        "kg",
+			UnitSymbol:  "kg",
 			Status:      "active",
 		},
 		{
@@ -492,7 +619,7 @@ func Products(supplierIDs []uint) []models.Product {
 			Name:        "Cà Chua",
 			Description: "Cà chua chín đỏ",
 			ProductType: "Ăn nhẹ",
-			Unit:        "kg",
+			UnitSymbol:  "kg",
 			Status:      "active",
 		},
 		{
@@ -503,7 +630,7 @@ func Products(supplierIDs []uint) []models.Product {
 			Name:        "Hành Tây",
 			Description: "Hành tây tím Đà Lạt",
 			ProductType: "Ăn nhẹ",
-			Unit:        "kg",
+			UnitSymbol:  "kg",
 			Status:      "active",
 		},
 		{
@@ -514,7 +641,7 @@ func Products(supplierIDs []uint) []models.Product {
 			Name:        "Tỏi",
 			Description: "Tỏi tươi Lý Sơn",
 			ProductType: "Ăn nhẹ",
-			Unit:        "kg",
+			UnitSymbol:  "kg",
 			Status:      "active",
 		},
 		{
@@ -525,7 +652,7 @@ func Products(supplierIDs []uint) []models.Product {
 			Name:        "Ớt",
 			Description: "Ớt hiểm các loại",
 			ProductType: "Ăn nhẹ",
-			Unit:        "kg",
+			UnitSymbol:  "kg",
 			Status:      "active",
 		},
 		{
@@ -536,7 +663,7 @@ func Products(supplierIDs []uint) []models.Product {
 			Name:        "Khoai Tây",
 			Description: "Khoai tây Đà Lạt",
 			ProductType: "Ăn nhẹ",
-			Unit:        "kg",
+			UnitSymbol:  "kg",
 			Status:      "active",
 		},
 		{
@@ -547,7 +674,7 @@ func Products(supplierIDs []uint) []models.Product {
 			Name:        "Su Su",
 			Description: "Su su tươi Đà Lạt",
 			ProductType: "Ăn nhẹ",
-			Unit:        "kg",
+			UnitSymbol:  "kg",
 			Status:      "active",
 		},
 		{
@@ -558,7 +685,7 @@ func Products(supplierIDs []uint) []models.Product {
 			Name:        "Cà Rốt",
 			Description: "Cà rốt Đà Lạt",
 			ProductType: "Ăn nhẹ",
-			Unit:        "kg",
+			UnitSymbol:  "kg",
 			Status:      "active",
 		},
 		{
@@ -569,7 +696,7 @@ func Products(supplierIDs []uint) []models.Product {
 			Name:        "Bí Đỏ",
 			Description: "Bí đỏ ngọt tự nhiên",
 			ProductType: "Ăn nhẹ",
-			Unit:        "kg",
+			UnitSymbol:  "kg",
 			Status:      "active",
 		},
 		{
@@ -580,7 +707,7 @@ func Products(supplierIDs []uint) []models.Product {
 			Name:        "Chuối Già",
 			Description: "Chuối già chín tự nhiên",
 			ProductType: "Ăn nhẹ",
-			Unit:        "kg",
+			UnitSymbol:  "kg",
 			Status:      "active",
 		},
 		{
@@ -591,7 +718,7 @@ func Products(supplierIDs []uint) []models.Product {
 			Name:        "Cam Sành",
 			Description: "Cam sành Hà Giang",
 			ProductType: "Ăn nhẹ",
-			Unit:        "kg",
+			UnitSymbol:  "kg",
 			Status:      "active",
 		},
 		{
@@ -602,7 +729,7 @@ func Products(supplierIDs []uint) []models.Product {
 			Name:        "Xoài Cát Hòa Lộc",
 			Description: "Xoài cát Hòa Lộc Tiền Giang",
 			ProductType: "Ăn nhẹ",
-			Unit:        "kg",
+			UnitSymbol:  "kg",
 			Status:      "active",
 		},
 		{
@@ -613,7 +740,7 @@ func Products(supplierIDs []uint) []models.Product {
 			Name:        "Thanh Long Ruột Đỏ",
 			Description: "Thanh long ruột đỏ Bình Thuận",
 			ProductType: "Ăn nhẹ",
-			Unit:        "kg",
+			UnitSymbol:  "kg",
 			Status:      "active",
 		},
 		{
@@ -624,7 +751,7 @@ func Products(supplierIDs []uint) []models.Product {
 			Name:        "Sầu Riêng Monthong",
 			Description: "Sầu riêng Monthong chuẩn xuất khẩu",
 			ProductType: "Ăn nhẹ",
-			Unit:        "kg",
+			UnitSymbol:  "kg",
 			Status:      "active",
 		},
 		{
@@ -635,7 +762,7 @@ func Products(supplierIDs []uint) []models.Product {
 			Name:        "Măng Cụt",
 			Description: "Măng cụt tươi miền Tây",
 			ProductType: "Ăn nhẹ",
-			Unit:        "kg",
+			UnitSymbol:  "kg",
 			Status:      "active",
 		},
 		{
@@ -646,7 +773,7 @@ func Products(supplierIDs []uint) []models.Product {
 			Name:        "Chôm Chôm",
 			Description: "Chôm chôm tươi ngọt",
 			ProductType: "Ăn nhẹ",
-			Unit:        "kg",
+			UnitSymbol:  "kg",
 			Status:      "active",
 		},
 		{
@@ -657,7 +784,7 @@ func Products(supplierIDs []uint) []models.Product {
 			Name:        "Dưa Hấu Không Hạt",
 			Description: "Dưa hấu không hạt ngọt lịm",
 			ProductType: "Ăn nhẹ",
-			Unit:        "kg",
+			UnitSymbol:  "kg",
 			Status:      "active",
 		},
 		{
@@ -668,7 +795,7 @@ func Products(supplierIDs []uint) []models.Product {
 			Name:        "Bơ Booth",
 			Description: "Bơ Booth Đắk Lắk",
 			ProductType: "Ăn nhẹ",
-			Unit:        "kg",
+			UnitSymbol:  "kg",
 			Status:      "active",
 		},
 		{
@@ -679,7 +806,7 @@ func Products(supplierIDs []uint) []models.Product {
 			Name:        "Dừa Xiêm",
 			Description: "Dừa xiêm tươi mát",
 			ProductType: "Ăn nhẹ",
-			Unit:        "piece",
+			UnitSymbol:  "piece",
 			Status:      "active",
 		},
 		{
@@ -690,7 +817,7 @@ func Products(supplierIDs []uint) []models.Product {
 			Name:        "Bia Sài Gòn Xanh",
 			Description: "Bia Sài Gòn xanh lager chai 330ml",
 			ProductType: "Nước",
-			Unit:        "bottle",
+			UnitSymbol:  "bottle",
 			Status:      "active",
 		},
 		{
@@ -701,7 +828,7 @@ func Products(supplierIDs []uint) []models.Product {
 			Name:        "Bia Tiger",
 			Description: "Bia Tiger lon 330ml",
 			ProductType: "Nước",
-			Unit:        "can",
+			UnitSymbol:  "can",
 			Status:      "active",
 		},
 		{
@@ -712,7 +839,7 @@ func Products(supplierIDs []uint) []models.Product {
 			Name:        "Nước Suối Lavie",
 			Description: "Nước khoáng thiên nhiên Lavie 500ml",
 			ProductType: "Nước",
-			Unit:        "bottle",
+			UnitSymbol:  "bottle",
 			Status:      "active",
 		},
 		{
@@ -723,7 +850,7 @@ func Products(supplierIDs []uint) []models.Product {
 			Name:        "Nước Ngọt Coca Cola",
 			Description: "Coca Cola lon 330ml",
 			ProductType: "Nước",
-			Unit:        "can",
+			UnitSymbol:  "can",
 			Status:      "active",
 		},
 		{
@@ -734,7 +861,7 @@ func Products(supplierIDs []uint) []models.Product {
 			Name:        "Nước Ngọt Pepsi",
 			Description: "Pepsi Cola lon 330ml",
 			ProductType: "Nước",
-			Unit:        "can",
+			UnitSymbol:  "can",
 			Status:      "active",
 		},
 		{
@@ -745,7 +872,7 @@ func Products(supplierIDs []uint) []models.Product {
 			Name:        "Trà Xanh Không Độ",
 			Description: "Trà xanh không độ C2 chai 455ml",
 			ProductType: "Nước",
-			Unit:        "bottle",
+			UnitSymbol:  "bottle",
 			Status:      "active",
 		},
 		{
@@ -756,7 +883,7 @@ func Products(supplierIDs []uint) []models.Product {
 			Name:        "Nước Cam Ép Minute Maid",
 			Description: "Nước cam ép 100% chai 1L",
 			ProductType: "Nước",
-			Unit:        "bottle",
+			UnitSymbol:  "bottle",
 			Status:      "active",
 		},
 		{
@@ -767,7 +894,7 @@ func Products(supplierIDs []uint) []models.Product {
 			Name:        "Sữa Tươi TH True Milk",
 			Description: "Sữa tươi tiệt trùng hộp 1L",
 			ProductType: "Ăn nhẹ",
-			Unit:        "box",
+			UnitSymbol:  "box",
 			Status:      "active",
 		},
 		{
@@ -778,7 +905,7 @@ func Products(supplierIDs []uint) []models.Product {
 			Name:        "Yaourt Uống Dutch Lady",
 			Description: "Yaourt uống lốc 4 chai",
 			ProductType: "Ăn nhẹ",
-			Unit:        "pack",
+			UnitSymbol:  "pack",
 			Status:      "active",
 		},
 		{
@@ -789,7 +916,7 @@ func Products(supplierIDs []uint) []models.Product {
 			Name:        "Bánh Mì Sandwich",
 			Description: "Bánh mì sandwich cắt lát",
 			ProductType: "Ăn nhẹ",
-			Unit:        "loaf",
+			UnitSymbol:  "loaf",
 			Status:      "active",
 		},
 		{
@@ -800,7 +927,7 @@ func Products(supplierIDs []uint) []models.Product {
 			Name:        "Bánh Bông Lan Trứng Muối",
 			Description: "Bánh bông lan trứng muối thơm ngon",
 			ProductType: "Ăn nhẹ",
-			Unit:        "piece",
+			UnitSymbol:  "piece",
 			Status:      "active",
 		},
 		{
@@ -811,7 +938,7 @@ func Products(supplierIDs []uint) []models.Product {
 			Name:        "Bánh Mì Que Việt Nam",
 			Description: "Bánh mì que giòn tan",
 			ProductType: "Ăn nhẹ",
-			Unit:        "piece",
+			UnitSymbol:  "piece",
 			Status:      "active",
 		},
 		{
@@ -822,7 +949,7 @@ func Products(supplierIDs []uint) []models.Product {
 			Name:        "Bánh Croissant Bơ",
 			Description: "Bánh croissant bơ thơm ngậy",
 			ProductType: "Ăn nhẹ",
-			Unit:        "piece",
+			UnitSymbol:  "piece",
 			Status:      "active",
 		},
 		{
@@ -833,7 +960,7 @@ func Products(supplierIDs []uint) []models.Product {
 			Name:        "Bánh Pía Tân Huê Viên",
 			Description: "Bánh pía đậu xanh sầu riêng",
 			ProductType: "Ăn nhẹ",
-			Unit:        "box",
+			UnitSymbol:  "box",
 			Status:      "active",
 		},
 		{
@@ -844,7 +971,7 @@ func Products(supplierIDs []uint) []models.Product {
 			Name:        "Bánh Trung Thu Kinh Đô",
 			Description: "Bánh trung thu thập cẩm cao cấp",
 			ProductType: "Ăn nhẹ",
-			Unit:        "box",
+			UnitSymbol:  "box",
 			Status:      "active",
 		},
 		{
@@ -855,7 +982,7 @@ func Products(supplierIDs []uint) []models.Product {
 			Name:        "Nem Chua Thanh Hóa",
 			Description: "Nem chua thanh hóa truyền thống",
 			ProductType: "Ăn nhẹ",
-			Unit:        "kg",
+			UnitSymbol:  "kg",
 			Status:      "active",
 		},
 		{
@@ -866,7 +993,7 @@ func Products(supplierIDs []uint) []models.Product {
 			Name:        "Kẹo Dừa Bến Tre",
 			Description: "Kẹo dừa thơm ngậy đặc sản",
 			ProductType: "Ăn nhẹ",
-			Unit:        "box",
+			UnitSymbol:  "box",
 			Status:      "active",
 		},
 		{
@@ -877,7 +1004,7 @@ func Products(supplierIDs []uint) []models.Product {
 			Name:        "Mứt Tết Hỗn Hợp",
 			Description: "Mứt tết gừng, bí, dừa, cà rốt",
 			ProductType: "Ăn nhẹ",
-			Unit:        "box",
+			UnitSymbol:  "box",
 			Status:      "active",
 		},
 		{
@@ -888,7 +1015,7 @@ func Products(supplierIDs []uint) []models.Product {
 			Name:        "Snack Oishi Vị Tôm",
 			Description: "Snack khoai tây Oishi vị tôm",
 			ProductType: "Ăn nhẹ",
-			Unit:        "pack",
+			UnitSymbol:  "pack",
 			Status:      "active",
 		},
 		{
@@ -899,7 +1026,7 @@ func Products(supplierIDs []uint) []models.Product {
 			Name:        "Hạt Điều Rang Muối",
 			Description: "Hạt điều rang muối Bình Phước",
 			ProductType: "Ăn nhẹ",
-			Unit:        "kg",
+			UnitSymbol:  "kg",
 			Status:      "active",
 		},
 		{
@@ -910,7 +1037,7 @@ func Products(supplierIDs []uint) []models.Product {
 			Name:        "Mực Tẩm Gia Vị",
 			Description: "Mực tẩm gia vị cay ngọt",
 			ProductType: "Ăn nhẹ",
-			Unit:        "pack",
+			UnitSymbol:  "pack",
 			Status:      "active",
 		},
 		{
@@ -921,7 +1048,7 @@ func Products(supplierIDs []uint) []models.Product {
 			Name:        "Xúc Xích Đức Việt",
 			Description: "Xúc xích heo đặc biệt",
 			ProductType: "Cơm",
-			Unit:        "kg",
+			UnitSymbol:  "kg",
 			Status:      "active",
 		},
 		{
@@ -932,7 +1059,7 @@ func Products(supplierIDs []uint) []models.Product {
 			Name:        "Giò Lụa",
 			Description: "Giò lụa thượng hạng",
 			ProductType: "Cơm",
-			Unit:        "kg",
+			UnitSymbol:  "kg",
 			Status:      "active",
 		},
 		{
@@ -943,7 +1070,7 @@ func Products(supplierIDs []uint) []models.Product {
 			Name:        "Giò Thủ",
 			Description: "Giò thủ truyền thống",
 			ProductType: "Cơm",
-			Unit:        "kg",
+			UnitSymbol:  "kg",
 			Status:      "active",
 		},
 		{
@@ -954,7 +1081,7 @@ func Products(supplierIDs []uint) []models.Product {
 			Name:        "Chả Quế",
 			Description: "Chả quế thơm ngon",
 			ProductType: "Cơm",
-			Unit:        "kg",
+			UnitSymbol:  "kg",
 			Status:      "active",
 		},
 		{
@@ -965,7 +1092,7 @@ func Products(supplierIDs []uint) []models.Product {
 			Name:        "Pate Gan Heo",
 			Description: "Pate gan heo cao cấp",
 			ProductType: "Cơm",
-			Unit:        "can",
+			UnitSymbol:  "can",
 			Status:      "active",
 		},
 		{
@@ -976,7 +1103,7 @@ func Products(supplierIDs []uint) []models.Product {
 			Name:        "Mật Ong Rừng U Minh",
 			Description: "Mật ong nguyên chất rừng U Minh",
 			ProductType: "Ăn nhẹ",
-			Unit:        "bottle",
+			UnitSymbol:  "bottle",
 			Status:      "active",
 		},
 		{
@@ -987,7 +1114,7 @@ func Products(supplierIDs []uint) []models.Product {
 			Name:        "Bột Canh Heo Quay",
 			Description: "Bột canh heo quay đậm đà",
 			ProductType: "Ăn nhẹ",
-			Unit:        "pack",
+			UnitSymbol:  "pack",
 			Status:      "active",
 		},
 		{
@@ -998,7 +1125,7 @@ func Products(supplierIDs []uint) []models.Product {
 			Name:        "Hạt Tiêu Phú Quốc",
 			Description: "Hạt tiêu đen nguyên hạt Phú Quốc",
 			ProductType: "Ăn nhẹ",
-			Unit:        "kg",
+			UnitSymbol:  "kg",
 			Status:      "active",
 		},
 		{
@@ -1009,7 +1136,7 @@ func Products(supplierIDs []uint) []models.Product {
 			Name:        "Bột Nghệ Nguyên Chất",
 			Description: "Bột nghệ nguyên chất không tẩm",
 			ProductType: "Ăn nhẹ",
-			Unit:        "kg",
+			UnitSymbol:  "kg",
 			Status:      "active",
 		},
 		{
@@ -1020,7 +1147,7 @@ func Products(supplierIDs []uint) []models.Product {
 			Name:        "Sả Tươi",
 			Description: "Sả tươi thơm mạnh",
 			ProductType: "Ăn nhẹ",
-			Unit:        "kg",
+			UnitSymbol:  "kg",
 			Status:      "active",
 		},
 		{
@@ -1031,7 +1158,7 @@ func Products(supplierIDs []uint) []models.Product {
 			Name:        "Gừng Tươi",
 			Description: "Gừng tươi cay nồng",
 			ProductType: "Ăn nhẹ",
-			Unit:        "kg",
+			UnitSymbol:  "kg",
 			Status:      "active",
 		},
 		{
@@ -1042,7 +1169,7 @@ func Products(supplierIDs []uint) []models.Product {
 			Name:        "Nước Dừa Đóng Hộp",
 			Description: "Nước dừa tươi đóng hộp Cocoxim",
 			ProductType: "Nước",
-			Unit:        "can",
+			UnitSymbol:  "can",
 			Status:      "active",
 		},
 		{
@@ -1053,7 +1180,7 @@ func Products(supplierIDs []uint) []models.Product {
 			Name:        "Nước Mía Đóng Chai",
 			Description: "Nước mía tươi đóng chai",
 			ProductType: "Nước",
-			Unit:        "bottle",
+			UnitSymbol:  "bottle",
 			Status:      "active",
 		},
 		{
@@ -1064,7 +1191,7 @@ func Products(supplierIDs []uint) []models.Product {
 			Name:        "Trà Atiso Đà Lạt",
 			Description: "Trà atiso giải nhiệt thanh lọc",
 			ProductType: "Nước",
-			Unit:        "bottle",
+			UnitSymbol:  "bottle",
 			Status:      "active",
 		},
 		{
@@ -1075,7 +1202,7 @@ func Products(supplierIDs []uint) []models.Product {
 			Name:        "Trà Sữa Lipton",
 			Description: "Trá sữa lon 250ml",
 			ProductType: "Nước",
-			Unit:        "can",
+			UnitSymbol:  "can",
 			Status:      "active",
 		},
 		{
@@ -1086,7 +1213,7 @@ func Products(supplierIDs []uint) []models.Product {
 			Name:        "Mì Chính Ajinomoto",
 			Description: "Mì chính tinh khiết 400g",
 			ProductType: "Ăn nhẹ",
-			Unit:        "pack",
+			UnitSymbol:  "pack",
 			Status:      "active",
 		},
 		{
@@ -1097,7 +1224,7 @@ func Products(supplierIDs []uint) []models.Product {
 			Name:        "Giấm Gạo Nhật Bản",
 			Description: "Giấm gạo nấu ăn Nhật Bản",
 			ProductType: "Ăn nhẹ",
-			Unit:        "bottle",
+			UnitSymbol:  "bottle",
 			Status:      "active",
 		},
 		{
@@ -1108,7 +1235,7 @@ func Products(supplierIDs []uint) []models.Product {
 			Name:        "Dầu Hào Lee Kum Kee",
 			Description: "Dầu hào đặc biệt Lee Kum Kee",
 			ProductType: "Ăn nhẹ",
-			Unit:        "bottle",
+			UnitSymbol:  "bottle",
 			Status:      "active",
 		},
 		{
@@ -1119,7 +1246,7 @@ func Products(supplierIDs []uint) []models.Product {
 			Name:        "Bột Chiên Giòn",
 			Description: "Bột chiên xù giòn lâu",
 			ProductType: "Ăn nhẹ",
-			Unit:        "kg",
+			UnitSymbol:  "kg",
 			Status:      "active",
 		},
 		{
@@ -1130,7 +1257,7 @@ func Products(supplierIDs []uint) []models.Product {
 			Name:        "Bột Mì Đa Dụng",
 			Description: "Bột mì đa dụng số 8",
 			ProductType: "Ăn nhẹ",
-			Unit:        "kg",
+			UnitSymbol:  "kg",
 			Status:      "active",
 		},
 		{
@@ -1141,7 +1268,7 @@ func Products(supplierIDs []uint) []models.Product {
 			Name:        "Bột Năng",
 			Description: "Bột năng tinh khiết",
 			ProductType: "Ăn nhẹ",
-			Unit:        "kg",
+			UnitSymbol:  "kg",
 			Status:      "active",
 		},
 		{
@@ -1152,7 +1279,7 @@ func Products(supplierIDs []uint) []models.Product {
 			Name:        "Bột Gạo",
 			Description: "Bột gạo làm bánh",
 			ProductType: "Ăn nhẹ",
-			Unit:        "kg",
+			UnitSymbol:  "kg",
 			Status:      "active",
 		},
 		{
@@ -1163,7 +1290,7 @@ func Products(supplierIDs []uint) []models.Product {
 			Name:        "Bột Nở",
 			Description: "Bột nở làm bánh",
 			ProductType: "Ăn nhẹ",
-			Unit:        "pack",
+			UnitSymbol:  "pack",
 			Status:      "active",
 		},
 		{
@@ -1174,7 +1301,7 @@ func Products(supplierIDs []uint) []models.Product {
 			Name:        "Men Nở Bánh",
 			Description: "Men nở bánh mì instant",
 			ProductType: "Ăn nhẹ",
-			Unit:        "pack",
+			UnitSymbol:  "pack",
 			Status:      "active",
 		},
 		{
@@ -1185,7 +1312,7 @@ func Products(supplierIDs []uint) []models.Product {
 			Name:        "Bơ Thực Vật",
 			Description: "Bơ thực vật làm bánh",
 			ProductType: "Ăn nhẹ",
-			Unit:        "kg",
+			UnitSymbol:  "kg",
 			Status:      "active",
 		},
 		{
@@ -1196,7 +1323,7 @@ func Products(supplierIDs []uint) []models.Product {
 			Name:        "Cream Cheese Philadelphia",
 			Description: "Phô mai kem làm bánh",
 			ProductType: "Ăn nhẹ",
-			Unit:        "kg",
+			UnitSymbol:  "kg",
 			Status:      "active",
 		},
 		{
@@ -1207,7 +1334,7 @@ func Products(supplierIDs []uint) []models.Product {
 			Name:        "Phô Mai Lát Cheddar",
 			Description: "Phô mai lát Cheddar hộp 200g",
 			ProductType: "Ăn nhẹ",
-			Unit:        "box",
+			UnitSymbol:  "box",
 			Status:      "active",
 		},
 		{
@@ -1218,7 +1345,7 @@ func Products(supplierIDs []uint) []models.Product {
 			Name:        "Dừa Nạo Khô",
 			Description: "Dừa nạo sợi khô",
 			ProductType: "Ăn nhẹ",
-			Unit:        "kg",
+			UnitSymbol:  "kg",
 			Status:      "active",
 		},
 		{
@@ -1229,7 +1356,7 @@ func Products(supplierIDs []uint) []models.Product {
 			Name:        "Đậu Phộng Rang",
 			Description: "Đậu phộng rang giòn",
 			ProductType: "Ăn nhẹ",
-			Unit:        "kg",
+			UnitSymbol:  "kg",
 			Status:      "active",
 		},
 		{
@@ -1240,7 +1367,7 @@ func Products(supplierIDs []uint) []models.Product {
 			Name:        "Mè Rang",
 			Description: "Mè rang trắng thơm",
 			ProductType: "Ăn nhẹ",
-			Unit:        "kg",
+			UnitSymbol:  "kg",
 			Status:      "active",
 		},
 		{
@@ -1251,7 +1378,7 @@ func Products(supplierIDs []uint) []models.Product {
 			Name:        "Đậu Xanh Hạt",
 			Description: "Đậu xanh hạt nguyên vỏ",
 			ProductType: "Ăn nhẹ",
-			Unit:        "kg",
+			UnitSymbol:  "kg",
 			Status:      "active",
 		},
 		{
@@ -1262,7 +1389,7 @@ func Products(supplierIDs []uint) []models.Product {
 			Name:        "Đậu Đen",
 			Description: "Đậu đen hạt nguyên chất",
 			ProductType: "Ăn nhẹ",
-			Unit:        "kg",
+			UnitSymbol:  "kg",
 			Status:      "active",
 		},
 		{
@@ -1273,7 +1400,7 @@ func Products(supplierIDs []uint) []models.Product {
 			Name:        "Đậu Đỏ",
 			Description: "Đậu đỏ hạt làm chè",
 			ProductType: "Ăn nhẹ",
-			Unit:        "kg",
+			UnitSymbol:  "kg",
 			Status:      "active",
 		},
 		{
@@ -1284,7 +1411,7 @@ func Products(supplierIDs []uint) []models.Product {
 			Name:        "Nấm Hương Khô",
 			Description: "Nấm hương khô cao cấp",
 			ProductType: "Ăn nhẹ",
-			Unit:        "kg",
+			UnitSymbol:  "kg",
 			Status:      "active",
 		},
 		{
@@ -1295,7 +1422,7 @@ func Products(supplierIDs []uint) []models.Product {
 			Name:        "Miến Dong",
 			Description: "Miến dong miền Bắc",
 			ProductType: "Cơm",
-			Unit:        "kg",
+			UnitSymbol:  "kg",
 			Status:      "active",
 		},
 		{
@@ -1306,7 +1433,7 @@ func Products(supplierIDs []uint) []models.Product {
 			Name:        "Hủ Tiếu Khô Nam Vang",
 			Description: "Hủ tiếu khô Nam Vang đặc biệt",
 			ProductType: "Cơm",
-			Unit:        "kg",
+			UnitSymbol:  "kg",
 			Status:      "active",
 		},
 		{
@@ -1317,10 +1444,38 @@ func Products(supplierIDs []uint) []models.Product {
 			Name:        "Bánh Đa Nem",
 			Description: "Bánh đa nem cuốn loại 1",
 			ProductType: "Ăn nhẹ",
-			Unit:        "pack",
+			UnitSymbol:  "pack",
 			Status:      "active",
 		},
 	}
+}
+
+// Products converts product seeds into persisted models with resolved unit IDs
+func Products(unitIDs map[string]uint) []models.Product {
+	seeds := productSeeds()
+	products := make([]models.Product, 0, len(seeds))
+
+	for _, seed := range seeds {
+		unitID, ok := unitIDs[seed.UnitSymbol]
+		if !ok {
+			if fallback, hasFallback := unitIDs["piece"]; hasFallback {
+				unitID = fallback
+			} else {
+				continue
+			}
+		}
+
+		products = append(products, models.Product{
+			Base:        seed.Base,
+			Name:        seed.Name,
+			Description: seed.Description,
+			ProductType: seed.ProductType,
+			UnitID:      unitID,
+			Status:      seed.Status,
+		})
+	}
+
+	return products
 }
 
 // InventoryData represents inventory configuration for a product
@@ -1430,6 +1585,17 @@ func SeedDatabase() error {
 
 	// Seed in correct order (respecting foreign key constraints)
 
+	// 0. Units
+	units := Units()
+	if err := tx.Create(&units).Error; err != nil {
+		tx.Rollback()
+		return fmt.Errorf("failed to create units: %w", err)
+	}
+	unitIDs := make(map[string]uint, len(units))
+	for _, unit := range units {
+		unitIDs[unit.Symbol] = unit.ID
+	}
+
 	// 1. Suppliers
 	suppliers := Suppliers()
 	if err := tx.Create(&suppliers).Error; err != nil {
@@ -1443,7 +1609,7 @@ func SeedDatabase() error {
 	}
 
 	// 2. Products
-	products := Products(nil)
+	products := Products(unitIDs)
 	if err := tx.Create(&products).Error; err != nil {
 		tx.Rollback()
 		return fmt.Errorf("failed to create products: %w", err)

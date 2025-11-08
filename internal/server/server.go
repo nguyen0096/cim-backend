@@ -38,6 +38,7 @@ func SetupServer(
 	// Initialize repositories
 	userRepo := repository.NewUserRepository(db, cfg.Environment)
 	supplierRepo := repository.NewSupplierRepository(db)
+	unitRepo := repository.NewUnitRepository(db)
 	productRepo := repository.NewProductRepository(db)
 	inventoryRepo := repository.NewInventoryRepository(db)
 	inventoryItemRepo := repository.NewInventoryItemRepository(db)
@@ -49,7 +50,8 @@ func SetupServer(
 	// Initialize services
 	userService := services.NewUserService(userRepo, casbinService)
 	supplierService := services.NewSupplierService(supplierRepo)
-	productService := services.NewProductService(productRepo, supplierRepo)
+	unitService := services.NewUnitService(unitRepo)
+	productService := services.NewProductService(productRepo, supplierRepo, unitRepo)
 	inventoryService := services.NewInventoryService(inventoryRepo, inventoryItemRepo, inventorySubmissionRepo, productRepo)
 	inventoryItemService := services.NewInventoryItemService(inventoryItemRepo, inventoryRepo, productRepo)
 	settingsService := services.NewSettingsService(settingsRepo)
@@ -60,6 +62,7 @@ func SetupServer(
 	// Initialize handlers
 	userHandler := handlers.NewUserHandler(userService, firebaseAuth)
 	supplierHandler := handlers.NewSupplierHandler(supplierService)
+	unitHandler := handlers.NewUnitHandler(unitService)
 	productHandler := handlers.NewProductHandler(productService, logger)
 	inventoryHandler := handlers.NewInventoryHandler(inventoryService)
 	inventoryItemHandler := handlers.NewInventoryItemHandler(inventoryItemService)
@@ -165,6 +168,14 @@ func SetupServer(
 	inventoryItems.GET("", inventoryItemHandler.ListInventoryItems)
 	inventoryItems.GET("/product/:product_id", inventoryItemHandler.GetInventoryItemByProductID)
 	inventoryItems.GET("/low-stock", inventoryItemHandler.GetLowStockItems)
+
+	// Unit routes
+	units := api.Group("/units")
+	units.GET("", unitHandler.ListUnits)
+	units.GET("/:id", unitHandler.GetUnit)
+	units.POST("", unitHandler.CreateUnit)
+	units.PUT("/:id", unitHandler.UpdateUnit)
+	units.DELETE("/:id", unitHandler.DeleteUnit)
 
 	// Supplier routes
 	suppliers := api.Group("/suppliers")

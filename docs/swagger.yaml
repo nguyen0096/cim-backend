@@ -322,7 +322,33 @@ definitions:
         items:
           $ref: '#/definitions/models.Supplier'
         type: array
+      unit_id:
+        type: integer
       unit:
+        $ref: '#/definitions/models.Unit'
+      updated_at:
+        type: string
+    type: object
+  models.Unit:
+    properties:
+      conversion_factor:
+        format: double
+        type: number
+      created_at:
+        type: string
+      created_by:
+        type: string
+      deleted_at:
+        type: string
+      id:
+        type: integer
+      is_base:
+        type: boolean
+      name:
+        type: string
+      symbol:
+        type: string
+      unit_type:
         type: string
       updated_at:
         type: string
@@ -1765,6 +1791,198 @@ paths:
       summary: Search products
       tags:
       - products
+  /units:
+    get:
+      consumes:
+      - application/json
+      description: Retrieve units with pagination, optional filtering by type, and search query
+      parameters:
+      - default: 20
+        description: Number of items per page
+        in: query
+        name: limit
+        type: integer
+      - default: 1
+        description: Page number
+        in: query
+        name: page
+        type: integer
+      - default: '"created_at"'
+        description: Sort field
+        in: query
+        name: sort
+        type: string
+      - default: '"desc"'
+        description: Sort order (asc/desc)
+        in: query
+        name: order
+        type: string
+      - description: Filter by unit type (e.g., mass, volume)
+        in: query
+        name: unit_type
+        type: string
+      - description: Search units by name or symbol
+        in: query
+        name: q
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: List of units with pagination
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Bad request
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: List measurement units
+      tags:
+      - units
+    post:
+      consumes:
+      - application/json
+      description: Create a measurement unit definition
+      parameters:
+      - description: Unit information
+        in: body
+        name: unit
+        required: true
+        schema:
+          $ref: '#/definitions/models.Unit'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Unit created successfully
+          schema:
+            $ref: '#/definitions/models.Unit'
+        "400":
+          description: Bad request
+          schema:
+            additionalProperties: true
+            type: object
+        "409":
+          description: Duplicate unit
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Create a new unit
+      tags:
+      - units
+  /units/{id}:
+    delete:
+      description: Soft delete a measurement unit
+      parameters:
+      - description: Unit ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "204":
+          description: Unit deleted successfully
+        "400":
+          description: Invalid unit ID
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Delete a unit
+      tags:
+      - units
+    get:
+      description: Retrieve a single unit by its ID
+      parameters:
+      - description: Unit ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Unit retrieved successfully
+          schema:
+            $ref: '#/definitions/models.Unit'
+        "400":
+          description: Invalid unit ID
+          schema:
+            additionalProperties: true
+            type: object
+        "404":
+          description: Unit not found
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Get unit by ID
+      tags:
+      - units
+    put:
+      consumes:
+      - application/json
+      description: Update a measurement unit definition
+      parameters:
+      - description: Unit ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: Updated unit information
+        in: body
+        name: unit
+        required: true
+        schema:
+          $ref: '#/definitions/models.Unit'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Unit updated successfully
+          schema:
+            $ref: '#/definitions/models.Unit'
+        "400":
+          description: Bad request
+          schema:
+            additionalProperties: true
+            type: object
+        "404":
+          description: Unit not found
+          schema:
+            additionalProperties: true
+            type: object
+        "409":
+          description: Duplicate unit
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Update an existing unit
+      tags:
+      - units
   /settings:
     get:
       consumes:

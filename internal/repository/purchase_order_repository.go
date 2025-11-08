@@ -185,9 +185,14 @@ func (r *purchaseOrderRepository) ReceiveInventory(ctx context.Context, req dto.
 
 		type POIData struct {
 			*models.PurchaseOrderItem
-			InventoryItemID *uint
-			ProductUnit     string
-			Product         *models.Product `gorm:"embedded;embeddedPrefix:product_"`
+			InventoryItemID      *uint
+			Product              *models.Product `gorm:"embedded;embeddedPrefix:product_"`
+			UnitID               uint
+			UnitName             string
+			UnitSymbol           string
+			UnitType             string
+			UnitIsBase           bool
+			UnitConversionFactor float64
 		}
 
 		var poiData []POIData
@@ -195,18 +200,24 @@ func (r *purchaseOrderRepository) ReceiveInventory(ctx context.Context, req dto.
 			Select(`
 			poi.*,
 			ii.id as inventory_item_id,
-			p.unit as product_unit,
 			p.id as product_id,
 			p.name as product_name,
 			p.description as product_description,
 			p.product_type as product_product_type,
-			p.unit as product_unit,
-			p.status as product_status
+			p.status as product_status,
+			p.unit_id as product_unit_id,
+			u.id as unit_id,
+			u.name as unit_name,
+			u.symbol as unit_symbol,
+			u.unit_type as unit_type,
+			u.is_base as unit_is_base,
+			u.conversion_factor as unit_conversion_factor
 		`).
 			Joins(`LEFT JOIN inventory_items ii ON poi.product_id = ii.product_id
 				AND ii.status = ?
 		`, models.InventoryItemStatusActive).
 			Joins(`JOIN products p ON poi.product_id = p.id`).
+			Joins(`JOIN units u ON p.unit_id = u.id`).
 			Where("poi.purchase_order_id = ?", req.PurchaseOrderID).
 			Scan(&poiData).Error
 		if err != nil {
@@ -274,6 +285,18 @@ func (r *purchaseOrderRepository) ReceiveInventory(ctx context.Context, req dto.
 		// PurchaseOrder field for updating status.
 		poItems := make([]*models.PurchaseOrderItem, 0, len(poiData))
 		for _, data := range poiData {
+			if data.Product != nil {
+				data.Product.UnitID = data.UnitID
+				unit := &models.Unit{
+					Name:             data.UnitName,
+					Symbol:           data.UnitSymbol,
+					UnitType:         data.UnitType,
+					IsBase:           data.UnitIsBase,
+					ConversionFactor: data.UnitConversionFactor,
+				}
+				unit.ID = data.UnitID
+				data.Product.Unit = unit
+			}
 			data.PurchaseOrderItem.Product = data.Product
 			poItems = append(poItems, data.PurchaseOrderItem)
 		}

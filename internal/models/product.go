@@ -6,7 +6,8 @@ type Product struct {
 	Name           string           `json:"name" gorm:"not null"`
 	Description    string           `json:"description"`
 	ProductType    string           `json:"product_type" gorm:"type:varchar(20)"`
-	Unit           string           `json:"unit" gorm:"varchar(20);not null"`
+	UnitID         uint             `json:"unit_id" gorm:"not null"`
+	Unit           *Unit            `json:"unit,omitempty" gorm:"constraint:OnUpdate:CASCADE,OnDelete:RESTRICT;"`
 	Status         string           `json:"status" gorm:"default:active;check:status IN ('active', 'inactive')"`
 	Suppliers      []*Supplier      `json:"suppliers,omitempty" gorm:"many2many:product_suppliers;" validate:"-"`
 	InventoryItems []*InventoryItem `json:"inventory_items,omitempty" gorm:"foreignKey:ProductID" validate:"-"`

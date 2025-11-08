@@ -43,6 +43,9 @@ jobs:
       - name: Install dependencies
         run: go mod download
 
+      - name: Generate mocks
+        run: make generate
+
       - name: Run tests
         run: make test
         env:

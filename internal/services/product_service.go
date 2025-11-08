@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/xuri/excelize/v2"
+	"gorm.io/gorm"
 )
 
 type ProductService interface {
@@ -35,16 +36,32 @@ type ProductService interface {
 type productService struct {
 	productRepo  repository.ProductRepository
 	supplierRepo repository.SupplierRepository
+	unitRepo     repository.UnitRepository
 }
 
-func NewProductService(productRepo repository.ProductRepository, supplierRepo repository.SupplierRepository) ProductService {
+func NewProductService(productRepo repository.ProductRepository, supplierRepo repository.SupplierRepository, unitRepo repository.UnitRepository) ProductService {
 	return &productService{
 		productRepo:  productRepo,
 		supplierRepo: supplierRepo,
+		unitRepo:     unitRepo,
 	}
 }
 
 func (s *productService) CreateProduct(ctx context.Context, product *models.Product) error {
+	if product.UnitID == 0 {
+		return pkg.ErrValidation("unit_id is required", nil)
+	}
+
+	unit, err := s.unitRepo.GetByID(ctx, product.UnitID)
+	if err != nil {
+		if err == gorm.ErrRecordNotFound {
+			return pkg.ErrNotFound(fmt.Sprintf("unit %d not found", product.UnitID), err)
+		}
+		return fmt.Errorf("failed to validate unit for product: %w", err)
+	}
+
+	product.Unit = unit
+
 	return s.productRepo.Create(ctx, product)
 }
 
@@ -53,6 +70,20 @@ func (s *productService) GetProductByID(ctx context.Context, id uint) (*models.P
 }
 
 func (s *productService) UpdateProduct(ctx context.Context, product *models.Product) error {
+	if product.UnitID == 0 {
+		return pkg.ErrValidation("unit_id is required", nil)
+	}
+
+	unit, err := s.unitRepo.GetByID(ctx, product.UnitID)
+	if err != nil {
+		if err == gorm.ErrRecordNotFound {
+			return pkg.ErrNotFound(fmt.Sprintf("unit %d not found", product.UnitID), err)
+		}
+		return fmt.Errorf("failed to validate unit for product %d: %w", product.ID, err)
+	}
+
+	product.Unit = unit
+
 	return s.productRepo.Update(ctx, product)
 }
 
@@ -91,6 +122,34 @@ func (s *productService) CountProducts(ctx context.Context, status, productType 
 
 func (s *productService) CountSearchProducts(ctx context.Context, query string, status, productType string, supplierID uint) (int64, error) {
 	return s.productRepo.CountSearch(ctx, query, status, productType, supplierID)
+}
+
+func (s *productService) ensureUnit(ctx context.Context, label string) (*models.Unit, error) {
+	unitLabel := strings.TrimSpace(label)
+	if unitLabel == "" {
+		return nil, pkg.ErrValidation("unit label cannot be empty", nil)
+	}
+
+	unit, err := s.unitRepo.GetByTypeAndName(ctx, "general", unitLabel)
+	if err == nil {
+		return unit, nil
+	}
+	if err != nil && err != gorm.ErrRecordNotFound {
+		return nil, fmt.Errorf("failed to look up unit '%s': %w", unitLabel, err)
+	}
+
+	newUnit := &models.Unit{
+		UnitType:         "general",
+		Name:             unitLabel,
+		Symbol:           unitLabel,
+		IsBase:           true,
+		ConversionFactor: 1,
+	}
+	if createErr := s.unitRepo.Create(ctx, newUnit); createErr != nil {
+		return nil, fmt.Errorf("failed to create unit '%s': %w", unitLabel, createErr)
+	}
+
+	return newUnit, nil
 }
 
 // ImportProductsFromCSV imports products with suppliers from a CSV file
@@ -159,6 +218,7 @@ func (s *productService) ImportProductsFromCSV(ctx context.Context, csvReader io
 
 	// Maps to store unique products and suppliers by name (case-insensitive key)
 	productsMap := make(map[string]*models.Product)        // product name (lowercase) -> product
+	productUnitMap := make(map[string]string)              // product name (lowercase) -> unit label
 	suppliersMap := make(map[string]*models.Supplier)      // supplier name (lowercase) -> supplier
 	productSupplierMap := make(map[string]map[string]bool) // product name (lowercase) -> set of supplier names (lowercase)
 
@@ -216,11 +276,6 @@ func (s *productService) ImportProductsFromCSV(ctx context.Context, csvReader io
 				productDescription = strings.TrimSpace(record[descIdx])
 			}
 
-			productUnit := ""
-			if unitIdx != -1 && len(record) > unitIdx {
-				productUnit = strings.TrimSpace(record[unitIdx])
-			}
-
 			// Check for duplicate product names (case-insensitive)
 			productKey := strings.ToLower(productName)
 			if _, exists := productsMap[productKey]; !exists {
@@ -229,10 +284,13 @@ func (s *productService) ImportProductsFromCSV(ctx context.Context, csvReader io
 					Name:        productName,
 					Description: productDescription,
 					ProductType: productType,
-					Unit:        productUnit,
 					Status:      "active",
 				}
 				productSupplierMap[productKey] = make(map[string]bool)
+			}
+
+			if unitIdx != -1 && len(record) > unitIdx {
+				productUnitMap[productKey] = strings.TrimSpace(record[unitIdx])
 			}
 
 			// If supplier name is also provided, associate supplier with product
@@ -285,6 +343,18 @@ func (s *productService) ImportProductsFromCSV(ctx context.Context, csvReader io
 	// Third pass: create all unique products and associate with suppliers
 	createdCount := 0
 	for productKey, product := range productsMap {
+		unitLabel, ok := productUnitMap[productKey]
+		if !ok || strings.TrimSpace(unitLabel) == "" {
+			return 0, pkg.ErrValidation(fmt.Sprintf("unit is required for product '%s'", product.Name), nil)
+		}
+
+		unit, err := s.ensureUnit(ctx, unitLabel)
+		if err != nil {
+			return 0, fmt.Errorf("failed to resolve unit for product '%s': %w", product.Name, err)
+		}
+		product.UnitID = unit.ID
+		product.Unit = unit
+
 		// Create product
 		if err := s.productRepo.Create(ctx, product); err != nil {
 			return 0, fmt.Errorf("failed to create product '%s': %w", product.Name, err)
@@ -396,6 +466,7 @@ func (s *productService) ImportProductsFromExcel(ctx context.Context, excelReade
 
 	// Maps to store unique products and suppliers by name (case-insensitive key)
 	productsMap := make(map[string]*models.Product)        // product name (lowercase) -> product
+	productUnitMap := make(map[string]string)              // product name (lowercase) -> unit label
 	suppliersMap := make(map[string]*models.Supplier)      // supplier name (lowercase) -> supplier
 	productSupplierMap := make(map[string]map[string]bool) // product name (lowercase) -> set of supplier names (lowercase)
 
@@ -455,10 +526,13 @@ func (s *productService) ImportProductsFromExcel(ctx context.Context, excelReade
 					Name:        productName,
 					Description: productDescription,
 					ProductType: productType,
-					Unit:        productUnit,
 					Status:      "active",
 				}
 				productSupplierMap[productKey] = make(map[string]bool)
+			}
+
+			if unitIdx != -1 && len(row) > unitIdx {
+				productUnitMap[productKey] = productUnit
 			}
 
 			// If supplier name is also provided, associate supplier with product
@@ -511,6 +585,18 @@ func (s *productService) ImportProductsFromExcel(ctx context.Context, excelReade
 	// Third pass: create all unique products and associate with suppliers
 	createdCount := 0
 	for productKey, product := range productsMap {
+		unitLabel, ok := productUnitMap[productKey]
+		if !ok || strings.TrimSpace(unitLabel) == "" {
+			return 0, pkg.ErrValidation(fmt.Sprintf("unit is required for product '%s'", product.Name), nil)
+		}
+
+		unit, err := s.ensureUnit(ctx, unitLabel)
+		if err != nil {
+			return 0, fmt.Errorf("failed to resolve unit for product '%s': %w", product.Name, err)
+		}
+		product.UnitID = unit.ID
+		product.Unit = unit
+
 		// Create product
 		if err := s.productRepo.Create(ctx, product); err != nil {
 			return 0, fmt.Errorf("failed to create product '%s': %w", product.Name, err)

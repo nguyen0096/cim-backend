@@ -284,7 +284,7 @@ func (h *ProductHandler) CreateProduct(c echo.Context) error {
 		Name        string `json:"name"`
 		Description string `json:"description"`
 		ProductType string `json:"product_type"`
-		Unit        string `json:"unit"`
+		UnitID      uint   `json:"unit_id"`
 		Status      string `json:"status"`
 		SupplierIDs []uint `json:"supplier_ids"`
 	}
@@ -297,6 +297,7 @@ func (h *ProductHandler) CreateProduct(c echo.Context) error {
 	logger.WithFields(logrus.Fields{
 		"product_name": request.Name,
 		"product_type": request.ProductType,
+		"unit_id":      request.UnitID,
 		"supplier_ids": request.SupplierIDs,
 	}).Info("Creating new product")
 
@@ -305,13 +306,20 @@ func (h *ProductHandler) CreateProduct(c echo.Context) error {
 		logger.Warn("Product creation attempted with empty product type")
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Product type is required. Please specify a product type like 'electronics', 'clothing', 'food', etc."})
 	}
+	if request.UnitID == 0 {
+		return pkg.ErrValidation("unit_id is required", nil)
+	}
 
 	product := models.Product{
 		Name:        request.Name,
 		Description: request.Description,
 		ProductType: request.ProductType,
-		Unit:        request.Unit,
+		UnitID:      request.UnitID,
 		Status:      request.Status,
+	}
+
+	if request.UnitID == 0 {
+		return pkg.ErrValidation("unit_id is required", nil)
 	}
 
 	// Add suppliers if IDs provided
@@ -377,11 +385,11 @@ func (h *ProductHandler) UpdateProduct(c echo.Context) error {
 	}
 
 	var request struct {
-		Name        string `json:"name"`
+		Name        string `json:"name" validate:"required"`
 		Description string `json:"description"`
-		ProductType string `json:"product_type"`
-		Unit        string `json:"unit"`
-		Status      string `json:"status"`
+		ProductType string `json:"product_type" validate:"required"`
+		UnitID      uint   `json:"unit_id" validate:"required"`
+		Status      string `json:"status" validate:"required,oneof=active inactive"`
 		SupplierIDs []uint `json:"supplier_ids"`
 	}
 
@@ -390,12 +398,16 @@ func (h *ProductHandler) UpdateProduct(c echo.Context) error {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid request body"})
 	}
 
+	if err := pkg.Validator.Struct(request); err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Validation failed", "details": err.Error()})
+	}
+
 	product := models.Product{
 		Base:        models.Base{ID: id},
 		Name:        request.Name,
 		Description: request.Description,
 		ProductType: request.ProductType,
-		Unit:        request.Unit,
+		UnitID:      request.UnitID,
 		Status:      request.Status,
 	}
 
@@ -417,6 +429,12 @@ func (h *ProductHandler) UpdateProduct(c echo.Context) error {
 
 	if err := h.productService.UpdateProduct(c.Request().Context(), &product); err != nil {
 		logger.WithError(err).WithField("product_id", id).Error("Failed to update product in service")
+		if appErr, ok := err.(*pkg.AppError); ok {
+			return c.JSON(appErr.HTTPStatus(), map[string]interface{}{
+				"error": appErr.Message,
+				"code":  appErr.Code.String(),
+			})
+		}
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to update product"})
 	}
 

@@ -36,10 +36,12 @@ func (suite *ComponentTestSuite) TestCreatePurchaseOrder() {
 		{
 			Base: models.Base{ID: 1},
 			Name: "Test Product 1",
+			UnitID: 1,
 		},
 		{
 			Base: models.Base{ID: 2},
 			Name: "Test Product 2",
+			UnitID: 1,
 		},
 	}
 	err = db.WithContext(ctx).Create(&testProducts).Error
@@ -158,8 +160,9 @@ func (suite *ComponentTestSuite) TestCancelPurchaseOrder() {
 
 	testProducts := []models.Product{
 		{
-			Base: models.Base{ID: 1},
-			Name: "Test Product 1",
+			Base:   models.Base{ID: 1},
+			Name:   "Test Product 1",
+			UnitID: 1,
 		},
 	}
 	err = db.WithContext(ctx).Create(&testProducts).Error
