@@ -34,13 +34,13 @@ func (suite *ComponentTestSuite) TestCreatePurchaseOrder() {
 	require.NoError(t, err, "Failed to create suppliers")
 	testProducts := []models.Product{
 		{
-			Base: models.Base{ID: 1},
-			Name: "Test Product 1",
+			Base:   models.Base{ID: 1},
+			Name:   "Test Product 1",
 			UnitID: 1,
 		},
 		{
-			Base: models.Base{ID: 2},
-			Name: "Test Product 2",
+			Base:   models.Base{ID: 2},
+			Name:   "Test Product 2",
 			UnitID: 1,
 		},
 	}
@@ -77,14 +77,8 @@ func (suite *ComponentTestSuite) TestCreatePurchaseOrder() {
 		roles := []models.UserRole{models.RoleAdmin, models.RoleAccountant}
 		for _, role := range roles {
 			t.Run(fmt.Sprintf("When user has %s role", role), func(t *testing.T) {
-				uniqueEmail := fmt.Sprintf("test-purchase-order-%s@example.com", uuid.New().String())
-				user, err := helpers.CreateTestUser(context.Background(), suite.sharedTestContainer.DB, uniqueEmail, "Test User", role)
+				_, token, err := suite.CreateUniqueEmailAndToken(role)
 				require.NoError(t, err)
-
-				// Get auth token
-				token := helpers.GetAuthToken(suite.sharedTestContainer.MockAuth, user.UID, user.Email, user.Name)
-				// Create purchase order
-
 				resp, err := helpers.MakeRequest(t, "POST", suite.sharedTestContainer.BaseURL+"/api/v1/purchase-orders", token, purchaseOrderData)
 				require.NoError(t, err)
 				defer resp.Body.Close()
@@ -124,13 +118,8 @@ func (suite *ComponentTestSuite) TestCreatePurchaseOrder() {
 		roles := []models.UserRole{models.RoleStaff, models.RoleBotForm}
 		for _, role := range roles {
 			t.Run(fmt.Sprintf("When user has %s role", role), func(t *testing.T) {
-				uniqueEmail := fmt.Sprintf("test-purchase-order-%s@example.com", uuid.New().String())
-				user, err := helpers.CreateTestUser(context.Background(), suite.sharedTestContainer.DB, uniqueEmail, "Test User", role)
+				_, token, err := suite.CreateUniqueEmailAndToken(role)
 				require.NoError(t, err)
-
-				// Get auth token
-				token := helpers.GetAuthToken(suite.sharedTestContainer.MockAuth, user.UID, user.Email, user.Name)
-
 				resp, err := helpers.MakeRequest(t, "POST", suite.sharedTestContainer.BaseURL+"/api/v1/purchase-orders", token, purchaseOrderData)
 				require.NoError(t, err)
 				defer resp.Body.Close()
@@ -198,8 +187,7 @@ func (suite *ComponentTestSuite) TestCancelPurchaseOrder() {
 		for _, testCase := range testCases {
 			currentId++
 			t.Run(fmt.Sprintf("When current status is %s and user has %s role", testCase.currentStatus, testCase.role), func(t *testing.T) {
-				uniqueEmail := fmt.Sprintf("test-purchase-order-%s@example.com", uuid.New().String())
-				user, err := helpers.CreateTestUser(context.Background(), suite.sharedTestContainer.DB, uniqueEmail, "Test User", testCase.role)
+				_, token, err := suite.CreateUniqueEmailAndToken(testCase.role)
 				require.NoError(t, err)
 
 				testPurchaseOrder := models.PurchaseOrder{
@@ -220,8 +208,6 @@ func (suite *ComponentTestSuite) TestCancelPurchaseOrder() {
 				require.NoError(t, err, "Failed to create purchase order")
 				purchaseOrderID := testPurchaseOrder.ID
 
-				// Get auth token
-				token := helpers.GetAuthToken(suite.sharedTestContainer.MockAuth, user.UID, user.Email, user.Name)
 				// Cancel purchase order
 				urlPath := fmt.Sprintf("/api/v1/purchase-orders/%d/status", purchaseOrderID)
 				resp, err := helpers.MakeRequest(t, "PUT", suite.sharedTestContainer.BaseURL+urlPath, token, map[string]interface{}{"status": "cancelled"})
@@ -257,8 +243,7 @@ func (suite *ComponentTestSuite) TestCancelPurchaseOrder() {
 		for _, testCase := range testCases {
 			currentId++
 			t.Run(fmt.Sprintf("When current status is %s and user has %s role", testCase.currentStatus, testCase.role), func(t *testing.T) {
-				uniqueEmail := fmt.Sprintf("test-purchase-order-%s@example.com", uuid.New().String())
-				user, err := helpers.CreateTestUser(context.Background(), suite.sharedTestContainer.DB, uniqueEmail, "Test User", testCase.role)
+				_, token, err := suite.CreateUniqueEmailAndToken(testCase.role)
 				require.NoError(t, err)
 				testPurchaseOrder := models.PurchaseOrder{
 					Base:        models.Base{ID: currentId},
@@ -277,8 +262,6 @@ func (suite *ComponentTestSuite) TestCancelPurchaseOrder() {
 				require.NoError(t, err, "Failed to create purchase order")
 				purchaseOrderID := testPurchaseOrder.ID
 
-				// Get auth token
-				token := helpers.GetAuthToken(suite.sharedTestContainer.MockAuth, user.UID, user.Email, user.Name)
 				// Cancel purchase order
 				urlPath := fmt.Sprintf("/api/v1/purchase-orders/%d/status", purchaseOrderID)
 				resp, err := helpers.MakeRequest(t, "PUT", suite.sharedTestContainer.BaseURL+urlPath, token, map[string]interface{}{"status": "cancelled"})
@@ -336,56 +319,55 @@ func (suite *ComponentTestSuite) TestReceivePurchaseOrder() {
 
 	t.Run("should receive purchase order", func(t *testing.T) {
 		testCases := []struct {
-			role                 models.UserRole
-			currentPOStatus      models.PurchaseOrderStatus
+			role                  models.UserRole
+			currentPOStatus       models.PurchaseOrderStatus
 			currentPOItem1Status  models.PurchaseOrderItemStatus
-			deliveredQuantity1   int
-			deliveredQuantity2   int
-			expectedPOStatus     models.PurchaseOrderStatus
+			deliveredQuantity1    int
+			deliveredQuantity2    int
+			expectedPOStatus      models.PurchaseOrderStatus
 			expectedPOItem1Status models.PurchaseOrderItemStatus
 		}{
 			{
-				role:                 models.RoleAdmin,
-				currentPOStatus:      models.PurchaseOrderStatusOrderPlaced,
+				role:                  models.RoleAdmin,
+				currentPOStatus:       models.PurchaseOrderStatusOrderPlaced,
 				currentPOItem1Status:  models.PurchaseOrderItemStatusAwaitingDelivery,
-				deliveredQuantity1:   50,
-				deliveredQuantity2:   50,
-				expectedPOStatus:     models.PurchaseOrderStatusPartiallyDelivered,
+				deliveredQuantity1:    50,
+				deliveredQuantity2:    50,
+				expectedPOStatus:      models.PurchaseOrderStatusPartiallyDelivered,
 				expectedPOItem1Status: models.PurchaseOrderItemStatusPartiallyDelivered,
 			},
 			{
-				role:                 models.RoleAdmin,
-				currentPOStatus:      models.PurchaseOrderStatusOrderPlaced,
+				role:                  models.RoleAdmin,
+				currentPOStatus:       models.PurchaseOrderStatusOrderPlaced,
 				currentPOItem1Status:  models.PurchaseOrderItemStatusAwaitingDelivery,
-				deliveredQuantity1:   100,
-				deliveredQuantity2:   50,
-				expectedPOStatus:     models.PurchaseOrderStatusPartiallyDelivered,
+				deliveredQuantity1:    100,
+				deliveredQuantity2:    50,
+				expectedPOStatus:      models.PurchaseOrderStatusPartiallyDelivered,
 				expectedPOItem1Status: models.PurchaseOrderItemStatusDelivered,
 			},
 			{
-				role:                 models.RoleAdmin,
-				currentPOStatus:      models.PurchaseOrderStatusOrderPlaced,
+				role:                  models.RoleAdmin,
+				currentPOStatus:       models.PurchaseOrderStatusOrderPlaced,
 				currentPOItem1Status:  models.PurchaseOrderItemStatusAwaitingDelivery,
-				deliveredQuantity1:   100,
-				deliveredQuantity2:   100,
-				expectedPOStatus:     models.PurchaseOrderStatusFullyDelivered,
+				deliveredQuantity1:    100,
+				deliveredQuantity2:    100,
+				expectedPOStatus:      models.PurchaseOrderStatusFullyDelivered,
 				expectedPOItem1Status: models.PurchaseOrderItemStatusDelivered,
 			},
 			{
-				role:                 models.RoleAdmin,
-				currentPOStatus:      models.PurchaseOrderStatusPartiallyDelivered,
+				role:                  models.RoleAdmin,
+				currentPOStatus:       models.PurchaseOrderStatusPartiallyDelivered,
 				currentPOItem1Status:  models.PurchaseOrderItemStatusPartiallyDelivered,
-				deliveredQuantity1:   100,
-				deliveredQuantity2:   100,
-				expectedPOStatus:     models.PurchaseOrderStatusFullyDelivered,
+				deliveredQuantity1:    100,
+				deliveredQuantity2:    100,
+				expectedPOStatus:      models.PurchaseOrderStatusFullyDelivered,
 				expectedPOItem1Status: models.PurchaseOrderItemStatusDelivered,
 			},
 		}
 		for _, testCase := range testCases {
 			t.Run(fmt.Sprintf("When current status is %s and user has %s role", testCase.currentPOStatus, testCase.role), func(t *testing.T) {
 				currentId++
-				uniqueEmail := fmt.Sprintf("test-purchase-order-%s@example.com", uuid.New().String())
-				user, err := helpers.CreateTestUser(context.Background(), suite.sharedTestContainer.DB, uniqueEmail, "Test User", testCase.role)
+				_, token, err := suite.CreateUniqueEmailAndToken(testCase.role)
 				require.NoError(t, err)
 				testPurchaseOrder := models.PurchaseOrder{
 					Base:        models.Base{ID: currentId},
@@ -410,8 +392,6 @@ func (suite *ComponentTestSuite) TestReceivePurchaseOrder() {
 				require.NoError(t, err, "Failed to create purchase order")
 				purchaseOrderID := testPurchaseOrder.ID
 
-				// Get auth token
-				token := helpers.GetAuthToken(suite.sharedTestContainer.MockAuth, user.UID, user.Email, user.Name)
 				var purchaseOrderItems []models.PurchaseOrderItem
 				err = suite.sharedTestContainer.DB.WithContext(ctx).
 					Where("purchase_order_id = ?", purchaseOrderID).

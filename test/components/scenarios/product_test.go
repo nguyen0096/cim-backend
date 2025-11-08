@@ -11,7 +11,6 @@ import (
 	"cim-backend/pkg"
 	"cim-backend/test/components/helpers"
 
-	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
@@ -33,13 +32,8 @@ func (suite *ComponentTestSuite) TestCreateAndGetProduct() {
 		roles := []models.UserRole{models.RoleAdmin, models.RoleAccountant}
 		for _, role := range roles {
 			t.Run(fmt.Sprintf("When user has %s role", role), func(t *testing.T) {
-				uniqueEmail := fmt.Sprintf("test-product-%s@example.com", uuid.New().String())
-				// Create test user with unique email
-				user, err := helpers.CreateTestUser(context.Background(), suite.sharedTestContainer.DB, uniqueEmail, "Test User", role)
+				_, token, err := suite.CreateUniqueEmailAndToken(role)
 				require.NoError(t, err)
-
-				// Get auth token
-				token := helpers.GetAuthToken(suite.sharedTestContainer.MockAuth, user.UID, user.Email, user.Name)
 				resp, err := helpers.MakeRequest(t, "POST", suite.sharedTestContainer.BaseURL+"/api/v1/products", token, productData)
 				require.NoError(t, err)
 				defer resp.Body.Close()
@@ -60,12 +54,8 @@ func (suite *ComponentTestSuite) TestCreateAndGetProduct() {
 		roles := []models.UserRole{models.RoleStaff, models.RoleBotForm}
 		for _, role := range roles {
 			t.Run(fmt.Sprintf("When user has %s role", role), func(t *testing.T) {
-				uniqueEmail := fmt.Sprintf("test-product-%s@example.com", uuid.New().String())
-				user, err := helpers.CreateTestUser(context.Background(), suite.sharedTestContainer.DB, uniqueEmail, "Test User", role)
+				_, token, err := suite.CreateUniqueEmailAndToken(role)
 				require.NoError(t, err)
-
-				// Get auth token
-				token := helpers.GetAuthToken(suite.sharedTestContainer.MockAuth, user.UID, user.Email, user.Name)
 				resp, err := helpers.MakeRequest(t, "POST", suite.sharedTestContainer.BaseURL+"/api/v1/products", token, productData)
 				require.NoError(t, err)
 				defer resp.Body.Close()
@@ -152,12 +142,8 @@ func (suite *ComponentTestSuite) TestUpdateProduct() {
 		roles := []models.UserRole{models.RoleAdmin, models.RoleAccountant}
 		for _, role := range roles {
 			t.Run(fmt.Sprintf("When user has %s role", role), func(t *testing.T) {
-				uniqueEmail := fmt.Sprintf("test-product-%s@example.com", uuid.New().String())
-				user, err := helpers.CreateTestUser(context.Background(), suite.sharedTestContainer.DB, uniqueEmail, "Test User", role)
+				_, token, err := suite.CreateUniqueEmailAndToken(role)
 				require.NoError(t, err)
-
-				// Get auth token
-				token := helpers.GetAuthToken(suite.sharedTestContainer.MockAuth, user.UID, user.Email, user.Name)
 				urlPath := fmt.Sprintf("/api/v1/products/%d", productID)
 				resp, err := helpers.MakeRequest(t, "PUT", suite.sharedTestContainer.BaseURL+urlPath, token, updatedProductData)
 				require.NoError(t, err)
@@ -181,12 +167,8 @@ func (suite *ComponentTestSuite) TestUpdateProduct() {
 		roles := []models.UserRole{models.RoleStaff, models.RoleBotForm}
 		for _, role := range roles {
 			t.Run(fmt.Sprintf("When user has %s role", role), func(t *testing.T) {
-				uniqueEmail := fmt.Sprintf("test-product-%s@example.com", uuid.New().String())
-				user, err := helpers.CreateTestUser(context.Background(), suite.sharedTestContainer.DB, uniqueEmail, "Test User", role)
+				_, token, err := suite.CreateUniqueEmailAndToken(role)
 				require.NoError(t, err)
-
-				// Get auth token
-				token := helpers.GetAuthToken(suite.sharedTestContainer.MockAuth, user.UID, user.Email, user.Name)
 				urlPath := fmt.Sprintf("/api/v1/products/%d", productID)
 				resp, err := helpers.MakeRequest(t, "PUT", suite.sharedTestContainer.BaseURL+urlPath, token, updatedProductData)
 				require.NoError(t, err)
@@ -218,12 +200,8 @@ func (suite *ComponentTestSuite) TestUpdateProductStatus() {
 		roles := []models.UserRole{models.RoleAdmin, models.RoleAccountant}
 		for _, role := range roles {
 			t.Run(fmt.Sprintf("When user has %s role", role), func(t *testing.T) {
-				uniqueEmail := fmt.Sprintf("test-product-%s@example.com", uuid.New().String())
-				user, err := helpers.CreateTestUser(context.Background(), suite.sharedTestContainer.DB, uniqueEmail, "Test User", role)
+				_, token, err := suite.CreateUniqueEmailAndToken(role)
 				require.NoError(t, err)
-
-				// Get auth token
-				token := helpers.GetAuthToken(suite.sharedTestContainer.MockAuth, user.UID, user.Email, user.Name)
 				urlPath := fmt.Sprintf("/api/v1/products/%d/status", productID)
 				resp, err := helpers.MakeRequest(t, "PUT", suite.sharedTestContainer.BaseURL+urlPath, token, map[string]interface{}{"status": "inactive"})
 				require.NoError(t, err)
@@ -247,12 +225,8 @@ func (suite *ComponentTestSuite) TestUpdateProductStatus() {
 		roles := []models.UserRole{models.RoleStaff, models.RoleBotForm}
 		for _, role := range roles {
 			t.Run(fmt.Sprintf("When user has %s role", role), func(t *testing.T) {
-				uniqueEmail := fmt.Sprintf("test-product-%s@example.com", uuid.New().String())
-				user, err := helpers.CreateTestUser(context.Background(), suite.sharedTestContainer.DB, uniqueEmail, "Test User", role)
+				_, token, err := suite.CreateUniqueEmailAndToken(role)
 				require.NoError(t, err)
-
-				// Get auth token
-				token := helpers.GetAuthToken(suite.sharedTestContainer.MockAuth, user.UID, user.Email, user.Name)
 				urlPath := fmt.Sprintf("/api/v1/products/%d/status", productID)
 				resp, err := helpers.MakeRequest(t, "PUT", suite.sharedTestContainer.BaseURL+urlPath, token, map[string]interface{}{"status": "inactive"})
 				require.NoError(t, err)
@@ -306,12 +280,8 @@ func (suite *ComponentTestSuite) TestDeleteProduct() {
 
 	t.Run("should delete product when user has admin role", func(t *testing.T) {
 		role := models.RoleAdmin
-		uniqueEmail := fmt.Sprintf("test-product-%s@example.com", uuid.New().String())
-		user, err := helpers.CreateTestUser(context.Background(), suite.sharedTestContainer.DB, uniqueEmail, "Test User", role)
+		_, token, err := suite.CreateUniqueEmailAndToken(role)
 		require.NoError(t, err)
-
-		// Get auth token
-		token := helpers.GetAuthToken(suite.sharedTestContainer.MockAuth, user.UID, user.Email, user.Name)
 		resp, err := helpers.MakeRequest(t, "DELETE", suite.sharedTestContainer.BaseURL+"/api/v1/products/"+strconv.Itoa(int(productID)), token, nil)
 		require.NoError(t, err)
 		defer resp.Body.Close()
@@ -325,12 +295,8 @@ func (suite *ComponentTestSuite) TestDeleteProduct() {
 		roles := []models.UserRole{models.RoleAccountant, models.RoleStaff, models.RoleBotForm}
 		for _, role := range roles {
 			t.Run(fmt.Sprintf("When user has %s role", role), func(t *testing.T) {
-				uniqueEmail := fmt.Sprintf("test-product-%s@example.com", uuid.New().String())
-				user, err := helpers.CreateTestUser(context.Background(), suite.sharedTestContainer.DB, uniqueEmail, "Test User", role)
+				_, token, err := suite.CreateUniqueEmailAndToken(role)
 				require.NoError(t, err)
-
-				// Get auth token
-				token := helpers.GetAuthToken(suite.sharedTestContainer.MockAuth, user.UID, user.Email, user.Name)
 				urlPath := fmt.Sprintf("/api/v1/products/%d", productID)
 				resp, err := helpers.MakeRequest(t, "DELETE", suite.sharedTestContainer.BaseURL+urlPath, token, nil)
 				require.NoError(t, err)
@@ -356,7 +322,7 @@ func (suite *ComponentTestSuite) TestImportProductsFromCsvAndExcel() {
 		"test/data/excel/Products_template.csv",
 		"test/data/excel/Products_template.xlsx",
 	}
-	user, err := helpers.CreateTestUser(ctx, suite.sharedTestContainer.DB, "test-product-template@example.com", "Test User", models.RoleAdmin)
+	user, token, err := suite.CreateUniqueEmailAndToken(models.RoleAdmin)
 	require.NoError(t, err)
 	testCtx := pkg.WithUserEmail(ctx, user.Email)
 
@@ -382,9 +348,6 @@ func (suite *ComponentTestSuite) TestImportProductsFromCsvAndExcel() {
 				}
 				return nil
 			})
-
-			// Get auth token
-			token := helpers.GetAuthToken(suite.sharedTestContainer.MockAuth, user.UID, user.Email, user.Name)
 
 			// Import products from file
 			resp, err := helpers.MakeMultipartRequest(t, "POST", suite.sharedTestContainer.BaseURL+"/api/v1/products/import-csv", token, file, "file")

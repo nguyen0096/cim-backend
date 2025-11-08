@@ -1,7 +1,6 @@
 package scenarios
 
 import (
-	"context"
 	"encoding/json"
 	"testing"
 
@@ -16,12 +15,8 @@ func (suite *ComponentTestSuite) TestInventoryOperations() {
 	t := suite.T()
 	t.Run("Inventory Operations", func(t *testing.T) {
 
-		// Create test user with unique email
-		user, err := helpers.CreateTestUser(context.Background(), suite.sharedTestContainer.DB, "test-inventory@example.com", "Test User", models.RoleAdmin)
+		_, token, err := suite.CreateUniqueEmailAndToken(models.RoleAdmin)
 		require.NoError(t, err)
-
-		// Get auth token
-		token := helpers.GetAuthToken(suite.sharedTestContainer.MockAuth, user.UID, user.Email, user.Name)
 
 		// Create an inventory
 		inventoryData := map[string]interface{}{

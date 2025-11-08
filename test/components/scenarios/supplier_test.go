@@ -30,14 +30,8 @@ func (suite *ComponentTestSuite) TestCreateAndGetSupplier() {
 		roles := []models.UserRole{models.RoleAdmin, models.RoleAccountant}
 		for _, role := range roles {
 			t.Run(fmt.Sprintf("When user has %s role", role), func(t *testing.T) {
-				uniqueEmail := fmt.Sprintf("test-supplier-%s@example.com", uuid.New().String())
-				// Create test user with unique email
-				user, err := helpers.CreateTestUser(context.Background(), suite.sharedTestContainer.DB, uniqueEmail, "Test User", role)
+				_, token, err := suite.CreateUniqueEmailAndToken(role)
 				require.NoError(t, err)
-
-				// Get auth token
-				token := helpers.GetAuthToken(suite.sharedTestContainer.MockAuth, user.UID, user.Email, user.Name)
-
 				resp, err := helpers.MakeRequest(t, "POST", suite.sharedTestContainer.BaseURL+"/api/v1/suppliers", token, supplierData)
 				require.NoError(t, err)
 				defer resp.Body.Close()
@@ -71,13 +65,8 @@ func (suite *ComponentTestSuite) TestCreateAndGetSupplier() {
 		roles := []models.UserRole{models.RoleStaff, models.RoleBotForm}
 		for _, role := range roles {
 			t.Run(fmt.Sprintf("When user has %s role", role), func(t *testing.T) {
-				uniqueEmail := fmt.Sprintf("test-supplier-%s@example.com", uuid.New().String())
-				// Create test user with unique email
-				user, err := helpers.CreateTestUser(context.Background(), suite.sharedTestContainer.DB, uniqueEmail, "Test User", role)
+				_, token, err := suite.CreateUniqueEmailAndToken(role)
 				require.NoError(t, err)
-
-				// Get auth token
-				token := helpers.GetAuthToken(suite.sharedTestContainer.MockAuth, user.UID, user.Email, user.Name)
 				resp, err := helpers.MakeRequest(t, "POST", suite.sharedTestContainer.BaseURL+"/api/v1/suppliers", token, supplierData)
 				require.NoError(t, err)
 				defer resp.Body.Close()
@@ -118,13 +107,8 @@ func (suite *ComponentTestSuite) TestUpdateSupplier() {
 		roles := []models.UserRole{models.RoleAdmin, models.RoleAccountant}
 		for _, role := range roles {
 			t.Run(fmt.Sprintf("When user has %s role", role), func(t *testing.T) {
-				uniqueEmail := fmt.Sprintf("test-supplier-%s@example.com", uuid.New().String())
-				// Create test user with unique email
-				user, err := helpers.CreateTestUser(context.Background(), suite.sharedTestContainer.DB, uniqueEmail, "Test User", role)
+				_, token, err := suite.CreateUniqueEmailAndToken(role)
 				require.NoError(t, err)
-
-				// Get auth token
-				token := helpers.GetAuthToken(suite.sharedTestContainer.MockAuth, user.UID, user.Email, user.Name)
 
 				urlPath := fmt.Sprintf("/api/v1/suppliers/%d", supplierID)
 				resp, err := helpers.MakeRequest(t, "PUT", suite.sharedTestContainer.BaseURL+urlPath, token, updatedSupplierData)
@@ -148,12 +132,8 @@ func (suite *ComponentTestSuite) TestUpdateSupplier() {
 		roles := []models.UserRole{models.RoleStaff, models.RoleBotForm}
 		for _, role := range roles {
 			t.Run(fmt.Sprintf("When user has %s role", role), func(t *testing.T) {
-				uniqueEmail := fmt.Sprintf("test-supplier-%s@example.com", uuid.New().String())
-				user, err := helpers.CreateTestUser(context.Background(), suite.sharedTestContainer.DB, uniqueEmail, "Test User", role)
+				_, token, err := suite.CreateUniqueEmailAndToken(role)
 				require.NoError(t, err)
-
-				// Get auth token
-				token := helpers.GetAuthToken(suite.sharedTestContainer.MockAuth, user.UID, user.Email, user.Name)
 				urlPath := fmt.Sprintf("/api/v1/suppliers/%d", supplierID)
 				resp, err := helpers.MakeRequest(t, "PUT", suite.sharedTestContainer.BaseURL+urlPath, token, updatedSupplierData)
 				require.NoError(t, err)
@@ -186,12 +166,8 @@ func (suite *ComponentTestSuite) TestDeleteSupplier() {
 
 	t.Run("should delete supplier when user has admin role", func(t *testing.T) {
 		role := models.RoleAdmin
-		uniqueEmail := fmt.Sprintf("test-supplier-%s@example.com", uuid.New().String())
-		user, err := helpers.CreateTestUser(context.Background(), suite.sharedTestContainer.DB, uniqueEmail, "Test User", role)
+		_, token, err := suite.CreateUniqueEmailAndToken(role)
 		require.NoError(t, err)
-
-		// Get auth token
-		token := helpers.GetAuthToken(suite.sharedTestContainer.MockAuth, user.UID, user.Email, user.Name)
 		urlPath := fmt.Sprintf("/api/v1/suppliers/%d", supplierID)
 		resp, err := helpers.MakeRequest(t, "DELETE", suite.sharedTestContainer.BaseURL+urlPath, token, nil)
 		require.NoError(t, err)
@@ -207,12 +183,8 @@ func (suite *ComponentTestSuite) TestDeleteSupplier() {
 		roles := []models.UserRole{models.RoleAccountant, models.RoleStaff, models.RoleBotForm}
 		for _, role := range roles {
 			t.Run(fmt.Sprintf("When user has %s role", role), func(t *testing.T) {
-				uniqueEmail := fmt.Sprintf("test-supplier-%s@example.com", uuid.New().String())
-				user, err := helpers.CreateTestUser(context.Background(), suite.sharedTestContainer.DB, uniqueEmail, "Test User", role)
+				_, token, err := suite.CreateUniqueEmailAndToken(role)
 				require.NoError(t, err)
-
-				// Get auth token
-				token := helpers.GetAuthToken(suite.sharedTestContainer.MockAuth, user.UID, user.Email, user.Name)
 				urlPath := fmt.Sprintf("/api/v1/suppliers/%d", supplierID)
 				resp, err := helpers.MakeRequest(t, "DELETE", suite.sharedTestContainer.BaseURL+urlPath, token, nil)
 				require.NoError(t, err)
@@ -248,12 +220,8 @@ func (suite *ComponentTestSuite) TestUpdateSupplierStatus() {
 		roles := []models.UserRole{models.RoleAdmin, models.RoleAccountant}
 		for _, role := range roles {
 			t.Run(fmt.Sprintf("When user has %s role", role), func(t *testing.T) {
-				uniqueEmail := fmt.Sprintf("test-supplier-%s@example.com", uuid.New().String())
-				user, err := helpers.CreateTestUser(context.Background(), suite.sharedTestContainer.DB, uniqueEmail, "Test User", role)
+				_, token, err := suite.CreateUniqueEmailAndToken(role)
 				require.NoError(t, err)
-
-				// Get auth token
-				token := helpers.GetAuthToken(suite.sharedTestContainer.MockAuth, user.UID, user.Email, user.Name)
 				urlPath := fmt.Sprintf("/api/v1/suppliers/%d/status", supplierID)
 				resp, err := helpers.MakeRequest(t, "PUT", suite.sharedTestContainer.BaseURL+urlPath, token, map[string]interface{}{"status": "inactive"})
 				require.NoError(t, err)
