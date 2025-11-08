@@ -134,13 +134,45 @@ func TestUnitHandler_CreateUnit(t *testing.T) {
 		UnitType:         "volume",
 		Name:             "liter",
 		Symbol:           "L",
-		IsBase:           true,
 		ConversionFactor: 1,
 	}
 
 	mockService.
 		On("CreateUnit", mock.Anything, mock.MatchedBy(func(unit *models.Unit) bool {
 			return unit.UnitType == "volume" && unit.Name == "liter" && unit.Symbol == "L"
+		})).
+		Return(nil)
+
+	req, err := createRequest(http.MethodPost, "/units", requestBody)
+	assert.NoError(t, err)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+
+	err = handler.CreateUnit(c)
+	assert.NoError(t, err)
+	assert.Equal(t, http.StatusCreated, rec.Code)
+	mockService.AssertExpectations(t)
+}
+
+func TestUnitHandler_CreateUnit_DerivedUnit(t *testing.T) {
+	e := echo.New()
+	e.HTTPErrorHandler = middleware.CustomErrorHandler
+
+	mockService := new(mockUnitService)
+	handler := NewUnitHandler(mockService)
+
+	baseUnitID := uint(10)
+	requestBody := createUnitRequest{
+		UnitType:         "mass",
+		Name:             "gram",
+		Symbol:           "g",
+		BaseUnitID:       &baseUnitID,
+		ConversionFactor: 0.001,
+	}
+
+	mockService.
+		On("CreateUnit", mock.Anything, mock.MatchedBy(func(unit *models.Unit) bool {
+			return unit.BaseUnitID != nil && *unit.BaseUnitID == baseUnitID && unit.ConversionFactor == 0.001
 		})).
 		Return(nil)
 
@@ -174,7 +206,8 @@ func TestUnitHandler_CreateUnit_ValidationError(t *testing.T) {
 	c := e.NewContext(req, rec)
 
 	err = handler.CreateUnit(c)
-	assert.NoError(t, err)
+	assert.Error(t, err)
+	e.HTTPErrorHandler(err, c)
 	assert.Equal(t, http.StatusBadRequest, rec.Code)
 	mockService.AssertExpectations(t)
 }
@@ -195,7 +228,8 @@ func TestUnitHandler_GetUnit_NotFound(t *testing.T) {
 	mockService.On("GetUnitByID", mock.Anything, uint(999)).Return((*models.Unit)(nil), pkg.ErrNotFound("unit not found", errors.New("not found")))
 
 	err := handler.GetUnit(c)
-	assert.NoError(t, err)
+	assert.Error(t, err)
+	e.HTTPErrorHandler(err, c)
 	assert.Equal(t, http.StatusNotFound, rec.Code)
 	mockService.AssertExpectations(t)
 }
@@ -222,4 +256,3 @@ func TestUnitHandler_DeleteUnit(t *testing.T) {
 }
 
 var _ services.UnitService = (*mockUnitService)(nil)
-

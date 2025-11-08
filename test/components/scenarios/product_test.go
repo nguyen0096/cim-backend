@@ -122,7 +122,6 @@ func (suite *ComponentTestSuite) TestUpdateProduct() {
 			Name:             "test",
 			Symbol:           "test",
 			ConversionFactor: 1,
-			IsBase:           true,
 		},
 		Status: "active",
 		Suppliers: []*models.Supplier{
@@ -292,7 +291,6 @@ func (suite *ComponentTestSuite) TestDeleteProduct() {
 			Name:             "test",
 			Symbol:           "test",
 			ConversionFactor: 1,
-			IsBase:           true,
 		},
 		Status: "active",
 		Suppliers: []*models.Supplier{

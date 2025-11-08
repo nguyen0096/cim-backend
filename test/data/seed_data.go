@@ -147,7 +147,6 @@ func Units() []models.Unit {
 			UnitType:         "mass",
 			Name:             "Kilogram",
 			Symbol:           "kg",
-			IsBase:           true,
 			ConversionFactor: 1,
 		},
 		{
@@ -158,7 +157,6 @@ func Units() []models.Unit {
 			UnitType:         "volume",
 			Name:             "Liter",
 			Symbol:           "liter",
-			IsBase:           true,
 			ConversionFactor: 1,
 		},
 		{
@@ -169,7 +167,6 @@ func Units() []models.Unit {
 			UnitType:         "count",
 			Name:             "Piece",
 			Symbol:           "piece",
-			IsBase:           true,
 			ConversionFactor: 1,
 		},
 		{
@@ -180,7 +177,6 @@ func Units() []models.Unit {
 			UnitType:         "count",
 			Name:             "Box",
 			Symbol:           "box",
-			IsBase:           true,
 			ConversionFactor: 1,
 		},
 		{
@@ -191,7 +187,6 @@ func Units() []models.Unit {
 			UnitType:         "count",
 			Name:             "Carton",
 			Symbol:           "carton",
-			IsBase:           true,
 			ConversionFactor: 1,
 		},
 		{
@@ -202,7 +197,6 @@ func Units() []models.Unit {
 			UnitType:         "count",
 			Name:             "Bottle",
 			Symbol:           "bottle",
-			IsBase:           true,
 			ConversionFactor: 1,
 		},
 		{
@@ -213,7 +207,6 @@ func Units() []models.Unit {
 			UnitType:         "count",
 			Name:             "Can",
 			Symbol:           "can",
-			IsBase:           true,
 			ConversionFactor: 1,
 		},
 		{
@@ -224,7 +217,6 @@ func Units() []models.Unit {
 			UnitType:         "count",
 			Name:             "Pack",
 			Symbol:           "pack",
-			IsBase:           true,
 			ConversionFactor: 1,
 		},
 		{
@@ -235,7 +227,6 @@ func Units() []models.Unit {
 			UnitType:         "count",
 			Name:             "Loaf",
 			Symbol:           "loaf",
-			IsBase:           true,
 			ConversionFactor: 1,
 		},
 		{
@@ -246,7 +237,6 @@ func Units() []models.Unit {
 			UnitType:         "count",
 			Name:             "Tray",
 			Symbol:           "tray",
-			IsBase:           true,
 			ConversionFactor: 1,
 		},
 	}

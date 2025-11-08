@@ -31,12 +31,18 @@ func NewUnitRepository(db *gorm.DB) UnitRepository {
 }
 
 func (r *unitRepository) Create(ctx context.Context, unit *models.Unit) error {
-	return r.db.WithContext(ctx).Create(unit).Error
+	if err := r.db.WithContext(ctx).Create(unit).Error; err != nil {
+		return fmt.Errorf("failed to create unit: %w", err)
+	}
+	return nil
 }
 
 func (r *unitRepository) GetByID(ctx context.Context, id uint) (*models.Unit, error) {
 	var unit models.Unit
-	err := r.db.WithContext(ctx).First(&unit, "id = ?", id).Error
+	err := r.db.WithContext(ctx).
+		Preload("BaseUnit").
+		Preload("DerivedUnits").
+		First(&unit, "id = ?", id).Error
 	if err != nil {
 		return nil, err
 	}
@@ -46,6 +52,8 @@ func (r *unitRepository) GetByID(ctx context.Context, id uint) (*models.Unit, er
 func (r *unitRepository) GetByTypeAndName(ctx context.Context, unitType, name string) (*models.Unit, error) {
 	var unit models.Unit
 	err := r.db.WithContext(ctx).
+		Preload("BaseUnit").
+		Preload("DerivedUnits").
 		Where("unit_type = ? AND (name = ? OR symbol = ?)", unitType, name, name).
 		First(&unit).Error
 	if err != nil {
@@ -57,7 +65,7 @@ func (r *unitRepository) GetByTypeAndName(ctx context.Context, unitType, name st
 func (r *unitRepository) Update(ctx context.Context, unit *models.Unit) error {
 	result := r.db.WithContext(ctx).Save(unit)
 	if result.Error != nil {
-		return result.Error
+		return fmt.Errorf("failed to update unit: %w", result.Error)
 	}
 	if result.RowsAffected == 0 {
 		return fmt.Errorf("failed to update unit %d: not found", unit.ID)
@@ -66,21 +74,29 @@ func (r *unitRepository) Update(ctx context.Context, unit *models.Unit) error {
 }
 
 func (r *unitRepository) Delete(ctx context.Context, id uint) error {
-	return r.db.WithContext(ctx).Delete(&models.Unit{}, id).Error
+	if err := r.db.WithContext(ctx).Delete(&models.Unit{}, id).Error; err != nil {
+		return fmt.Errorf("failed to delete unit %d: %w", id, err)
+	}
+	return nil
 }
 
 func (r *unitRepository) Restore(ctx context.Context, id uint) error {
-	return r.db.WithContext(ctx).
+	if err := r.db.WithContext(ctx).
 		Unscoped().
 		Model(&models.Unit{}).
 		Where("id = ?", id).
 		Update("deleted_at", nil).
-		Error
+		Error; err != nil {
+		return fmt.Errorf("failed to restore unit %d: %w", id, err)
+	}
+	return nil
 }
 
 func (r *unitRepository) List(ctx context.Context, limit, offset int, sortBy, sortOrder, unitType string) ([]models.Unit, error) {
 	var units []models.Unit
-	query := r.db.WithContext(ctx)
+	query := r.db.WithContext(ctx).
+		Preload("BaseUnit").
+		Preload("DerivedUnits")
 
 	if unitType != "" {
 		query = query.Where("unit_type = ?", unitType)
@@ -95,13 +111,17 @@ func (r *unitRepository) List(ctx context.Context, limit, offset int, sortBy, so
 		query = query.Order("created_at desc")
 	}
 
-	err := query.Limit(limit).Offset(offset).Find(&units).Error
-	return units, err
+	if err := query.Limit(limit).Offset(offset).Find(&units).Error; err != nil {
+		return nil, fmt.Errorf("failed to list units: %w", err)
+	}
+	return units, nil
 }
 
 func (r *unitRepository) Search(ctx context.Context, queryText string, limit, offset int, sortBy, sortOrder, unitType string) ([]models.Unit, error) {
 	var units []models.Unit
 	query := r.db.WithContext(ctx).
+		Preload("BaseUnit").
+		Preload("DerivedUnits").
 		Where("name ILIKE ? OR symbol ILIKE ?", "%"+queryText+"%", "%"+queryText+"%")
 
 	if unitType != "" {
@@ -117,8 +137,10 @@ func (r *unitRepository) Search(ctx context.Context, queryText string, limit, of
 		query = query.Order("created_at desc")
 	}
 
-	err := query.Limit(limit).Offset(offset).Find(&units).Error
-	return units, err
+	if err := query.Limit(limit).Offset(offset).Find(&units).Error; err != nil {
+		return nil, fmt.Errorf("failed to search units: %w", err)
+	}
+	return units, nil
 }
 
 func (r *unitRepository) Count(ctx context.Context, unitType string) (int64, error) {
@@ -127,8 +149,10 @@ func (r *unitRepository) Count(ctx context.Context, unitType string) (int64, err
 	if unitType != "" {
 		query = query.Where("unit_type = ?", unitType)
 	}
-	err := query.Count(&count).Error
-	return count, err
+	if err := query.Count(&count).Error; err != nil {
+		return 0, fmt.Errorf("failed to count units: %w", err)
+	}
+	return count, nil
 }
 
 func (r *unitRepository) CountSearch(ctx context.Context, queryText, unitType string) (int64, error) {
@@ -138,7 +162,8 @@ func (r *unitRepository) CountSearch(ctx context.Context, queryText, unitType st
 	if unitType != "" {
 		query = query.Where("unit_type = ?", unitType)
 	}
-	err := query.Count(&count).Error
-	return count, err
+	if err := query.Count(&count).Error; err != nil {
+		return 0, fmt.Errorf("failed to count search units: %w", err)
+	}
+	return count, nil
 }
-

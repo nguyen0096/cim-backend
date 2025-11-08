@@ -3282,9 +3282,6 @@ const docTemplate = `{
                 "id": {
                     "type": "integer"
                 },
-                "is_base": {
-                    "type": "boolean"
-                },
                 "name": {
                     "type": "string"
                 },

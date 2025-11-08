@@ -99,7 +99,6 @@ func newProductServiceWithRepos(productRepo *repositorymocks.ProductRepository, 
 		UnitType:         "general",
 		Name:             "unit",
 		Symbol:           "unit",
-		IsBase:           true,
 		ConversionFactor: 1,
 	})
 	return NewProductService(productRepo, supplierRepo, unitRepo), unitRepo

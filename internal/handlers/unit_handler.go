@@ -140,7 +140,7 @@ type createUnitRequest struct {
 	UnitType         string  `json:"unit_type"`
 	Name             string  `json:"name"`
 	Symbol           string  `json:"symbol"`
-	IsBase           bool    `json:"is_base"`
+	BaseUnitID       *uint   `json:"base_unit_id"`
 	ConversionFactor float64 `json:"conversion_factor"`
 }
 
@@ -167,7 +167,7 @@ func (h *UnitHandler) CreateUnit(c echo.Context) error {
 		UnitType:         request.UnitType,
 		Name:             request.Name,
 		Symbol:           request.Symbol,
-		IsBase:           request.IsBase,
+		BaseUnitID:       request.BaseUnitID,
 		ConversionFactor: request.ConversionFactor,
 	}
 
@@ -211,7 +211,7 @@ func (h *UnitHandler) UpdateUnit(c echo.Context) error {
 		UnitType:         request.UnitType,
 		Name:             request.Name,
 		Symbol:           request.Symbol,
-		IsBase:           request.IsBase,
+		BaseUnitID:       request.BaseUnitID,
 		ConversionFactor: request.ConversionFactor,
 	}
 
@@ -245,4 +245,3 @@ func (h *UnitHandler) DeleteUnit(c echo.Context) error {
 
 	return c.NoContent(http.StatusNoContent)
 }
-

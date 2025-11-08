@@ -602,7 +602,7 @@ func (suite *ComponentTestSuite) TestSaveInventoryItemChanges() {
 		// Execute consumption
 		err = repo.SaveInventoryItemChanges(ctx, reconcileItems, []*models.InventoryTransaction{})
 		require.Error(t, err, "PersistConsumption should fail when quantity has been modified")
-		assert.Contains(t, err.Error(), fmt.Sprintf("inventory item %d quantity has changed (expected: %d, current: %d). Please refresh and try again.", inventoryItems[0].ID, originalItem.Quantity, originalItem.Quantity+2))
+		assert.Contains(t, err.Error(), fmt.Sprintf("inventory item %d quantity has changed (expected: %d, current: %d)", inventoryItems[0].ID, originalItem.Quantity, originalItem.Quantity+2))
 	})
 
 	t.Run("should handle empty items and transactions arrays", func(t *testing.T) {

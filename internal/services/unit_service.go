@@ -34,12 +34,16 @@ func NewUnitService(unitRepo repository.UnitRepository) UnitService {
 }
 
 func (s *unitService) CreateUnit(ctx context.Context, unit *models.Unit) error {
-	if unit.IsBase {
-		unit.ConversionFactor = 1
-	}
-
 	if err := validateUnit(unit); err != nil {
 		return err
+	}
+
+	if err := s.ensureBaseUnitRelationship(ctx, unit); err != nil {
+		return err
+	}
+
+	if unit.BaseUnitID == nil {
+		unit.ConversionFactor = 1
 	}
 
 	existing, err := s.unitRepo.GetByTypeAndName(ctx, unit.UnitType, unit.Name)
@@ -80,12 +84,16 @@ func (s *unitService) UpdateUnit(ctx context.Context, unit *models.Unit) error {
 		return fmt.Errorf("failed to load unit %d: %w", unit.ID, err)
 	}
 
-	if unit.IsBase {
-		unit.ConversionFactor = 1
-	}
-
 	if err := validateUnit(unit); err != nil {
 		return err
+	}
+
+	if err := s.ensureBaseUnitRelationship(ctx, unit); err != nil {
+		return err
+	}
+
+	if unit.BaseUnitID == nil {
+		unit.ConversionFactor = 1
 	}
 
 	if !strings.EqualFold(existing.Name, unit.Name) || !strings.EqualFold(existing.UnitType, unit.UnitType) {
@@ -158,7 +166,7 @@ func validateUnit(unit *models.Unit) *pkg.AppError {
 		return pkg.ErrValidation("name is required", nil)
 	}
 	if unit.Symbol == "" {
-		return pkg.ErrValidation("symbol is required", nil)
+		unit.Symbol = unit.Name
 	}
 	if unit.ConversionFactor <= 0 {
 		return pkg.ErrValidation("conversion_factor must be greater than zero", nil)
@@ -167,3 +175,33 @@ func validateUnit(unit *models.Unit) *pkg.AppError {
 	return nil
 }
 
+func (s *unitService) ensureBaseUnitRelationship(ctx context.Context, unit *models.Unit) error {
+	if unit.BaseUnitID == nil {
+		if unit.ConversionFactor != 1 {
+			return pkg.ErrValidation("conversion_factor must be 1 for base units", nil)
+		}
+		return nil
+	}
+
+	if unit.ID != 0 && unit.BaseUnitID != nil && *unit.BaseUnitID == unit.ID {
+		return pkg.ErrValidation("base_unit_id cannot reference the same unit", nil)
+	}
+
+	baseUnit, err := s.unitRepo.GetByID(ctx, *unit.BaseUnitID)
+	if err != nil {
+		if err == gorm.ErrRecordNotFound {
+			return pkg.ErrValidation("base_unit_id must reference an existing base unit", err)
+		}
+		return fmt.Errorf("failed to load base unit %d: %w", *unit.BaseUnitID, err)
+	}
+
+	if baseUnit.BaseUnitID != nil {
+		return pkg.ErrValidation("base_unit_id must reference a base unit", nil)
+	}
+
+	if !strings.EqualFold(baseUnit.UnitType, unit.UnitType) {
+		return pkg.ErrValidation("base unit must have the same unit_type", nil)
+	}
+
+	return nil
+}

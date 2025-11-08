@@ -142,7 +142,6 @@ func (s *productService) ensureUnit(ctx context.Context, label string) (*models.
 		UnitType:         "general",
 		Name:             unitLabel,
 		Symbol:           unitLabel,
-		IsBase:           true,
 		ConversionFactor: 1,
 	}
 	if createErr := s.unitRepo.Create(ctx, newUnit); createErr != nil {

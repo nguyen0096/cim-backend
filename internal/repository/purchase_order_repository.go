@@ -191,7 +191,7 @@ func (r *purchaseOrderRepository) ReceiveInventory(ctx context.Context, req dto.
 			UnitName             string
 			UnitSymbol           string
 			UnitType             string
-			UnitIsBase           bool
+			UnitBaseUnitID       *uint
 			UnitConversionFactor float64
 		}
 
@@ -210,7 +210,7 @@ func (r *purchaseOrderRepository) ReceiveInventory(ctx context.Context, req dto.
 			u.name as unit_name,
 			u.symbol as unit_symbol,
 			u.unit_type as unit_type,
-			u.is_base as unit_is_base,
+			u.base_unit_id as unit_base_unit_id,
 			u.conversion_factor as unit_conversion_factor
 		`).
 			Joins(`LEFT JOIN inventory_items ii ON poi.product_id = ii.product_id
@@ -291,7 +291,7 @@ func (r *purchaseOrderRepository) ReceiveInventory(ctx context.Context, req dto.
 					Name:             data.UnitName,
 					Symbol:           data.UnitSymbol,
 					UnitType:         data.UnitType,
-					IsBase:           data.UnitIsBase,
+					BaseUnitID:       data.UnitBaseUnitID,
 					ConversionFactor: data.UnitConversionFactor,
 				}
 				unit.ID = data.UnitID
