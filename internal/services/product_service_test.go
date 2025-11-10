@@ -92,6 +92,53 @@ func (s *stubUnitRepository) CountSearch(context.Context, string, string) (int64
 	return 0, nil
 }
 
+type stubSettingsService struct {
+	settings map[string]*models.Settings
+}
+
+func newStubSettingsService() *stubSettingsService {
+	return &stubSettingsService{
+		settings: make(map[string]*models.Settings),
+	}
+}
+
+func (s *stubSettingsService) GetSetting(ctx context.Context, key string) (*models.Settings, error) {
+	if setting, ok := s.settings[key]; ok {
+		return setting, nil
+	}
+	// Return a Settings with the key set to indicate it was queried, but Value will be empty
+	// This matches the repository behavior when setting doesn't exist
+	return &models.Settings{Key: key}, nil
+}
+
+func (s *stubSettingsService) SetSetting(ctx context.Context, key string, value interface{}) error {
+	// For testing purposes, we'll just store it in memory
+	// In a real implementation, this would marshal to JSON
+	setting := &models.Settings{
+		Key: key,
+		// Value would be set here, but for testing we can skip it
+	}
+	s.settings[key] = setting
+	return nil
+}
+
+func (s *stubSettingsService) GetAllSettings(ctx context.Context) ([]models.Settings, error) {
+	settings := make([]models.Settings, 0, len(s.settings))
+	for _, setting := range s.settings {
+		settings = append(settings, *setting)
+	}
+	return settings, nil
+}
+
+func (s *stubSettingsService) DeleteSetting(ctx context.Context, key string) error {
+	delete(s.settings, key)
+	return nil
+}
+
+func (s *stubSettingsService) GetSettingValue(ctx context.Context, key string, dest interface{}) error {
+	return nil
+}
+
 func newProductServiceWithRepos(productRepo *repositorymocks.ProductRepository, supplierRepo *repositorymocks.SupplierRepository) (ProductService, *stubUnitRepository) {
 	unitRepo := newStubUnitRepository()
 	// Seed a default unit so lookups succeed for ID 1
@@ -101,7 +148,8 @@ func newProductServiceWithRepos(productRepo *repositorymocks.ProductRepository, 
 		Symbol:           "unit",
 		ConversionFactor: 1,
 	})
-	return NewProductService(productRepo, supplierRepo, unitRepo), unitRepo
+	settingsService := newStubSettingsService()
+	return NewProductService(productRepo, supplierRepo, unitRepo, settingsService), unitRepo
 }
 
 func TestCreateProduct(t *testing.T) {

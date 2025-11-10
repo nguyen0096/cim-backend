@@ -6,8 +6,10 @@ import (
 	"cim-backend/pkg"
 	"context"
 	"encoding/csv"
+	"encoding/json"
 	"fmt"
 	"io"
+	"sort"
 	"strings"
 
 	"github.com/xuri/excelize/v2"
@@ -34,16 +36,18 @@ type ProductService interface {
 }
 
 type productService struct {
-	productRepo  repository.ProductRepository
-	supplierRepo repository.SupplierRepository
-	unitRepo     repository.UnitRepository
+	productRepo     repository.ProductRepository
+	supplierRepo    repository.SupplierRepository
+	unitRepo        repository.UnitRepository
+	settingsService SettingsService
 }
 
-func NewProductService(productRepo repository.ProductRepository, supplierRepo repository.SupplierRepository, unitRepo repository.UnitRepository) ProductService {
+func NewProductService(productRepo repository.ProductRepository, supplierRepo repository.SupplierRepository, unitRepo repository.UnitRepository, settingsService SettingsService) ProductService {
 	return &productService{
-		productRepo:  productRepo,
-		supplierRepo: supplierRepo,
-		unitRepo:     unitRepo,
+		productRepo:     productRepo,
+		supplierRepo:    supplierRepo,
+		unitRepo:        unitRepo,
+		settingsService: settingsService,
 	}
 }
 
@@ -151,6 +155,71 @@ func (s *productService) ensureUnit(ctx context.Context, label string) (*models.
 	return newUnit, nil
 }
 
+// updateProductTypesInSettings updates the product_types setting with new product types from import
+func (s *productService) updateProductTypesInSettings(ctx context.Context, newProductTypes []string) error {
+	if len(newProductTypes) == 0 {
+		return nil
+	}
+
+	// Get existing product types from settings
+	var existingTypes []string
+	setting, err := s.settingsService.GetSetting(ctx, "product_types")
+	if err == nil && setting != nil && setting.Key == "product_types" && len(setting.Value) > 0 {
+		_ = json.Unmarshal(setting.Value, &existingTypes)
+	}
+
+	// Create a map for efficient lookup (case-insensitive)
+	typeMap := make(map[string]bool)
+	for _, t := range existingTypes {
+		if strings.TrimSpace(t) != "" {
+			typeMap[strings.ToLower(strings.TrimSpace(t))] = true
+		}
+	}
+
+	// Add new types to the map (case-insensitive)
+	for _, t := range newProductTypes {
+		trimmed := strings.TrimSpace(t)
+		if trimmed != "" {
+			typeMap[strings.ToLower(trimmed)] = true
+		}
+	}
+
+	// Convert map back to slice, preserving original case from existing types or using new types
+	// We'll use the first occurrence we encounter
+	resultMap := make(map[string]string)
+	for _, t := range existingTypes {
+		if strings.TrimSpace(t) != "" {
+			key := strings.ToLower(strings.TrimSpace(t))
+			if _, exists := resultMap[key]; !exists {
+				resultMap[key] = strings.TrimSpace(t)
+			}
+		}
+	}
+	for _, t := range newProductTypes {
+		trimmed := strings.TrimSpace(t)
+		if trimmed != "" {
+			key := strings.ToLower(trimmed)
+			if _, exists := resultMap[key]; !exists {
+				resultMap[key] = trimmed
+			}
+		}
+	}
+
+	// Convert to slice
+	allTypes := make([]string, 0, len(resultMap))
+	for _, v := range resultMap {
+		allTypes = append(allTypes, v)
+	}
+	sort.Strings(allTypes)
+
+	// Save to settings
+	if err := s.settingsService.SetSetting(ctx, "product_types", allTypes); err != nil {
+		return fmt.Errorf("failed to update product types in settings: %w", err)
+	}
+
+	return nil
+}
+
 // ImportProductsFromCSV imports products with suppliers from a CSV file
 // CSV format: Name;Description;ProductType;Unit;Suppliers;ContactEmail;ContactPhone;Address
 // Product names and supplier names must be unique within the file (n-n relationship)
@@ -220,6 +289,7 @@ func (s *productService) ImportProductsFromCSV(ctx context.Context, csvReader io
 	productUnitMap := make(map[string]string)              // product name (lowercase) -> unit label
 	suppliersMap := make(map[string]*models.Supplier)      // supplier name (lowercase) -> supplier
 	productSupplierMap := make(map[string]map[string]bool) // product name (lowercase) -> set of supplier names (lowercase)
+	productTypesMap := make(map[string]string)             // product type (lowercase) -> original case
 
 	lineNumber := 1 // Start at 1 since we already read the header
 
@@ -273,6 +343,14 @@ func (s *productService) ImportProductsFromCSV(ctx context.Context, csvReader io
 			productDescription := ""
 			if descIdx != -1 && len(record) > descIdx {
 				productDescription = strings.TrimSpace(record[descIdx])
+			}
+
+			// Collect product type (case-insensitive, preserve original case)
+			if productType != "" {
+				productTypeKey := strings.ToLower(productType)
+				if _, exists := productTypesMap[productTypeKey]; !exists {
+					productTypesMap[productTypeKey] = productType
+				}
 			}
 
 			// Check for duplicate product names (case-insensitive)
@@ -393,6 +471,17 @@ func (s *productService) ImportProductsFromCSV(ctx context.Context, csvReader io
 		createdCount++
 	}
 
+	// Update product types in settings
+	productTypes := make([]string, 0, len(productTypesMap))
+	for _, productType := range productTypesMap {
+		productTypes = append(productTypes, productType)
+	}
+	if err := s.updateProductTypesInSettings(ctx, productTypes); err != nil {
+		// Log error but don't fail the import
+		// The import was successful, just the settings update failed
+		return createdCount, fmt.Errorf("import completed but failed to update product types in settings: %w", err)
+	}
+
 	return createdCount, nil
 }
 
@@ -485,6 +574,7 @@ func (s *productService) ImportProductsFromExcel(ctx context.Context, excelReade
 	productUnitMap := make(map[string]string)              // product name (lowercase) -> unit label
 	suppliersMap := make(map[string]*models.Supplier)      // supplier name (lowercase) -> supplier
 	productSupplierMap := make(map[string]map[string]bool) // product name (lowercase) -> set of supplier names (lowercase)
+	productTypesMap := make(map[string]string)             // product type (lowercase) -> original case
 
 	// Process data rows (skip header)
 	for _, row := range rows[headerInx+1:] {
@@ -532,6 +622,14 @@ func (s *productService) ImportProductsFromExcel(ctx context.Context, excelReade
 			productUnit := ""
 			if unitIdx != -1 && len(row) > unitIdx {
 				productUnit = strings.TrimSpace(row[unitIdx])
+			}
+
+			// Collect product type (case-insensitive, preserve original case)
+			if productType != "" {
+				productTypeKey := strings.ToLower(productType)
+				if _, exists := productTypesMap[productTypeKey]; !exists {
+					productTypesMap[productTypeKey] = productType
+				}
 			}
 
 			// Check for duplicate product names (case-insensitive)
@@ -650,6 +748,17 @@ func (s *productService) ImportProductsFromExcel(ctx context.Context, excelReade
 		}
 
 		createdCount++
+	}
+
+	// Update product types in settings
+	productTypes := make([]string, 0, len(productTypesMap))
+	for _, productType := range productTypesMap {
+		productTypes = append(productTypes, productType)
+	}
+	if err := s.updateProductTypesInSettings(ctx, productTypes); err != nil {
+		// Log error but don't fail the import
+		// The import was successful, just the settings update failed
+		return createdCount, fmt.Errorf("import completed but failed to update product types in settings: %w", err)
 	}
 
 	return createdCount, nil
