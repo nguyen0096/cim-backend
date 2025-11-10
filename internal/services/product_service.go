@@ -339,9 +339,26 @@ func (s *productService) ImportProductsFromCSV(ctx context.Context, csvReader io
 		supplierIDMap[supplierKey] = createdSupplier
 	}
 
+	// Batch check for existing products
+	productNames := make([]string, 0, len(productsMap))
+	for _, product := range productsMap {
+		productNames = append(productNames, product.Name)
+	}
+	existingProducts, err := s.productRepo.GetByNames(ctx, productNames)
+	if err != nil {
+		return 0, fmt.Errorf("failed to check for existing products: %w", err)
+	}
+
 	// Third pass: create all unique products and associate with suppliers
 	createdCount := 0
 	for productKey, product := range productsMap {
+		// Check if product already exists in database (case-insensitive lookup)
+		productKeyLower := strings.ToLower(product.Name)
+		if _, exists := existingProducts[productKeyLower]; exists {
+			// Product already exists, skip it
+			continue
+		}
+
 		unitLabel, ok := productUnitMap[productKey]
 		if !ok || strings.TrimSpace(unitLabel) == "" {
 			return 0, pkg.ErrValidation(fmt.Sprintf("unit is required for product '%s'", product.Name), nil)
@@ -581,9 +598,26 @@ func (s *productService) ImportProductsFromExcel(ctx context.Context, excelReade
 		supplierIDMap[supplierKey] = createdSupplier
 	}
 
+	// Batch check for existing products
+	productNames := make([]string, 0, len(productsMap))
+	for _, product := range productsMap {
+		productNames = append(productNames, product.Name)
+	}
+	existingProducts, err := s.productRepo.GetByNames(ctx, productNames)
+	if err != nil {
+		return 0, fmt.Errorf("failed to check for existing products: %w", err)
+	}
+
 	// Third pass: create all unique products and associate with suppliers
 	createdCount := 0
 	for productKey, product := range productsMap {
+		// Check if product already exists in database (case-insensitive lookup)
+		productKeyLower := strings.ToLower(product.Name)
+		if _, exists := existingProducts[productKeyLower]; exists {
+			// Product already exists, skip it
+			continue
+		}
+
 		unitLabel, ok := productUnitMap[productKey]
 		if !ok || strings.TrimSpace(unitLabel) == "" {
 			return 0, pkg.ErrValidation(fmt.Sprintf("unit is required for product '%s'", product.Name), nil)
