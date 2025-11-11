@@ -367,7 +367,7 @@ func (s *productService) ImportProductsFromCSV(ctx context.Context, csvReader io
 			}
 
 			if unitIdx != -1 && len(record) > unitIdx {
-				productUnitMap[productKey] = strings.TrimSpace(record[unitIdx])
+				productUnitMap[productKey] = strings.ToLower(strings.TrimSpace(record[unitIdx]))
 			}
 
 			// If supplier name is also provided, associate supplier with product
@@ -621,7 +621,7 @@ func (s *productService) ImportProductsFromExcel(ctx context.Context, excelReade
 
 			productUnit := ""
 			if unitIdx != -1 && len(row) > unitIdx {
-				productUnit = strings.TrimSpace(row[unitIdx])
+				productUnit = strings.ToLower(strings.TrimSpace(row[unitIdx]))
 			}
 
 			// Collect product type (case-insensitive, preserve original case)
