@@ -478,6 +478,11 @@ func (r *purchaseOrderRepository) UpdatePurchaseOrder(ctx context.Context, id ui
 			}
 		}
 
+		// Recalculate purchase order status based on all items
+		if err := po.UpdateStatus(); err != nil {
+			return fmt.Errorf("failed to update purchase order status: %w", err)
+		}
+
 		if err := tx.Save(po).Error; err != nil {
 			return fmt.Errorf("failed to save purchase order: %w", err)
 		}

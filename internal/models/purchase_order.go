@@ -82,6 +82,12 @@ func (po *PurchaseOrder) UpdateStatus() error {
 		po.Status = PurchaseOrderStatusPartiallyDelivered
 	}
 
+	// fully_delivered -> partially_delivered (when quantity increases and received < ordered)
+	if po.Status == PurchaseOrderStatusFullyDelivered &&
+		(hasAwaitingDeliveryItem || hasPartiallyDelieveredItem) {
+		po.Status = PurchaseOrderStatusPartiallyDelivered
+	}
+
 	// partially_delivered -> fully_delivered
 	if po.Status == PurchaseOrderStatusPartiallyDelivered &&
 		!hasAwaitingDeliveryItem && !hasPartiallyDelieveredItem {

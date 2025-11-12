@@ -37,6 +37,12 @@ func (poi *PurchaseOrderItem) CalculateTotalAmount() float64 {
 }
 
 func (poi *PurchaseOrderItem) UpdateStatus() {
+	// delivered -> partially_delivered (when quantity increases and received < quantity)
+	if poi.Status == PurchaseOrderItemStatusDelivered &&
+		poi.ReceivedQuantity < poi.Quantity {
+		poi.Status = PurchaseOrderItemStatusPartiallyDelivered
+	}
+
 	// awaiting_delivery -> partially_delivered
 	if poi.Status == PurchaseOrderItemStatusAwaitingDelivery &&
 		poi.ReceivedQuantity > 0 {

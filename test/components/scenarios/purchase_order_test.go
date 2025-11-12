@@ -587,10 +587,12 @@ func (suite *ComponentTestSuite) TestUpdatePurchaseOrder() {
 
 	testUnits := []models.Unit{
 		{
-			Base:       models.Base{ID: 2},
-			Name:       "Test Unit 2",
-			Symbol:     "unit",
-			BaseUnitID: pkg.Ptr(uint(1)),
+			Base:             models.Base{ID: 2},
+			Name:             "Test Unit 2",
+			Symbol:           "unit",
+			BaseUnitID:       pkg.Ptr(uint(1)),
+			ConversionFactor: 1,
+			UnitType:         "general",
 		},
 	}
 	err = db.WithContext(ctx).Create(&testUnits).Error
@@ -674,7 +676,7 @@ func (suite *ComponentTestSuite) TestUpdatePurchaseOrder() {
 							{
 								ProductID:        &testProducts[0].ID,
 								SupplierID:       &testSuppliers[0].ID,
-								UnitID:           pkg.Ptr(testProducts[0].UnitID),
+								UnitID:           pkg.Ptr(uint(1)),
 								Quantity:         testCase.orderedQuantity,
 								ReceivedQuantity: testCase.deliveredQuantity,
 								Status:           testCase.currentPOItemStatus,
@@ -691,7 +693,6 @@ func (suite *ComponentTestSuite) TestUpdatePurchaseOrder() {
 					unitPrice := float64(rand.Intn(900) + 100)
 					payload := map[string]interface{}{
 						"inventory_id":      testInventories[0].ID,
-						"purchase_order_id": purchaseOrderID,
 						"notes":             notes,
 						"items": []map[string]interface{}{
 							{
@@ -726,6 +727,8 @@ func (suite *ComponentTestSuite) TestUpdatePurchaseOrder() {
 					assert.Equal(t, uint(testProducts[0].ID), uint(firstItem["product_id"].(float64)))
 					assert.Equal(t, uint(testSuppliers[0].ID), uint(firstItem["supplier_id"].(float64)))
 					assert.Equal(t, expectedUnitID, uint(firstItem["unit_id"].(float64)))
+					assert.Equal(t, string(testCase.expectedPOStatus), purchaseOrderResp["status"])
+					assert.Equal(t, string(testCase.expectedPOItemStatus), firstItem["status"])
 				})
 			}
 		}
