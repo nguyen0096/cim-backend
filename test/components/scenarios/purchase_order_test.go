@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"math/rand"
 	"strings"
 	"testing"
 	"time"
@@ -230,6 +231,8 @@ func (suite *ComponentTestSuite) TestCreatePurchaseOrderWithDifferentUnits() {
 		items := purchaseOrderResp["items"].([]interface{})
 		assert.Equal(t, 40, int(items[0].(map[string]interface{})["quantity"].(float64)))
 		assert.Equal(t, uint(1), uint(items[0].(map[string]interface{})["unit_id"].(float64)))
+		// After conversion, unit_id is 1 (base unit), so the unit name should be the base unit's name
+		assert.Equal(t, "unit", items[0].(map[string]interface{})["unit"].(map[string]interface{})["name"])
 		assert.Equal(t, 5.0, items[0].(map[string]interface{})["unit_price"].(float64))
 	})
 
@@ -555,6 +558,174 @@ func (suite *ComponentTestSuite) TestReceivePurchaseOrder() {
 					err = suite.sharedTestContainer.DB.WithContext(ctx).First(&purchaseOrder, "id = ?", purchaseOrderID).Error
 					require.NoError(t, err)
 					assert.Equal(t, testCase.expectedPOStatus, purchaseOrder.Status)
+				})
+			}
+		}
+	})
+}
+
+func (suite *ComponentTestSuite) TestUpdatePurchaseOrder() {
+	t := suite.T()
+	ctx := pkg.WithUserEmail(context.Background(), "test@example.com")
+	db := suite.sharedTestContainer.DB
+	testSuppliers := []models.Supplier{
+		{
+			Base: models.Base{ID: 1},
+			Name: "Test Supplier 1",
+		},
+	}
+	err := db.WithContext(ctx).Create(&testSuppliers).Error
+	require.NoError(t, err, "Failed to create suppliers")
+
+	testProducts := []models.Product{
+		{
+			Base:   models.Base{ID: 1},
+			Name:   "Test Product 1",
+			UnitID: 1,
+		},
+	}
+
+	testUnits := []models.Unit{
+		{
+			Base:       models.Base{ID: 2},
+			Name:       "Test Unit 2",
+			Symbol:     "unit",
+			BaseUnitID: pkg.Ptr(uint(1)),
+		},
+	}
+	err = db.WithContext(ctx).Create(&testUnits).Error
+	require.NoError(t, err, "Failed to create units")
+
+	err = db.WithContext(ctx).Create(&testProducts).Error
+	require.NoError(t, err, "Failed to create products")
+
+	testInventories := []models.Inventory{
+		{
+			Base: models.Base{ID: 1},
+			Name: "Test Inventory 1",
+		},
+	}
+	err = db.WithContext(ctx).Create(&testInventories).Error
+	require.NoError(t, err, "Failed to create inventories")
+
+	currentId := uint(3000)
+
+	t.Run("should update purchase order", func(t *testing.T) {
+		roles := []models.UserRole{models.RoleAdmin, models.RoleAccountant}
+		testCases := []struct {
+			currentPOStatus      models.PurchaseOrderStatus
+			currentPOItemStatus  models.PurchaseOrderItemStatus
+			orderedQuantity      int
+			deliveredQuantity    int
+			updatedQuantity      int
+			expectedPOStatus     models.PurchaseOrderStatus
+			expectedPOItemStatus models.PurchaseOrderItemStatus
+		}{
+			{
+				currentPOStatus:      models.PurchaseOrderStatusOrderPlaced,
+				currentPOItemStatus:  models.PurchaseOrderItemStatusAwaitingDelivery,
+				orderedQuantity:      50,
+				deliveredQuantity:    0,
+				updatedQuantity:      100,
+				expectedPOStatus:     models.PurchaseOrderStatusOrderPlaced,
+				expectedPOItemStatus: models.PurchaseOrderItemStatusAwaitingDelivery,
+			},
+			{
+				currentPOStatus:      models.PurchaseOrderStatusPartiallyDelivered,
+				currentPOItemStatus:  models.PurchaseOrderItemStatusPartiallyDelivered,
+				orderedQuantity:      50,
+				deliveredQuantity:    20,
+				updatedQuantity:      100,
+				expectedPOStatus:     models.PurchaseOrderStatusPartiallyDelivered,
+				expectedPOItemStatus: models.PurchaseOrderItemStatusPartiallyDelivered,
+			},
+			{
+				currentPOStatus:      models.PurchaseOrderStatusFullyDelivered,
+				currentPOItemStatus:  models.PurchaseOrderItemStatusDelivered,
+				orderedQuantity:      50,
+				deliveredQuantity:    50,
+				updatedQuantity:      100,
+				expectedPOStatus:     models.PurchaseOrderStatusPartiallyDelivered,
+				expectedPOItemStatus: models.PurchaseOrderItemStatusPartiallyDelivered,
+			},
+			{
+				currentPOStatus:      models.PurchaseOrderStatusPartiallyDelivered,
+				currentPOItemStatus:  models.PurchaseOrderItemStatusPartiallyDelivered,
+				orderedQuantity:      50,
+				deliveredQuantity:    30,
+				updatedQuantity:      30,
+				expectedPOStatus:     models.PurchaseOrderStatusFullyDelivered,
+				expectedPOItemStatus: models.PurchaseOrderItemStatusDelivered,
+			},
+		}
+		for _, testCase := range testCases {
+			for _, role := range roles {
+				t.Run(fmt.Sprintf("When current status is %s and user has %s role", testCase.currentPOStatus, role), func(t *testing.T) {
+					currentId++
+					_, token, err := suite.CreateUniqueEmailAndToken(role)
+					require.NoError(t, err)
+
+					testPurchaseOrder := models.PurchaseOrder{
+						Base:        models.Base{ID: currentId},
+						OrderNumber: uuid.New().String(),
+						Status:      testCase.currentPOStatus,
+						InventoryID: &testInventories[0].ID,
+						Items: []*models.PurchaseOrderItem{
+							{
+								ProductID:        &testProducts[0].ID,
+								SupplierID:       &testSuppliers[0].ID,
+								UnitID:           pkg.Ptr(testProducts[0].UnitID),
+								Quantity:         testCase.orderedQuantity,
+								ReceivedQuantity: testCase.deliveredQuantity,
+								Status:           testCase.currentPOItemStatus,
+								UnitPrice:        0,
+							},
+						},
+					}
+
+					err = db.WithContext(ctx).Create(&testPurchaseOrder).Error
+					require.NoError(t, err, "Failed to create purchase order")
+					purchaseOrderID := testPurchaseOrder.ID
+
+					notes := uuid.New().String()
+					unitPrice := float64(rand.Intn(900) + 100)
+					payload := map[string]interface{}{
+						"inventory_id":      testInventories[0].ID,
+						"purchase_order_id": purchaseOrderID,
+						"notes":             notes,
+						"items": []map[string]interface{}{
+							{
+								"product_id":  testProducts[0].ID,
+								"supplier_id": testSuppliers[0].ID,
+								"unit_id":     testUnits[0].ID,
+								"quantity":    testCase.updatedQuantity,
+								"unit_price":  unitPrice,
+							},
+						},
+					}
+					urlPath := fmt.Sprintf("/api/v1/purchase-orders/%d", purchaseOrderID)
+					resp, err := helpers.MakeRequest(t, "PUT", suite.sharedTestContainer.BaseURL+urlPath, token, payload)
+					require.NoError(t, err)
+					defer resp.Body.Close()
+					assert.Equal(t, 200, resp.StatusCode)
+					var purchaseOrderResp map[string]interface{}
+					err = json.NewDecoder(resp.Body).Decode(&purchaseOrderResp)
+					require.NoError(t, err)
+					assert.Equal(t, notes, purchaseOrderResp["notes"])
+					items := purchaseOrderResp["items"].([]interface{})
+					assert.Equal(t, len(items), 1)
+					firstItem := items[0].(map[string]interface{})
+
+					// After conversion, unit_id is converted to base unit (1)
+					// Test Unit 2 has BaseUnitID: 1, so it's converted to base unit ID 1
+					// Since ConversionFactor defaults to 1, quantity and unit_price remain the same
+					expectedUnitID := uint(1) // Base unit ID
+
+					assert.Equal(t, unitPrice, firstItem["unit_price"].(float64))
+					assert.Equal(t, testCase.updatedQuantity, int(firstItem["quantity"].(float64)))
+					assert.Equal(t, uint(testProducts[0].ID), uint(firstItem["product_id"].(float64)))
+					assert.Equal(t, uint(testSuppliers[0].ID), uint(firstItem["supplier_id"].(float64)))
+					assert.Equal(t, expectedUnitID, uint(firstItem["unit_id"].(float64)))
 				})
 			}
 		}

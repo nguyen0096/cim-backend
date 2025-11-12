@@ -191,6 +191,7 @@ func SetupServer(
 	// Purchase Order routes
 	purchaseOrders := api.Group("/purchase-orders")
 	purchaseOrders.GET("", purchaseOrderHandler.ListPurchaseOrders)
+	purchaseOrders.GET("/:id", purchaseOrderHandler.GetPurchaseOrder)
 	purchaseOrders.POST("", purchaseOrderHandler.CreatePurchaseOrder)
 	purchaseOrders.PUT("/:id", purchaseOrderHandler.UpdatePurchaseOrder)
 	purchaseOrders.PUT("/:id/receive", purchaseOrderHandler.ReceiveInventory)

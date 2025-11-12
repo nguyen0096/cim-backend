@@ -170,6 +170,19 @@ func (h *PurchaseOrderHandler) UpdatePurchaseOrder(c echo.Context) error {
 	return c.JSON(http.StatusOK, po)
 }
 
+// GetPurchaseOrder godoc
+// @Summary Get purchase order by ID
+// @Description Retrieve a purchase order by its ID with all related items and relationships
+// @Tags purchase-orders
+// @Accept json
+// @Produce json
+// @Param id path int true "Purchase Order ID"
+// @Success 200 {object} models.PurchaseOrder "Successfully retrieved purchase order"
+// @Failure 400 {object} map[string]string "Invalid purchase order ID"
+// @Failure 404 {object} map[string]string "Purchase order not found"
+// @Failure 500 {object} map[string]string "Failed to get purchase order"
+// @Router /api/purchase-orders/{id} [get]
+// @Security BearerAuth
 func (h *PurchaseOrderHandler) GetPurchaseOrder(c echo.Context) error {
 	id, err := pkg.ExtractIDParam(c)
 	if err != nil {
@@ -178,7 +191,12 @@ func (h *PurchaseOrderHandler) GetPurchaseOrder(c echo.Context) error {
 
 	purchaseOrder, err := h.purchaseOrderService.GetPurchaseOrderByID(id)
 	if err != nil {
-		return fmt.Errorf("failed to get purchase order: %w", err)
+		// Check if error is already an AppError, return it directly
+		var appErr *pkg.AppError
+		if errors.As(err, &appErr) {
+			return err
+		}
+		return pkg.ErrInternal("Failed to get purchase order", err)
 	}
 
 	return c.JSON(http.StatusOK, purchaseOrder)

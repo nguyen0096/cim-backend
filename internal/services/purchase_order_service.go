@@ -252,6 +252,18 @@ func (s *purchaseOrderService) CreatePurchaseOrder(ctx context.Context, purchase
 		}).Error("Failed to create purchase order")
 		return err
 	}
+
+	// Reload purchase order with relationships
+	reloadedPO, err := s.purchaseOrderRepo.GetByID(purchaseOrder.ID)
+	if err != nil {
+		s.logger.WithFields(logrus.Fields{
+			"operation":    "CreatePurchaseOrder",
+			"order_number": purchaseOrder.OrderNumber,
+			"error":        err,
+		}).Error("Failed to reload purchase order")
+		return fmt.Errorf("failed to reload purchase order: %w", err)
+	}
+	*purchaseOrder = *reloadedPO
 	purchaseOrder.TotalAmount = purchaseOrder.CalculateTotalAmount()
 
 	s.logger.WithFields(logrus.Fields{

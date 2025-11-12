@@ -43,7 +43,7 @@ func (r *purchaseOrderRepository) Create(ctx context.Context, purchaseOrder *mod
 
 func (r *purchaseOrderRepository) GetByID(id uint) (*models.PurchaseOrder, error) {
 	var purchaseOrder models.PurchaseOrder
-	err := r.db.Preload("Items").Preload("Items.Product").Preload("Items.Supplier").Preload("Inventory").First(&purchaseOrder, "id = ?", id).Error
+	err := r.db.Preload("Items").Preload("Items.Product").Preload("Items.Supplier").Preload("Items.Unit").Preload("Inventory").First(&purchaseOrder, "id = ?", id).Error
 	if err != nil {
 		return nil, err
 	}
@@ -116,7 +116,7 @@ func (r *purchaseOrderRepository) List(ctx context.Context, params models.ListPa
 		baseQuery = baseQuery.Where("order_number ILIKE ? OR notes ILIKE ?", "%"+params.Search+"%", "%"+params.Search+"%")
 	}
 
-	baseQuery = baseQuery.Preload("Items").Preload("Items.Product").Preload("Items.Supplier").Preload("Items.Product.Unit")
+	baseQuery = baseQuery.Preload("Items").Preload("Items.Product").Preload("Items.Supplier").Preload("Items.Unit")
 
 	// Check if user has permission to view prices
 	if !pkg.HasPermission(ctx, "prices", "view") {
