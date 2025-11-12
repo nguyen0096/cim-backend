@@ -614,6 +614,14 @@ func (suite *ComponentTestSuite) TestUpdatePurchaseOrder() {
 			ConversionFactor: 1,
 			UnitType:         "general",
 		},
+		{
+			Base:             models.Base{ID: 3},
+			Name:             "Test Unit 3",
+			Symbol:           "unit",
+			BaseUnitID:       pkg.Ptr(uint(2)),
+			ConversionFactor: 10,
+			UnitType:         "general",
+		},
 	}
 	err = db.WithContext(ctx).Create(&testUnits).Error
 	require.NoError(t, err, "Failed to create units")
@@ -777,13 +785,13 @@ func (suite *ComponentTestSuite) TestUpdatePurchaseOrder() {
 			InventoryID: &testInventories[0].ID,
 			Items: []*models.PurchaseOrderItem{
 				{
-					ProductID:  &testProducts[0].ID,
-					SupplierID: &testSuppliers[0].ID,
-					UnitID:     pkg.Ptr(uint(1)),
-					Quantity:   50,
+					ProductID:        &testProducts[0].ID,
+					SupplierID:       &testSuppliers[0].ID,
+					UnitID:           pkg.Ptr(uint(1)),
+					Quantity:         50,
 					ReceivedQuantity: 0,
-					Status:     models.PurchaseOrderItemStatusAwaitingDelivery,
-					UnitPrice:  0,
+					Status:           models.PurchaseOrderItemStatusAwaitingDelivery,
+					UnitPrice:        0,
 				},
 			},
 		}
@@ -834,6 +842,89 @@ func (suite *ComponentTestSuite) TestUpdatePurchaseOrder() {
 		assert.Equal(t, 100, int(items[0].Quantity))
 		assert.Equal(t, 0, int(items[0].ReceivedQuantity))
 		assert.Equal(t, models.PurchaseOrderItemStatusAwaitingDelivery, items[0].Status)
+	})
+
+	t.Run("should update total amount when derived unit is updated", func(t *testing.T) {
+		currentId++
+		_, token, err := suite.CreateUniqueEmailAndToken(models.RoleAdmin)
+		require.NoError(t, err)
+
+		testPurchaseOrder := models.PurchaseOrder{
+			Base:        models.Base{ID: currentId},
+			OrderNumber: uuid.New().String(),
+			Status:      models.PurchaseOrderStatusOrderPlaced,
+			InventoryID: &testInventories[0].ID,
+			Items: []*models.PurchaseOrderItem{
+				{
+					ProductID:        &testProducts[0].ID,
+					SupplierID:       &testSuppliers[0].ID,
+					UnitID:           pkg.Ptr(uint(1)),
+					Quantity:         50,
+					ReceivedQuantity: 0,
+					Status:           models.PurchaseOrderItemStatusAwaitingDelivery,
+					UnitPrice:        0,
+				},
+			},
+		}
+
+		err = db.WithContext(ctx).Create(&testPurchaseOrder).Error
+		require.NoError(t, err, "Failed to create purchase order")
+		purchaseOrderID := testPurchaseOrder.ID
+
+		urlPath := fmt.Sprintf("/api/v1/purchase-orders/%d", purchaseOrderID)
+		// Use derived unit (testUnits[1] has conversion factor 10, base unit ID 1)
+		derivedUnitID := testUnits[1].ID
+		newQuantity := 10
+		derivedUnitPrice := 100.0
+		// Expected converted values: quantity = 10 * 10 = 100, unit_price = 100 / 10 = 10, base unit ID = 1
+		expectedBaseQuantity := 100 // float64(newQuantity) * testUnits[1].ConversionFactor
+		expectedBaseUnitPrice := 10 // 100 / 10 = 10
+		expectedBaseUnitID := uint(1)
+		expectedTotalAmount := float64(expectedBaseQuantity * expectedBaseUnitPrice)
+
+		payload := map[string]interface{}{
+			"inventory_id": testInventories[0].ID,
+			"notes":        uuid.New().String(),
+			"items": []map[string]interface{}{
+				{
+					"product_id":  testProducts[0].ID,
+					"supplier_id": testSuppliers[0].ID,
+					"unit_id":     derivedUnitID,
+					"quantity":    newQuantity,
+					"unit_price":  derivedUnitPrice,
+				},
+			},
+		}
+		resp, err := helpers.MakeRequest(t, "PUT", suite.sharedTestContainer.BaseURL+urlPath, token, payload)
+		require.NoError(t, err)
+		defer resp.Body.Close()
+		assert.Equal(t, 200, resp.StatusCode)
+
+		// Verify Response Body - should show converted base unit values
+		var purchaseOrderResp map[string]interface{}
+		err = json.NewDecoder(resp.Body).Decode(&purchaseOrderResp)
+		require.NoError(t, err)
+		assert.Equal(t, 200, resp.StatusCode)
+		assert.Equal(t, expectedTotalAmount, purchaseOrderResp["total_amount"])
+		respItems := purchaseOrderResp["items"].([]interface{})
+		firstItem := respItems[0].(map[string]interface{})
+		assert.Equal(t, float64(expectedBaseUnitPrice), firstItem["unit_price"])
+		assert.Equal(t, float64(expectedBaseQuantity), firstItem["quantity"].(float64))
+		assert.Equal(t, expectedBaseUnitID, uint(firstItem["unit_id"].(float64)))
+		assert.Equal(t, string(models.PurchaseOrderStatusOrderPlaced), purchaseOrderResp["status"].(string))
+
+		// Verify Database - should store base unit values
+		var purchaseOrder models.PurchaseOrder
+		err = suite.sharedTestContainer.DB.WithContext(ctx).Preload("Items").First(&purchaseOrder, "id = ?", purchaseOrderID).Error
+		require.NoError(t, err)
+		assert.Equal(t, expectedTotalAmount, purchaseOrder.CalculateTotalAmount())
+		items := purchaseOrder.Items
+		assert.Equal(t, 1, len(items))
+		assert.Equal(t, uint(testProducts[0].ID), *items[0].ProductID)
+		assert.Equal(t, expectedBaseQuantity, items[0].Quantity)
+		assert.Equal(t, 0, int(items[0].ReceivedQuantity))
+		assert.Equal(t, models.PurchaseOrderItemStatusAwaitingDelivery, items[0].Status)
+		assert.Equal(t, expectedBaseUnitID, *items[0].UnitID)
 	})
 
 	t.Run("should not remove purchase order items if received quantity is not 0", func(t *testing.T) {

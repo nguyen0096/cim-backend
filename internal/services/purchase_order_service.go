@@ -92,7 +92,7 @@ func NewPurchaseOrderService(
 
 // getBaseUnitID returns the base unit ID for a given unit
 // If the unit is a base unit (BaseUnitID is nil), returns the unit ID itself
-// If the unit is a derived unit, returns its BaseUnitID
+// If the unit is a derived unit, recursively drills down to the ultimate base unit
 func (s *purchaseOrderService) getBaseUnitID(ctx context.Context, unitID uint) (uint, error) {
 	unit, err := s.unitRepo.GetByID(ctx, unitID)
 	if err != nil {
@@ -104,14 +104,14 @@ func (s *purchaseOrderService) getBaseUnitID(ctx context.Context, unitID uint) (
 		return unitID, nil
 	}
 
-	// If unit is a derived unit, return its BaseUnitID
-	return *unit.BaseUnitID, nil
+	// If unit is a derived unit, recursively drill down to the ultimate base unit
+	return s.getBaseUnitID(ctx, *unit.BaseUnitID)
 }
 
 // convertQuantityToBaseUnit converts a quantity from the given unit to its base unit
 // Returns the converted quantity, converted unit price, and the base unit ID
 // If the unit is a base unit (BaseUnitID is nil), returns the quantity and price as-is and the unit ID itself
-// If the unit is a derived unit, multiplies quantity by conversion_factor, divides price by conversion_factor, and returns the base unit ID
+// If the unit is a derived unit, recursively drills down to the ultimate base unit, applying conversion factors along the way
 func (s *purchaseOrderService) convertQuantityToBaseUnit(ctx context.Context, quantity int, unitPrice float64, unitID uint) (int, float64, uint, error) {
 	unit, err := s.unitRepo.GetByID(ctx, unitID)
 	if err != nil {
@@ -123,10 +123,10 @@ func (s *purchaseOrderService) convertQuantityToBaseUnit(ctx context.Context, qu
 		return quantity, unitPrice, unitID, nil
 	}
 
-	// If unit is a derived unit, convert to base unit
+	// If unit is a derived unit, convert to its base unit and recursively drill down
 	baseQuantity := float64(quantity) * unit.ConversionFactor
 	baseUnitPrice := unitPrice / unit.ConversionFactor
-	return int(baseQuantity), baseUnitPrice, *unit.BaseUnitID, nil
+	return s.convertQuantityToBaseUnit(ctx, int(baseQuantity), baseUnitPrice, *unit.BaseUnitID)
 }
 
 // generatePurchaseOrderNumber generates a unique purchase order number
