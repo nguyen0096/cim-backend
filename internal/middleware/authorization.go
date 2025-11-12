@@ -173,6 +173,12 @@ var customRouteMappings = []RouteMapping{
 		Resource:    "inventory-submissions",
 		Action:      "",
 	},
+	{
+		Method:      "PUT",
+		PathPattern: "/purchase-orders/*/receive",
+		Resource:    "purchase-orders",
+		Action:      "confirm",
+	},
 }
 
 // matchPathPattern checks if a path matches a pattern (supports * as wildcard for path segments)

@@ -32,6 +32,7 @@ services:
   pgweb:
     image: sosedoff/pgweb:latest
     container_name: cim_pgweb
+    restart: always
     environment:
       DATABASE_URL: postgres://postgres:password@postgres:5432/cim_db?sslmode=disable
     ports:
