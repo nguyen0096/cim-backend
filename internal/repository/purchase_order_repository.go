@@ -420,13 +420,18 @@ func (r *purchaseOrderRepository) UpdatePurchaseOrder(ctx context.Context, id ui
 					po.Status = models.PurchaseOrderStatusPartiallyDelivered
 				}
 
-				// Only update item if new quantity and unit price are different
-				if existingItem.Quantity == itemReq.Quantity && existingItem.UnitPrice == itemReq.UnitPrice {
+				// Only update item if new quantity, unit price, or unit ID are different
+				unitIDMatch := (existingItem.UnitID == nil && itemReq.UnitID == nil) ||
+					(existingItem.UnitID != nil && itemReq.UnitID != nil && *existingItem.UnitID == *itemReq.UnitID)
+				if existingItem.Quantity == itemReq.Quantity && existingItem.UnitPrice == itemReq.UnitPrice && unitIDMatch {
 					continue
 				}
 
 				existingItem.Quantity = itemReq.Quantity
 				existingItem.UnitPrice = itemReq.UnitPrice
+				if itemReq.UnitID != nil {
+					existingItem.UnitID = itemReq.UnitID
+				}
 				existingItem.UpdateStatus()
 				upsertItems = append(upsertItems, existingItem)
 			} else {
@@ -437,6 +442,7 @@ func (r *purchaseOrderRepository) UpdatePurchaseOrder(ctx context.Context, id ui
 					PurchaseOrderID:  &id,
 					ProductID:        itemReq.ProductID,
 					SupplierID:       itemReq.SupplierID,
+					UnitID:           itemReq.UnitID,
 					UnitPrice:        itemReq.UnitPrice,
 					Quantity:         itemReq.Quantity,
 					ReceivedQuantity: 0, // Default to 0

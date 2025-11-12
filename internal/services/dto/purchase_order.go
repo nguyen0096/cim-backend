@@ -45,6 +45,7 @@ type UpdatePurchaseOrderRequest struct {
 type UpdatePurchaseOrderItemRequest struct {
 	SupplierID *uint   `json:"supplier_id" validate:"required"`
 	ProductID  *uint   `json:"product_id" validate:"required"`
+	UnitID     *uint   `json:"unit_id" validate:"required"`
 	Quantity   int     `json:"quantity" validate:"required,min=1"`
 	UnitPrice  float64 `json:"unit_price" validate:"min=0"`
 }

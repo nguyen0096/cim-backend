@@ -136,6 +136,83 @@ func (suite *ComponentTestSuite) TestCreatePurchaseOrder() {
 	})
 }
 
+func (suite *ComponentTestSuite) TestCreatePurchaseOrderWithDifferentUnits() {
+	t := suite.T()
+	ctx := pkg.WithUserEmail(context.Background(), "test@example.com")
+	db := suite.sharedTestContainer.DB
+
+	testUnits := []models.Unit{
+		{
+			BaseUnitID:       pkg.Ptr(uint(1)),
+			Name:             "Test Unit 2",
+			ConversionFactor: 20,
+			UnitType:         "general",
+		},
+	}
+
+	err := db.WithContext(ctx).Create(&testUnits).Error
+	require.NoError(t, err, "Failed to create units")
+
+	testSuppliers := []models.Supplier{
+		{
+			Base: models.Base{ID: 1},
+			Name: "Test Supplier 1",
+		},
+	}
+	err = db.WithContext(ctx).Create(&testSuppliers).Error
+	require.NoError(t, err, "Failed to create suppliers")
+
+	testProducts := []models.Product{
+		{
+			Base:   models.Base{ID: 1},
+			Name:   "Test Product 1",
+			UnitID: 1,
+		},
+	}
+	err = db.WithContext(ctx).Create(&testProducts).Error
+	require.NoError(t, err, "Failed to create products")
+
+	testInventories := []models.Inventory{
+		{
+			Base: models.Base{ID: 1},
+			Name: "Test Inventory 1",
+		},
+	}
+	err = db.WithContext(ctx).Create(&testInventories).Error
+	require.NoError(t, err, "Failed to create inventories")
+
+	purchaseOrderData := map[string]interface{}{
+		"inventory_id": 1,
+		"items": []map[string]interface{}{
+			{
+				"product_id":  1,
+				"supplier_id": 1,
+				"quantity":    2,
+				"unit_id":     2,
+				"unit_price":  100,
+			},
+		},
+	}
+	t.Run("should create purchase order with different units and same base unit", func(t *testing.T) {
+		_, token, err := suite.CreateUniqueEmailAndToken(models.RoleAdmin)
+		require.NoError(t, err)
+		resp, err := helpers.MakeRequest(t, "POST", suite.sharedTestContainer.BaseURL+"/api/v1/purchase-orders", token, purchaseOrderData)
+		require.NoError(t, err)
+		defer resp.Body.Close()
+		assert.Equal(t, 201, resp.StatusCode)
+
+		var purchaseOrderResp map[string]interface{}
+		err = json.NewDecoder(resp.Body).Decode(&purchaseOrderResp)
+		require.NoError(t, err)
+		assert.Equal(t, 200, int(purchaseOrderResp["total_amount"].(float64)))
+		assert.Equal(t, 1, len(purchaseOrderResp["items"].([]interface{})))
+		items := purchaseOrderResp["items"].([]interface{})
+		assert.Equal(t, 40, int(items[0].(map[string]interface{})["quantity"].(float64)))
+		assert.Equal(t, uint(1), uint(items[0].(map[string]interface{})["unit_id"].(float64)))
+		assert.Equal(t, 5.0, items[0].(map[string]interface{})["unit_price"].(float64))
+	})
+}
+
 func (suite *ComponentTestSuite) TestCancelPurchaseOrder() {
 	t := suite.T()
 	ctx := pkg.WithUserEmail(context.Background(), "test@example.com")

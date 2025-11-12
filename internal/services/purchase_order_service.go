@@ -38,6 +38,7 @@ type PurchaseOrderService interface {
 type purchaseOrderService struct {
 	purchaseOrderRepo          repository.PurchaseOrderRepository
 	paymentReceiptFormRepo     repository.PaymentReceiptFormRepository
+	unitRepo                   repository.UnitRepository
 	inventoryService           InventoryService
 	excelService               ExcelService
 	settingsService            SettingsService
@@ -55,6 +56,7 @@ type revenueExpenseRequest struct {
 func NewPurchaseOrderService(
 	purchaseOrderRepo repository.PurchaseOrderRepository,
 	paymentReceiptFormRepo repository.PaymentReceiptFormRepository,
+	unitRepo repository.UnitRepository,
 	inventoryService InventoryService,
 	excelService ExcelService,
 	settingsService SettingsService,
@@ -68,6 +70,7 @@ func NewPurchaseOrderService(
 	service := &purchaseOrderService{
 		purchaseOrderRepo:          purchaseOrderRepo,
 		paymentReceiptFormRepo:     paymentReceiptFormRepo,
+		unitRepo:                   unitRepo,
 		inventoryService:           inventoryService,
 		excelService:               excelService,
 		settingsService:            settingsService,
@@ -82,6 +85,27 @@ func NewPurchaseOrderService(
 	logger.Info("Purchase order service initialized with revenue expense worker")
 
 	return service
+}
+
+// convertQuantityToBaseUnit converts a quantity from the given unit to its base unit
+// Returns the converted quantity, converted unit price, and the base unit ID
+// If the unit is a base unit (BaseUnitID is nil), returns the quantity and price as-is and the unit ID itself
+// If the unit is a derived unit, multiplies quantity by conversion_factor, divides price by conversion_factor, and returns the base unit ID
+func (s *purchaseOrderService) convertQuantityToBaseUnit(ctx context.Context, quantity int, unitPrice float64, unitID uint) (int, float64, uint, error) {
+	unit, err := s.unitRepo.GetByID(ctx, unitID)
+	if err != nil {
+		return 0, 0, 0, fmt.Errorf("failed to get unit %d: %w", unitID, err)
+	}
+
+	// If unit is a base unit (no BaseUnitID), return quantity and price as-is and the unit ID itself
+	if unit.BaseUnitID == nil {
+		return quantity, unitPrice, unitID, nil
+	}
+
+	// If unit is a derived unit, convert to base unit
+	baseQuantity := float64(quantity) * unit.ConversionFactor
+	baseUnitPrice := unitPrice / unit.ConversionFactor
+	return int(baseQuantity), baseUnitPrice, *unit.BaseUnitID, nil
 }
 
 // generatePurchaseOrderNumber generates a unique purchase order number
@@ -131,6 +155,24 @@ func (s *purchaseOrderService) CreatePurchaseOrder(ctx context.Context, purchase
 
 	// Set status to order_placed for new purchase orders
 	purchaseOrder.Status = models.PurchaseOrderStatusOrderPlaced
+
+	// Convert quantities to base unit for each item
+	for _, item := range purchaseOrder.Items {
+		if item != nil && item.UnitID != nil {
+			baseQuantity, baseUnitPrice, baseUnitID, err := s.convertQuantityToBaseUnit(ctx, item.Quantity, item.UnitPrice, *item.UnitID)
+			if err != nil {
+				s.logger.WithFields(logrus.Fields{
+					"operation": "CreatePurchaseOrder",
+					"unit_id":   *item.UnitID,
+					"error":     err,
+				}).Error("Failed to convert quantity to base unit")
+				return fmt.Errorf("failed to convert quantity to base unit for unit %d: %w", *item.UnitID, err)
+			}
+			item.Quantity = baseQuantity
+			item.UnitPrice = baseUnitPrice
+			item.UnitID = &baseUnitID
+		}
+	}
 
 	err := s.purchaseOrderRepo.Create(ctx, purchaseOrder)
 	if err != nil {
@@ -903,6 +945,24 @@ func (s *purchaseOrderService) UpdatePurchaseOrder(ctx context.Context, id uint,
 		"operation":         "UpdatePurchaseOrder",
 		"purchase_order_id": id,
 	}).Info("Updating purchase order")
+
+	// Convert quantities to base unit for each item
+	for i := range req.Items {
+		if req.Items[i].UnitID != nil {
+			baseQuantity, baseUnitPrice, baseUnitID, err := s.convertQuantityToBaseUnit(ctx, req.Items[i].Quantity, req.Items[i].UnitPrice, *req.Items[i].UnitID)
+			if err != nil {
+				s.logger.WithFields(logrus.Fields{
+					"operation": "UpdatePurchaseOrder",
+					"unit_id":   *req.Items[i].UnitID,
+					"error":     err,
+				}).Error("Failed to convert quantity to base unit")
+				return nil, fmt.Errorf("failed to convert quantity to base unit for unit %d: %w", *req.Items[i].UnitID, err)
+			}
+			req.Items[i].Quantity = baseQuantity
+			req.Items[i].UnitPrice = baseUnitPrice
+			req.Items[i].UnitID = &baseUnitID
+		}
+	}
 
 	po, err := s.purchaseOrderRepo.UpdatePurchaseOrder(ctx, id, req)
 	if err != nil {

@@ -18,6 +18,8 @@ type PurchaseOrderItem struct {
 	Product          *Product                `json:"product,omitempty" gorm:"foreignKey:ProductID"`
 	SupplierID       *uint                   `json:"supplier_id" gorm:"not null;uniqueIndex:idx_product_supplier_po" validate:"required"`
 	Supplier         *Supplier               `json:"supplier,omitempty" gorm:"foreignKey:SupplierID"`
+	UnitID           *uint                   `json:"unit_id" gorm:"not null" validate:"required"`
+	Unit             *Unit                   `json:"unit,omitempty" gorm:"foreignKey:UnitID"`
 	UnitPrice        float64                 `json:"unit_price" gorm:"type:decimal(13,2)" validate:"min=0"`
 	Quantity         int                     `json:"quantity" gorm:"not null" validate:"required,min=1"`
 	ReceivedQuantity int                     `json:"received_quantity" gorm:"default:0"`
