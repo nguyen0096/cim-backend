@@ -16,10 +16,10 @@ type UnitRepository interface {
 	Update(ctx context.Context, unit *models.Unit) error
 	Delete(ctx context.Context, id uint) error
 	Restore(ctx context.Context, id uint) error
-	List(ctx context.Context, limit, offset int, sortBy, sortOrder, unitType string) ([]models.Unit, error)
-	Search(ctx context.Context, query string, limit, offset int, sortBy, sortOrder, unitType string) ([]models.Unit, error)
-	Count(ctx context.Context, unitType string) (int64, error)
-	CountSearch(ctx context.Context, query, unitType string) (int64, error)
+	List(ctx context.Context, limit, offset int, sortBy, sortOrder, unitType string, baseOnly bool) ([]models.Unit, error)
+	Search(ctx context.Context, query string, limit, offset int, sortBy, sortOrder, unitType string, baseOnly bool) ([]models.Unit, error)
+	Count(ctx context.Context, unitType string, baseOnly bool) (int64, error)
+	CountSearch(ctx context.Context, query, unitType string, baseOnly bool) (int64, error)
 }
 
 type unitRepository struct {
@@ -92,7 +92,7 @@ func (r *unitRepository) Restore(ctx context.Context, id uint) error {
 	return nil
 }
 
-func (r *unitRepository) List(ctx context.Context, limit, offset int, sortBy, sortOrder, unitType string) ([]models.Unit, error) {
+func (r *unitRepository) List(ctx context.Context, limit, offset int, sortBy, sortOrder, unitType string, baseOnly bool) ([]models.Unit, error) {
 	var units []models.Unit
 	query := r.db.WithContext(ctx).
 		Preload("BaseUnit").
@@ -100,6 +100,10 @@ func (r *unitRepository) List(ctx context.Context, limit, offset int, sortBy, so
 
 	if unitType != "" {
 		query = query.Where("unit_type = ?", unitType)
+	}
+
+	if baseOnly {
+		query = query.Where("base_unit_id IS NULL")
 	}
 
 	if sortBy != "" {
@@ -117,7 +121,7 @@ func (r *unitRepository) List(ctx context.Context, limit, offset int, sortBy, so
 	return units, nil
 }
 
-func (r *unitRepository) Search(ctx context.Context, queryText string, limit, offset int, sortBy, sortOrder, unitType string) ([]models.Unit, error) {
+func (r *unitRepository) Search(ctx context.Context, queryText string, limit, offset int, sortBy, sortOrder, unitType string, baseOnly bool) ([]models.Unit, error) {
 	var units []models.Unit
 	query := r.db.WithContext(ctx).
 		Preload("BaseUnit").
@@ -126,6 +130,10 @@ func (r *unitRepository) Search(ctx context.Context, queryText string, limit, of
 
 	if unitType != "" {
 		query = query.Where("unit_type = ?", unitType)
+	}
+
+	if baseOnly {
+		query = query.Where("base_unit_id IS NULL")
 	}
 
 	if sortBy != "" {
@@ -143,11 +151,14 @@ func (r *unitRepository) Search(ctx context.Context, queryText string, limit, of
 	return units, nil
 }
 
-func (r *unitRepository) Count(ctx context.Context, unitType string) (int64, error) {
+func (r *unitRepository) Count(ctx context.Context, unitType string, baseOnly bool) (int64, error) {
 	var count int64
 	query := r.db.WithContext(ctx).Model(&models.Unit{})
 	if unitType != "" {
 		query = query.Where("unit_type = ?", unitType)
+	}
+	if baseOnly {
+		query = query.Where("base_unit_id IS NULL")
 	}
 	if err := query.Count(&count).Error; err != nil {
 		return 0, fmt.Errorf("failed to count units: %w", err)
@@ -155,12 +166,15 @@ func (r *unitRepository) Count(ctx context.Context, unitType string) (int64, err
 	return count, nil
 }
 
-func (r *unitRepository) CountSearch(ctx context.Context, queryText, unitType string) (int64, error) {
+func (r *unitRepository) CountSearch(ctx context.Context, queryText, unitType string, baseOnly bool) (int64, error) {
 	var count int64
 	query := r.db.WithContext(ctx).Model(&models.Unit{}).
 		Where("name ILIKE ? OR symbol ILIKE ?", "%"+queryText+"%", "%"+queryText+"%")
 	if unitType != "" {
 		query = query.Where("unit_type = ?", unitType)
+	}
+	if baseOnly {
+		query = query.Where("base_unit_id IS NULL")
 	}
 	if err := query.Count(&count).Error; err != nil {
 		return 0, fmt.Errorf("failed to count search units: %w", err)

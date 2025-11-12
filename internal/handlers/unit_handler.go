@@ -31,6 +31,7 @@ type UnitListRequest struct {
 	Order    string `query:"order"`
 	UnitType string `query:"unit_type"`
 	Query    string `query:"q"`
+	BaseOnly bool   `query:"base_only"`
 }
 
 func (r *UnitListRequest) setDefaults() {
@@ -60,6 +61,7 @@ func (r *UnitListRequest) setDefaults() {
 // @Param order query string false "Sort order (asc/desc)" default("desc")
 // @Param unit_type query string false "Filter by unit type (e.g., mass, volume)"
 // @Param q query string false "Search units by name or symbol"
+// @Param base_only query bool false "Filter to show only base units" default(false)
 // @Success 200 {object} map[string]interface{}
 // @Failure 400 {object} map[string]string
 // @Failure 500 {object} map[string]string
@@ -81,20 +83,20 @@ func (h *UnitHandler) ListUnits(c echo.Context) error {
 	)
 
 	if strings.TrimSpace(request.Query) != "" {
-		units, err = h.unitService.SearchUnits(c.Request().Context(), request.Query, request.Limit, offset, request.Sort, request.Order, request.UnitType)
+		units, err = h.unitService.SearchUnits(c.Request().Context(), request.Query, request.Limit, offset, request.Sort, request.Order, request.UnitType, request.BaseOnly)
 		if err != nil {
 			return err
 		}
-		total, err = h.unitService.CountSearchUnits(c.Request().Context(), request.Query, request.UnitType)
+		total, err = h.unitService.CountSearchUnits(c.Request().Context(), request.Query, request.UnitType, request.BaseOnly)
 		if err != nil {
 			return err
 		}
 	} else {
-		units, err = h.unitService.ListUnits(c.Request().Context(), request.Limit, offset, request.Sort, request.Order, request.UnitType)
+		units, err = h.unitService.ListUnits(c.Request().Context(), request.Limit, offset, request.Sort, request.Order, request.UnitType, request.BaseOnly)
 		if err != nil {
 			return err
 		}
-		total, err = h.unitService.CountUnits(c.Request().Context(), request.UnitType)
+		total, err = h.unitService.CountUnits(c.Request().Context(), request.UnitType, request.BaseOnly)
 		if err != nil {
 			return err
 		}

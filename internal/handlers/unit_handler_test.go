@@ -41,25 +41,25 @@ func (m *mockUnitService) DeleteUnit(ctx context.Context, id uint) error {
 	return args.Error(0)
 }
 
-func (m *mockUnitService) ListUnits(ctx context.Context, limit, offset int, sortBy, sortOrder, unitType string) ([]models.Unit, error) {
-	args := m.Called(ctx, limit, offset, sortBy, sortOrder, unitType)
+func (m *mockUnitService) ListUnits(ctx context.Context, limit, offset int, sortBy, sortOrder, unitType string, baseOnly bool) ([]models.Unit, error) {
+	args := m.Called(ctx, limit, offset, sortBy, sortOrder, unitType, baseOnly)
 	units, _ := args.Get(0).([]models.Unit)
 	return units, args.Error(1)
 }
 
-func (m *mockUnitService) SearchUnits(ctx context.Context, query string, limit, offset int, sortBy, sortOrder, unitType string) ([]models.Unit, error) {
-	args := m.Called(ctx, query, limit, offset, sortBy, sortOrder, unitType)
+func (m *mockUnitService) SearchUnits(ctx context.Context, query string, limit, offset int, sortBy, sortOrder, unitType string, baseOnly bool) ([]models.Unit, error) {
+	args := m.Called(ctx, query, limit, offset, sortBy, sortOrder, unitType, baseOnly)
 	units, _ := args.Get(0).([]models.Unit)
 	return units, args.Error(1)
 }
 
-func (m *mockUnitService) CountUnits(ctx context.Context, unitType string) (int64, error) {
-	args := m.Called(ctx, unitType)
+func (m *mockUnitService) CountUnits(ctx context.Context, unitType string, baseOnly bool) (int64, error) {
+	args := m.Called(ctx, unitType, baseOnly)
 	return args.Get(0).(int64), args.Error(1)
 }
 
-func (m *mockUnitService) CountSearchUnits(ctx context.Context, query string, unitType string) (int64, error) {
-	args := m.Called(ctx, query, unitType)
+func (m *mockUnitService) CountSearchUnits(ctx context.Context, query string, unitType string, baseOnly bool) (int64, error) {
+	args := m.Called(ctx, query, unitType, baseOnly)
 	return args.Get(0).(int64), args.Error(1)
 }
 
@@ -84,8 +84,8 @@ func TestUnitHandler_ListUnits(t *testing.T) {
 		},
 	}
 
-	mockService.On("ListUnits", mock.Anything, 10, 10, "name", "asc", "").Return(mockUnits, nil)
-	mockService.On("CountUnits", mock.Anything, "").Return(int64(1), nil)
+	mockService.On("ListUnits", mock.Anything, 10, 10, "name", "asc", "", false).Return(mockUnits, nil)
+	mockService.On("CountUnits", mock.Anything, "", false).Return(int64(1), nil)
 
 	err := handler.ListUnits(c)
 	assert.NoError(t, err)
@@ -114,8 +114,8 @@ func TestUnitHandler_ListUnits_WithSearch(t *testing.T) {
 		},
 	}
 
-	mockService.On("SearchUnits", mock.Anything, "kg", 10, 0, "created_at", "desc", "").Return(mockUnits, nil)
-	mockService.On("CountSearchUnits", mock.Anything, "kg", "").Return(int64(1), nil)
+	mockService.On("SearchUnits", mock.Anything, "kg", 10, 0, "created_at", "desc", "", false).Return(mockUnits, nil)
+	mockService.On("CountSearchUnits", mock.Anything, "kg", "", false).Return(int64(1), nil)
 
 	err := handler.ListUnits(c)
 	assert.NoError(t, err)

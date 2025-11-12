@@ -17,10 +17,10 @@ type UnitService interface {
 	GetUnitByID(ctx context.Context, id uint) (*models.Unit, error)
 	UpdateUnit(ctx context.Context, unit *models.Unit) error
 	DeleteUnit(ctx context.Context, id uint) error
-	ListUnits(ctx context.Context, limit, offset int, sortBy, sortOrder, unitType string) ([]models.Unit, error)
-	SearchUnits(ctx context.Context, query string, limit, offset int, sortBy, sortOrder, unitType string) ([]models.Unit, error)
-	CountUnits(ctx context.Context, unitType string) (int64, error)
-	CountSearchUnits(ctx context.Context, query string, unitType string) (int64, error)
+	ListUnits(ctx context.Context, limit, offset int, sortBy, sortOrder, unitType string, baseOnly bool) ([]models.Unit, error)
+	SearchUnits(ctx context.Context, query string, limit, offset int, sortBy, sortOrder, unitType string, baseOnly bool) ([]models.Unit, error)
+	CountUnits(ctx context.Context, unitType string, baseOnly bool) (int64, error)
+	CountSearchUnits(ctx context.Context, query string, unitType string, baseOnly bool) (int64, error)
 }
 
 type unitService struct {
@@ -114,32 +114,32 @@ func (s *unitService) DeleteUnit(ctx context.Context, id uint) error {
 	return nil
 }
 
-func (s *unitService) ListUnits(ctx context.Context, limit, offset int, sortBy, sortOrder, unitType string) ([]models.Unit, error) {
-	units, err := s.unitRepo.List(ctx, limit, offset, sortBy, sortOrder, unitType)
+func (s *unitService) ListUnits(ctx context.Context, limit, offset int, sortBy, sortOrder, unitType string, baseOnly bool) ([]models.Unit, error) {
+	units, err := s.unitRepo.List(ctx, limit, offset, sortBy, sortOrder, unitType, baseOnly)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list units: %w", err)
 	}
 	return units, nil
 }
 
-func (s *unitService) SearchUnits(ctx context.Context, query string, limit, offset int, sortBy, sortOrder, unitType string) ([]models.Unit, error) {
-	units, err := s.unitRepo.Search(ctx, query, limit, offset, sortBy, sortOrder, unitType)
+func (s *unitService) SearchUnits(ctx context.Context, query string, limit, offset int, sortBy, sortOrder, unitType string, baseOnly bool) ([]models.Unit, error) {
+	units, err := s.unitRepo.Search(ctx, query, limit, offset, sortBy, sortOrder, unitType, baseOnly)
 	if err != nil {
 		return nil, fmt.Errorf("failed to search units: %w", err)
 	}
 	return units, nil
 }
 
-func (s *unitService) CountUnits(ctx context.Context, unitType string) (int64, error) {
-	count, err := s.unitRepo.Count(ctx, unitType)
+func (s *unitService) CountUnits(ctx context.Context, unitType string, baseOnly bool) (int64, error) {
+	count, err := s.unitRepo.Count(ctx, unitType, baseOnly)
 	if err != nil {
 		return 0, fmt.Errorf("failed to count units: %w", err)
 	}
 	return count, nil
 }
 
-func (s *unitService) CountSearchUnits(ctx context.Context, query string, unitType string) (int64, error) {
-	count, err := s.unitRepo.CountSearch(ctx, query, unitType)
+func (s *unitService) CountSearchUnits(ctx context.Context, query string, unitType string, baseOnly bool) (int64, error) {
+	count, err := s.unitRepo.CountSearch(ctx, query, unitType, baseOnly)
 	if err != nil {
 		return 0, fmt.Errorf("failed to count units search result: %w", err)
 	}
