@@ -401,9 +401,15 @@ func (r *purchaseOrderRepository) UpdatePurchaseOrder(ctx context.Context, id ui
 		}
 
 		// Find existing items to delete (i.e., items missing in newItemsKeyMap)
+		// Do not delete items with received_quantity > 0
 		var itemsToDeleteIDs []uint
 		for key, existingItem := range existingItemsMap {
 			if _, found := newItemsKeyMap[key]; !found && existingItem != nil {
+				// Preserve items that have received quantity > 0
+				if existingItem.ReceivedQuantity > 0 {
+					return pkg.NewAppError(pkg.ErrorCodeValidation,
+						fmt.Sprintf("cannot delete item with received quantity %d", existingItem.ReceivedQuantity), nil)
+				}
 				itemsToDeleteIDs = append(itemsToDeleteIDs, existingItem.ID)
 			}
 		}
@@ -470,17 +476,18 @@ func (r *purchaseOrderRepository) UpdatePurchaseOrder(ctx context.Context, id ui
 		// Set items to purchase order
 		po.Items = upsertItems
 		po.Notes = req.Notes
-
-		// Update quantity and prices of purchase order items
-		for _, item := range upsertItems {
-			if err := tx.Save(item).Error; err != nil {
-				return fmt.Errorf("failed to save purchase order item: %w", err)
+		if len(upsertItems) > 0 {
+			// Update quantity and prices of purchase order items
+			for _, item := range upsertItems {
+				if err := tx.Save(item).Error; err != nil {
+					return fmt.Errorf("failed to save purchase order item: %w", err)
+				}
 			}
-		}
 
-		// Recalculate purchase order status based on all items
-		if err := po.UpdateStatus(); err != nil {
-			return fmt.Errorf("failed to update purchase order status: %w", err)
+			if err := po.UpdateStatus(); err != nil {
+				return fmt.Errorf("failed to update purchase order status: %w", err)
+			}
+
 		}
 
 		if err := tx.Save(po).Error; err != nil {
