@@ -297,6 +297,11 @@ func (r *purchaseOrderRepository) ReceiveInventory(ctx context.Context, req dto.
 				unit.ID = data.UnitID
 				data.Product.Unit = unit
 			}
+			// Ensure UnitID is set on purchase order item
+			// If it's not set (from old data), use the product's unit_id as fallback
+			if data.PurchaseOrderItem.UnitID == nil {
+				data.PurchaseOrderItem.UnitID = &data.UnitID
+			}
 			data.PurchaseOrderItem.Product = data.Product
 			poItems = append(poItems, data.PurchaseOrderItem)
 		}

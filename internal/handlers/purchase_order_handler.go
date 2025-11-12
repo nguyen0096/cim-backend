@@ -6,6 +6,7 @@ import (
 	"cim-backend/internal/services"
 	"cim-backend/internal/services/dto"
 	"cim-backend/pkg"
+	"errors"
 	"fmt"
 	"net/http"
 
@@ -107,6 +108,11 @@ func (h *PurchaseOrderHandler) CreatePurchaseOrder(c echo.Context) error {
 	}
 
 	if err := h.purchaseOrderService.CreatePurchaseOrder(c.Request().Context(), &purchaseOrder); err != nil {
+		// Check if error is already an AppError, return it directly
+		var appErr *pkg.AppError
+		if errors.As(err, &appErr) {
+			return err
+		}
 		return pkg.ErrInternal("Failed to create purchase order", err)
 	}
 
@@ -153,6 +159,11 @@ func (h *PurchaseOrderHandler) UpdatePurchaseOrder(c echo.Context) error {
 	// Update purchase order
 	po, err := h.purchaseOrderService.UpdatePurchaseOrder(c.Request().Context(), id, req)
 	if err != nil {
+		// Check if error is already an AppError, return it directly
+		var appErr *pkg.AppError
+		if errors.As(err, &appErr) {
+			return err
+		}
 		return pkg.ErrInternal("Failed to update purchase order", err)
 	}
 

@@ -143,10 +143,30 @@ func (suite *ComponentTestSuite) TestCreatePurchaseOrderWithDifferentUnits() {
 
 	testUnits := []models.Unit{
 		{
+			Base:             models.Base{ID: 2},
+			Name:             "Base Unit 2",
+			ConversionFactor: 1,
+			UnitType:         "general",
+		},
+		{
+			Base:             models.Base{ID: 3},
+			Name:             "Base Unit 3",
+			ConversionFactor: 1,
+			UnitType:         "mass",
+		},
+		{
+			Base:             models.Base{ID: 4},
 			BaseUnitID:       pkg.Ptr(uint(1)),
 			Name:             "Test Unit 2",
 			ConversionFactor: 20,
 			UnitType:         "general",
+		},
+		{
+			Base:             models.Base{ID: 5},
+			BaseUnitID:       pkg.Ptr(uint(3)),
+			Name:             "Test Unit 3",
+			ConversionFactor: 20,
+			UnitType:         "mass",
 		},
 	}
 
@@ -181,22 +201,23 @@ func (suite *ComponentTestSuite) TestCreatePurchaseOrderWithDifferentUnits() {
 	err = db.WithContext(ctx).Create(&testInventories).Error
 	require.NoError(t, err, "Failed to create inventories")
 
-	purchaseOrderData := map[string]interface{}{
-		"inventory_id": 1,
-		"items": []map[string]interface{}{
-			{
-				"product_id":  1,
-				"supplier_id": 1,
-				"quantity":    2,
-				"unit_id":     2,
-				"unit_price":  100,
-			},
-		},
-	}
 	t.Run("should create purchase order with different units and same base unit", func(t *testing.T) {
 		_, token, err := suite.CreateUniqueEmailAndToken(models.RoleAdmin)
 		require.NoError(t, err)
-		resp, err := helpers.MakeRequest(t, "POST", suite.sharedTestContainer.BaseURL+"/api/v1/purchase-orders", token, purchaseOrderData)
+
+		payload := map[string]interface{}{
+			"inventory_id": 1,
+			"items": []map[string]interface{}{
+				{
+					"product_id":  1,
+					"supplier_id": 1,
+					"quantity":    2,
+					"unit_id":     4,
+					"unit_price":  100,
+				},
+			},
+		}
+		resp, err := helpers.MakeRequest(t, "POST", suite.sharedTestContainer.BaseURL+"/api/v1/purchase-orders", token, payload)
 		require.NoError(t, err)
 		defer resp.Body.Close()
 		assert.Equal(t, 201, resp.StatusCode)
@@ -210,6 +231,28 @@ func (suite *ComponentTestSuite) TestCreatePurchaseOrderWithDifferentUnits() {
 		assert.Equal(t, 40, int(items[0].(map[string]interface{})["quantity"].(float64)))
 		assert.Equal(t, uint(1), uint(items[0].(map[string]interface{})["unit_id"].(float64)))
 		assert.Equal(t, 5.0, items[0].(map[string]interface{})["unit_price"].(float64))
+	})
+
+	t.Run("should not create purchase order with different units and different base unit", func(t *testing.T) {
+		_, token, err := suite.CreateUniqueEmailAndToken(models.RoleAdmin)
+		require.NoError(t, err)
+
+		payload := map[string]interface{}{
+			"inventory_id": 1,
+			"items": []map[string]interface{}{
+				{
+					"product_id":  1,
+					"supplier_id": 1,
+					"quantity":    2,
+					"unit_id":     5,
+					"unit_price":  100,
+				},
+			},
+		}
+		resp, err := helpers.MakeRequest(t, "POST", suite.sharedTestContainer.BaseURL+"/api/v1/purchase-orders", token, payload)
+		require.NoError(t, err)
+		defer resp.Body.Close()
+		assert.Equal(t, 400, resp.StatusCode)
 	})
 }
 
@@ -269,6 +312,7 @@ func (suite *ComponentTestSuite) TestCancelPurchaseOrder() {
 				_, token, err := suite.CreateUniqueEmailAndToken(testCase.role)
 				require.NoError(t, err)
 
+				unitID := testProducts[0].UnitID
 				testPurchaseOrder := models.PurchaseOrder{
 					Base:        models.Base{ID: currentId},
 					OrderNumber: uuid.New().String(),
@@ -278,6 +322,7 @@ func (suite *ComponentTestSuite) TestCancelPurchaseOrder() {
 						{
 							ProductID:  &testProducts[0].ID,
 							SupplierID: &testSuppliers[0].ID,
+							UnitID:     &unitID,
 							Quantity:   1,
 						},
 					},
@@ -324,6 +369,7 @@ func (suite *ComponentTestSuite) TestCancelPurchaseOrder() {
 			t.Run(fmt.Sprintf("When current status is %s and user has %s role", testCase.currentStatus, testCase.role), func(t *testing.T) {
 				_, token, err := suite.CreateUniqueEmailAndToken(testCase.role)
 				require.NoError(t, err)
+				unitID := testProducts[0].UnitID
 				testPurchaseOrder := models.PurchaseOrder{
 					Base:        models.Base{ID: currentId},
 					OrderNumber: uuid.New().String(),
@@ -333,6 +379,7 @@ func (suite *ComponentTestSuite) TestCancelPurchaseOrder() {
 						{
 							ProductID:  &testProducts[0].ID,
 							SupplierID: &testSuppliers[0].ID,
+							UnitID:     &unitID,
 							Quantity:   1,
 						},
 					},
@@ -445,6 +492,8 @@ func (suite *ComponentTestSuite) TestReceivePurchaseOrder() {
 					currentId++
 					_, token, err := suite.CreateUniqueEmailAndToken(role)
 					require.NoError(t, err)
+					unitID1 := testProducts[0].UnitID
+					unitID2 := testProducts[1].UnitID
 					testPurchaseOrder := models.PurchaseOrder{
 						Base:        models.Base{ID: currentId},
 						OrderNumber: uuid.New().String(),
@@ -454,11 +503,13 @@ func (suite *ComponentTestSuite) TestReceivePurchaseOrder() {
 							{
 								ProductID:  &testProducts[0].ID,
 								SupplierID: &testSuppliers[0].ID,
+								UnitID:     &unitID1,
 								Quantity:   100,
 							},
 							{
 								ProductID:  &testProducts[1].ID,
 								SupplierID: &testSuppliers[0].ID,
+								UnitID:     &unitID2,
 								Quantity:   100,
 							},
 						},

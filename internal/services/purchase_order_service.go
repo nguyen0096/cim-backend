@@ -39,6 +39,7 @@ type purchaseOrderService struct {
 	purchaseOrderRepo          repository.PurchaseOrderRepository
 	paymentReceiptFormRepo     repository.PaymentReceiptFormRepository
 	unitRepo                   repository.UnitRepository
+	productRepo                repository.ProductRepository
 	inventoryService           InventoryService
 	excelService               ExcelService
 	settingsService            SettingsService
@@ -57,6 +58,7 @@ func NewPurchaseOrderService(
 	purchaseOrderRepo repository.PurchaseOrderRepository,
 	paymentReceiptFormRepo repository.PaymentReceiptFormRepository,
 	unitRepo repository.UnitRepository,
+	productRepo repository.ProductRepository,
 	inventoryService InventoryService,
 	excelService ExcelService,
 	settingsService SettingsService,
@@ -71,6 +73,7 @@ func NewPurchaseOrderService(
 		purchaseOrderRepo:          purchaseOrderRepo,
 		paymentReceiptFormRepo:     paymentReceiptFormRepo,
 		unitRepo:                   unitRepo,
+		productRepo:                productRepo,
 		inventoryService:           inventoryService,
 		excelService:               excelService,
 		settingsService:            settingsService,
@@ -85,6 +88,24 @@ func NewPurchaseOrderService(
 	logger.Info("Purchase order service initialized with revenue expense worker")
 
 	return service
+}
+
+// getBaseUnitID returns the base unit ID for a given unit
+// If the unit is a base unit (BaseUnitID is nil), returns the unit ID itself
+// If the unit is a derived unit, returns its BaseUnitID
+func (s *purchaseOrderService) getBaseUnitID(ctx context.Context, unitID uint) (uint, error) {
+	unit, err := s.unitRepo.GetByID(ctx, unitID)
+	if err != nil {
+		return 0, fmt.Errorf("failed to get unit %d: %w", unitID, err)
+	}
+
+	// If unit is a base unit (no BaseUnitID), return the unit ID itself
+	if unit.BaseUnitID == nil {
+		return unitID, nil
+	}
+
+	// If unit is a derived unit, return its BaseUnitID
+	return *unit.BaseUnitID, nil
 }
 
 // convertQuantityToBaseUnit converts a quantity from the given unit to its base unit
@@ -156,9 +177,57 @@ func (s *purchaseOrderService) CreatePurchaseOrder(ctx context.Context, purchase
 	// Set status to order_placed for new purchase orders
 	purchaseOrder.Status = models.PurchaseOrderStatusOrderPlaced
 
-	// Convert quantities to base unit for each item
+	// Validate and convert quantities to base unit for each item
 	for _, item := range purchaseOrder.Items {
-		if item != nil && item.UnitID != nil {
+		if item != nil && item.UnitID != nil && item.ProductID != nil {
+			// Get product to check its unit
+			product, err := s.productRepo.GetByID(ctx, *item.ProductID)
+			if err != nil {
+				s.logger.WithFields(logrus.Fields{
+					"operation":  "CreatePurchaseOrder",
+					"product_id": *item.ProductID,
+					"error":      err,
+				}).Error("Failed to get product")
+				return fmt.Errorf("failed to get product %d: %w", *item.ProductID, err)
+			}
+
+			// Get base unit ID for product's unit
+			productBaseUnitID, err := s.getBaseUnitID(ctx, product.UnitID)
+			if err != nil {
+				s.logger.WithFields(logrus.Fields{
+					"operation":  "CreatePurchaseOrder",
+					"product_id": *item.ProductID,
+					"error":      err,
+				}).Error("Failed to get product base unit")
+				return fmt.Errorf("failed to get product base unit: %w", err)
+			}
+
+			// Get base unit ID for item's unit
+			itemBaseUnitID, err := s.getBaseUnitID(ctx, *item.UnitID)
+			if err != nil {
+				s.logger.WithFields(logrus.Fields{
+					"operation": "CreatePurchaseOrder",
+					"unit_id":   *item.UnitID,
+					"error":     err,
+				}).Error("Failed to get item base unit")
+				return fmt.Errorf("failed to get item base unit: %w", err)
+			}
+
+			// Validate that item's unit base unit matches product's unit base unit
+			if itemBaseUnitID != productBaseUnitID {
+				s.logger.WithFields(logrus.Fields{
+					"operation":         "CreatePurchaseOrder",
+					"product_id":        *item.ProductID,
+					"product_base_unit": productBaseUnitID,
+					"item_unit_id":      *item.UnitID,
+					"item_base_unit":    itemBaseUnitID,
+				}).Error("Item unit base unit does not match product unit base unit")
+				return pkg.NewAppError(pkg.ErrorCodeValidation,
+					fmt.Sprintf("unit %d (base unit %d) is not compatible with product %d (base unit %d)",
+						*item.UnitID, itemBaseUnitID, *item.ProductID, productBaseUnitID), nil)
+			}
+
+			// Convert quantities to base unit
 			baseQuantity, baseUnitPrice, baseUnitID, err := s.convertQuantityToBaseUnit(ctx, item.Quantity, item.UnitPrice, *item.UnitID)
 			if err != nil {
 				s.logger.WithFields(logrus.Fields{
@@ -946,9 +1015,57 @@ func (s *purchaseOrderService) UpdatePurchaseOrder(ctx context.Context, id uint,
 		"purchase_order_id": id,
 	}).Info("Updating purchase order")
 
-	// Convert quantities to base unit for each item
+	// Validate and convert quantities to base unit for each item
 	for i := range req.Items {
-		if req.Items[i].UnitID != nil {
+		if req.Items[i].UnitID != nil && req.Items[i].ProductID != nil {
+			// Get product to check its unit
+			product, err := s.productRepo.GetByID(ctx, *req.Items[i].ProductID)
+			if err != nil {
+				s.logger.WithFields(logrus.Fields{
+					"operation":  "UpdatePurchaseOrder",
+					"product_id": *req.Items[i].ProductID,
+					"error":      err,
+				}).Error("Failed to get product")
+				return nil, fmt.Errorf("failed to get product %d: %w", *req.Items[i].ProductID, err)
+			}
+
+			// Get base unit ID for product's unit
+			productBaseUnitID, err := s.getBaseUnitID(ctx, product.UnitID)
+			if err != nil {
+				s.logger.WithFields(logrus.Fields{
+					"operation":  "UpdatePurchaseOrder",
+					"product_id": *req.Items[i].ProductID,
+					"error":      err,
+				}).Error("Failed to get product base unit")
+				return nil, fmt.Errorf("failed to get product base unit: %w", err)
+			}
+
+			// Get base unit ID for item's unit
+			itemBaseUnitID, err := s.getBaseUnitID(ctx, *req.Items[i].UnitID)
+			if err != nil {
+				s.logger.WithFields(logrus.Fields{
+					"operation": "UpdatePurchaseOrder",
+					"unit_id":   *req.Items[i].UnitID,
+					"error":     err,
+				}).Error("Failed to get item base unit")
+				return nil, fmt.Errorf("failed to get item base unit: %w", err)
+			}
+
+			// Validate that item's unit base unit matches product's unit base unit
+			if itemBaseUnitID != productBaseUnitID {
+				s.logger.WithFields(logrus.Fields{
+					"operation":         "UpdatePurchaseOrder",
+					"product_id":        *req.Items[i].ProductID,
+					"product_base_unit": productBaseUnitID,
+					"item_unit_id":      *req.Items[i].UnitID,
+					"item_base_unit":    itemBaseUnitID,
+				}).Error("Item unit base unit does not match product unit base unit")
+				return nil, pkg.NewAppError(pkg.ErrorCodeValidation,
+					fmt.Sprintf("unit %d (base unit %d) is not compatible with product %d (base unit %d)",
+						*req.Items[i].UnitID, itemBaseUnitID, *req.Items[i].ProductID, productBaseUnitID), nil)
+			}
+
+			// Convert quantities to base unit
 			baseQuantity, baseUnitPrice, baseUnitID, err := s.convertQuantityToBaseUnit(ctx, req.Items[i].Quantity, req.Items[i].UnitPrice, *req.Items[i].UnitID)
 			if err != nil {
 				s.logger.WithFields(logrus.Fields{
