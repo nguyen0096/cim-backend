@@ -113,6 +113,7 @@ func (r *productRepository) List(ctx context.Context, limit, offset int, sortBy,
 	var products []models.Product
 	query := r.db.WithContext(ctx).
 		Preload("Unit").
+		Preload("Unit.DerivedUnits").
 		Preload("Suppliers").
 		Preload("InventoryItems")
 
@@ -159,6 +160,7 @@ func (r *productRepository) Search(ctx context.Context, query string, sortBy, so
 	var products []models.Product
 	dbQuery := r.db.WithContext(ctx).
 		Preload("Unit").
+		Preload("Unit.DerivedUnits").
 		Preload("Suppliers").
 		Preload("InventoryItems").
 		Where("name ILIKE ? OR product_type ILIKE ?", "%"+query+"%", "%"+query+"%")
