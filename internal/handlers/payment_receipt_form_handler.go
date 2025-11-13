@@ -296,20 +296,20 @@ func (h *PaymentReceiptFormHandler) ListPaymentReceiptForms(c echo.Context) erro
 	return c.JSON(http.StatusOK, response)
 }
 
-// SubmitPaymentReceiptForm updates a payment receipt form
-// @Summary Update payment receipt form
-// @Description Update a payment receipt form by ID
+// SubmitPaymentReceiptForm updates a payment receipt form (used by bot_form role)
+// @Summary Submit payment receipt form
+// @Description Submit a payment receipt form by ID (used by bot_form role)
 // @Tags payment-receipt-forms
 // @Accept json
 // @Produce json
 // @Param id path int true "Payment receipt form ID"
-// @Param paymentReceiptForm body models.PaymentReceiptForm true "Payment receipt form data"
+// @Param paymentReceiptForm body dto.PaymentReceiptFormPayload true "Payment receipt form data"
 // @Success 200 {object} models.PaymentReceiptForm
 // @Failure 400 {object} map[string]string
 // @Failure 404 {object} map[string]string
 // @Failure 500 {object} map[string]string
 // @Security BearerAuth
-// @Router /payment-receipt-forms/{id} [put]
+// @Router /payment-receipt-forms/{id}/submit [post]
 func (h *PaymentReceiptFormHandler) SubmitPaymentReceiptForm(c echo.Context) error {
 	idStr := c.Param("id")
 	id, err := strconv.ParseUint(idStr, 10, 32)
@@ -335,6 +335,58 @@ func (h *PaymentReceiptFormHandler) SubmitPaymentReceiptForm(c echo.Context) err
 	form.ID = uint(id)
 
 	if err := h.paymentReceiptFormService.SubmitPaymentReceiptForm(c.Request().Context(), form); err != nil {
+		if appErr, ok := err.(*pkg.AppError); ok {
+			return c.JSON(appErr.HTTPStatus(), map[string]string{"error": appErr.Message})
+		}
+		h.logger.WithFields(logrus.Fields{
+			"error":   err.Error(),
+			"details": "Failed to submit payment receipt form",
+		}).Error("Failed to submit payment receipt form")
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to submit payment receipt form"})
+	}
+
+	return c.JSON(http.StatusOK, form)
+}
+
+// UpdatePaymentReceiptForm updates a payment receipt form (used by admin/accountant)
+// @Summary Update payment receipt form
+// @Description Update a payment receipt form by ID (used by admin/accountant, form still needs approval after update)
+// @Tags payment-receipt-forms
+// @Accept json
+// @Produce json
+// @Param id path int true "Payment receipt form ID"
+// @Param paymentReceiptForm body dto.PaymentReceiptFormPayload true "Payment receipt form data"
+// @Success 200 {object} models.PaymentReceiptForm
+// @Failure 400 {object} map[string]string
+// @Failure 404 {object} map[string]string
+// @Failure 500 {object} map[string]string
+// @Security BearerAuth
+// @Router /payment-receipt-forms/{id} [put]
+func (h *PaymentReceiptFormHandler) UpdatePaymentReceiptForm(c echo.Context) error {
+	idStr := c.Param("id")
+	id, err := strconv.ParseUint(idStr, 10, 32)
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid ID format"})
+	}
+
+	var req dto.PaymentReceiptFormPayload
+
+	if err := c.Bind(&req); err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid request body", "details": err.Error()})
+	}
+
+	if err := pkg.Validator.Struct(req); err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Request body validation failed", "details": err.Error()})
+	}
+
+	form, err := req.ToPaymentReceiptForm()
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid request body", "details": err.Error()})
+	}
+
+	form.ID = uint(id)
+
+	if err := h.paymentReceiptFormService.UpdatePaymentReceiptForm(c.Request().Context(), form); err != nil {
 		if appErr, ok := err.(*pkg.AppError); ok {
 			return c.JSON(appErr.HTTPStatus(), map[string]string{"error": appErr.Message})
 		}

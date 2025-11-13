@@ -18,6 +18,7 @@ type PaymentReceiptFormService interface {
 	GetPaymentReceiptForm(ctx context.Context, id uint) (*models.PaymentReceiptForm, error)
 	ListPaymentReceiptForms(ctx context.Context, req *dto.PaymentReceiptFormListRequest) ([]models.PaymentReceiptForm, int64, error)
 	SubmitPaymentReceiptForm(ctx context.Context, form *models.PaymentReceiptForm) error
+	UpdatePaymentReceiptForm(ctx context.Context, form *models.PaymentReceiptForm) error
 	ApprovePaymentReceiptForm(ctx context.Context, id uint) error
 	RejectPaymentReceiptForm(ctx context.Context, id uint) error
 	DeletePaymentReceiptForm(ctx context.Context, id uint) error
@@ -93,9 +94,8 @@ func (s *paymentReceiptFormService) ListPaymentReceiptForms(ctx context.Context,
 	return forms, total, nil
 }
 
-// SubmitPaymentReceiptForm updates a payment receipt form
-func (s *paymentReceiptFormService) SubmitPaymentReceiptForm(ctx context.Context, form *models.PaymentReceiptForm) error {
-	// Validate required fields
+// validatePaymentReceiptFormFields validates required fields of a payment receipt form
+func (s *paymentReceiptFormService) validatePaymentReceiptFormFields(form *models.PaymentReceiptForm) error {
 	if form.FullName == "" {
 		return pkg.NewAppError(pkg.ErrorCodeValidation, "Full name is required", nil)
 	}
@@ -105,15 +105,68 @@ func (s *paymentReceiptFormService) SubmitPaymentReceiptForm(ctx context.Context
 	if form.TotalAmount < 0 {
 		return pkg.NewAppError(pkg.ErrorCodeValidation, "Total amount must be greater than or equal to 0", nil)
 	}
+	return nil
+}
 
-	formNumber, err := s.generateNextFormNumber(ctx, form.Date, *form.PurchaseOrder.InventoryID)
+// prepareFormForSubmission prepares a form for submission by generating form number and setting status
+func (s *paymentReceiptFormService) prepareFormForSubmission(ctx context.Context, form *models.PaymentReceiptForm, inventoryID uint) error {
+	formNumber, err := s.generateNextFormNumber(ctx, form.Date, inventoryID)
 	if err != nil {
 		return fmt.Errorf("failed to generate form number: %w", err)
 	}
 
 	form.FormNumber = &formNumber
 	form.Status = models.PaymentReceiptFormStatusSubmitted
+	return nil
+}
 
+// SubmitPaymentReceiptForm updates a payment receipt form (used by bot_form role)
+func (s *paymentReceiptFormService) SubmitPaymentReceiptForm(ctx context.Context, form *models.PaymentReceiptForm) error {
+	// Validate required fields
+	if err := s.validatePaymentReceiptFormFields(form); err != nil {
+		return err
+	}
+
+	// Prepare form for submission
+	if err := s.prepareFormForSubmission(ctx, form, *form.PurchaseOrder.InventoryID); err != nil {
+		return err
+	}
+
+	// Update the form
+	if err := s.paymentReceiptFormRepo.Update(ctx, form); err != nil {
+		return fmt.Errorf("failed to update payment receipt form: %w", err)
+	}
+
+	return nil
+}
+
+// UpdatePaymentReceiptForm updates a payment receipt form (used by admin/accountant)
+func (s *paymentReceiptFormService) UpdatePaymentReceiptForm(ctx context.Context, form *models.PaymentReceiptForm) error {
+	// Get the existing form to get inventory ID from purchase order
+	existingForm, err := s.paymentReceiptFormRepo.GetByIDFull(ctx, form.ID)
+	if err != nil {
+		return fmt.Errorf("failed to get payment receipt form: %w", err)
+	}
+
+	// Only allow editing forms in pending status
+	if existingForm.Status != models.PaymentReceiptFormStatusPending {
+		return pkg.NewAppError(pkg.ErrorCodeValidation, fmt.Sprintf("Cannot edit a payment receipt form with status '%s'", existingForm.Status), nil)
+	}
+
+	// Validate required fields
+	if err := s.validatePaymentReceiptFormFields(form); err != nil {
+		return err
+	}
+
+	// Get inventory ID from existing form's purchase order
+	inventoryID := *existingForm.PurchaseOrder.InventoryID
+
+	// Prepare form for submission (still needs approval)
+	if err := s.prepareFormForSubmission(ctx, form, inventoryID); err != nil {
+		return err
+	}
+
+	// Update the form
 	if err := s.paymentReceiptFormRepo.Update(ctx, form); err != nil {
 		return fmt.Errorf("failed to update payment receipt form: %w", err)
 	}
