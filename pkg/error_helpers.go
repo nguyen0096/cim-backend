@@ -88,3 +88,8 @@ func ErrTransferValidationFailed(message string) *AppError {
 func ErrConsumeFIFOFailed(message string) *AppError {
 	return NewAppError(ErrorCodeConsumeFIFOFailed, message, nil)
 }
+
+// ErrNoApprovedPaymentReceiptForm creates an error for missing approved payment receipt form
+func ErrNoApprovedPaymentReceiptForm() *AppError {
+	return NewAppError(ErrorCodePurchaseOrderNoApprovedPaymentReceipt, "Không thể hoàn thành đơn hàng: không tìm thấy phiếu thu chi đã được duyệt", nil)
+}

@@ -29,9 +29,13 @@ const (
 	ErrorCodeConflict ErrorCode = 9 // conflict
 
 	// Purchase Order Error Codes
+
 	ErrorCodePurchaseOrderNoItems ErrorCode = 7 // purchase-order-no-items
+	// ErrorCodePurchaseOrderNoApprovedPaymentReceipt is used when completing a purchase order without approved payment receipt
+	ErrorCodePurchaseOrderNoApprovedPaymentReceipt ErrorCode = 14 // purchase-order-no-approved-payment-receipt
 
 	// Inventory Error Codes
+
 	// ErrorCodeBadInventoryItemState is used when an inventory item has invalid state
 	// e.g. quantity mismatch between inventory item and consumable transactions
 	ErrorCodeBadInventoryItemState ErrorCode = 8 // bad-inventory-item-state
@@ -85,6 +89,8 @@ func (e *AppError) HTTPStatus() int {
 		return http.StatusForbidden
 	case ErrorCodeDuplicate, ErrorCodeConflict:
 		return http.StatusConflict
+	case ErrorCodePurchaseOrderNoItems, ErrorCodePurchaseOrderNoApprovedPaymentReceipt:
+		return http.StatusBadRequest
 	case ErrorCodeInternal:
 		fallthrough
 	default:

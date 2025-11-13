@@ -334,7 +334,7 @@ func (s *purchaseOrderService) UpdatePurchaseOrderStatus(ctx context.Context, id
 				"operation":         "UpdatePurchaseOrderStatus",
 				"purchase_order_id": id,
 			}).Warn("Cannot complete purchase order: no approved payment receipt form found")
-			return pkg.NewAppError(pkg.ErrorCodeValidation, "Cannot complete purchase order: no approved payment receipt form found", nil)
+			return pkg.ErrNoApprovedPaymentReceiptForm()
 		}
 
 		go s.queueRevenueExpenseRequest(approvedForm.ID)
