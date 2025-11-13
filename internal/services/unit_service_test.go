@@ -1,79 +1,21 @@
 package services
 
 import (
+	repositorymocks "cim-backend/internal/mocks/repositories"
 	"cim-backend/internal/models"
 	"context"
 	"errors"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/mock"
 	"gorm.io/gorm"
 )
-
-type mockUnitRepository struct {
-	mock.Mock
-}
-
-func (m *mockUnitRepository) Create(ctx context.Context, unit *models.Unit) error {
-	args := m.Called(ctx, unit)
-	return args.Error(0)
-}
-
-func (m *mockUnitRepository) GetByID(ctx context.Context, id uint) (*models.Unit, error) {
-	args := m.Called(ctx, id)
-	unit, _ := args.Get(0).(*models.Unit)
-	return unit, args.Error(1)
-}
-
-func (m *mockUnitRepository) GetByTypeAndName(ctx context.Context, unitType, name string) (*models.Unit, error) {
-	args := m.Called(ctx, unitType, name)
-	unit, _ := args.Get(0).(*models.Unit)
-	return unit, args.Error(1)
-}
-
-func (m *mockUnitRepository) Update(ctx context.Context, unit *models.Unit) error {
-	args := m.Called(ctx, unit)
-	return args.Error(0)
-}
-
-func (m *mockUnitRepository) Delete(ctx context.Context, id uint) error {
-	args := m.Called(ctx, id)
-	return args.Error(0)
-}
-
-func (m *mockUnitRepository) Restore(ctx context.Context, id uint) error {
-	args := m.Called(ctx, id)
-	return args.Error(0)
-}
-
-func (m *mockUnitRepository) List(ctx context.Context, limit, offset int, sortBy, sortOrder, unitType string) ([]models.Unit, error) {
-	args := m.Called(ctx, limit, offset, sortBy, sortOrder, unitType)
-	units, _ := args.Get(0).([]models.Unit)
-	return units, args.Error(1)
-}
-
-func (m *mockUnitRepository) Search(ctx context.Context, query string, limit, offset int, sortBy, sortOrder, unitType string) ([]models.Unit, error) {
-	args := m.Called(ctx, query, limit, offset, sortBy, sortOrder, unitType)
-	units, _ := args.Get(0).([]models.Unit)
-	return units, args.Error(1)
-}
-
-func (m *mockUnitRepository) Count(ctx context.Context, unitType string) (int64, error) {
-	args := m.Called(ctx, unitType)
-	return args.Get(0).(int64), args.Error(1)
-}
-
-func (m *mockUnitRepository) CountSearch(ctx context.Context, query, unitType string) (int64, error) {
-	args := m.Called(ctx, query, unitType)
-	return args.Get(0).(int64), args.Error(1)
-}
 
 func TestCreateUnit(t *testing.T) {
 	ctx := context.Background()
 
 	t.Run("should create unit successfully", func(t *testing.T) {
-		repo := new(mockUnitRepository)
+		repo := new(repositorymocks.UnitRepository)
 		service := NewUnitService(repo)
 
 		unit := &models.Unit{
@@ -92,7 +34,7 @@ func TestCreateUnit(t *testing.T) {
 	})
 
 	t.Run("should create derived unit when base unit is valid", func(t *testing.T) {
-		repo := new(mockUnitRepository)
+		repo := new(repositorymocks.UnitRepository)
 		service := NewUnitService(repo)
 
 		baseUnitID := uint(2)
@@ -119,7 +61,7 @@ func TestCreateUnit(t *testing.T) {
 	})
 
 	t.Run("should return validation error when derived unit missing base reference", func(t *testing.T) {
-		repo := new(mockUnitRepository)
+		repo := new(repositorymocks.UnitRepository)
 		service := NewUnitService(repo)
 
 		err := service.CreateUnit(ctx, &models.Unit{
@@ -132,7 +74,7 @@ func TestCreateUnit(t *testing.T) {
 	})
 
 	t.Run("should return validation error when base unit reference invalid", func(t *testing.T) {
-		repo := new(mockUnitRepository)
+		repo := new(repositorymocks.UnitRepository)
 		service := NewUnitService(repo)
 
 		baseUnitID := uint(2)
@@ -157,7 +99,7 @@ func TestCreateUnit(t *testing.T) {
 	})
 
 	t.Run("should return validation error when required fields missing", func(t *testing.T) {
-		repo := new(mockUnitRepository)
+		repo := new(repositorymocks.UnitRepository)
 		service := NewUnitService(repo)
 
 		err := service.CreateUnit(ctx, &models.Unit{
@@ -170,7 +112,7 @@ func TestCreateUnit(t *testing.T) {
 	})
 
 	t.Run("should return duplicate error when unit exists", func(t *testing.T) {
-		repo := new(mockUnitRepository)
+		repo := new(repositorymocks.UnitRepository)
 		service := NewUnitService(repo)
 
 		existing := &models.Unit{
@@ -194,7 +136,7 @@ func TestCreateUnit(t *testing.T) {
 	})
 
 	t.Run("should return error when repository create fails", func(t *testing.T) {
-		repo := new(mockUnitRepository)
+		repo := new(repositorymocks.UnitRepository)
 		service := NewUnitService(repo)
 
 		unit := &models.Unit{
@@ -216,7 +158,7 @@ func TestUpdateUnit(t *testing.T) {
 	ctx := context.Background()
 
 	t.Run("should update unit successfully", func(t *testing.T) {
-		repo := new(mockUnitRepository)
+		repo := new(repositorymocks.UnitRepository)
 		service := NewUnitService(repo)
 
 		unit := &models.Unit{
@@ -242,7 +184,7 @@ func TestUpdateUnit(t *testing.T) {
 	})
 
 	t.Run("should error when unit not found", func(t *testing.T) {
-		repo := new(mockUnitRepository)
+		repo := new(repositorymocks.UnitRepository)
 		service := NewUnitService(repo)
 
 		unit := &models.Unit{
@@ -261,7 +203,7 @@ func TestUpdateUnit(t *testing.T) {
 	})
 
 	t.Run("should validate derived unit base reference on update", func(t *testing.T) {
-		repo := new(mockUnitRepository)
+		repo := new(repositorymocks.UnitRepository)
 		service := NewUnitService(repo)
 
 		baseUnitID := uint(3)
@@ -298,7 +240,7 @@ func TestUpdateUnit(t *testing.T) {
 func TestDeleteUnit(t *testing.T) {
 	ctx := context.Background()
 
-	repo := new(mockUnitRepository)
+	repo := new(repositorymocks.UnitRepository)
 	service := NewUnitService(repo)
 
 	repo.On("Delete", ctx, uint(1)).Return(nil)

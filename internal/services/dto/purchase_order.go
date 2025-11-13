@@ -1,6 +1,10 @@
 package dto
 
-import "cim-backend/internal/models"
+import (
+	"cim-backend/internal/models"
+
+	"github.com/shopspring/decimal"
+)
 
 // UpdatePurchaseOrderItemStatusResponse represents the response for updating purchase order item status
 type UpdatePurchaseOrderItemStatusResponse struct {
@@ -11,8 +15,8 @@ type UpdatePurchaseOrderItemStatusResponse struct {
 type UpdatePurchaseOrderDeliveryStatusRequest struct {
 	PurchaseOrderID uint `json:"purchase_order_id" validate:"required" param:"id"`
 	Items           []struct {
-		ID               uint `json:"id" validate:"required"`
-		ReceivedQuantity int  `json:"received_quantity" validate:"required,min=1"`
+		ID               uint            `json:"id" validate:"required"`
+		ReceivedQuantity decimal.Decimal `json:"received_quantity" validate:"required"`
 	} `json:"items" validate:"required,min=1,dive"`
 	ConfirmationNotes string `json:"confirmation_notes"`
 }
@@ -43,9 +47,9 @@ type UpdatePurchaseOrderRequest struct {
 
 // UpdatePurchaseOrderItemRequest represents an item in the update purchase order request
 type UpdatePurchaseOrderItemRequest struct {
-	SupplierID *uint   `json:"supplier_id" validate:"required"`
-	ProductID  *uint   `json:"product_id" validate:"required"`
-	UnitID     *uint   `json:"unit_id" validate:"required"`
-	Quantity   int     `json:"quantity" validate:"required,min=1"`
-	UnitPrice  float64 `json:"unit_price" validate:"min=0"`
+	SupplierID *uint           `json:"supplier_id" validate:"required"`
+	ProductID  *uint           `json:"product_id" validate:"required"`
+	UnitID     *uint           `json:"unit_id" validate:"required"`
+	Quantity   decimal.Decimal `json:"quantity" validate:"required"`
+	UnitPrice  float64         `json:"unit_price" validate:"min=0"`
 }

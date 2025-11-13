@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	log "github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/xuri/excelize/v2"
@@ -171,20 +172,9 @@ func TestSheetNamePattern_Parse(t *testing.T) {
 
 func TestGetColByExactHeaders(t *testing.T) {
 	ctx := context.Background()
+	log.SetLevel(log.DebugLevel)
 
-	xntSheet := SheetConfig{
-		InternalID:     "current_month_inventory_change",
-		NamePattern:    "THANG {MM}",
-		HeaderStartRow: 3,
-		HeaderStartCol: 1,
-		HeaderHeight:   3,
-	}
-	xntSheet.SetSheetNameTimeParams(time.Date(2023, 12, 1, 0, 0, 0, 0, time.UTC))
-
-	fc := FileConfig{
-		FilePath:     TestInventoryTrackerExcelFile,
-		SheetConfigs: []SheetConfig{xntSheet},
-	}
+	fc := getTestFileConfig()
 
 	prov := NewExcelFileProvider(fc.FilePath)
 	f, err := NewFile(fc, prov)
@@ -193,9 +183,9 @@ func TestGetColByExactHeaders(t *testing.T) {
 	err = f.Connect(ctx)
 	require.Nil(t, err)
 
-	col, err := f.Sheets[xntSheet.InternalID].GetColByExactHeaders(xntSheet.InternalID, []string{"DiẾN GiẢI", ""})
+	col, err := f.Sheets[fc.SheetConfigs[0].InternalID].GetColByExactHeaders(fc.SheetConfigs[0].InternalID, []string{"DIỄN GIẢI"})
 	require.Nil(t, err)
-	assert.Equal(t, 2, col)
+	assert.Equal(t, 3, col)
 }
 
 func TestSheetNamePattern_Parse_EdgeCases(t *testing.T) {
@@ -243,27 +233,6 @@ func TestSheetNamePattern_Parse_EdgeCases(t *testing.T) {
 	}
 }
 
-func getTestFileConfig() FileConfig {
-	xntSheet := SheetConfig{
-		InternalID:     "xnt_sheet",
-		NamePattern:    "THANG {MM}",
-		HeaderStartRow: 5,
-		HeaderStartCol: 1,
-		HeaderHeight:   3,
-		FooterHeight:   3,
-		IndexColumnNames: []HeaderBranch{
-			{fmt.Sprintf("%s%s", MetadataHeaderPrefix, "product_id")},
-		},
-	}
-	xntSheet.SetSheetNameTimeParams(time.Date(2023, 11, 1, 0, 0, 0, 0, time.UTC))
-
-	fc := FileConfig{
-		FilePath:     TestInventoryTrackerExcelFile,
-		SheetConfigs: []SheetConfig{xntSheet},
-	}
-	return fc
-}
-
 func TestFile_Load(t *testing.T) {
 	ctx := context.Background()
 	fc := getTestFileConfig()
@@ -272,7 +241,6 @@ func TestFile_Load(t *testing.T) {
 	require.Nil(t, err)
 
 	err = f.Connect(ctx)
-	t.Logf("err: %v", err)
 	require.Nil(t, err)
 
 	assertColumnIndices(t, f)
@@ -430,7 +398,7 @@ func assertColumnIndices(t *testing.T, f *File) {
 	require.True(t, ok, "should found sheet")
 
 	require.Containsf(t, sheet.ColumnIndices, 1, "should contain product_id column at col 1")
-	assert.Containsf(t, sheet.ColumnIndices[1], "test-product-id-1", "should contain product_id value test-product-id-1")
+	assert.Containsf(t, sheet.ColumnIndices[1], "test-product-id1", "should contain product_id value test-product-id1")
 }
 
 // copyTestFile creates a copy of the test file in the same directory as the original
@@ -470,7 +438,7 @@ func TestFile_UpsertRow(t *testing.T) {
 	// Create a copy of the test file to avoid modifying the original
 	fc := getTestFileConfig()
 	testFileCopy := copyTestFile(t, fc.FilePath)
-	// defer os.Remove(testFileCopy) // Clean up the copy after the test
+	defer os.Remove(testFileCopy) // Clean up the copy after the test
 
 	// Update the config to use the copied file
 	fc.FilePath = testFileCopy
@@ -481,11 +449,17 @@ func TestFile_UpsertRow(t *testing.T) {
 
 	err = f.Connect(ctx)
 	require.NoError(t, err)
+	defer f.Close(ctx)
 
-	defer f.Close(ctx) // Close the file after the test
+	// Verify existing data state
+	sheet := f.Sheets[fc.SheetConfigs[0].InternalID]
+	require.NotNil(t, sheet, "sheet should exist")
 
-	// update row with index column: __product_id = test-product-id-3
-	// change SL of Ngày 6 to 11
+	productIDCol, err := sheet.GetColByExactHeaders(fc.SheetConfigs[0].InternalID, HeaderBranch{fmt.Sprintf("%s%s", MetadataHeaderPrefix, "product_id")})
+	require.NoError(t, err)
+
+	// Test case 1:
+	// update test-product-id-3 change SL of Ngày 6 to 11
 	err = f.UpsertRow(
 		ctx,
 		fc.SheetConfigs[0].InternalID,
@@ -496,26 +470,22 @@ func TestFile_UpsertRow(t *testing.T) {
 		})
 	require.NoError(t, err)
 
-	// // Insert a new row with index column: __product_id = insert-product-id
-	// // set SL of Ngày 4 to 1
+	// Test case 2:
+	// insert a new row with  __product_id = insert-product-id
+	// set SL of Ngày 4 to 1
 	err = f.UpsertRow(
 		ctx,
 		fc.SheetConfigs[0].InternalID,
 		"__product_id",
 		"insert-product-id",
 		map[HeaderBranchStr]interface{}{
-			"Ngày.4.SL": 1,
+			"__product_id": "insert-product-id",
+			"DIỄN GIẢI":    "Sản phẩm mới",
+			"Ngày.1.SL":    1,
 		})
 	require.NoError(t, err)
 
-	// Verify the changes were made by reading the values back
-	sheet := f.Sheets[fc.SheetConfigs[0].InternalID]
-	require.NotNil(t, sheet, "sheet should exist")
-
-	// Verify that test-product-id-3 exists in the index
-	productIDCol, err := sheet.GetColByExactHeaders(fc.SheetConfigs[0].InternalID, HeaderBranch{fmt.Sprintf("%s%s", MetadataHeaderPrefix, "product_id")})
-	require.NoError(t, err)
-
+	// Verify File runtime data
 	productIDIndex := sheet.ColumnIndices[productIDCol]
 	require.NotNil(t, productIDIndex, "product_id index should exist")
 
@@ -524,4 +494,16 @@ func TestFile_UpsertRow(t *testing.T) {
 
 	_, exists = productIDIndex["insert-product-id"]
 	assert.True(t, exists, "insert-product-id should exist in the index")
+
+	// Verify excel file content
+	rows, err := f.Provider.GetRows(ctx, sheet.SheetName)
+	require.NoError(t, err)
+
+	assert.Equal(t, "test-product-id3", rows[10][0])
+	assert.Equal(t, "CAM ÉP 320 ML", rows[10][2])
+	assert.Equal(t, " 11 ", rows[10][9])
+
+	assert.Equal(t, "insert-product-id", rows[7][0])
+	assert.Equal(t, "Sản phẩm mới", rows[7][2])
+	assert.Equal(t, "1", rows[7][7])
 }

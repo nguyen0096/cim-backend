@@ -9,6 +9,7 @@ import (
 	"strconv"
 
 	"github.com/labstack/echo/v4"
+	"github.com/shopspring/decimal"
 )
 
 type InventoryItemHandler struct {
@@ -398,8 +399,8 @@ func (h *InventoryItemHandler) AdjustInventoryItemQuantity(c echo.Context) error
 	}
 
 	var req struct {
-		Quantity int    `json:"quantity"`
-		Notes    string `json:"notes"`
+		Quantity decimal.Decimal `json:"quantity"`
+		Notes    string          `json:"notes"`
 	}
 
 	if err := c.Bind(&req); err != nil {

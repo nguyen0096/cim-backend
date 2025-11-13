@@ -15,6 +15,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/shopspring/decimal"
 	"github.com/sirupsen/logrus"
 	"gorm.io/gorm"
 )
@@ -112,10 +113,15 @@ func (s *purchaseOrderService) getBaseUnitID(ctx context.Context, unitID uint) (
 // Returns the converted quantity, converted unit price, and the base unit ID
 // If the unit is a base unit (BaseUnitID is nil), returns the quantity and price as-is and the unit ID itself
 // If the unit is a derived unit, recursively drills down to the ultimate base unit, applying conversion factors along the way
-func (s *purchaseOrderService) convertQuantityToBaseUnit(ctx context.Context, quantity int, unitPrice float64, unitID uint) (int, float64, uint, error) {
+func (s *purchaseOrderService) convertQuantityToBaseUnit(
+	ctx context.Context,
+	quantity decimal.Decimal,
+	unitPrice float64,
+	unitID uint,
+) (decimal.Decimal, float64, uint, error) {
 	unit, err := s.unitRepo.GetByID(ctx, unitID)
 	if err != nil {
-		return 0, 0, 0, fmt.Errorf("failed to get unit %d: %w", unitID, err)
+		return decimal.Zero, 0, 0, fmt.Errorf("failed to get unit %d: %w", unitID, err)
 	}
 
 	// If unit is a base unit (no BaseUnitID), return quantity and price as-is and the unit ID itself
@@ -124,9 +130,9 @@ func (s *purchaseOrderService) convertQuantityToBaseUnit(ctx context.Context, qu
 	}
 
 	// If unit is a derived unit, convert to its base unit and recursively drill down
-	baseQuantity := float64(quantity) * unit.ConversionFactor
+	baseQuantity := quantity.Mul(decimal.NewFromFloat(unit.ConversionFactor))
 	baseUnitPrice := unitPrice / unit.ConversionFactor
-	return s.convertQuantityToBaseUnit(ctx, int(baseQuantity), baseUnitPrice, *unit.BaseUnitID)
+	return s.convertQuantityToBaseUnit(ctx, baseQuantity, baseUnitPrice, *unit.BaseUnitID)
 }
 
 // generatePurchaseOrderNumber generates a unique purchase order number

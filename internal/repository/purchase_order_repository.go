@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/shopspring/decimal"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
@@ -236,7 +237,7 @@ func (r *purchaseOrderRepository) ReceiveInventory(ctx context.Context, req dto.
 		// Step 3: Process dto items and build transactions and new inventory items
 		var transactions []*models.InventoryTransaction
 		var newInventoryItems []*models.InventoryItem
-		var updateInvetoryDeltas = make(map[uint]int)
+		var updateInvetoryDeltas = make(map[uint]decimal.Decimal)
 
 		for _, dtoItem := range req.Items {
 			// Find corresponding purchase order item data
@@ -246,14 +247,14 @@ func (r *purchaseOrderRepository) ReceiveInventory(ctx context.Context, req dto.
 			}
 
 			// Validate received quantity doesn't exceed remaining quantity
-			remainingQuantity := poItem.Quantity - poItem.ReceivedQuantity
-			if dtoItem.ReceivedQuantity > remainingQuantity {
+			remainingQuantity := poItem.Quantity.Sub(poItem.ReceivedQuantity)
+			if dtoItem.ReceivedQuantity.GreaterThan(remainingQuantity) {
 				return pkg.NewAppError(pkg.ErrorCodeValidation,
-					fmt.Sprintf("received quantity %d exceeds remaining quantity %d for item ID %d",
-						dtoItem.ReceivedQuantity, remainingQuantity, dtoItem.ID), nil)
+					fmt.Sprintf("received quantity %s exceeds remaining quantity %s for item ID %d",
+						dtoItem.ReceivedQuantity.String(), remainingQuantity.String(), dtoItem.ID), nil)
 			}
 
-			poItem.ReceivedQuantity += dtoItem.ReceivedQuantity
+			poItem.ReceivedQuantity = poItem.ReceivedQuantity.Add(dtoItem.ReceivedQuantity)
 			poItem.PurchaseOrderItem.UpdateStatus()
 
 			transaction := &models.InventoryTransaction{
@@ -266,7 +267,11 @@ func (r *purchaseOrderRepository) ReceiveInventory(ctx context.Context, req dto.
 			if poItem.InventoryItemID != nil {
 				// Use existing inventory item
 				transaction.InventoryItemID = *poItem.InventoryItemID
-				updateInvetoryDeltas[*poItem.InventoryItemID] += dtoItem.ReceivedQuantity
+				if existing, ok := updateInvetoryDeltas[*poItem.InventoryItemID]; ok {
+					updateInvetoryDeltas[*poItem.InventoryItemID] = existing.Add(dtoItem.ReceivedQuantity)
+				} else {
+					updateInvetoryDeltas[*poItem.InventoryItemID] = dtoItem.ReceivedQuantity
+				}
 			} else {
 				transaction.InventoryItem = &models.InventoryItem{
 					InventoryID: *po.InventoryID,
@@ -350,17 +355,17 @@ func (r *purchaseOrderRepository) ReceiveInventory(ctx context.Context, req dto.
 	})
 }
 
-func (r *purchaseOrderRepository) increaseQuantityInventoryItems(db *gorm.DB, deltaMap map[uint]int) error {
+func (r *purchaseOrderRepository) increaseQuantityInventoryItems(db *gorm.DB, deltaMap map[uint]decimal.Decimal) error {
 	values := make([]string, 0, len(deltaMap))
 	for k, v := range deltaMap {
-		values = append(values, fmt.Sprintf("(%d, %d)", k, v))
+		values = append(values, fmt.Sprintf("(%d, %s)", k, v.String()))
 	}
 	valuesStr := strings.Join(values, ",")
 
 	return db.Exec(fmt.Sprintf(`
 		WITH payload (id, delta) AS ( VALUES %s )
 		UPDATE inventory_items ii
-			SET quantity = ii.quantity + payload.delta
+			SET quantity = ii.quantity + payload.delta::decimal(10,2)
 		FROM payload WHERE ii.id = payload.id;
 	`, valuesStr)).Error
 }
@@ -406,9 +411,9 @@ func (r *purchaseOrderRepository) UpdatePurchaseOrder(ctx context.Context, id ui
 		for key, existingItem := range existingItemsMap {
 			if _, found := newItemsKeyMap[key]; !found && existingItem != nil {
 				// Preserve items that have received quantity > 0
-				if existingItem.ReceivedQuantity > 0 {
+				if existingItem.ReceivedQuantity.GreaterThan(decimal.Zero) {
 					return pkg.NewAppError(pkg.ErrorCodeValidation,
-						fmt.Sprintf("cannot delete item with received quantity %d", existingItem.ReceivedQuantity), nil)
+						fmt.Sprintf("cannot delete item with received quantity %s", existingItem.ReceivedQuantity.String()), nil)
 				}
 				itemsToDeleteIDs = append(itemsToDeleteIDs, existingItem.ID)
 			}
@@ -419,22 +424,22 @@ func (r *purchaseOrderRepository) UpdatePurchaseOrder(ctx context.Context, id ui
 		for _, itemReq := range req.Items {
 			key := fmt.Sprintf("%d-%d", *itemReq.SupplierID, *itemReq.ProductID)
 			if existingItem, found := existingItemsMap[key]; found {
-				if existingItem.ReceivedQuantity > itemReq.Quantity {
+				if existingItem.ReceivedQuantity.GreaterThan(itemReq.Quantity) {
 					return pkg.NewAppError(
 						pkg.ErrorCodeValidation,
-						fmt.Sprintf("received quantity (%d) for product %d from supplier %d is greater than updated quantity (%d)", existingItem.ReceivedQuantity, *itemReq.ProductID, *itemReq.SupplierID, itemReq.Quantity),
+						fmt.Sprintf("received quantity (%s) for product %d from supplier %d is greater than updated quantity (%s)", existingItem.ReceivedQuantity.String(), *itemReq.ProductID, *itemReq.SupplierID, itemReq.Quantity.String()),
 						nil,
 					)
 				}
 
-				if existingItem.ReceivedQuantity > 0 && existingItem.ReceivedQuantity < itemReq.Quantity {
+				if existingItem.ReceivedQuantity.GreaterThan(decimal.Zero) && existingItem.ReceivedQuantity.LessThan(itemReq.Quantity) {
 					po.Status = models.PurchaseOrderStatusPartiallyDelivered
 				}
 
 				// Only update item if new quantity, unit price, or unit ID are different
 				unitIDMatch := (existingItem.UnitID == nil && itemReq.UnitID == nil) ||
 					(existingItem.UnitID != nil && itemReq.UnitID != nil && *existingItem.UnitID == *itemReq.UnitID)
-				if existingItem.Quantity == itemReq.Quantity && existingItem.UnitPrice == itemReq.UnitPrice && unitIDMatch {
+				if existingItem.Quantity.Equal(itemReq.Quantity) && existingItem.UnitPrice == itemReq.UnitPrice && unitIDMatch {
 					continue
 				}
 
@@ -456,7 +461,7 @@ func (r *purchaseOrderRepository) UpdatePurchaseOrder(ctx context.Context, id ui
 					UnitID:           itemReq.UnitID,
 					UnitPrice:        itemReq.UnitPrice,
 					Quantity:         itemReq.Quantity,
-					ReceivedQuantity: 0, // Default to 0
+					ReceivedQuantity: decimal.Zero, // Default to 0
 					Status:           models.PurchaseOrderItemStatusAwaitingDelivery,
 				}
 				upsertItems = append(upsertItems, newItem)

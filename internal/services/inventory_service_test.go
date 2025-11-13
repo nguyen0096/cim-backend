@@ -6,6 +6,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/shopspring/decimal"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -22,22 +23,22 @@ func Test_consumeFIFO(t *testing.T) {
 		// Setup test data
 		txn1 := &models.InventoryTransaction{
 			Base:             models.Base{ID: 1},
-			Quantity:         10,
-			ConsumedQuantity: 0,
+			Quantity:         decimal.NewFromInt(10),
+			ConsumedQuantity: decimal.Zero,
 			Price:            100.0,
 		}
 
 		item1 := &models.InventoryItem{
 			Base:                   models.Base{ID: 1},
 			ProductID:              1,
-			Quantity:               10,
+			Quantity:               decimal.NewFromInt(10),
 			ConsumableTransactions: []*models.InventoryTransaction{txn1},
 		}
 
 		activeItems := []*models.InventoryItem{item1}
-		itemConsumeQuantity := map[uint]int{1: 5}
+		itemConsumeQuantity := map[uint]decimal.Decimal{1: decimal.NewFromInt(5)}
 
-		consumeHandler := func(item *models.InventoryItem, consumeTxn *models.InventoryTransaction, quantity int) []*models.InventoryTransaction {
+		consumeHandler := func(item *models.InventoryItem, consumeTxn *models.InventoryTransaction, quantity decimal.Decimal) []*models.InventoryTransaction {
 			return []*models.InventoryTransaction{
 				{
 					InventoryItemID:      item.ID,
@@ -60,12 +61,12 @@ func Test_consumeFIFO(t *testing.T) {
 		// Assertions
 		require.NoError(t, err)
 		assert.Len(t, ivtrItemChanges, 1, "Should have 1 inventory item change")
-		assert.Equal(t, 5, ivtrItemChanges[0].Quantity, "Item quantity should be reduced to 5")
-		assert.Equal(t, 10, ivtrItemChanges[0].OriginalQuantity, "Original quantity should be 10")
+		assert.True(t, ivtrItemChanges[0].Quantity.Equal(decimal.NewFromInt(5)), "Item quantity should be reduced to 5")
+		assert.True(t, ivtrItemChanges[0].OriginalQuantity.Equal(decimal.NewFromInt(10)), "Original quantity should be 10")
 		assert.Len(t, txns, 2, "Should have 2 transactions (1 sell + 1 update)")
 		assert.Equal(t, models.InventoryTransactionTypeSell, txns[0].TransactionType)
-		assert.Equal(t, 5, txns[0].Quantity)
-		assert.Equal(t, 5, txns[1].ConsumedQuantity, "Purchase transaction should have ConsumedQuantity = 5")
+		assert.True(t, txns[0].Quantity.Equal(decimal.NewFromInt(5)))
+		assert.True(t, txns[1].ConsumedQuantity.Equal(decimal.NewFromInt(5)), "Purchase transaction should have ConsumedQuantity = 5")
 		assert.Equal(t, uint(1), ivtrItemChanges[0].ConsumingTransactionID, "ConsumingTransactionID should be set to txn1 ID")
 	})
 
@@ -73,28 +74,28 @@ func Test_consumeFIFO(t *testing.T) {
 		// Setup test data - multiple transactions
 		txn1 := &models.InventoryTransaction{
 			Base:             models.Base{ID: 1},
-			Quantity:         10,
-			ConsumedQuantity: 0,
+			Quantity:         decimal.NewFromInt(10),
+			ConsumedQuantity: decimal.Zero,
 			Price:            100.0,
 		}
 		txn2 := &models.InventoryTransaction{
 			Base:             models.Base{ID: 2},
-			Quantity:         8,
-			ConsumedQuantity: 0,
+			Quantity:         decimal.NewFromInt(8),
+			ConsumedQuantity: decimal.Zero,
 			Price:            105.0,
 		}
 
 		item1 := &models.InventoryItem{
 			Base:                   models.Base{ID: 1},
 			ProductID:              1,
-			Quantity:               18,
+			Quantity:               decimal.NewFromInt(18),
 			ConsumableTransactions: []*models.InventoryTransaction{txn1, txn2},
 		}
 
 		activeItems := []*models.InventoryItem{item1}
-		itemConsumeQuantity := map[uint]int{1: 15}
+		itemConsumeQuantity := map[uint]decimal.Decimal{1: decimal.NewFromInt(15)}
 
-		consumeHandler := func(item *models.InventoryItem, consumeTxn *models.InventoryTransaction, quantity int) []*models.InventoryTransaction {
+		consumeHandler := func(item *models.InventoryItem, consumeTxn *models.InventoryTransaction, quantity decimal.Decimal) []*models.InventoryTransaction {
 			return []*models.InventoryTransaction{
 				{
 					InventoryItemID:      item.ID,
@@ -117,23 +118,23 @@ func Test_consumeFIFO(t *testing.T) {
 		// Assertions
 		require.NoError(t, err)
 		assert.Len(t, ivtrItemChanges, 1, "Should have 1 inventory item change")
-		assert.Equal(t, 3, ivtrItemChanges[0].Quantity, "Item quantity should be reduced to 3")
-		assert.Equal(t, 18, ivtrItemChanges[0].OriginalQuantity, "Original quantity should be 18")
+		assert.True(t, ivtrItemChanges[0].Quantity.Equal(decimal.NewFromInt(3)), "Item quantity should be reduced to 3")
+		assert.True(t, ivtrItemChanges[0].OriginalQuantity.Equal(decimal.NewFromInt(18)), "Original quantity should be 18")
 
 		// Should have 4 transactions: 2 sell transactions + 2 updated purchase transactions
 		assert.Len(t, txns, 4, "Should have 4 transactions")
 
 		// Verify first transaction consumed (10 units from txn1)
 		assert.Equal(t, models.InventoryTransactionTypeSell, txns[0].TransactionType)
-		assert.Equal(t, 10, txns[0].Quantity)
+		assert.True(t, txns[0].Quantity.Equal(decimal.NewFromInt(10)))
 		assert.Equal(t, 100.0, txns[0].Price)
-		assert.Equal(t, 10, txns[1].ConsumedQuantity, "First purchase transaction should be fully consumed")
+		assert.True(t, txns[1].ConsumedQuantity.Equal(decimal.NewFromInt(10)), "First purchase transaction should be fully consumed")
 
 		// Verify second transaction consumed (5 units from txn2)
 		assert.Equal(t, models.InventoryTransactionTypeSell, txns[2].TransactionType)
-		assert.Equal(t, 5, txns[2].Quantity)
+		assert.True(t, txns[2].Quantity.Equal(decimal.NewFromInt(5)))
 		assert.Equal(t, 105.0, txns[2].Price)
-		assert.Equal(t, 5, txns[3].ConsumedQuantity, "Second purchase transaction should have 5 consumed")
+		assert.True(t, txns[3].ConsumedQuantity.Equal(decimal.NewFromInt(5)), "Second purchase transaction should have 5 consumed")
 		assert.Equal(t, uint(2), ivtrItemChanges[0].ConsumingTransactionID, "ConsumingTransactionID should be set to txn2 ID (last consumed transaction)")
 	})
 
@@ -141,34 +142,34 @@ func Test_consumeFIFO(t *testing.T) {
 		// Setup test data - two items
 		txn1 := &models.InventoryTransaction{
 			Base:             models.Base{ID: 1},
-			Quantity:         10,
-			ConsumedQuantity: 0,
+			Quantity:         decimal.NewFromInt(10),
+			ConsumedQuantity: decimal.Zero,
 			Price:            100.0,
 		}
 		txn2 := &models.InventoryTransaction{
 			Base:             models.Base{ID: 2},
-			Quantity:         20,
-			ConsumedQuantity: 0,
+			Quantity:         decimal.NewFromInt(20),
+			ConsumedQuantity: decimal.Zero,
 			Price:            200.0,
 		}
 
 		item1 := &models.InventoryItem{
 			Base:                   models.Base{ID: 1},
 			ProductID:              1,
-			Quantity:               10,
+			Quantity:               decimal.NewFromInt(10),
 			ConsumableTransactions: []*models.InventoryTransaction{txn1},
 		}
 		item2 := &models.InventoryItem{
 			Base:                   models.Base{ID: 2},
 			ProductID:              2,
-			Quantity:               20,
+			Quantity:               decimal.NewFromInt(20),
 			ConsumableTransactions: []*models.InventoryTransaction{txn2},
 		}
 
 		activeItems := []*models.InventoryItem{item1, item2}
-		itemConsumeQuantity := map[uint]int{1: 5, 2: 10}
+		itemConsumeQuantity := map[uint]decimal.Decimal{1: decimal.NewFromInt(5), 2: decimal.NewFromInt(10)}
 
-		consumeHandler := func(item *models.InventoryItem, consumeTxn *models.InventoryTransaction, quantity int) []*models.InventoryTransaction {
+		consumeHandler := func(item *models.InventoryItem, consumeTxn *models.InventoryTransaction, quantity decimal.Decimal) []*models.InventoryTransaction {
 			return []*models.InventoryTransaction{
 				{
 					InventoryItemID:      item.ID,
@@ -191,8 +192,8 @@ func Test_consumeFIFO(t *testing.T) {
 		// Assertions
 		require.NoError(t, err)
 		assert.Len(t, ivtrItemChanges, 2, "Should have 2 inventory item changes")
-		assert.Equal(t, 5, ivtrItemChanges[0].Quantity, "First item quantity should be 5")
-		assert.Equal(t, 10, ivtrItemChanges[1].Quantity, "Second item quantity should be 10")
+		assert.True(t, ivtrItemChanges[0].Quantity.Equal(decimal.NewFromInt(5)), "First item quantity should be 5")
+		assert.True(t, ivtrItemChanges[1].Quantity.Equal(decimal.NewFromInt(10)), "Second item quantity should be 10")
 		assert.Len(t, txns, 4, "Should have 4 transactions (2 sell + 2 update)")
 		assert.Equal(t, uint(1), ivtrItemChanges[0].ConsumingTransactionID, "First item ConsumingTransactionID should be set to txn1 ID")
 		assert.Equal(t, uint(2), ivtrItemChanges[1].ConsumingTransactionID, "Second item ConsumingTransactionID should be set to txn2 ID")
@@ -202,34 +203,34 @@ func Test_consumeFIFO(t *testing.T) {
 		// Setup test data
 		txn1 := &models.InventoryTransaction{
 			Base:             models.Base{ID: 1},
-			Quantity:         10,
-			ConsumedQuantity: 0,
+			Quantity:         decimal.NewFromInt(10),
+			ConsumedQuantity: decimal.Zero,
 			Price:            100.0,
 		}
 		txn2 := &models.InventoryTransaction{
 			Base:             models.Base{ID: 2},
-			Quantity:         20,
-			ConsumedQuantity: 0,
+			Quantity:         decimal.NewFromInt(20),
+			ConsumedQuantity: decimal.Zero,
 			Price:            200.0,
 		}
 
 		item1 := &models.InventoryItem{
 			Base:                   models.Base{ID: 1},
 			ProductID:              1,
-			Quantity:               10,
+			Quantity:               decimal.NewFromInt(10),
 			ConsumableTransactions: []*models.InventoryTransaction{txn1},
 		}
 		item2 := &models.InventoryItem{
 			Base:                   models.Base{ID: 2},
 			ProductID:              2,
-			Quantity:               20,
+			Quantity:               decimal.NewFromInt(20),
 			ConsumableTransactions: []*models.InventoryTransaction{txn2},
 		}
 
 		activeItems := []*models.InventoryItem{item1, item2}
-		itemConsumeQuantity := map[uint]int{1: 0, 2: 10} // item1 has 0 consume quantity
+		itemConsumeQuantity := map[uint]decimal.Decimal{1: decimal.Zero, 2: decimal.NewFromInt(10)} // item1 has 0 consume quantity
 
-		consumeHandler := func(item *models.InventoryItem, consumeTxn *models.InventoryTransaction, quantity int) []*models.InventoryTransaction {
+		consumeHandler := func(item *models.InventoryItem, consumeTxn *models.InventoryTransaction, quantity decimal.Decimal) []*models.InventoryTransaction {
 			return []*models.InventoryTransaction{
 				{
 					InventoryItemID:      item.ID,
@@ -260,34 +261,34 @@ func Test_consumeFIFO(t *testing.T) {
 		// Setup test data
 		txn1 := &models.InventoryTransaction{
 			Base:             models.Base{ID: 1},
-			Quantity:         10,
-			ConsumedQuantity: 0,
+			Quantity:         decimal.NewFromInt(10),
+			ConsumedQuantity: decimal.Zero,
 			Price:            100.0,
 		}
 		txn2 := &models.InventoryTransaction{
 			Base:             models.Base{ID: 2},
-			Quantity:         20,
-			ConsumedQuantity: 0,
+			Quantity:         decimal.NewFromInt(20),
+			ConsumedQuantity: decimal.Zero,
 			Price:            200.0,
 		}
 
 		item1 := &models.InventoryItem{
 			Base:                   models.Base{ID: 1},
 			ProductID:              1,
-			Quantity:               10,
+			Quantity:               decimal.NewFromInt(10),
 			ConsumableTransactions: []*models.InventoryTransaction{txn1},
 		}
 		item2 := &models.InventoryItem{
 			Base:                   models.Base{ID: 2},
 			ProductID:              2,
-			Quantity:               20,
+			Quantity:               decimal.NewFromInt(20),
 			ConsumableTransactions: []*models.InventoryTransaction{txn2},
 		}
 
 		activeItems := []*models.InventoryItem{item1, item2}
-		itemConsumeQuantity := map[uint]int{2: 10} // only item2 in map
+		itemConsumeQuantity := map[uint]decimal.Decimal{2: decimal.NewFromInt(10)} // only item2 in map
 
-		consumeHandler := func(item *models.InventoryItem, consumeTxn *models.InventoryTransaction, quantity int) []*models.InventoryTransaction {
+		consumeHandler := func(item *models.InventoryItem, consumeTxn *models.InventoryTransaction, quantity decimal.Decimal) []*models.InventoryTransaction {
 			return []*models.InventoryTransaction{
 				{
 					InventoryItemID:      item.ID,
@@ -317,28 +318,28 @@ func Test_consumeFIFO(t *testing.T) {
 		// Setup test data - first transaction is fully consumed
 		txn1 := &models.InventoryTransaction{
 			Base:             models.Base{ID: 1},
-			Quantity:         10,
-			ConsumedQuantity: 10, // fully consumed
+			Quantity:         decimal.NewFromInt(10),
+			ConsumedQuantity: decimal.NewFromInt(10), // fully consumed
 			Price:            100.0,
 		}
 		txn2 := &models.InventoryTransaction{
 			Base:             models.Base{ID: 2},
-			Quantity:         8,
-			ConsumedQuantity: 3,
+			Quantity:         decimal.NewFromInt(8),
+			ConsumedQuantity: decimal.NewFromInt(3),
 			Price:            105.0,
 		}
 
 		item1 := &models.InventoryItem{
 			Base:                   models.Base{ID: 1},
 			ProductID:              1,
-			Quantity:               5,
+			Quantity:               decimal.NewFromInt(5),
 			ConsumableTransactions: []*models.InventoryTransaction{txn1, txn2},
 		}
 
 		activeItems := []*models.InventoryItem{item1}
-		itemConsumeQuantity := map[uint]int{1: 3}
+		itemConsumeQuantity := map[uint]decimal.Decimal{1: decimal.NewFromInt(3)}
 
-		consumeHandler := func(item *models.InventoryItem, consumeTxn *models.InventoryTransaction, quantity int) []*models.InventoryTransaction {
+		consumeHandler := func(item *models.InventoryItem, consumeTxn *models.InventoryTransaction, quantity decimal.Decimal) []*models.InventoryTransaction {
 			return []*models.InventoryTransaction{
 				{
 					InventoryItemID:      item.ID,
@@ -361,10 +362,10 @@ func Test_consumeFIFO(t *testing.T) {
 		// Assertions
 		require.NoError(t, err)
 		assert.Len(t, ivtrItemChanges, 1, "Should have 1 inventory item change")
-		assert.Equal(t, 2, ivtrItemChanges[0].Quantity, "Item quantity should be reduced to 2")
+		assert.True(t, ivtrItemChanges[0].Quantity.Equal(decimal.NewFromInt(2)), "Item quantity should be reduced to 2")
 		assert.Len(t, txns, 2, "Should have 2 transactions (1 sell + 1 update)")
 		// Should only consume from txn2 (not txn1 which is fully consumed)
-		assert.Equal(t, 6, txns[1].ConsumedQuantity, "Transaction 2 should have ConsumedQuantity = 6")
+		assert.True(t, txns[1].ConsumedQuantity.Equal(decimal.NewFromInt(6)), "Transaction 2 should have ConsumedQuantity = 6")
 		assert.Equal(t, uint(2), ivtrItemChanges[0].ConsumingTransactionID, "ConsumingTransactionID should be set to txn2 ID (skipped fully consumed txn1)")
 	})
 
@@ -372,22 +373,22 @@ func Test_consumeFIFO(t *testing.T) {
 		// Setup test data
 		txn1 := &models.InventoryTransaction{
 			Base:             models.Base{ID: 1},
-			Quantity:         10,
-			ConsumedQuantity: 0,
+			Quantity:         decimal.NewFromInt(10),
+			ConsumedQuantity: decimal.Zero,
 			Price:            100.0,
 		}
 
 		item1 := &models.InventoryItem{
 			Base:                   models.Base{ID: 1},
 			ProductID:              1,
-			Quantity:               10,
+			Quantity:               decimal.NewFromInt(10),
 			ConsumableTransactions: []*models.InventoryTransaction{txn1},
 		}
 
 		activeItems := []*models.InventoryItem{item1}
-		itemConsumeQuantity := map[uint]int{999: 5} // item ID 999 not in activeItems
+		itemConsumeQuantity := map[uint]decimal.Decimal{999: decimal.NewFromInt(5)} // item ID 999 not in activeItems
 
-		consumeHandler := func(item *models.InventoryItem, consumeTxn *models.InventoryTransaction, quantity int) []*models.InventoryTransaction {
+		consumeHandler := func(item *models.InventoryItem, consumeTxn *models.InventoryTransaction, quantity decimal.Decimal) []*models.InventoryTransaction {
 			return []*models.InventoryTransaction{}
 		}
 
@@ -410,22 +411,22 @@ func Test_consumeFIFO(t *testing.T) {
 		// Setup test data
 		txn1 := &models.InventoryTransaction{
 			Base:             models.Base{ID: 1},
-			Quantity:         10,
-			ConsumedQuantity: 0,
+			Quantity:         decimal.NewFromInt(10),
+			ConsumedQuantity: decimal.Zero,
 			Price:            100.0,
 		}
 
 		item1 := &models.InventoryItem{
 			Base:                   models.Base{ID: 1},
 			ProductID:              1,
-			Quantity:               10,
+			Quantity:               decimal.NewFromInt(10),
 			ConsumableTransactions: []*models.InventoryTransaction{txn1},
 		}
 
 		activeItems := []*models.InventoryItem{item1}
-		itemConsumeQuantity := map[uint]int{1: 15} // trying to consume 15 but only 10 available
+		itemConsumeQuantity := map[uint]decimal.Decimal{1: decimal.NewFromInt(15)} // trying to consume 15 but only 10 available
 
-		consumeHandler := func(item *models.InventoryItem, consumeTxn *models.InventoryTransaction, quantity int) []*models.InventoryTransaction {
+		consumeHandler := func(item *models.InventoryItem, consumeTxn *models.InventoryTransaction, quantity decimal.Decimal) []*models.InventoryTransaction {
 			return []*models.InventoryTransaction{}
 		}
 
@@ -448,22 +449,22 @@ func Test_consumeFIFO(t *testing.T) {
 		// Setup test data
 		txn1 := &models.InventoryTransaction{
 			Base:             models.Base{ID: 1},
-			Quantity:         10,
-			ConsumedQuantity: 0,
+			Quantity:         decimal.NewFromInt(10),
+			ConsumedQuantity: decimal.Zero,
 			Price:            100.0,
 		}
 
 		item1 := &models.InventoryItem{
 			Base:                   models.Base{ID: 1},
 			ProductID:              1,
-			Quantity:               10,
+			Quantity:               decimal.NewFromInt(10),
 			ConsumableTransactions: []*models.InventoryTransaction{txn1},
 		}
 
 		activeItems := []*models.InventoryItem{item1}
-		itemConsumeQuantity := map[uint]int{1: 5}
+		itemConsumeQuantity := map[uint]decimal.Decimal{1: decimal.NewFromInt(5)}
 
-		consumeHandler := func(item *models.InventoryItem, consumeTxn *models.InventoryTransaction, quantity int) []*models.InventoryTransaction {
+		consumeHandler := func(item *models.InventoryItem, consumeTxn *models.InventoryTransaction, quantity decimal.Decimal) []*models.InventoryTransaction {
 			return []*models.InventoryTransaction{
 				{
 					InventoryItemID:      item.ID,
@@ -492,9 +493,9 @@ func Test_consumeFIFO(t *testing.T) {
 	t.Run("should handle empty active items list", func(t *testing.T) {
 		// Setup test data
 		activeItems := []*models.InventoryItem{}
-		itemConsumeQuantity := map[uint]int{}
+		itemConsumeQuantity := map[uint]decimal.Decimal{}
 
-		consumeHandler := func(item *models.InventoryItem, consumeTxn *models.InventoryTransaction, quantity int) []*models.InventoryTransaction {
+		consumeHandler := func(item *models.InventoryItem, consumeTxn *models.InventoryTransaction, quantity decimal.Decimal) []*models.InventoryTransaction {
 			return []*models.InventoryTransaction{}
 		}
 

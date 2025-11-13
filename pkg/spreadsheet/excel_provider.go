@@ -60,6 +60,12 @@ func (e *ExcelFileProvider) InsertRows(ctx context.Context, sheet string, row, n
 	if err != nil {
 		return fmt.Errorf("excel file provider: failed to insert rows: %w", err)
 	}
+
+	err = e.file.Save()
+	if err != nil {
+		return fmt.Errorf("excel file provider: failed to save excel file: %w", err)
+	}
+
 	return nil
 }
 
@@ -68,6 +74,12 @@ func (e *ExcelFileProvider) SetCellValue(ctx context.Context, sheet, cell string
 	if err != nil {
 		return fmt.Errorf("excel file provider: failed to set cell value: %w", err)
 	}
+
+	err = e.file.Save()
+	if err != nil {
+		return fmt.Errorf("excel file provider: failed to save excel file: %w", err)
+	}
+
 	return nil
 }
 

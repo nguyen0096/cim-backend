@@ -10,6 +10,7 @@ import (
 	"fmt"
 
 	"github.com/labstack/gommon/log"
+	"github.com/shopspring/decimal"
 )
 
 //go:generate mockery --name=InventoryService --structname=InventoryService --output=./servicemocks --outpkg=servicemocks
@@ -19,8 +20,8 @@ type InventoryService interface {
 	UpdateInventory(ctx context.Context, inventory *models.Inventory) error
 	DeleteInventory(ctx context.Context, id uint) error
 	ListInventory(ctx context.Context, limit, offset int) ([]models.Inventory, error)
-	AddInventory(ctx context.Context, productID uint, quantity int, referenceID uint, referenceType, notes string) error
-	RemoveInventory(ctx context.Context, productID uint, quantity int, referenceID uint, referenceType, notes string) error
+	AddInventory(ctx context.Context, productID uint, quantity decimal.Decimal, referenceID uint, referenceType, notes string) error
+	RemoveInventory(ctx context.Context, productID uint, quantity decimal.Decimal, referenceID uint, referenceType, notes string) error
 
 	// v1
 	GetLastPurchasePrices(ctx context.Context, supplierID uint) (dto.LastPurchasePriceMap, error)
@@ -73,17 +74,17 @@ func (s *inventoryService) UpdateInventory(ctx context.Context, inventory *model
 	return s.inventoryRepo.Update(ctx, inventory)
 }
 
-func (s *inventoryService) AddInventory(ctx context.Context, productID uint, quantity int, referenceID uint, referenceType, notes string) error {
+func (s *inventoryService) AddInventory(ctx context.Context, productID uint, quantity decimal.Decimal, referenceID uint, referenceType, notes string) error {
 	// Create transaction record
 	return s.inventoryRepo.AddInventory(ctx, productID, quantity, referenceID, referenceType)
 }
 
-func (s *inventoryService) RemoveInventory(ctx context.Context, productID uint, quantity int, referenceID uint, referenceType, notes string) error {
+func (s *inventoryService) RemoveInventory(ctx context.Context, productID uint, quantity decimal.Decimal, referenceID uint, referenceType, notes string) error {
 	return s.inventoryRepo.RemoveInventory(ctx, productID, quantity, referenceID, referenceType)
 }
 
 // consumeHandler is a function that creates a new transaction for consuming inventory
-type consumeHandler func(item *models.InventoryItem, consumeTxn *models.InventoryTransaction, quantity int) []*models.InventoryTransaction
+type consumeHandler func(item *models.InventoryItem, consumeTxn *models.InventoryTransaction, quantity decimal.Decimal) []*models.InventoryTransaction
 
 // consumeFIFO is the common logic for consuming inventory items
 // It accepts a map of item IDs to quantities to consumeFIFO and a transaction creator function.
@@ -91,7 +92,7 @@ type consumeHandler func(item *models.InventoryItem, consumeTxn *models.Inventor
 func (s *inventoryService) consumeFIFO(
 	ps *processingState,
 	activeItems []*models.InventoryItem,
-	itemConsumeQuantity map[uint]int,
+	itemConsumeQuantity map[uint]decimal.Decimal,
 	consumeHandler consumeHandler,
 ) (
 	ivtrItemChanges []*models.InventoryItemChange,
@@ -112,10 +113,10 @@ func (s *inventoryService) consumeFIFO(
 			continue
 		}
 
-		if consumeQty > item.Quantity {
+		if consumeQty.GreaterThan(item.Quantity) {
 			ps.addError(pkg.ErrConsumeFIFOFailed(
-				fmt.Sprintf("quantity to consume %d exceeds available quantity %d for inventory item %d",
-					consumeQty, item.Quantity, itemID)))
+				fmt.Sprintf("quantity to consume %s exceeds available quantity %s for inventory item %d",
+					consumeQty.String(), item.Quantity.String(), itemID)))
 			continue
 		}
 	}
@@ -125,7 +126,7 @@ func (s *inventoryService) consumeFIFO(
 
 	for _, item := range activeItems {
 		consumeQty, ok := itemConsumeQuantity[item.ID]
-		if !ok || consumeQty == 0 {
+		if !ok || consumeQty.IsZero() {
 			continue
 		}
 
@@ -134,25 +135,30 @@ func (s *inventoryService) consumeFIFO(
 		txnCount := len(item.ConsumableTransactions)
 		idx := 0
 
-		for toConsume > 0 && idx < txnCount {
+		for toConsume.GreaterThan(decimal.Zero) && idx < txnCount {
 			txn := item.ConsumableTransactions[idx]
-			txnUnconsumedQty := txn.Quantity - txn.ConsumedQuantity
+			txnUnconsumedQty := txn.Quantity.Sub(txn.ConsumedQuantity)
 
-			if txnUnconsumedQty == 0 {
+			if txnUnconsumedQty.IsZero() {
 				idx++
 				continue
 			}
 
 			// Create consumption transaction using the provided creator function
-			consumeQty := min(toConsume, txnUnconsumedQty)
-			newTxns := consumeHandler(item, txn, consumeQty)
+			var consumeQtyForTxn decimal.Decimal
+			if toConsume.LessThan(txnUnconsumedQty) {
+				consumeQtyForTxn = toConsume
+			} else {
+				consumeQtyForTxn = txnUnconsumedQty
+			}
+			newTxns := consumeHandler(item, txn, consumeQtyForTxn)
 			txns = append(txns, newTxns...)
 
-			txn.ConsumedQuantity += consumeQty
+			txn.ConsumedQuantity = txn.ConsumedQuantity.Add(consumeQtyForTxn)
 			txns = append(txns, txn)
 
 			consumingTxnID = txn.ID
-			toConsume -= consumeQty
+			toConsume = toConsume.Sub(consumeQtyForTxn)
 			idx++
 		}
 
@@ -161,7 +167,7 @@ func (s *inventoryService) consumeFIFO(
 			OriginalQuantity: item.Quantity,
 		})
 
-		item.Quantity -= consumeQty
+		item.Quantity = item.Quantity.Sub(consumeQty)
 		item.ConsumingTransactionID = consumingTxnID
 	}
 
@@ -180,7 +186,7 @@ func (s *inventoryService) reconcileInventory(
 	}
 	activeItemMap := s.buildItemMap(activeItems)
 
-	itemConsumeQuantity := make(map[uint]int)
+	itemConsumeQuantity := make(map[uint]decimal.Decimal)
 	for _, reqItem := range req.Items {
 		if reqItem.Quantity == nil {
 			ps.addError(pkg.ErrInvalidRequestBody(fmt.Errorf("actual quantity is required for inventory item %d", reqItem.InventoryItemID)))
@@ -194,18 +200,18 @@ func (s *inventoryService) reconcileInventory(
 		}
 
 		// for reconcile, actual quantity is an absolute value, so we need optimistic locking
-		if item.Quantity != reqItem.PrevQuantity {
+		if !item.Quantity.Equal(reqItem.PrevQuantity) {
 			ps.addError(pkg.ErrOptimisticLockConflict("inventory item", reqItem.InventoryItemID, reqItem.PrevQuantity, item.Quantity))
 			continue
 		}
 
-		itemConsumeQuantity[reqItem.InventoryItemID] = item.Quantity - *reqItem.Quantity
+		itemConsumeQuantity[reqItem.InventoryItemID] = item.Quantity.Sub(*reqItem.Quantity)
 	}
 	if ps.hasAnyErrors() {
 		return ps.addError(pkg.ErrReconcileValidationFailed("validation failed for reconcile request"))
 	}
 
-	consumeHandler := func(item *models.InventoryItem, consumeTxn *models.InventoryTransaction, quantity int) []*models.InventoryTransaction {
+	consumeHandler := func(item *models.InventoryItem, consumeTxn *models.InventoryTransaction, quantity decimal.Decimal) []*models.InventoryTransaction {
 		return []*models.InventoryTransaction{
 			{
 				InventoryItemID:      item.ID,
@@ -247,12 +253,12 @@ func (s *inventoryService) CreateReconcileSubmission(ctx context.Context, req dt
 		}
 
 		// Optimistic locking: validate that current quantity matches what frontend saw
-		if item.Quantity != reqItem.PrevQuantity {
+		if !item.Quantity.Equal(reqItem.PrevQuantity) {
 			return nil, pkg.ErrOptimisticLockConflict("inventory item", reqItem.InventoryItemID, reqItem.PrevQuantity, item.Quantity)
 		}
 
 		// Validate that actual quantity doesn't exceed previous quantity
-		if *reqItem.Quantity > item.Quantity {
+		if reqItem.Quantity.GreaterThan(item.Quantity) {
 			return nil, pkg.NewAppError(pkg.ErrorCodeValidation,
 				fmt.Sprintf("actual quantity %d exceeds previous quantity %d for inventory item %d",
 					*reqItem.Quantity, reqItem.PrevQuantity, reqItem.InventoryItemID), nil)
@@ -288,7 +294,7 @@ func (s *inventoryService) disposeInventory(
 		return ps.addError(fmt.Errorf("failed to get active inventory items: %w", err))
 	}
 
-	itemConsumeQuantity := make(map[uint]int)
+	itemConsumeQuantity := make(map[uint]decimal.Decimal)
 	for _, reqItem := range req.Items {
 		if reqItem.Quantity == nil {
 			ps.addError(pkg.ErrInvalidRequestBody(fmt.Errorf("quantity is required for inventory item %d", reqItem.InventoryItemID)))
@@ -301,7 +307,7 @@ func (s *inventoryService) disposeInventory(
 	}
 
 	// Create disposal transaction creator
-	disposeTransactionCreator := func(item *models.InventoryItem, consumeTxn *models.InventoryTransaction, quantity int) []*models.InventoryTransaction {
+	disposeTransactionCreator := func(item *models.InventoryItem, consumeTxn *models.InventoryTransaction, quantity decimal.Decimal) []*models.InventoryTransaction {
 		return []*models.InventoryTransaction{
 			{
 				InventoryItemID:      item.ID,
@@ -345,7 +351,7 @@ func (s *inventoryService) CreateDisposeSubmission(ctx context.Context, req dto.
 		}
 
 		// Validate that dispose quantity doesn't exceed current quantity
-		if *reqItem.Quantity > item.Quantity {
+		if reqItem.Quantity.GreaterThan(item.Quantity) {
 			return nil, pkg.NewAppError(pkg.ErrorCodeValidation,
 				fmt.Sprintf("dispose quantity %d exceeds available quantity %d for product %s",
 					*reqItem.Quantity, item.Quantity, item.Product.Name), nil)
@@ -443,7 +449,7 @@ func formatWarnings(
 		switch submission.SubmissionType {
 		case models.InventorySubmissionTypeDispose, models.InventorySubmissionTypeTransfer:
 			// Check if requested quantity exceeds available quantity
-			if *item.Quantity > inventoryItem.Quantity {
+			if item.Quantity.GreaterThan(inventoryItem.Quantity) {
 				operation := "dispose"
 				if submission.SubmissionType == models.InventorySubmissionTypeTransfer {
 					operation = "transfer"
@@ -621,7 +627,7 @@ func (s *inventoryService) CreateTransferSubmission(ctx context.Context, req dto
 				fmt.Sprintf("inventory item %d not found", reqItem.InventoryItemID), nil)
 		}
 
-		if *reqItem.Quantity > item.Quantity {
+		if reqItem.Quantity.GreaterThan(item.Quantity) {
 			return nil, pkg.NewAppError(pkg.ErrorCodeValidation,
 				fmt.Sprintf("transfer quantity %d exceeds available quantity %d for product %s",
 					*reqItem.Quantity, item.Quantity, item.Product.Name), nil)
@@ -659,7 +665,7 @@ func (s *inventoryService) transferInventory(
 	}
 	srcItemMap := s.buildItemMap(srcItems)
 
-	itemConsumeQuantity := make(map[uint]int)
+	itemConsumeQuantity := make(map[uint]decimal.Decimal)
 	productIDs := make([]uint, 0, len(req.Items))
 	for _, reqItem := range req.Items {
 		if reqItem.Quantity == nil {
@@ -673,7 +679,7 @@ func (s *inventoryService) transferInventory(
 			continue
 		}
 
-		if *reqItem.Quantity > item.Quantity {
+		if reqItem.Quantity.GreaterThan(item.Quantity) {
 			ps.addError(pkg.ErrTransferValidationFailed(fmt.Sprintf("transfer quantity %d exceeds available quantity %d for inventory item %d",
 				reqItem.Quantity, item.Quantity, reqItem.InventoryItemID)))
 			continue
@@ -693,7 +699,7 @@ func (s *inventoryService) transferInventory(
 	destItemMap := s.buildProductIDMap(destItems) // product_id -> inventory_item
 
 	destIvtrItemChanges := make(map[uint]*models.InventoryItemChange, 0) // product_id -> change
-	transferTransactionCreator := func(item *models.InventoryItem, consumeTxn *models.InventoryTransaction, quantity int) []*models.InventoryTransaction {
+	transferTransactionCreator := func(item *models.InventoryItem, consumeTxn *models.InventoryTransaction, quantity decimal.Decimal) []*models.InventoryTransaction {
 		txns := []*models.InventoryTransaction{
 			{
 				InventoryItemID:      item.ID,
@@ -713,7 +719,7 @@ func (s *inventoryService) transferInventory(
 		// if destination change is created, only need to update quantity
 		change, ok := destIvtrItemChanges[item.ProductID]
 		if ok {
-			change.Quantity += quantity
+			change.Quantity = change.Quantity.Add(quantity)
 			s.linkTxnWithInventoryItem(txns[1], change.InventoryItem)
 			return txns
 		}
@@ -736,7 +742,7 @@ func (s *inventoryService) transferInventory(
 		}
 		destIvtrItemChanges[item.ProductID] = change
 
-		change.Quantity += quantity
+		change.Quantity = change.Quantity.Add(quantity)
 		s.linkTxnWithInventoryItem(txns[1], change.InventoryItem)
 		return txns
 	}
@@ -1127,7 +1133,7 @@ func (s *inventoryService) validateReconcileUpdate(ctx context.Context, inventor
 		}
 
 		// Validate that actual quantity doesn't exceed previous quantity
-		if *reqItem.Quantity > item.Quantity {
+		if reqItem.Quantity.GreaterThan(item.Quantity) {
 			return pkg.NewAppError(pkg.ErrorCodeValidation,
 				fmt.Sprintf("actual quantity %d exceeds previous quantity %d for inventory item %d",
 					*reqItem.Quantity, reqItem.PrevQuantity, reqItem.InventoryItemID), nil)
@@ -1157,7 +1163,7 @@ func (s *inventoryService) validateDisposeUpdate(ctx context.Context, inventoryI
 		}
 
 		// Validate that dispose quantity doesn't exceed current quantity
-		if *reqItem.Quantity > item.Quantity {
+		if reqItem.Quantity.GreaterThan(item.Quantity) {
 			return pkg.NewAppError(pkg.ErrorCodeValidation,
 				fmt.Sprintf("dispose quantity %d exceeds available quantity %d for product %s",
 					*reqItem.Quantity, item.Quantity, item.Product.Name), nil)
@@ -1193,7 +1199,7 @@ func (s *inventoryService) validateTransferUpdate(ctx context.Context, submissio
 		}
 
 		// Validate that transfer quantity doesn't exceed current quantity
-		if *reqItem.Quantity > item.Quantity {
+		if reqItem.Quantity.GreaterThan(item.Quantity) {
 			return pkg.NewAppError(pkg.ErrorCodeValidation,
 				fmt.Sprintf("transfer quantity %d exceeds available quantity %d for product %s",
 					*reqItem.Quantity, item.Quantity, item.Product.Name), nil)

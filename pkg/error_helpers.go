@@ -1,6 +1,10 @@
 package pkg
 
-import "fmt"
+import (
+	"fmt"
+
+	"github.com/shopspring/decimal"
+)
 
 // Common error helper functions for creating AppErrors
 
@@ -58,8 +62,8 @@ func ErrBadInventoryItemState(message string, cause error) *AppError {
 }
 
 // ErrOptimisticLockConflict creates an error for optimistic locking conflicts
-func ErrOptimisticLockConflict(resourceType string, resourceID uint, expectedValue, actualValue int) *AppError {
-	message := fmt.Sprintf("%s %d quantity has changed (expected: %d, current: %d)",
+func ErrOptimisticLockConflict(resourceType string, resourceID uint, expectedValue, actualValue decimal.Decimal) *AppError {
+	message := fmt.Sprintf("%s %d quantity has changed (expected: %s, current: %s)",
 		resourceType, resourceID, expectedValue, actualValue)
 	return NewAppError(ErrorCodeConflict, message, nil)
 }

@@ -1474,7 +1474,7 @@ type InventoryData struct {
 	SupplierID   uint
 	UnitPrice    float64
 	UnitType     string
-	Quantity     int
+	Quantity     float64
 	ReorderLevel int
 	Location     string
 }

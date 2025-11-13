@@ -139,8 +139,8 @@ func (s *stubSettingsService) GetSettingValue(ctx context.Context, key string, d
 	return nil
 }
 
-func newProductServiceWithRepos(productRepo *repositorymocks.ProductRepository, supplierRepo *repositorymocks.SupplierRepository) (ProductService, *stubUnitRepository) {
-	unitRepo := newStubUnitRepository()
+func newProductServiceWithRepos(productRepo *repositorymocks.ProductRepository, supplierRepo *repositorymocks.SupplierRepository) (ProductService, *repositorymocks.UnitRepository) {
+	unitRepo := new(repositorymocks.UnitRepository)
 	// Seed a default unit so lookups succeed for ID 1
 	_ = unitRepo.Create(context.Background(), &models.Unit{
 		UnitType:         "general",

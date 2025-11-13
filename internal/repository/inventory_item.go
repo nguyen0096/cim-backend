@@ -361,7 +361,7 @@ func (r *inventoryItemRepository) updateInventoryItems(
 			return fmt.Errorf("inventory item with ID %d not found", change.ID)
 		}
 
-		if existingItem.Quantity != change.OriginalQuantity {
+		if !existingItem.Quantity.Equal(change.OriginalQuantity) {
 			return pkg.ErrOptimisticLockConflict("inventory item", change.ID, change.OriginalQuantity, existingItem.Quantity)
 		}
 	}

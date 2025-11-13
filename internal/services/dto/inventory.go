@@ -1,6 +1,10 @@
 package dto
 
-import "cim-backend/internal/models"
+import (
+	"cim-backend/internal/models"
+
+	"github.com/shopspring/decimal"
+)
 
 var (
 	_ models.IDGetter = (*QuantityItem)(nil)
@@ -8,15 +12,15 @@ var (
 
 // QuantityItem represents a single inventory item quantity
 type QuantityItem struct {
-	InventoryItemID uint `json:"inventory_item_id" validate:"required"`
-	Quantity        *int `json:"quantity" validate:"required,min=0"`
-	PrevQuantity    int  `json:"prev_quantity,omitempty" validate:"required,min=1"`
+	InventoryItemID uint             `json:"inventory_item_id" validate:"required"`
+	Quantity        *decimal.Decimal `json:"quantity" validate:"required"`
+	PrevQuantity    decimal.Decimal  `json:"prev_quantity,omitempty" validate:"required"`
 
 	// Response fields
 
 	InventoryItem   *models.InventoryItem `json:"inventory_item,omitempty" validate:"-"`
 	ProductName     string                `json:"product_name,omitempty" validate:"-"`
-	CurrentQuantity int                   `json:"current_quantity,omitempty" validate:"-"`
+	CurrentQuantity decimal.Decimal       `json:"current_quantity,omitempty" validate:"-"`
 }
 
 func (d QuantityItem) GetID() uint {

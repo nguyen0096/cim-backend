@@ -7,6 +7,8 @@ import (
 	"cim-backend/pkg"
 	"context"
 	"fmt"
+
+	"github.com/shopspring/decimal"
 )
 
 //go:generate mockery --name=InventoryItemService --structname=InventoryItemService --output=./servicemocks --outpkg=servicemocks
@@ -19,7 +21,7 @@ type InventoryItemService interface {
 	GetInventoryItemsByInventoryIDWithFilters(ctx context.Context, inventoryID uint, productType string, params models.ListParams) ([]models.InventoryItem, error)
 	GetInventoryItemByProductID(ctx context.Context, productID uint) (*models.InventoryItem, error)
 	GetLowStockItems(ctx context.Context, limit, offset int) ([]models.InventoryItem, error)
-	AdjustInventoryItemQuantity(ctx context.Context, id uint, quantity int, notes string) error
+	AdjustInventoryItemQuantity(ctx context.Context, id uint, quantity decimal.Decimal, notes string) error
 	CountInventoryItems(ctx context.Context) (int64, error)
 	CountInventoryItemsByInventoryIDWithFilters(ctx context.Context, inventoryID uint, productType string, params models.ListParams) (int64, error)
 	CountLowStockItems(ctx context.Context) (int64, error)
@@ -210,7 +212,7 @@ func (s *inventoryItemService) GetLowStockItems(ctx context.Context, limit, offs
 	return items, nil
 }
 
-func (s *inventoryItemService) AdjustInventoryItemQuantity(ctx context.Context, id uint, quantity int, notes string) error {
+func (s *inventoryItemService) AdjustInventoryItemQuantity(ctx context.Context, id uint, quantity decimal.Decimal, notes string) error {
 	// Get the inventory item
 	item, err := s.inventoryItemRepo.GetByID(ctx, id)
 	if err != nil {
@@ -221,12 +223,12 @@ func (s *inventoryItemService) AdjustInventoryItemQuantity(ctx context.Context, 
 	}
 
 	// Check if adjustment would result in negative quantity
-	if item.Quantity+quantity < 0 {
+	if item.Quantity.Add(quantity).LessThan(decimal.Zero) {
 		return pkg.NewAppError(pkg.ErrorCodeValidation, "insufficient inventory quantity", nil)
 	}
 
 	// Update the quantity
-	item.Quantity += quantity
+	item.Quantity = item.Quantity.Add(quantity)
 
 	return s.inventoryItemRepo.Update(ctx, []*models.InventoryItem{item}, nil)
 }

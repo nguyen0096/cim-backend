@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/shopspring/decimal"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
@@ -82,23 +83,23 @@ func TestGetActiveItemsByInventoryIDs(t *testing.T) {
 	// Create inventory items (ConsumingTransactionID will be set after transactions are created)
 	inventoryItems := []models.InventoryItem{
 		{
-			InventoryID: inventories[0].ID, ProductID: products[0].ID, Quantity: 9, Status: models.InventoryItemStatusActive,
+			InventoryID: inventories[0].ID, ProductID: products[0].ID, Quantity: decimal.NewFromInt(9), Status: models.InventoryItemStatusActive,
 			// ConsumingTransactionID will be set to transaction 2's ID after creation
 		},
 		{
-			InventoryID: inventories[0].ID, ProductID: products[1].ID, Quantity: 15, Status: models.InventoryItemStatusActive,
+			InventoryID: inventories[0].ID, ProductID: products[1].ID, Quantity: decimal.NewFromInt(15), Status: models.InventoryItemStatusActive,
 			// ConsumingTransactionID will be set to transaction 4's ID after creation
 		},
 		{
-			InventoryID: inventories[1].ID, ProductID: products[2].ID, Quantity: 45, Status: models.InventoryItemStatusActive,
+			InventoryID: inventories[1].ID, ProductID: products[2].ID, Quantity: decimal.NewFromInt(45), Status: models.InventoryItemStatusActive,
 			// ConsumingTransactionID is zero value (0) - should return all transactions
 		},
 		{
-			InventoryID: inventories[1].ID, ProductID: products[3].ID, Quantity: 25, Status: models.InventoryItemStatusActive,
+			InventoryID: inventories[1].ID, ProductID: products[3].ID, Quantity: decimal.NewFromInt(25), Status: models.InventoryItemStatusActive,
 			// ConsumingTransactionID will be set to transaction 9's ID after creation
 		},
 		{
-			InventoryID: inventories[0].ID, ProductID: products[4].ID, Quantity: 0, Status: models.InventoryItemStatusActive,
+			InventoryID: inventories[0].ID, ProductID: products[4].ID, Quantity: decimal.Zero, Status: models.InventoryItemStatusActive,
 			// Inactive item (quantity 0)
 		},
 	}
@@ -112,34 +113,34 @@ func TestGetActiveItemsByInventoryIDs(t *testing.T) {
 	transactions := []models.InventoryTransaction{
 		// Purchase transactions for inventory item 1 (MacBook Pro) - 3 transactions
 		// Transaction 0: Fully consumed (not included in active transactions)
-		{Base: models.Base{CreatedAt: now.AddDate(0, 0, -30), UpdatedAt: now.AddDate(0, 0, -30)}, InventoryItemID: inventoryItems[0].ID, SupplierID: &suppliers[0].ID, TransactionType: models.InventoryTransactionTypePurchase, Price: 2999.99, Quantity: 5},
+		{Base: models.Base{CreatedAt: now.AddDate(0, 0, -30), UpdatedAt: now.AddDate(0, 0, -30)}, InventoryItemID: inventoryItems[0].ID, SupplierID: &suppliers[0].ID, TransactionType: models.InventoryTransactionTypePurchase, Price: 2999.99, Quantity: decimal.NewFromInt(5)},
 		// Transaction 1: Currently being consumed (ConsumingTransactionID will point here)
-		{Base: models.Base{CreatedAt: now.AddDate(0, 0, -20), UpdatedAt: now.AddDate(0, 0, -20)}, InventoryItemID: inventoryItems[0].ID, SupplierID: &suppliers[0].ID, TransactionType: models.InventoryTransactionTypePurchase, Price: 2999.99, Quantity: 3},
+		{Base: models.Base{CreatedAt: now.AddDate(0, 0, -20), UpdatedAt: now.AddDate(0, 0, -20)}, InventoryItemID: inventoryItems[0].ID, SupplierID: &suppliers[0].ID, TransactionType: models.InventoryTransactionTypePurchase, Price: 2999.99, Quantity: decimal.NewFromInt(3)},
 		// Transaction 2: Not yet consumed
-		{Base: models.Base{CreatedAt: now.AddDate(0, 0, -10), UpdatedAt: now.AddDate(0, 0, -10)}, InventoryItemID: inventoryItems[0].ID, SupplierID: &suppliers[0].ID, TransactionType: models.InventoryTransactionTypePurchase, Price: 2999.99, Quantity: 2},
+		{Base: models.Base{CreatedAt: now.AddDate(0, 0, -10), UpdatedAt: now.AddDate(0, 0, -10)}, InventoryItemID: inventoryItems[0].ID, SupplierID: &suppliers[0].ID, TransactionType: models.InventoryTransactionTypePurchase, Price: 2999.99, Quantity: decimal.NewFromInt(2)},
 
 		// Purchase transactions for inventory item 2 (LG Monitor) - 2 transactions
 		// Transaction 3: Currently being consumed (ConsumingTransactionID will point here)
-		{Base: models.Base{CreatedAt: now.AddDate(0, 0, -25), UpdatedAt: now.AddDate(0, 0, -25)}, InventoryItemID: inventoryItems[1].ID, SupplierID: &suppliers[0].ID, TransactionType: models.InventoryTransactionTypePurchase, Price: 599.99, Quantity: 10},
+		{Base: models.Base{CreatedAt: now.AddDate(0, 0, -25), UpdatedAt: now.AddDate(0, 0, -25)}, InventoryItemID: inventoryItems[1].ID, SupplierID: &suppliers[0].ID, TransactionType: models.InventoryTransactionTypePurchase, Price: 599.99, Quantity: decimal.NewFromInt(10)},
 		// Transaction 4: Not yet consumed
-		{Base: models.Base{CreatedAt: now.AddDate(0, 0, -15), UpdatedAt: now.AddDate(0, 0, -15)}, InventoryItemID: inventoryItems[1].ID, SupplierID: &suppliers[0].ID, TransactionType: models.InventoryTransactionTypePurchase, Price: 599.99, Quantity: 5},
+		{Base: models.Base{CreatedAt: now.AddDate(0, 0, -15), UpdatedAt: now.AddDate(0, 0, -15)}, InventoryItemID: inventoryItems[1].ID, SupplierID: &suppliers[0].ID, TransactionType: models.InventoryTransactionTypePurchase, Price: 599.99, Quantity: decimal.NewFromInt(5)},
 
 		// Purchase transactions for inventory item 3 (Keychron Keyboard) - 3 transactions
 		// All transactions are active (ConsumingTransactionID = 0)
-		{Base: models.Base{CreatedAt: now.AddDate(0, 0, -40), UpdatedAt: now.AddDate(0, 0, -40)}, InventoryItemID: inventoryItems[2].ID, SupplierID: &suppliers[0].ID, TransactionType: models.InventoryTransactionTypePurchase, Price: 89.99, Quantity: 20},
-		{Base: models.Base{CreatedAt: now.AddDate(0, 0, -30), UpdatedAt: now.AddDate(0, 0, -30)}, InventoryItemID: inventoryItems[2].ID, SupplierID: &suppliers[0].ID, TransactionType: models.InventoryTransactionTypePurchase, Price: 89.99, Quantity: 15},
-		{Base: models.Base{CreatedAt: now.AddDate(0, 0, -20), UpdatedAt: now.AddDate(0, 0, -20)}, InventoryItemID: inventoryItems[2].ID, SupplierID: &suppliers[0].ID, TransactionType: models.InventoryTransactionTypePurchase, Price: 89.99, Quantity: 10},
+		{Base: models.Base{CreatedAt: now.AddDate(0, 0, -40), UpdatedAt: now.AddDate(0, 0, -40)}, InventoryItemID: inventoryItems[2].ID, SupplierID: &suppliers[0].ID, TransactionType: models.InventoryTransactionTypePurchase, Price: 89.99, Quantity: decimal.NewFromInt(20)},
+		{Base: models.Base{CreatedAt: now.AddDate(0, 0, -30), UpdatedAt: now.AddDate(0, 0, -30)}, InventoryItemID: inventoryItems[2].ID, SupplierID: &suppliers[0].ID, TransactionType: models.InventoryTransactionTypePurchase, Price: 89.99, Quantity: decimal.NewFromInt(15)},
+		{Base: models.Base{CreatedAt: now.AddDate(0, 0, -20), UpdatedAt: now.AddDate(0, 0, -20)}, InventoryItemID: inventoryItems[2].ID, SupplierID: &suppliers[0].ID, TransactionType: models.InventoryTransactionTypePurchase, Price: 89.99, Quantity: decimal.NewFromInt(10)},
 
 		// Purchase transactions for inventory item 4 (Logitech Mouse) - 3 transactions
 		// Transaction 8: Fully consumed (not included in active transactions)
-		{Base: models.Base{CreatedAt: now.AddDate(0, 0, -35), UpdatedAt: now.AddDate(0, 0, -35)}, InventoryItemID: inventoryItems[3].ID, SupplierID: &suppliers[0].ID, TransactionType: models.InventoryTransactionTypePurchase, Price: 99.99, Quantity: 10},
+		{Base: models.Base{CreatedAt: now.AddDate(0, 0, -35), UpdatedAt: now.AddDate(0, 0, -35)}, InventoryItemID: inventoryItems[3].ID, SupplierID: &suppliers[0].ID, TransactionType: models.InventoryTransactionTypePurchase, Price: 99.99, Quantity: decimal.NewFromInt(10)},
 		// Transaction 9: Currently being consumed (ConsumingTransactionID will point here)
-		{Base: models.Base{CreatedAt: now.AddDate(0, 0, -25), UpdatedAt: now.AddDate(0, 0, -25)}, InventoryItemID: inventoryItems[3].ID, SupplierID: &suppliers[0].ID, TransactionType: models.InventoryTransactionTypePurchase, Price: 99.99, Quantity: 8},
+		{Base: models.Base{CreatedAt: now.AddDate(0, 0, -25), UpdatedAt: now.AddDate(0, 0, -25)}, InventoryItemID: inventoryItems[3].ID, SupplierID: &suppliers[0].ID, TransactionType: models.InventoryTransactionTypePurchase, Price: 99.99, Quantity: decimal.NewFromInt(8)},
 		// Transaction 10: Not yet consumed
-		{Base: models.Base{CreatedAt: now.AddDate(0, 0, -15), UpdatedAt: now.AddDate(0, 0, -15)}, InventoryItemID: inventoryItems[3].ID, SupplierID: &suppliers[0].ID, TransactionType: models.InventoryTransactionTypePurchase, Price: 99.99, Quantity: 7},
+		{Base: models.Base{CreatedAt: now.AddDate(0, 0, -15), UpdatedAt: now.AddDate(0, 0, -15)}, InventoryItemID: inventoryItems[3].ID, SupplierID: &suppliers[0].ID, TransactionType: models.InventoryTransactionTypePurchase, Price: 99.99, Quantity: decimal.NewFromInt(7)},
 
 		// Purchase transaction for inventory item 5 (Herman Miller Chair) - 1 transaction (inactive)
-		{Base: models.Base{CreatedAt: now.AddDate(0, 0, -20), UpdatedAt: now.AddDate(0, 0, -20)}, InventoryItemID: inventoryItems[4].ID, SupplierID: &suppliers[1].ID, TransactionType: models.InventoryTransactionTypePurchase, Price: 1395.00, Quantity: 3},
+		{Base: models.Base{CreatedAt: now.AddDate(0, 0, -20), UpdatedAt: now.AddDate(0, 0, -20)}, InventoryItemID: inventoryItems[4].ID, SupplierID: &suppliers[1].ID, TransactionType: models.InventoryTransactionTypePurchase, Price: 1395.00, Quantity: decimal.NewFromInt(3)},
 	}
 	err = db.WithContext(ctx).Create(&transactions).Error
 	require.NoError(t, err, "Failed to create inventory transactions")
@@ -382,8 +383,8 @@ func TestSaveInventoryItemChanges(t *testing.T) {
 
 	// Create inventories
 	inventories := []models.Inventory{
-		{Name: "Test Inventory 1", Description: "Test inventory 1", Location: "Test Location 1", Status: models.InventoryStatusActive},
-		{Name: "Test Inventory 2", Description: "Test inventory 2", Location: "Test Location 2", Status: models.InventoryStatusActive},
+		{Name: fmt.Sprintf("TestSaveInventoryItemChanges 1 - %d", time.Now().Unix()), Description: "Test inventory 1", Location: "Test Location 1", Status: models.InventoryStatusActive},
+		{Name: fmt.Sprintf("TestSaveInventoryItemChanges 2 - %d", time.Now().Unix()), Description: "Test inventory 2", Location: "Test Location 2", Status: models.InventoryStatusActive},
 	}
 	err = db.WithContext(ctx).Create(&inventories).Error
 	require.NoError(t, err, "Failed to create inventories")
@@ -395,15 +396,15 @@ func TestSaveInventoryItemChanges(t *testing.T) {
 	inventoryItems := []models.InventoryItem{
 		{
 			InventoryID: inventories[0].ID, ProductID: products[0].ID,
-			Quantity: 10, Status: models.InventoryItemStatusActive,
+			Quantity: decimal.NewFromInt(10), Status: models.InventoryItemStatusActive,
 		},
 		{
 			InventoryID: inventories[0].ID, ProductID: products[1].ID,
-			Quantity: 20, Status: models.InventoryItemStatusActive,
+			Quantity: decimal.NewFromInt(20), Status: models.InventoryItemStatusActive,
 		},
 		{
 			InventoryID: inventories[1].ID, ProductID: products[2].ID,
-			Quantity: 5, Status: models.InventoryItemStatusActive,
+			Quantity: decimal.NewFromInt(5), Status: models.InventoryItemStatusActive,
 		},
 	}
 	err = db.WithContext(ctx).Create(&inventoryItems).Error
@@ -420,14 +421,14 @@ func TestSaveInventoryItemChanges(t *testing.T) {
 			SupplierID:      &suppliers[0].ID,
 			TransactionType: models.InventoryTransactionTypePurchase,
 			Price:           50.00,
-			Quantity:        5,
+			Quantity:        decimal.NewFromInt(5),
 		},
 		{
 			InventoryItemID: inventoryItems[0].ID,
 			SupplierID:      &suppliers[0].ID,
 			TransactionType: models.InventoryTransactionTypePurchase,
 			Price:           50.00,
-			Quantity:        5,
+			Quantity:        decimal.NewFromInt(5),
 		},
 
 		// Purchase transactions for inventory item 2 (Test Product 2)
@@ -436,14 +437,14 @@ func TestSaveInventoryItemChanges(t *testing.T) {
 			SupplierID:      &suppliers[1].ID,
 			TransactionType: models.InventoryTransactionTypePurchase,
 			Price:           75.00,
-			Quantity:        10,
+			Quantity:        decimal.NewFromInt(10),
 		},
 		{
 			InventoryItemID: inventoryItems[1].ID,
 			SupplierID:      &suppliers[1].ID,
 			TransactionType: models.InventoryTransactionTypePurchase,
 			Price:           75.00,
-			Quantity:        10,
+			Quantity:        decimal.NewFromInt(10),
 		},
 
 		// Purchase transactions for inventory item 3 (Test Product 3)
@@ -452,7 +453,7 @@ func TestSaveInventoryItemChanges(t *testing.T) {
 			SupplierID:      &suppliers[0].ID,
 			TransactionType: models.InventoryTransactionTypePurchase,
 			Price:           30.00,
-			Quantity:        5,
+			Quantity:        decimal.NewFromInt(5),
 		},
 	}
 	err = db.WithContext(ctx).Create(&transactions).Error
@@ -490,7 +491,7 @@ func TestSaveInventoryItemChanges(t *testing.T) {
 		newInventoryItem := &models.InventoryItem{
 			InventoryID: inventories[0].ID,
 			ProductID:   products[2].ID,
-			Quantity:    5,
+			Quantity:    decimal.NewFromInt(5),
 			Status:      models.InventoryItemStatusActive,
 		}
 
@@ -499,9 +500,9 @@ func TestSaveInventoryItemChanges(t *testing.T) {
 				InventoryItem: &models.InventoryItem{
 					Base:        models.Base{ID: inventoryItems[0].ID},
 					InventoryID: inventories[0].ID, ProductID: products[0].ID,
-					Quantity: 8, Status: models.InventoryItemStatusActive,
+					Quantity: decimal.NewFromInt(8), Status: models.InventoryItemStatusActive,
 				},
-				OriginalQuantity: 10,
+				OriginalQuantity: decimal.NewFromInt(10),
 			},
 			{
 				InventoryItem: newInventoryItem,
@@ -514,7 +515,7 @@ func TestSaveInventoryItemChanges(t *testing.T) {
 				InventoryItemID: inventoryItems[0].ID,
 				TransactionType: models.InventoryTransactionTypeSell,
 				Price:           100.0,
-				Quantity:        2,
+				Quantity:        decimal.NewFromInt(2),
 			},
 			// Update existing transactions
 			{
@@ -522,15 +523,15 @@ func TestSaveInventoryItemChanges(t *testing.T) {
 				InventoryItemID:  inventoryItems[0].ID,
 				TransactionType:  models.InventoryTransactionTypePurchase,
 				Price:            100.0,
-				Quantity:         3,
-				ConsumedQuantity: 2,
+				Quantity:         decimal.NewFromInt(3),
+				ConsumedQuantity: decimal.NewFromInt(2),
 			},
 			// Insert new transaction for new inventory item
 			{
 				InventoryItem:   newInventoryItem,
 				TransactionType: models.InventoryTransactionTypePurchase,
 				Price:           100.0,
-				Quantity:        5,
+				Quantity:        decimal.NewFromInt(5),
 			},
 		}
 
@@ -541,27 +542,27 @@ func TestSaveInventoryItemChanges(t *testing.T) {
 		var updatedItem1 models.InventoryItem
 		err = db.WithContext(ctx).First(&updatedItem1, inventoryItems[0].ID).Error
 		require.NoError(t, err)
-		assert.Equal(t, 8, updatedItem1.Quantity, "First item quantity should be 8")
+		assert.True(t, updatedItem1.Quantity.Equal(decimal.NewFromInt(8)), "First item quantity should be 8")
 
 		// Vefiry sell transaction was created
 		var updatedSellTransaction models.InventoryTransaction
 		err = db.WithContext(ctx).First(&updatedSellTransaction, txns[0].ID).Error
 		require.NoError(t, err)
-		assert.Equal(t, 2, updatedSellTransaction.Quantity, "Sell transaction should have Quantity = 2")
+		assert.True(t, decimal.NewFromInt(2).Equal(updatedSellTransaction.Quantity), "Sell transaction should have Quantity = 2")
 		assert.Equal(t, models.InventoryTransactionTypeSell, updatedSellTransaction.TransactionType, "Should be a sell transaction")
 
 		// Verify purchase transactions were updated
 		var updatedPurchaseTransaction1 models.InventoryTransaction
 		err = db.WithContext(ctx).First(&updatedPurchaseTransaction1, txns[1].ID).Error
 		require.NoError(t, err)
-		assert.Equal(t, 2, updatedPurchaseTransaction1.ConsumedQuantity, "First purchase transaction should have ConsumedQuantity = 2")
+		assert.True(t, updatedPurchaseTransaction1.ConsumedQuantity.Equal(decimal.NewFromInt(2)), "First purchase transaction should have ConsumedQuantity = 2")
 		assert.Equal(t, models.InventoryTransactionTypePurchase, updatedPurchaseTransaction1.TransactionType, "Should be a purchase transaction")
 
 		// Verify purchase transaction for new inventory item was created
 		var updatedPurchaseTransaction2 models.InventoryTransaction
 		err = db.WithContext(ctx).First(&updatedPurchaseTransaction2, txns[2].ID).Error
 		require.NoError(t, err)
-		assert.Equal(t, 0, updatedPurchaseTransaction2.ConsumedQuantity, "New purchase transaction should have ConsumedQuantity = 0")
+		assert.True(t, updatedPurchaseTransaction2.ConsumedQuantity.Equal(decimal.Zero), "New purchase transaction should have ConsumedQuantity = 0")
 		assert.Equal(t, models.InventoryTransactionTypePurchase, updatedPurchaseTransaction2.TransactionType, "Should be a purchase transaction")
 	})
 
@@ -572,9 +573,9 @@ func TestSaveInventoryItemChanges(t *testing.T) {
 				InventoryItem: &models.InventoryItem{
 					Base:        models.Base{ID: 99999}, // Non-existent ID
 					InventoryID: inventories[0].ID, ProductID: products[0].ID,
-					Quantity: 8, Status: models.InventoryItemStatusActive,
+					Quantity: decimal.NewFromInt(8), Status: models.InventoryItemStatusActive,
 				},
-				OriginalQuantity: 10,
+				OriginalQuantity: decimal.NewFromInt(10),
 			},
 		}
 
@@ -593,7 +594,7 @@ func TestSaveInventoryItemChanges(t *testing.T) {
 		// Modify quantity - adding 2 to the original quantity
 		err = db.WithContext(ctx).Model(&models.InventoryItem{}).
 			Where("id = ?", inventoryItems[0].ID).
-			Update("quantity", originalItem.Quantity+2).Error
+			Update("quantity", originalItem.Quantity.Add(decimal.NewFromInt(2))).Error
 		require.NoError(t, err, "Failed to modify item quantity")
 
 		reconcileItems := []*models.InventoryItemChange{
@@ -601,7 +602,7 @@ func TestSaveInventoryItemChanges(t *testing.T) {
 				InventoryItem: &models.InventoryItem{
 					Base:        models.Base{ID: inventoryItems[0].ID},
 					InventoryID: inventories[0].ID, ProductID: products[0].ID,
-					Quantity: 8, Status: models.InventoryItemStatusActive,
+					Quantity: decimal.NewFromInt(8), Status: models.InventoryItemStatusActive,
 				},
 				OriginalQuantity: originalItem.Quantity,
 			},
@@ -610,7 +611,12 @@ func TestSaveInventoryItemChanges(t *testing.T) {
 		// Execute consumption
 		err = repo.SaveInventoryItemChanges(ctx, reconcileItems, []*models.InventoryTransaction{})
 		require.Error(t, err, "PersistConsumption should fail when quantity has been modified")
-		assert.Contains(t, err.Error(), fmt.Sprintf("inventory item %d quantity has changed (expected: %d, current: %d). Please refresh and try again.", inventoryItems[0].ID, originalItem.Quantity, originalItem.Quantity+2))
+		assert.Contains(t, err.Error(), pkg.ErrOptimisticLockConflict(
+			"inventory item",
+			inventoryItems[0].ID,
+			originalItem.Quantity,
+			originalItem.Quantity.Add(decimal.NewFromInt(2)),
+		).Error())
 	})
 
 	t.Run("should handle empty items and transactions arrays", func(t *testing.T) {
@@ -636,9 +642,9 @@ func TestSaveInventoryItemChanges(t *testing.T) {
 				InventoryItem: &models.InventoryItem{
 					Base:        models.Base{ID: inventoryItems[0].ID},
 					InventoryID: inventories[0].ID, ProductID: products[0].ID,
-					Quantity: 9, Status: models.InventoryItemStatusActive, // New quantity
+					Quantity: decimal.NewFromInt(9), Status: models.InventoryItemStatusActive, // New quantity
 				},
-				OriginalQuantity: 10, // Current quantity in DB
+				OriginalQuantity: decimal.NewFromInt(10), // Current quantity in DB
 			},
 		}
 
@@ -650,7 +656,7 @@ func TestSaveInventoryItemChanges(t *testing.T) {
 		var updatedItem models.InventoryItem
 		err = db.WithContext(ctx).First(&updatedItem, inventoryItems[0].ID).Error
 		require.NoError(t, err)
-		assert.Equal(t, 9, updatedItem.Quantity, "Item quantity should be 9")
+		assert.True(t, decimal.NewFromInt(9).Equal(updatedItem.Quantity), "Item quantity should be 9")
 	})
 
 	t.Run("should handle only transactions without inventory items", func(t *testing.T) {
@@ -660,7 +666,7 @@ func TestSaveInventoryItemChanges(t *testing.T) {
 				InventoryItemID: inventoryItems[2].ID,
 				TransactionType: models.InventoryTransactionTypeSell,
 				Price:           150.0,
-				Quantity:        2,
+				Quantity:        decimal.NewFromInt(2),
 			},
 		}
 
@@ -677,7 +683,7 @@ func TestSaveInventoryItemChanges(t *testing.T) {
 		// Find the transaction we just created
 		found := false
 		for _, transaction := range transactions {
-			if transaction.Price == 150.0 && transaction.Quantity == 2 {
+			if transaction.Price == 150.0 && transaction.Quantity.Equal(decimal.NewFromInt(2)) {
 				found = true
 				break
 			}
@@ -702,9 +708,9 @@ func TestSaveInventoryItemChanges(t *testing.T) {
 				InventoryItem: &models.InventoryItem{
 					Base:        models.Base{ID: 99999}, // Non-existent ID
 					InventoryID: inventories[0].ID, ProductID: products[0].ID,
-					Quantity: 8, Status: models.InventoryItemStatusActive,
+					Quantity: decimal.NewFromInt(8), Status: models.InventoryItemStatusActive,
 				},
-				OriginalQuantity: 10,
+				OriginalQuantity: decimal.NewFromInt(10),
 			},
 		}
 
@@ -713,7 +719,7 @@ func TestSaveInventoryItemChanges(t *testing.T) {
 				InventoryItemID: inventoryItems[1].ID,
 				TransactionType: models.InventoryTransactionTypeSell,
 				Price:           100.0,
-				Quantity:        1,
+				Quantity:        decimal.NewFromInt(1),
 			},
 		}
 
@@ -754,25 +760,25 @@ func TestSaveInventoryItemChanges(t *testing.T) {
 				InventoryItem: &models.InventoryItem{
 					Base:        models.Base{ID: inventoryItems[0].ID},
 					InventoryID: inventories[0].ID, ProductID: products[0].ID,
-					Quantity: 7, Status: models.InventoryItemStatusActive, // 10 - 3 = 7
+					Quantity: decimal.NewFromInt(7), Status: models.InventoryItemStatusActive, // 10 - 3 = 7
 				},
-				OriginalQuantity: 10,
+				OriginalQuantity: decimal.NewFromInt(10),
 			},
 			{
 				InventoryItem: &models.InventoryItem{
 					Base:        models.Base{ID: inventoryItems[1].ID},
 					InventoryID: inventories[0].ID, ProductID: products[1].ID,
-					Quantity: 18, Status: models.InventoryItemStatusActive, // 20 - 2 = 18
+					Quantity: decimal.NewFromInt(18), Status: models.InventoryItemStatusActive, // 20 - 2 = 18
 				},
-				OriginalQuantity: 20,
+				OriginalQuantity: decimal.NewFromInt(20),
 			},
 			{
 				InventoryItem: &models.InventoryItem{
 					Base:        models.Base{ID: inventoryItems[2].ID},
 					InventoryID: inventories[1].ID, ProductID: products[2].ID,
-					Quantity: 3, Status: models.InventoryItemStatusActive, // 5 - 2 = 3
+					Quantity: decimal.NewFromInt(3), Status: models.InventoryItemStatusActive, // 5 - 2 = 3
 				},
-				OriginalQuantity: 5,
+				OriginalQuantity: decimal.NewFromInt(5),
 			},
 		}
 
@@ -782,19 +788,19 @@ func TestSaveInventoryItemChanges(t *testing.T) {
 				InventoryItemID: inventoryItems[0].ID,
 				TransactionType: models.InventoryTransactionTypeSell,
 				Price:           100.0,
-				Quantity:        3,
+				Quantity:        decimal.NewFromInt(3),
 			},
 			{
 				InventoryItemID: inventoryItems[1].ID,
 				TransactionType: models.InventoryTransactionTypeSell,
 				Price:           200.0,
-				Quantity:        2,
+				Quantity:        decimal.NewFromInt(2),
 			},
 			{
 				InventoryItemID: inventoryItems[2].ID,
 				TransactionType: models.InventoryTransactionTypeSell,
 				Price:           150.0,
-				Quantity:        2,
+				Quantity:        decimal.NewFromInt(2),
 			},
 		}
 
@@ -807,7 +813,7 @@ func TestSaveInventoryItemChanges(t *testing.T) {
 			var updatedItem models.InventoryItem
 			err = db.WithContext(ctx).First(&updatedItem, inventoryItems[i].ID).Error
 			require.NoError(t, err)
-			assert.Equal(t, expectedQuantity, updatedItem.Quantity,
+			assert.True(t, updatedItem.Quantity.Equal(decimal.NewFromInt(int64(expectedQuantity))),
 				"Item %d quantity should be %d", i+1, expectedQuantity)
 		}
 

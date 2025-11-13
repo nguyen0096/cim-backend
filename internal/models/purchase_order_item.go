@@ -1,5 +1,7 @@
 package models
 
+import "github.com/shopspring/decimal"
+
 type PurchaseOrderItemStatus string
 
 const (
@@ -21,8 +23,8 @@ type PurchaseOrderItem struct {
 	UnitID           *uint                   `json:"unit_id" gorm:"not null" validate:"required"`
 	Unit             *Unit                   `json:"unit,omitempty" gorm:"foreignKey:UnitID"`
 	UnitPrice        float64                 `json:"unit_price" gorm:"type:decimal(13,2)" validate:"min=0"`
-	Quantity         int                     `json:"quantity" gorm:"not null" validate:"required,min=1"`
-	ReceivedQuantity int                     `json:"received_quantity" gorm:"default:0"`
+	Quantity         decimal.Decimal         `json:"quantity" gorm:"type:decimal(10,2);not null" validate:"required"`
+	ReceivedQuantity decimal.Decimal         `json:"received_quantity" gorm:"type:decimal(10,2);default:0"`
 	Status           PurchaseOrderItemStatus `json:"status" gorm:"default:awaiting_delivery;check:status IN ('awaiting_delivery', 'partially_delivered', 'delivered', 'cancelled')" example:"delivering"`
 
 	// Display fields, not stored in DB
@@ -32,26 +34,27 @@ type PurchaseOrderItem struct {
 
 // CalculateItemTotalPrice calculates the total price for a purchase order item
 func (poi *PurchaseOrderItem) CalculateTotalAmount() float64 {
-	poi.TotalAmount = float64(poi.Quantity) * poi.UnitPrice
+	poi.TotalAmount, _ = poi.Quantity.Float64()
+	poi.TotalAmount *= poi.UnitPrice
 	return poi.TotalAmount
 }
 
 func (poi *PurchaseOrderItem) UpdateStatus() {
 	// delivered -> partially_delivered (when quantity increases and received < quantity)
 	if poi.Status == PurchaseOrderItemStatusDelivered &&
-		poi.ReceivedQuantity < poi.Quantity {
+		poi.ReceivedQuantity.LessThan(poi.Quantity) {
 		poi.Status = PurchaseOrderItemStatusPartiallyDelivered
 	}
 
 	// awaiting_delivery -> partially_delivered
 	if poi.Status == PurchaseOrderItemStatusAwaitingDelivery &&
-		poi.ReceivedQuantity > 0 {
+		poi.ReceivedQuantity.GreaterThan(decimal.Zero) {
 		poi.Status = PurchaseOrderItemStatusPartiallyDelivered
 	}
 
 	// partially_delivered -> delivered
 	if poi.Status == PurchaseOrderItemStatusPartiallyDelivered &&
-		poi.ReceivedQuantity == poi.Quantity {
+		poi.ReceivedQuantity.Equal(poi.Quantity) {
 		poi.Status = PurchaseOrderItemStatusDelivered
 	}
 }

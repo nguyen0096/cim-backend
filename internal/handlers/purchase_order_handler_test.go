@@ -13,6 +13,7 @@ import (
 	"cim-backend/pkg"
 
 	"github.com/labstack/echo/v4"
+	"github.com/shopspring/decimal"
 	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
@@ -58,13 +59,13 @@ func TestCreatePurchaseOrder(t *testing.T) {
 				{
 					ProductID:   pkg.Ptr(uint(1)),
 					SupplierID:  pkg.Ptr(uint(1)),
-					Quantity:    5,
+					Quantity:    decimal.NewFromInt(5),
 					TotalAmount: 502.50,
 				},
 				{
 					ProductID:   pkg.Ptr(uint(1)),
 					SupplierID:  pkg.Ptr(uint(1)),
-					Quantity:    10,
+					Quantity:    decimal.NewFromInt(10),
 					TotalAmount: 2502.50,
 				},
 			},
@@ -106,7 +107,7 @@ func TestCreatePurchaseOrder(t *testing.T) {
 				{
 					ProductID:   pkg.Ptr(uint(1)),
 					SupplierID:  pkg.Ptr(uint(1)),
-					Quantity:    5,
+					Quantity:    decimal.NewFromInt(5),
 					TotalAmount: 502.50,
 				},
 			},
@@ -146,7 +147,7 @@ func TestCreatePurchaseOrder(t *testing.T) {
 				{
 					ProductID:   pkg.Ptr(uint(1)),
 					SupplierID:  pkg.Ptr(uint(1)),
-					Quantity:    5,
+					Quantity:    decimal.NewFromInt(5),
 					TotalAmount: 502.50,
 				},
 			},
@@ -311,7 +312,7 @@ func TestCreatePurchaseOrder(t *testing.T) {
 					// ProductID is nil - should fail validation (required)
 					ProductID:   nil,
 					SupplierID:  pkg.Ptr(uint(1)),
-					Quantity:    5,
+					Quantity:    decimal.NewFromInt(5),
 					TotalAmount: 502.50,
 				},
 			},
@@ -347,7 +348,7 @@ func TestCreatePurchaseOrder(t *testing.T) {
 				{
 					ProductID:   pkg.Ptr(uint(1)),
 					SupplierID:  pkg.Ptr(uint(1)),
-					Quantity:    0, // Zero quantity - should fail validation (min=1)
+					Quantity:    decimal.Zero, // Zero quantity - should fail validation (min=1)
 					TotalAmount: 502.50,
 				},
 			},
@@ -383,7 +384,7 @@ func TestCreatePurchaseOrder(t *testing.T) {
 				{
 					ProductID:   pkg.Ptr(uint(1)),
 					SupplierID:  pkg.Ptr(uint(1)),
-					Quantity:    -5, // Negative quantity - should fail validation (min=1)
+					Quantity:    decimal.NewFromInt(-5), // Negative quantity - should fail validation (min=1)
 					TotalAmount: 502.50,
 				},
 			},

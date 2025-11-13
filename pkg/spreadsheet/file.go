@@ -7,6 +7,7 @@ import (
 	"sync"
 
 	"github.com/go-playground/validator/v10"
+	log "github.com/sirupsen/logrus"
 )
 
 // FileConfig contains the configuration of Excel file.
@@ -75,7 +76,33 @@ func (f *File) UpsertRow(
 		if err != nil {
 			return fmt.Errorf("failed to append row: %w", err)
 		}
+
+		err = f.updateColumnIndices(sheetInternalID, indexColHeaderStr, indexValue, sheet.DataStartRow)
+		if err != nil {
+			return fmt.Errorf("failed to update column indices: %w", err)
+		}
 	}
+	return nil
+}
+
+func (f *File) updateColumnIndices(
+	sheetInternalID SheetInternalID,
+	indexColHeaderStr HeaderBranchStr,
+	indexValue string,
+	rowNumber int,
+) error {
+	if f.Sheets == nil {
+		return fmt.Errorf("sheets not found")
+	}
+	sheet, ok := f.Sheets[sheetInternalID]
+	if !ok {
+		return fmt.Errorf("sheet internal id [%s] not found", sheetInternalID)
+	}
+	indexCol, err := sheet.GetColByExactHeaders(sheet.InternalID, indexColHeaderStr.ToBranch())
+	if err != nil {
+		return fmt.Errorf("failed to get column index: %w", err)
+	}
+	sheet.ColumnIndices[indexCol][indexValue] = rowNumber
 	return nil
 }
 
@@ -127,6 +154,8 @@ func (f *File) Connect(ctx context.Context) (err error) {
 	}()
 	f.Lock()
 	defer f.Unlock()
+
+	log.Debugf("connecting to file: %s", f.FilePath)
 
 	if f.Provider == nil {
 		return fmt.Errorf("provider not set")

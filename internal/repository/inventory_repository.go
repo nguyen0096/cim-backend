@@ -6,6 +6,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/shopspring/decimal"
 	"gorm.io/gorm"
 )
 
@@ -14,8 +15,8 @@ type InventoryRepository interface {
 	Update(ctx context.Context, inventory *models.Inventory) error
 	Delete(ctx context.Context, id uint) error
 	List(ctx context.Context, limit, offset int) ([]models.Inventory, error)
-	AddInventory(ctx context.Context, productID uint, quantity int, referenceID uint, referenceType string) error
-	RemoveInventory(ctx context.Context, productID uint, quantity int, referenceID uint, referenceType string) error
+	AddInventory(ctx context.Context, productID uint, quantity decimal.Decimal, referenceID uint, referenceType string) error
+	RemoveInventory(ctx context.Context, productID uint, quantity decimal.Decimal, referenceID uint, referenceType string) error
 
 	// v1
 	GetByID(ctx context.Context, id uint) (*models.Inventory, error)
@@ -58,7 +59,7 @@ func (r *inventoryRepository) List(ctx context.Context, limit, offset int) ([]mo
 	return inventories, err
 }
 
-func (r *inventoryRepository) AddInventory(ctx context.Context, productID uint, quantity int, referenceID uint, referenceType string) error {
+func (r *inventoryRepository) AddInventory(ctx context.Context, productID uint, quantity decimal.Decimal, referenceID uint, referenceType string) error {
 	// Find the inventory item for this product
 	var inventoryItem models.InventoryItem
 	err := r.db.WithContext(ctx).Where("product_id = ?", productID).First(&inventoryItem).Error
@@ -67,12 +68,12 @@ func (r *inventoryRepository) AddInventory(ctx context.Context, productID uint, 
 	}
 
 	// Update the quantity
-	inventoryItem.Quantity += quantity
+	inventoryItem.Quantity = inventoryItem.Quantity.Add(quantity)
 
 	return r.db.WithContext(ctx).Save(&inventoryItem).Error
 }
 
-func (r *inventoryRepository) RemoveInventory(ctx context.Context, productID uint, quantity int, referenceID uint, referenceType string) error {
+func (r *inventoryRepository) RemoveInventory(ctx context.Context, productID uint, quantity decimal.Decimal, referenceID uint, referenceType string) error {
 	// Find the inventory item for this product
 	var inventoryItem models.InventoryItem
 	err := r.db.WithContext(ctx).Where("product_id = ?", productID).First(&inventoryItem).Error
@@ -81,12 +82,12 @@ func (r *inventoryRepository) RemoveInventory(ctx context.Context, productID uin
 	}
 
 	// Check if there's enough inventory
-	if inventoryItem.Quantity < quantity {
-		return fmt.Errorf("insufficient inventory: available %d, requested %d", inventoryItem.Quantity, quantity)
+	if inventoryItem.Quantity.LessThan(quantity) {
+		return fmt.Errorf("insufficient inventory: available %s, requested %s", inventoryItem.Quantity.String(), quantity.String())
 	}
 
 	// Update the quantity
-	inventoryItem.Quantity -= quantity
+	inventoryItem.Quantity = inventoryItem.Quantity.Sub(quantity)
 
 	return r.db.WithContext(ctx).Save(&inventoryItem).Error
 }

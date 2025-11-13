@@ -9,6 +9,7 @@ import (
 	"regexp"
 	"testing"
 
+	"github.com/shopspring/decimal"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
@@ -68,7 +69,7 @@ func TestCreatePurchaseOrder(t *testing.T) {
 				{
 					ProductID:   &[]uint{1}[0],
 					SupplierID:  &[]uint{1}[0],
-					Quantity:    5,
+					Quantity:    decimal.NewFromInt(5),
 					TotalAmount: 502.50,
 				},
 			},
@@ -114,7 +115,7 @@ func TestCreatePurchaseOrder(t *testing.T) {
 				{
 					ProductID:   &[]uint{1}[0],
 					SupplierID:  &[]uint{1}[0],
-					Quantity:    5,
+					Quantity:    decimal.NewFromInt(5),
 					TotalAmount: 502.50,
 				},
 			},
@@ -148,7 +149,7 @@ func TestCreatePurchaseOrder(t *testing.T) {
 				{
 					ProductID:   &[]uint{1}[0],
 					SupplierID:  &[]uint{1}[0],
-					Quantity:    5,
+					Quantity:    decimal.NewFromInt(5),
 					TotalAmount: 502.50,
 				},
 			},

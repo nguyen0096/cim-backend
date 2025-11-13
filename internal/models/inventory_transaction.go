@@ -1,5 +1,7 @@
 package models
 
+import "github.com/shopspring/decimal"
+
 type InventoryTransactionType string
 
 const (
@@ -27,8 +29,8 @@ type InventoryTransaction struct {
 	Supplier             *Supplier                `json:"supplier,omitempty" gorm:"foreignKey:SupplierID" validate:"-"`
 	TransactionType      InventoryTransactionType `json:"transaction_type" gorm:"not null;check:transaction_type IN ('purchase', 'disposal', 'sell', 'transfer_out', 'transfer_in')"`
 	Price                float64                  `json:"price" gorm:"not null"`
-	Quantity             int                      `json:"quantity" gorm:"not null"`
-	ConsumedQuantity     int                      `json:"consumed_quantity"`
+	Quantity             decimal.Decimal          `json:"quantity" gorm:"type:decimal(10,2);not null"`
+	ConsumedQuantity     decimal.Decimal          `json:"consumed_quantity" gorm:"type:decimal(10,2)"`
 	CounterTransactionID *uint                    `json:"counter_transaction_id"`
 	PurchaseOrderItemID  *uint                    `json:"purchase_order_item_id"`
 }

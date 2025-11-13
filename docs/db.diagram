@@ -27,7 +27,7 @@ Table products {
 Table inventory {
   id uuid [primary key, default: `gen_random_uuid()`]
   product_id uuid [unique, not null, ref: - products.id]
-  quantity int [default: 0]
+  quantity decimal(10,2) [default: 0]
   reorder_level int [default: 0]
   location varchar
   last_updated timestamp
@@ -51,9 +51,9 @@ Table purchase_order_items {
   id uuid [primary key, default: `gen_random_uuid()`]
   purchase_order_id uuid [ref: > purchase_orders.id]
   product_id uuid [ref: > products.id]
-  quantity int [not null]
+  quantity decimal(10,2) [not null]
   total_price decimal(10,2)
-  received_quantity int [default: 0]
+  received_quantity decimal(10,2) [default: 0]
   created_by varchar
   created_at timestamp [default: `now()`]
   updated_at timestamp [default: `now()`]
@@ -77,7 +77,7 @@ Table order_items {
   id uuid [primary key, default: `gen_random_uuid()`]
   order_id uuid [ref: > orders.id]
   product_id uuid [ref: > products.id]
-  quantity int [not null]
+  quantity decimal(10,2) [not null]
   unit_price decimal(10,2)
   total_price decimal(10,2)
   created_at timestamp [default: `now()`]
@@ -88,7 +88,7 @@ Table inventory_transactions {
   id uuid [primary key, default: `gen_random_uuid()`]
   product_id uuid [ref: > products.id]
   transaction_type varchar [not null, note: 'purchase, sale, adjustment, return']
-  quantity int [not null]
+  quantity decimal(10,2) [not null]
   reference_id uuid
   reference_type varchar
   notes text

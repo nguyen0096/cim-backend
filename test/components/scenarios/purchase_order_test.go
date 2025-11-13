@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/shopspring/decimal"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -246,7 +247,8 @@ func (suite *ComponentTestSuite) TestCreatePurchaseOrderWithDifferentUnits() {
 		assert.Equal(t, uint(1), *items[0].ProductID)
 		assert.Equal(t, uint(1), *items[0].SupplierID)
 		assert.Equal(t, uint(1), *items[0].UnitID)
-		assert.Equal(t, 40, int(items[0].Quantity))
+		quantityFloat, _ := items[0].Quantity.Float64()
+		assert.Equal(t, 40, int(quantityFloat))
 		assert.Equal(t, 5.0, items[0].UnitPrice)
 		assert.Equal(t, 200.0, items[0].TotalAmount)
 	})
@@ -341,7 +343,7 @@ func (suite *ComponentTestSuite) TestCancelPurchaseOrder() {
 							ProductID:  &testProducts[0].ID,
 							SupplierID: &testSuppliers[0].ID,
 							UnitID:     &unitID,
-							Quantity:   1,
+							Quantity:   decimal.NewFromInt(1),
 						},
 					},
 				}
@@ -398,7 +400,7 @@ func (suite *ComponentTestSuite) TestCancelPurchaseOrder() {
 							ProductID:  &testProducts[0].ID,
 							SupplierID: &testSuppliers[0].ID,
 							UnitID:     &unitID,
-							Quantity:   1,
+							Quantity:   decimal.NewFromInt(1),
 						},
 					},
 				}
@@ -466,8 +468,8 @@ func (suite *ComponentTestSuite) TestReceivePurchaseOrder() {
 		testCases := []struct {
 			currentPOStatus       models.PurchaseOrderStatus
 			currentPOItem1Status  models.PurchaseOrderItemStatus
-			deliveredQuantity1    int
-			deliveredQuantity2    int
+			deliveredQuantity1    float64
+			deliveredQuantity2    float64
 			expectedPOStatus      models.PurchaseOrderStatus
 			expectedPOItem1Status models.PurchaseOrderItemStatus
 		}{
@@ -522,13 +524,13 @@ func (suite *ComponentTestSuite) TestReceivePurchaseOrder() {
 								ProductID:  &testProducts[0].ID,
 								SupplierID: &testSuppliers[0].ID,
 								UnitID:     &unitID1,
-								Quantity:   100,
+								Quantity:   decimal.NewFromInt(100),
 							},
 							{
 								ProductID:  &testProducts[1].ID,
 								SupplierID: &testSuppliers[0].ID,
 								UnitID:     &unitID2,
-								Quantity:   100,
+								Quantity:   decimal.NewFromInt(100),
 							},
 						},
 					}
@@ -645,9 +647,9 @@ func (suite *ComponentTestSuite) TestUpdatePurchaseOrder() {
 		testCases := []struct {
 			currentPOStatus      models.PurchaseOrderStatus
 			currentPOItemStatus  models.PurchaseOrderItemStatus
-			orderedQuantity      int
-			deliveredQuantity    int
-			updatedQuantity      int
+			orderedQuantity      float64
+			deliveredQuantity    float64
+			updatedQuantity      float64
 			expectedPOStatus     models.PurchaseOrderStatus
 			expectedPOItemStatus models.PurchaseOrderItemStatus
 		}{
@@ -715,8 +717,8 @@ func (suite *ComponentTestSuite) TestUpdatePurchaseOrder() {
 								ProductID:        &testProducts[0].ID,
 								SupplierID:       &testSuppliers[0].ID,
 								UnitID:           pkg.Ptr(uint(1)),
-								Quantity:         testCase.orderedQuantity,
-								ReceivedQuantity: testCase.deliveredQuantity,
+								Quantity:         decimal.NewFromFloat(testCase.orderedQuantity),
+								ReceivedQuantity: decimal.NewFromFloat(testCase.deliveredQuantity),
 								Status:           testCase.currentPOItemStatus,
 								UnitPrice:        0,
 							},
@@ -788,8 +790,8 @@ func (suite *ComponentTestSuite) TestUpdatePurchaseOrder() {
 					ProductID:        &testProducts[0].ID,
 					SupplierID:       &testSuppliers[0].ID,
 					UnitID:           pkg.Ptr(uint(1)),
-					Quantity:         50,
-					ReceivedQuantity: 0,
+					Quantity:         decimal.NewFromInt(50),
+					ReceivedQuantity: decimal.Zero,
 					Status:           models.PurchaseOrderItemStatusAwaitingDelivery,
 					UnitPrice:        0,
 				},
@@ -827,8 +829,10 @@ func (suite *ComponentTestSuite) TestUpdatePurchaseOrder() {
 		responseItems := response.Items
 		assert.Equal(t, len(responseItems), 1)
 		assert.Equal(t, uint(testProducts[1].ID), *responseItems[0].ProductID)
-		assert.Equal(t, 100, int(responseItems[0].Quantity))
-		assert.Equal(t, 0, int(responseItems[0].ReceivedQuantity))
+		responseQuantity, _ := responseItems[0].Quantity.Float64()
+		assert.Equal(t, 100, int(responseQuantity))
+		responseReceived, _ := responseItems[0].ReceivedQuantity.Float64()
+		assert.Equal(t, 0, int(responseReceived))
 		assert.Equal(t, models.PurchaseOrderItemStatusAwaitingDelivery, responseItems[0].Status)
 
 		// Verify database
@@ -839,8 +843,10 @@ func (suite *ComponentTestSuite) TestUpdatePurchaseOrder() {
 		items := purchaseOrder.Items
 		assert.Equal(t, 1, len(items))
 		assert.Equal(t, uint(testProducts[1].ID), *items[0].ProductID)
-		assert.Equal(t, 100, int(items[0].Quantity))
-		assert.Equal(t, 0, int(items[0].ReceivedQuantity))
+		itemsQuantity, _ := items[0].Quantity.Float64()
+		assert.Equal(t, 100, int(itemsQuantity))
+		itemsReceived, _ := items[0].ReceivedQuantity.Float64()
+		assert.Equal(t, 0, int(itemsReceived))
 		assert.Equal(t, models.PurchaseOrderItemStatusAwaitingDelivery, items[0].Status)
 	})
 
@@ -859,8 +865,8 @@ func (suite *ComponentTestSuite) TestUpdatePurchaseOrder() {
 					ProductID:        &testProducts[0].ID,
 					SupplierID:       &testSuppliers[0].ID,
 					UnitID:           pkg.Ptr(uint(1)),
-					Quantity:         50,
-					ReceivedQuantity: 0,
+					Quantity:         decimal.NewFromInt(50),
+					ReceivedQuantity: decimal.Zero,
 					Status:           models.PurchaseOrderItemStatusAwaitingDelivery,
 					UnitPrice:        0,
 				},
@@ -922,7 +928,8 @@ func (suite *ComponentTestSuite) TestUpdatePurchaseOrder() {
 		assert.Equal(t, 1, len(items))
 		assert.Equal(t, uint(testProducts[0].ID), *items[0].ProductID)
 		assert.Equal(t, expectedBaseQuantity, items[0].Quantity)
-		assert.Equal(t, 0, int(items[0].ReceivedQuantity))
+		itemsReceived, _ := items[0].ReceivedQuantity.Float64()
+		assert.Equal(t, 0, int(itemsReceived))
 		assert.Equal(t, models.PurchaseOrderItemStatusAwaitingDelivery, items[0].Status)
 		assert.Equal(t, expectedBaseUnitID, *items[0].UnitID)
 	})
@@ -943,8 +950,8 @@ func (suite *ComponentTestSuite) TestUpdatePurchaseOrder() {
 					ProductID:        &testProducts[0].ID,
 					SupplierID:       &testSuppliers[0].ID,
 					UnitID:           pkg.Ptr(uint(1)),
-					Quantity:         50,
-					ReceivedQuantity: 30,
+					Quantity:         decimal.NewFromInt(50),
+					ReceivedQuantity: decimal.NewFromInt(30),
 					Status:           models.PurchaseOrderItemStatusPartiallyDelivered,
 					UnitPrice:        0,
 				},
@@ -1009,8 +1016,8 @@ func (suite *ComponentTestSuite) TestUpdatePurchaseOrder() {
 							ProductID:        &testProducts[0].ID,
 							SupplierID:       &testSuppliers[0].ID,
 							UnitID:           pkg.Ptr(uint(1)),
-							Quantity:         50,
-							ReceivedQuantity: 0,
+							Quantity:         decimal.NewFromInt(50),
+							ReceivedQuantity: decimal.Zero,
 							Status:           models.PurchaseOrderItemStatusAwaitingDelivery,
 							UnitPrice:        0,
 						},
