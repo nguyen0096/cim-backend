@@ -241,7 +241,8 @@ func (suite *ComponentTestSuite) TestCreatePurchaseOrderWithDifferentUnits() {
 		var purchaseOrder models.PurchaseOrder
 		err = suite.sharedTestContainer.DB.WithContext(ctx).Preload("Items").First(&purchaseOrder, "id = ?", purchaseOrderResp["id"]).Error
 		require.NoError(t, err)
-		assert.Equal(t, 200, int(purchaseOrder.TotalAmount))
+		purchaseOrder.CalculateTotalAmount()
+		assert.Equal(t, "200", purchaseOrder.TotalAmount.String())
 		items := purchaseOrder.Items
 		assert.Equal(t, 1, len(items))
 		assert.Equal(t, uint(1), *items[0].ProductID)
@@ -250,7 +251,7 @@ func (suite *ComponentTestSuite) TestCreatePurchaseOrderWithDifferentUnits() {
 		quantityFloat, _ := items[0].Quantity.Float64()
 		assert.Equal(t, 40, int(quantityFloat))
 		assert.Equal(t, 5.0, items[0].UnitPrice)
-		assert.Equal(t, 200.0, items[0].TotalAmount)
+		assert.Equal(t, "200", items[0].TotalAmount.String())
 	})
 
 	t.Run("should not create purchase order with different units and different base unit", func(t *testing.T) {
@@ -886,7 +887,7 @@ func (suite *ComponentTestSuite) TestUpdatePurchaseOrder() {
 		expectedBaseQuantity := 100 // float64(newQuantity) * testUnits[1].ConversionFactor
 		expectedBaseUnitPrice := 10 // 100 / 10 = 10
 		expectedBaseUnitID := uint(1)
-		expectedTotalAmount := float64(expectedBaseQuantity * expectedBaseUnitPrice)
+		expectedTotalAmount := decimal.NewFromInt(int64(expectedBaseQuantity * expectedBaseUnitPrice))
 
 		payload := map[string]interface{}{
 			"inventory_id": testInventories[0].ID,
@@ -911,7 +912,15 @@ func (suite *ComponentTestSuite) TestUpdatePurchaseOrder() {
 		err = json.NewDecoder(resp.Body).Decode(&purchaseOrderResp)
 		require.NoError(t, err)
 		assert.Equal(t, 200, resp.StatusCode)
-		assert.Equal(t, expectedTotalAmount, purchaseOrderResp["total_amount"])
+		// Total amount from JSON response is a string representation of decimal
+		totalAmountStr, ok := purchaseOrderResp["total_amount"].(string)
+		if ok {
+			assert.Equal(t, expectedTotalAmount.String(), totalAmountStr)
+		} else {
+			// If it's a float64 (for backward compatibility)
+			totalAmountFloat, _ := purchaseOrderResp["total_amount"].(float64)
+			assert.Equal(t, expectedTotalAmount.InexactFloat64(), totalAmountFloat)
+		}
 		respItems := purchaseOrderResp["items"].([]interface{})
 		firstItem := respItems[0].(map[string]interface{})
 		assert.Equal(t, float64(expectedBaseUnitPrice), firstItem["unit_price"])
@@ -923,7 +932,7 @@ func (suite *ComponentTestSuite) TestUpdatePurchaseOrder() {
 		var purchaseOrder models.PurchaseOrder
 		err = suite.sharedTestContainer.DB.WithContext(ctx).Preload("Items").First(&purchaseOrder, "id = ?", purchaseOrderID).Error
 		require.NoError(t, err)
-		assert.Equal(t, expectedTotalAmount, purchaseOrder.CalculateTotalAmount())
+		assert.Equal(t, expectedTotalAmount.String(), purchaseOrder.CalculateTotalAmount().String())
 		items := purchaseOrder.Items
 		assert.Equal(t, 1, len(items))
 		assert.Equal(t, uint(testProducts[0].ID), *items[0].ProductID)

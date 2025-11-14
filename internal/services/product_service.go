@@ -138,7 +138,8 @@ func (s *productService) ensureUnit(ctx context.Context, label string) (*models.
 	if err == nil {
 		return unit, nil
 	}
-	if err != nil && err != gorm.ErrRecordNotFound {
+
+	if err != gorm.ErrRecordNotFound {
 		return nil, fmt.Errorf("failed to look up unit '%s': %w", unitLabel, err)
 	}
 

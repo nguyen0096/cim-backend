@@ -29,13 +29,12 @@ type PurchaseOrderItem struct {
 
 	// Display fields, not stored in DB
 
-	TotalAmount float64 `json:"total_amount" gorm:"-"` // Calculated field, not stored in DB
+	TotalAmount decimal.Decimal `json:"total_amount" gorm:"-"`
 }
 
 // CalculateItemTotalPrice calculates the total price for a purchase order item
-func (poi *PurchaseOrderItem) CalculateTotalAmount() float64 {
-	poi.TotalAmount, _ = poi.Quantity.Float64()
-	poi.TotalAmount *= poi.UnitPrice
+func (poi *PurchaseOrderItem) CalculateTotalAmount() decimal.Decimal {
+	poi.TotalAmount = poi.Quantity.Mul(decimal.NewFromFloat(poi.UnitPrice))
 	return poi.TotalAmount
 }
 

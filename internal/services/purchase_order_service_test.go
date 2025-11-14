@@ -63,14 +63,15 @@ func TestCreatePurchaseOrder(t *testing.T) {
 		purchaseOrder := &models.PurchaseOrder{
 			// OrderNumber is empty - should be auto-generated
 			Status:      models.PurchaseOrderStatusOrderPlaced,
-			TotalAmount: 1500.50,
+			TotalAmount: decimal.NewFromFloat(1500.50),
 			Notes:       "Test purchase order",
 			Items: []*models.PurchaseOrderItem{
 				{
 					ProductID:   &[]uint{1}[0],
 					SupplierID:  &[]uint{1}[0],
+					UnitID:      &[]uint{1}[0],
 					Quantity:    decimal.NewFromInt(5),
-					TotalAmount: 502.50,
+					TotalAmount: decimal.NewFromFloat(502.50),
 				},
 			},
 		}
@@ -109,14 +110,15 @@ func TestCreatePurchaseOrder(t *testing.T) {
 		purchaseOrder := &models.PurchaseOrder{
 			OrderNumber: existingOrderNumber,
 			Status:      models.PurchaseOrderStatusOrderPlaced,
-			TotalAmount: 1500.50,
+			TotalAmount: decimal.NewFromFloat(1500.50),
 			Notes:       "Test purchase order with existing order number",
 			Items: []*models.PurchaseOrderItem{
 				{
 					ProductID:   &[]uint{1}[0],
 					SupplierID:  &[]uint{1}[0],
+					UnitID:      &[]uint{1}[0],
 					Quantity:    decimal.NewFromInt(5),
-					TotalAmount: 502.50,
+					TotalAmount: decimal.NewFromFloat(502.50),
 				},
 			},
 		}
@@ -144,13 +146,14 @@ func TestCreatePurchaseOrder(t *testing.T) {
 
 		purchaseOrder := &models.PurchaseOrder{
 			Status:      models.PurchaseOrderStatusOrderPlaced,
-			TotalAmount: 1500.50,
+			TotalAmount: decimal.NewFromFloat(1500.50),
 			Items: []*models.PurchaseOrderItem{
 				{
 					ProductID:   &[]uint{1}[0],
 					SupplierID:  &[]uint{1}[0],
+					UnitID:      &[]uint{1}[0],
 					Quantity:    decimal.NewFromInt(5),
-					TotalAmount: 502.50,
+					TotalAmount: decimal.NewFromFloat(502.50),
 				},
 			},
 		}

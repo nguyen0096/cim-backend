@@ -3,6 +3,8 @@ package models
 import (
 	"cim-backend/pkg"
 	"time"
+
+	"github.com/shopspring/decimal"
 )
 
 type PurchaseOrderStatus string
@@ -31,20 +33,23 @@ type PurchaseOrder struct {
 	InventoryID       *uint                `json:"inventory_id" gorm:"not null" validate:"required"`
 	Inventory         *Inventory           `json:"inventory,omitempty" gorm:"foreignKey:InventoryID" validate:"-"`
 	Status            PurchaseOrderStatus  `json:"status" gorm:"default:order_placed;check:status IN ('order_placed', 'partially_delivered', 'fully_delivered', 'completed', 'cancelled')" example:"order_placed"`
-	TotalAmount       float64              `json:"total_amount" gorm:"-" example:"999.99"` // Calculated field, not stored in DB
 	Notes             string               `json:"notes" example:"Purchase order notes"`
 	ConfirmedAt       *time.Time           `json:"confirmed_at,omitempty" gorm:"column:confirmed_at" example:"2023-01-01T12:00:00Z"`
 	ConfirmationNotes string               `json:"confirmation_notes,omitempty" gorm:"column:confirmation_notes" example:"Purchase order confirmed with supplier"`
 	Items             []*PurchaseOrderItem `json:"items" gorm:"foreignKey:PurchaseOrderID" validate:"required,min=1,dive"`
+
+	// Display fields, not stored in DB
+
+	TotalAmount decimal.Decimal `json:"total_amount" gorm:"-" example:"999.99"`
 }
 
 // CalculateTotalAmount calculates the total amount of a purchase order based on its items
-func (po *PurchaseOrder) CalculateTotalAmount() float64 {
-	var total float64
+func (po *PurchaseOrder) CalculateTotalAmount() decimal.Decimal {
+	total := decimal.Zero
 	for _, item := range po.Items {
 		if item != nil {
 			item.TotalAmount = item.CalculateTotalAmount()
-			total += item.TotalAmount
+			total = total.Add(item.TotalAmount)
 		}
 	}
 	po.TotalAmount = total
