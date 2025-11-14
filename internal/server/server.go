@@ -131,6 +131,8 @@ func SetupServer(
 
 	products.GET("", productHandler.GetProducts)
 	products.GET("/search", productHandler.SearchProducts)
+	products.GET("/export-csv", productHandler.ExportProductsCSV)
+	products.GET("/export-excel", productHandler.ExportProductsExcel)
 	products.POST("", productHandler.CreateProduct)
 	products.POST("/import-csv", productHandler.ImportProductsCSV)
 	products.GET("/:id", productHandler.GetProduct)

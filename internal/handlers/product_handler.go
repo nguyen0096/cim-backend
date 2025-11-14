@@ -655,3 +655,111 @@ func (h *ProductHandler) ImportProductsCSV(c echo.Context) error {
 		"count":   count,
 	})
 }
+
+// ExportProductsCSV godoc
+// @Summary Export products to CSV
+// @Description Export products to CSV file with the same format as the import template. CSV uses semicolon (;) as delimiter. Products with multiple suppliers will have one row per supplier.
+// @Tags products
+// @Accept json
+// @Produce text/csv
+// @Param status query string false "Filter by status (active/inactive)"
+// @Param product_type query string false "Filter by product type"
+// @Param supplier_id query int false "Filter by supplier ID"
+// @Success 200 {file} file "CSV file download"
+// @Failure 500 {object} map[string]interface{} "Internal server error"
+// @Security BearerAuth
+// @Router /products/export-csv [get]
+func (h *ProductHandler) ExportProductsCSV(c echo.Context) error {
+	startTime := time.Now()
+	logger := h.getRequestLogger(c, "ExportProductsCSV")
+
+	// Parse query parameters
+	var request ProductListRequest
+	if err := c.Bind(&request); err != nil {
+		logger.WithError(err).Error("Failed to bind query parameters")
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid query parameters"})
+	}
+
+	logger.WithFields(logrus.Fields{
+		"status":       request.Status,
+		"product_type": request.ProductType,
+		"supplier_id":  request.SupplierID,
+	}).Info("Exporting products to CSV")
+
+	// Set response headers for CSV download
+	c.Response().Header().Set("Content-Type", "text/csv; charset=utf-8")
+	c.Response().Header().Set("Content-Disposition", "attachment; filename=products_export.csv")
+
+	// Export products to CSV
+	if err := h.productService.ExportProductsToCSV(c.Request().Context(), c.Response().Writer, request.Status, request.ProductType, request.SupplierID); err != nil {
+		logger.WithError(err).Error("Failed to export products to CSV")
+		if appErr, ok := err.(*pkg.AppError); ok {
+			return c.JSON(appErr.HTTPStatus(), map[string]interface{}{
+				"error": appErr.Message,
+				"code":  appErr.Code.String(),
+			})
+		}
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to export products"})
+	}
+
+	duration := time.Since(startTime)
+	logger.WithFields(logrus.Fields{
+		"duration_ms": duration.Milliseconds(),
+	}).Info("Products exported successfully")
+
+	return nil
+}
+
+// ExportProductsExcel godoc
+// @Summary Export products to Excel
+// @Description Export products to Excel file with the same format as the import template. Products with multiple suppliers will have one row per supplier.
+// @Tags products
+// @Accept json
+// @Produce application/vnd.openxmlformats-officedocument.spreadsheetml.sheet
+// @Param status query string false "Filter by status (active/inactive)"
+// @Param product_type query string false "Filter by product type"
+// @Param supplier_id query int false "Filter by supplier ID"
+// @Success 200 {file} file "Excel file download"
+// @Failure 500 {object} map[string]interface{} "Internal server error"
+// @Security BearerAuth
+// @Router /products/export-excel [get]
+func (h *ProductHandler) ExportProductsExcel(c echo.Context) error {
+	startTime := time.Now()
+	logger := h.getRequestLogger(c, "ExportProductsExcel")
+
+	// Parse query parameters
+	var request ProductListRequest
+	if err := c.Bind(&request); err != nil {
+		logger.WithError(err).Error("Failed to bind query parameters")
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid query parameters"})
+	}
+
+	logger.WithFields(logrus.Fields{
+		"status":       request.Status,
+		"product_type": request.ProductType,
+		"supplier_id":  request.SupplierID,
+	}).Info("Exporting products to Excel")
+
+	// Set response headers for Excel download
+	c.Response().Header().Set("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+	c.Response().Header().Set("Content-Disposition", "attachment; filename=products_export.xlsx")
+
+	// Export products to Excel
+	if err := h.productService.ExportProductsToExcel(c.Request().Context(), c.Response().Writer, request.Status, request.ProductType, request.SupplierID); err != nil {
+		logger.WithError(err).Error("Failed to export products to Excel")
+		if appErr, ok := err.(*pkg.AppError); ok {
+			return c.JSON(appErr.HTTPStatus(), map[string]interface{}{
+				"error": appErr.Message,
+				"code":  appErr.Code.String(),
+			})
+		}
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to export products"})
+	}
+
+	duration := time.Since(startTime)
+	logger.WithFields(logrus.Fields{
+		"duration_ms": duration.Milliseconds(),
+	}).Info("Products exported successfully")
+
+	return nil
+}

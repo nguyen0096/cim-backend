@@ -33,6 +33,8 @@ type ProductService interface {
 	ListProducts(ctx context.Context, limit, offset int, sortBy, sortOrder, status, productType string, supplierID uint) ([]models.Product, error)
 	ImportProductsFromCSV(ctx context.Context, csvReader io.Reader) (int, error)
 	ImportProductsFromExcel(ctx context.Context, excelReader io.Reader) (int, error)
+	ExportProductsToCSV(ctx context.Context, writer io.Writer, status, productType string, supplierID uint) error
+	ExportProductsToExcel(ctx context.Context, writer io.Writer, status, productType string, supplierID uint) error
 }
 
 type productService struct {
@@ -763,4 +765,172 @@ func (s *productService) ImportProductsFromExcel(ctx context.Context, excelReade
 	}
 
 	return createdCount, nil
+}
+
+// ExportProductsToCSV exports products to CSV format matching the import template
+// CSV format: Name;Description;ProductType;Suppliers;ContactEmail;ContactPhone;Address;Unit
+// Products with multiple suppliers will have one row per supplier
+func (s *productService) ExportProductsToCSV(ctx context.Context, writer io.Writer, status, productType string, supplierID uint) error {
+	// Get all products with suppliers and units preloaded
+	// Use a large limit to get all products, or we could implement a paginated export
+	products, err := s.productRepo.List(ctx, 10000, 0, "name", "asc", status, productType, supplierID)
+	if err != nil {
+		return fmt.Errorf("failed to fetch products for export: %w", err)
+	}
+
+	// Create CSV writer with semicolon delimiter
+	csvWriter := csv.NewWriter(writer)
+	csvWriter.Comma = ';'
+	defer csvWriter.Flush()
+
+	// Write header
+	header := []string{"Name", "Description", "ProductType", "Suppliers", "ContactEmail", "ContactPhone", "Address", "Unit"}
+	if err := csvWriter.Write(header); err != nil {
+		return fmt.Errorf("failed to write CSV header: %w", err)
+	}
+
+	// Write product rows
+	// For products with multiple suppliers, create one row per supplier
+	// For products with no suppliers, create one row with empty supplier fields
+	for _, product := range products {
+		if len(product.Suppliers) == 0 {
+			// Product with no suppliers - write one row with empty supplier fields
+			unitName := ""
+			if product.Unit != nil {
+				unitName = product.Unit.Name
+			}
+			row := []string{
+				product.Name,
+				product.Description,
+				product.ProductType,
+				"", // Suppliers
+				"", // ContactEmail
+				"", // ContactPhone
+				"", // Address
+				unitName,
+			}
+			if err := csvWriter.Write(row); err != nil {
+				return fmt.Errorf("failed to write CSV row for product '%s': %w", product.Name, err)
+			}
+		} else {
+			// Product with suppliers - write one row per supplier
+			unitName := ""
+			if product.Unit != nil {
+				unitName = product.Unit.Name
+			}
+			for _, supplier := range product.Suppliers {
+				row := []string{
+					product.Name,
+					product.Description,
+					product.ProductType,
+					supplier.Name,
+					supplier.ContactEmail,
+					supplier.ContactPhone,
+					supplier.Address,
+					unitName,
+				}
+				if err := csvWriter.Write(row); err != nil {
+					return fmt.Errorf("failed to write CSV row for product '%s' and supplier '%s': %w", product.Name, supplier.Name, err)
+				}
+			}
+		}
+	}
+
+	return nil
+}
+
+// ExportProductsToExcel exports products to Excel format matching the import template
+// Excel format: Name;Description;ProductType;Suppliers;ContactEmail;ContactPhone;Address;Unit
+// Products with multiple suppliers will have one row per supplier
+func (s *productService) ExportProductsToExcel(ctx context.Context, writer io.Writer, status, productType string, supplierID uint) error {
+	// Get all products with suppliers and units preloaded
+	products, err := s.productRepo.List(ctx, 10000, 0, "name", "asc", status, productType, supplierID)
+	if err != nil {
+		return fmt.Errorf("failed to fetch products for export: %w", err)
+	}
+
+	// Create new Excel file
+	f := excelize.NewFile()
+	defer f.Close()
+
+	sheetName := "Sheet1"
+	// Use the default sheet that comes with NewFile()
+
+	// Write header
+	headers := []string{"Name", "Description", "ProductType", "Suppliers", "ContactEmail", "ContactPhone", "Address", "Unit"}
+	for i, header := range headers {
+		cellName, err := excelize.CoordinatesToCellName(i+1, 1)
+		if err != nil {
+			return fmt.Errorf("failed to get cell name for header: %w", err)
+		}
+		if err := f.SetCellValue(sheetName, cellName, header); err != nil {
+			return fmt.Errorf("failed to set header cell: %w", err)
+		}
+	}
+
+	// Write product rows
+	rowNum := 2 // Start from row 2 (row 1 is header)
+	// For products with multiple suppliers, create one row per supplier
+	// For products with no suppliers, create one row with empty supplier fields
+	for _, product := range products {
+		unitName := ""
+		if product.Unit != nil {
+			unitName = product.Unit.Name
+		}
+
+		if len(product.Suppliers) == 0 {
+			// Product with no suppliers - write one row with empty supplier fields
+			row := []interface{}{
+				product.Name,
+				product.Description,
+				product.ProductType,
+				"", // Suppliers
+				"", // ContactEmail
+				"", // ContactPhone
+				"", // Address
+				unitName,
+			}
+			for i, value := range row {
+				cellName, err := excelize.CoordinatesToCellName(i+1, rowNum)
+				if err != nil {
+					return fmt.Errorf("failed to get cell name for row %d: %w", rowNum, err)
+				}
+				if err := f.SetCellValue(sheetName, cellName, value); err != nil {
+					return fmt.Errorf("failed to set cell value: %w", err)
+				}
+			}
+			rowNum++
+		} else {
+			// Product with suppliers - write one row per supplier
+			for _, supplier := range product.Suppliers {
+				row := []interface{}{
+					product.Name,
+					product.Description,
+					product.ProductType,
+					supplier.Name,
+					supplier.ContactEmail,
+					supplier.ContactPhone,
+					supplier.Address,
+					unitName,
+				}
+				for i, value := range row {
+					cellName, err := excelize.CoordinatesToCellName(i+1, rowNum)
+					if err != nil {
+						return fmt.Errorf("failed to get cell name for row %d: %w", rowNum, err)
+					}
+					if err := f.SetCellValue(sheetName, cellName, value); err != nil {
+						return fmt.Errorf("failed to set cell value: %w", err)
+					}
+				}
+				rowNum++
+			}
+		}
+	}
+
+	// Write to writer
+	if err := f.Write(writer); err != nil {
+		return fmt.Errorf("failed to write Excel file: %w", err)
+	}
+
+	return nil
 }
