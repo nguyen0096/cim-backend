@@ -388,14 +388,22 @@ func extractInventoryItemIDsFromPayload(payload json.RawMessage) []uint {
 	return models.GetIDs(genericPayload.Items)
 }
 
-// formatItems builds simplified item summaries from payload
-func formatItems(items []dto.QuantityItem, itemsMap map[uint]*models.InventoryItem) []dto.QuantityItem {
+// formatSubmissionItems builds simplified item summaries from payload
+func formatSubmissionItems(
+	items []dto.QuantityItem,
+	itemsMap map[uint]*models.InventoryItem,
+) ([]dto.QuantityItem, error) {
 	summaries := make([]dto.QuantityItem, 0, len(items))
 	for _, item := range items {
 		inventoryItem, exists := itemsMap[item.InventoryItemID]
 		if !exists {
 			continue
 		}
+
+		if inventoryItem.Product == nil {
+			return nil, fmt.Errorf("inventory item %d has no product", item.InventoryItemID)
+		}
+
 		summaries = append(summaries, dto.QuantityItem{
 			InventoryItemID: item.InventoryItemID,
 			ProductName:     inventoryItem.Product.Name,
@@ -404,7 +412,7 @@ func formatItems(items []dto.QuantityItem, itemsMap map[uint]*models.InventoryIt
 			CurrentQuantity: inventoryItem.Quantity,
 		})
 	}
-	return summaries
+	return summaries, nil
 }
 
 func formatWarnings(
@@ -913,6 +921,12 @@ func (s *inventoryService) ListSubmissions(ctx context.Context, params models.Li
 	responses := make([]dto.SubmissionResponse, len(submissions))
 	for i, submission := range submissions {
 		items := submissionItemMap[submission.ID]
+
+		items, err := formatSubmissionItems(items, inventoryItemMap)
+		if err != nil {
+			return nil, 0, fmt.Errorf("failed to format submission items: %w", err)
+		}
+
 		responses[i] = dto.SubmissionResponse{
 			ID:             submission.ID,
 			InventoryID:    submission.InventoryID,
@@ -922,7 +936,7 @@ func (s *inventoryService) ListSubmissions(ctx context.Context, params models.Li
 			ApprovalStatus: submission.ApprovalStatus,
 			Errors:         s.formatProcessingErrors(submission.Error),
 			Warnings:       formatWarnings(submission, items, inventoryItemMap),
-			Items:          formatItems(items, inventoryItemMap),
+			Items:          items,
 			Reason:         submission.Reason,
 			CreatedBy:      submission.CreatedBy,
 			CreatedAt:      submission.CreatedAt.Format(pkg.DateTimeFormat),
@@ -1089,6 +1103,11 @@ func (s *inventoryService) UpdateSubmission(ctx context.Context, req dto.UpdateS
 	}
 	submission.Inventory = inventory
 
+	items, err := formatSubmissionItems(req.Items, inventoryItemMap)
+	if err != nil {
+		return nil, fmt.Errorf("failed to format submission items: %w", err)
+	}
+
 	// Build response
 	response := &dto.SubmissionResponse{
 		ID:             submission.ID,
@@ -1097,7 +1116,7 @@ func (s *inventoryService) UpdateSubmission(ctx context.Context, req dto.UpdateS
 		SubmissionType: submission.SubmissionType,
 		Status:         submission.ProcessingStatus,
 		ApprovalStatus: submission.ApprovalStatus,
-		Items:          formatItems(req.Items, inventoryItemMap),
+		Items:          items,
 		Warnings:       formatWarnings(*submission, req.Items, inventoryItemMap),
 		Reason:         submission.Reason,
 		CreatedBy:      submission.CreatedBy,

@@ -314,7 +314,7 @@ func (r *inventoryItemRepository) populateConsumableTransactions(
 	return nil
 }
 
-// GetByIDs retrieves inventory items by IDs
+// GetByIDs retrieves inventory items by IDs, including soft-deleted records
 func (r *inventoryItemRepository) GetByIDs(ctx context.Context, ids []uint) ([]*models.InventoryItem, error) {
 	if len(ids) == 0 {
 		return []*models.InventoryItem{}, nil
@@ -322,6 +322,7 @@ func (r *inventoryItemRepository) GetByIDs(ctx context.Context, ids []uint) ([]*
 
 	var items []*models.InventoryItem
 	err := r.db.WithContext(ctx).
+		Unscoped().
 		Preload("Inventory").
 		Preload("Product").
 		Where("id IN ?", ids).
