@@ -458,19 +458,22 @@ func formatWarnings(
 		case models.InventorySubmissionTypeDispose, models.InventorySubmissionTypeTransfer:
 			// Check if requested quantity exceeds available quantity
 			if item.Quantity.GreaterThan(inventoryItem.Quantity) {
-				operation := "dispose"
+				operation := "hủy"
 				if submission.SubmissionType == models.InventorySubmissionTypeTransfer {
-					operation = "transfer"
+					operation = "chuyển kho"
 				}
-				warning := fmt.Sprintf("Product %s doesn't have enough available quantity (current: %d) for %s %d",
+
+				warning := fmt.Sprintf("Sản phẩm %s không đủ số lượng khả dụng (hiện tại: %s) để %s %s",
 					inventoryItem.Product.Name, inventoryItem.Quantity, operation, *item.Quantity)
 				warnings = append(warnings, warning)
 			}
 		case models.InventorySubmissionTypeReconcile:
 			// Check if prev_quantity is not equal to current item quantity
 			if item.PrevQuantity != inventoryItem.Quantity {
-				warning := fmt.Sprintf("Product %s quantity has changed. Quantity at time of submission was %d. Current quantity is %d.",
-					inventoryItem.Product.Name, item.PrevQuantity, inventoryItem.Quantity)
+				warning := fmt.Sprintf("Số lượng sản phẩm %s đã thay đổi. Số lượng tại thời điểm tạo yêu cầu là %s. Số lượng hiện tại là %s.",
+					inventoryItem.Product.Name,
+					item.PrevQuantity,
+					inventoryItem.Quantity)
 				warnings = append(warnings, warning)
 			}
 		}
