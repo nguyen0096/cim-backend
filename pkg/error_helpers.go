@@ -53,7 +53,7 @@ func ErrDuplicate(message string, cause error) *AppError {
 
 // ErrPurchaseOrderNoItems creates an error for purchase order no items
 func ErrPurchaseOrderNoItems() *AppError {
-	return NewAppError(ErrorCodePurchaseOrderNoItems, "Purchase order has no items", nil)
+	return NewAppError(ErrorCodePurchaseOrderNoItems, "Đơn hàng không có sản phẩm", nil)
 }
 
 // ErrBadInventoryItemStatus creates an error for bad inventory item status
@@ -63,14 +63,14 @@ func ErrBadInventoryItemState(message string, cause error) *AppError {
 
 // ErrOptimisticLockConflict creates an error for optimistic locking conflicts
 func ErrOptimisticLockConflict(resourceType string, resourceID uint, expectedValue, actualValue decimal.Decimal) *AppError {
-	message := fmt.Sprintf("%s %d quantity has changed (expected: %s, current: %s)",
+	message := fmt.Sprintf("Số lượng của %s %d đã thay đổi (trước đó: %s, hiện tại: %s)",
 		resourceType, resourceID, expectedValue, actualValue)
 	return NewAppError(ErrorCodeConflict, message, nil)
 }
 
 // ErrInventoryItemNotFound creates an error for inventory item not found.
 func ErrInventoryItemNotFound(itemID uint) *AppError {
-	return NewAppError(ErrorCodeNotFound, fmt.Sprintf("inventory item %d not found", itemID), nil)
+	return NewAppError(ErrorCodeNotFound, fmt.Sprintf("Sản phẩm %d không tìm thấy", itemID), nil)
 }
 
 func ErrReconcileValidationFailed(message string) *AppError {
