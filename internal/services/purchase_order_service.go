@@ -297,6 +297,25 @@ func (s *purchaseOrderService) GetPurchaseOrderByID(id uint) (*models.PurchaseOr
 		return nil, err
 	}
 
+	// Enrich each item's unit with conversion_factor_to_current for derived units
+	ctx := context.Background()
+	for _, item := range purchaseOrder.Items {
+		if item.Unit != nil && item.UnitID != nil {
+			// Get the full unit information with conversion_factor_to_current calculated
+			enrichedUnit, err := s.unitRepo.GetByID(ctx, *item.UnitID)
+			if err == nil && enrichedUnit != nil {
+				// Remove base_unit from derived units (no need to nest base_unit inside derived units)
+				for _, derivedUnit := range enrichedUnit.DerivedUnits {
+					if derivedUnit != nil {
+						derivedUnit.BaseUnit = nil
+					}
+				}
+				// Replace the unit with the enriched version that has conversion_factor_to_current
+				item.Unit = enrichedUnit
+			}
+		}
+	}
+
 	// Calculate total amount based on items
 	purchaseOrder.TotalAmount = purchaseOrder.CalculateTotalAmount()
 
@@ -1133,3 +1152,74 @@ func (s *purchaseOrderService) ReceiveInventory(
 	po.TotalAmount = po.CalculateTotalAmount()
 	return po, nil
 }
+
+// convertQuantityFromBaseUnit converts a quantity from base unit to the given target unit
+// This function works by traversing from the target unit down to the base unit,
+// applying inverse conversion factors along the way
+func (s *purchaseOrderService) convertQuantityFromBaseUnit(
+	ctx context.Context,
+	quantity decimal.Decimal,
+	targetUnitID uint,
+) (decimal.Decimal, error) {
+	unit, err := s.unitRepo.GetByID(ctx, targetUnitID)
+	if err != nil {
+		return decimal.Zero, fmt.Errorf("failed to get unit %d: %w", targetUnitID, err)
+	}
+
+	// If unit is a base unit (no BaseUnitID), return quantity as-is
+	if unit.BaseUnitID == nil {
+		return quantity, nil
+	}
+
+	// If unit is a derived unit, we need to convert from base unit to this unit
+	// First, convert from base unit to the immediate base unit of this unit
+	immediateBaseQuantity, err := s.convertQuantityFromBaseUnit(ctx, quantity, *unit.BaseUnitID)
+	if err != nil {
+		return decimal.Zero, err
+	}
+
+	// Then convert from immediate base unit to target unit
+	// Since conversion_factor means: 1 target_unit = conversion_factor * base_unit
+	// To convert from base to target: divide by conversion_factor
+	return immediateBaseQuantity.Div(decimal.NewFromFloat(unit.ConversionFactor)), nil
+}
+
+// convertQuantityBetweenUnits converts a quantity from source unit to target unit
+// Both units must have the same base unit (be compatible)
+func (s *purchaseOrderService) convertQuantityBetweenUnits(
+	ctx context.Context,
+	quantity decimal.Decimal,
+	sourceUnitID, targetUnitID uint,
+) (decimal.Decimal, error) {
+	// Get base unit IDs for both units
+	sourceBaseUnitID, err := s.getBaseUnitID(ctx, sourceUnitID)
+	if err != nil {
+		return decimal.Zero, fmt.Errorf("failed to get source unit base unit: %w", err)
+	}
+
+	targetBaseUnitID, err := s.getBaseUnitID(ctx, targetUnitID)
+	if err != nil {
+		return decimal.Zero, fmt.Errorf("failed to get target unit base unit: %w", err)
+	}
+
+	// Validate that both units are compatible (have the same base unit)
+	if sourceBaseUnitID != targetBaseUnitID {
+		return decimal.Zero, pkg.NewAppError(pkg.ErrorCodeValidation,
+			fmt.Sprintf("units %d and %d are not compatible (different base units)", sourceUnitID, targetUnitID), nil)
+	}
+
+	// Convert source unit to base unit
+	baseQuantity, _, _, err := s.convertQuantityToBaseUnit(ctx, quantity, 0, sourceUnitID)
+	if err != nil {
+		return decimal.Zero, fmt.Errorf("failed to convert to base unit: %w", err)
+	}
+
+	// Convert from base unit to target unit
+	targetQuantity, err := s.convertQuantityFromBaseUnit(ctx, baseQuantity, targetUnitID)
+	if err != nil {
+		return decimal.Zero, fmt.Errorf("failed to convert from base unit: %w", err)
+	}
+
+	return targetQuantity, nil
+}
+

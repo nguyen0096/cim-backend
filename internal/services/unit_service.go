@@ -11,6 +11,12 @@ import (
 	"gorm.io/gorm"
 )
 
+const (
+	// MaxUnitHierarchyDepth is the maximum allowed depth for unit hierarchy
+	// Level 1: Root base unit, Level 2-4: Derived units
+	MaxUnitHierarchyDepth = 4
+)
+
 //go:generate mockery --name=UnitService --structname=UnitService --output=./servicemocks --outpkg=servicemocks
 type UnitService interface {
 	CreateUnit(ctx context.Context, unit *models.Unit) error
@@ -39,6 +45,7 @@ func (s *unitService) CreateUnit(ctx context.Context, unit *models.Unit) error {
 	}
 
 	if unit.BaseUnitID == nil {
+		unit.Level = 1
 		unit.ConversionFactor = 1
 	}
 
@@ -151,6 +158,7 @@ func (s *unitService) ensureBaseUnitRelationship(ctx context.Context, unit *mode
 		if unit.ConversionFactor != 1 {
 			return pkg.ErrValidation("conversion_factor must be 1 for base units", nil)
 		}
+		unit.Level = 1
 		return nil
 	}
 
@@ -161,18 +169,86 @@ func (s *unitService) ensureBaseUnitRelationship(ctx context.Context, unit *mode
 	baseUnit, err := s.unitRepo.GetByID(ctx, *unit.BaseUnitID)
 	if err != nil {
 		if err == gorm.ErrRecordNotFound {
-			return pkg.ErrValidation("base_unit_id must reference an existing base unit", err)
+			return pkg.ErrValidation("base_unit_id must reference an existing unit", err)
 		}
 		return fmt.Errorf("failed to load base unit %d: %w", *unit.BaseUnitID, err)
-	}
-
-	if baseUnit.BaseUnitID != nil {
-		return pkg.ErrValidation("base_unit_id must reference a base unit", nil)
 	}
 
 	if !strings.EqualFold(baseUnit.UnitType, unit.UnitType) {
 		return pkg.ErrValidation("base unit must have the same unit_type", nil)
 	}
 
+	// Check for circular references by traversing up the hierarchy
+	if err := s.checkCircularReference(ctx, unit.ID, *unit.BaseUnitID); err != nil {
+		return err
+	}
+
+	// Calculate and validate the level based on base unit's level
+	expectedLevel := baseUnit.Level + 1
+	if expectedLevel > MaxUnitHierarchyDepth {
+		return pkg.ErrValidation(fmt.Sprintf("cannot create/update unit: base unit is at level %d, which would result in level %d. Maximum allowed hierarchy depth is %d levels", baseUnit.Level, expectedLevel, MaxUnitHierarchyDepth), nil)
+	}
+
+	// Set the level for the unit
+	unit.Level = expectedLevel
+
+	return nil
+}
+
+// checkCircularReference checks if setting baseUnitID would create a circular reference
+func (s *unitService) checkCircularReference(ctx context.Context, unitID uint, baseUnitID uint) error {
+	visited := make(map[uint]bool)
+	currentID := baseUnitID
+
+	for currentID != 0 {
+		// If we've seen this unit before, we have a cycle
+		if visited[currentID] {
+			return pkg.ErrValidation("circular reference detected in unit hierarchy", nil)
+		}
+
+		// If the current unit is the one we're trying to set as base, we have a cycle
+		if currentID == unitID {
+			return pkg.ErrValidation("circular reference detected: unit would reference itself through base unit chain", nil)
+		}
+
+		visited[currentID] = true
+
+		// Get the current unit and check its base unit
+		currentUnit, err := s.unitRepo.GetByID(ctx, currentID)
+		if err != nil {
+			if err == gorm.ErrRecordNotFound {
+				// If unit not found, we've reached the end of the chain
+				break
+			}
+			return fmt.Errorf("failed to check circular reference: %w", err)
+		}
+
+		if currentUnit.BaseUnitID == nil {
+			// Reached a root base unit, no cycle
+			break
+		}
+
+		currentID = *currentUnit.BaseUnitID
+	}
+
+	return nil
+}
+
+// checkMaxDepth checks if adding a unit with the given baseUnitID would exceed the maximum hierarchy depth
+// The maximum depth is 4 levels: Level 1 (root base unit) + 3 levels of derived units
+// This function is now deprecated in favor of using the Level field directly, but kept for backward compatibility
+func (s *unitService) checkMaxDepth(ctx context.Context, baseUnitID uint) error {
+	baseUnit, err := s.unitRepo.GetByID(ctx, baseUnitID)
+	if err != nil {
+		if err == gorm.ErrRecordNotFound {
+			return pkg.ErrValidation("base unit not found", err)
+		}
+		return fmt.Errorf("failed to load base unit %d: %w", baseUnitID, err)
+	}
+
+	expectedLevel := baseUnit.Level + 1
+	if expectedLevel > MaxUnitHierarchyDepth {
+		return pkg.ErrValidation(fmt.Sprintf("cannot create/update unit: base unit is at level %d, which would result in level %d. Maximum allowed hierarchy depth is %d levels", baseUnit.Level, expectedLevel, MaxUnitHierarchyDepth), nil)
+	}
 	return nil
 }

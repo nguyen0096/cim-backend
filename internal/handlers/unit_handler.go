@@ -144,6 +144,7 @@ type createUnitRequest struct {
 	Symbol           string  `json:"symbol"`
 	BaseUnitID       *uint   `json:"base_unit_id,omitempty"`
 	ConversionFactor float64 `json:"conversion_factor,omitempty" validate:"required,gt=0"`
+	DecimalPlaces    *int    `json:"decimal_places,omitempty" validate:"omitempty,gte=0,lte=10"`
 }
 
 // CreateUnit godoc
@@ -153,6 +154,12 @@ type createUnitRequest struct {
 // @Accept json
 // @Produce json
 // @Param unit body createUnitRequest true "Unit information"
+// @Param unit.body.unit_type string false "Unit type (e.g., general, mass, volume)"
+// @Param unit.body.name string true "Unit name"
+// @Param unit.body.symbol string false "Unit symbol"
+// @Param unit.body.base_unit_id integer false "Base unit ID (for derived units)"
+// @Param unit.body.conversion_factor number true "Conversion factor (must be > 0)"
+// @Param unit.body.decimal_places integer false "Number of decimal places (0-10, default: 2)"
 // @Success 201 {object} models.Unit
 // @Failure 400 {object} map[string]string
 // @Failure 409 {object} map[string]string
@@ -181,6 +188,13 @@ func (h *UnitHandler) CreateUnit(c echo.Context) error {
 		unit.Symbol = unit.Name
 	}
 
+	// Set decimal_places if provided, otherwise use default (0)
+	if request.DecimalPlaces != nil {
+		unit.DecimalPlaces = *request.DecimalPlaces
+	} else {
+		unit.DecimalPlaces = 0 // Default value
+	}
+
 	if err := h.unitService.CreateUnit(c.Request().Context(), unit); err != nil {
 		return err
 	}
@@ -196,6 +210,12 @@ func (h *UnitHandler) CreateUnit(c echo.Context) error {
 // @Produce json
 // @Param id path int true "Unit ID"
 // @Param unit body createUnitRequest true "Updated unit information"
+// @Param unit.body.unit_type string false "Unit type (e.g., general, mass, volume)"
+// @Param unit.body.name string true "Unit name"
+// @Param unit.body.symbol string false "Unit symbol"
+// @Param unit.body.base_unit_id integer false "Base unit ID (for derived units)"
+// @Param unit.body.conversion_factor number true "Conversion factor (must be > 0)"
+// @Param unit.body.decimal_places integer false "Number of decimal places (0-10)"
 // @Success 200 {object} models.Unit
 // @Failure 400 {object} map[string]string
 // @Failure 404 {object} map[string]string
@@ -214,6 +234,12 @@ func (h *UnitHandler) UpdateUnit(c echo.Context) error {
 		return pkg.ErrInvalidRequestBody(err)
 	}
 
+	// Load existing unit to preserve fields not in request
+	existingUnit, err := h.unitService.GetUnitByID(c.Request().Context(), id)
+	if err != nil {
+		return err
+	}
+
 	unit := &models.Unit{
 		Base: models.Base{
 			ID: id,
@@ -223,6 +249,12 @@ func (h *UnitHandler) UpdateUnit(c echo.Context) error {
 		Symbol:           request.Symbol,
 		BaseUnitID:       request.BaseUnitID,
 		ConversionFactor: request.ConversionFactor,
+		DecimalPlaces:    existingUnit.DecimalPlaces, // Preserve existing value by default
+	}
+
+	// Override decimal_places if provided in request
+	if request.DecimalPlaces != nil {
+		unit.DecimalPlaces = *request.DecimalPlaces
 	}
 
 	if err := h.unitService.UpdateUnit(c.Request().Context(), unit); err != nil {

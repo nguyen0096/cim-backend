@@ -28,6 +28,7 @@ type PurchaseOrderRepository interface {
 	GetByID(id uint) (*models.PurchaseOrder, error)
 	UpdatePurchaseOrder(ctx context.Context, id uint, req dto.UpdatePurchaseOrderRequest) (*models.PurchaseOrder, error)
 	ReceiveInventory(ctx context.Context, req dto.UpdatePurchaseOrderDeliveryStatusRequest) (*models.PurchaseOrder, error)
+	GetPurchaseOrderItemByID(ctx context.Context, purchaseOrderID, itemID uint) (*models.PurchaseOrderItem, error)
 }
 
 type purchaseOrderRepository struct {
@@ -48,12 +49,33 @@ func (r *purchaseOrderRepository) GetByID(id uint) (*models.PurchaseOrder, error
 		Preload("Items.Product").
 		Preload("Items.Supplier").
 		Preload("Items.Unit").
+		Preload("Items.Unit.BaseUnit").
 		Preload("Items.Unit.DerivedUnits").
 		Preload("Inventory").
 		First(&purchaseOrder, "id = ?", id).Error
 	if err != nil {
 		return nil, err
 	}
+
+	// Load all derived units in the hierarchy for each item's unit
+	ctx := context.Background()
+	for _, item := range purchaseOrder.Items {
+		if item.Unit != nil {
+			// Load the full base unit chain
+			visited := make(map[uint]bool)
+			r.loadBaseUnitChain(ctx, item.Unit, visited)
+
+			// Find the root base unit ID for this unit
+			rootBaseUnitID := item.Unit.GetRootBaseUnitID()
+
+			// Populate DerivedUnits with all units in the hierarchy from the root base unit
+			allDerivedUnits, err := r.findAllUnitsWithRootBaseUnit(ctx, rootBaseUnitID, item.Unit.UnitType)
+			if err == nil {
+				item.Unit.DerivedUnits = allDerivedUnits
+			}
+		}
+	}
+
 	return &purchaseOrder, nil
 }
 
@@ -200,6 +222,7 @@ func (r *purchaseOrderRepository) ReceiveInventory(ctx context.Context, req dto.
 			UnitType             string
 			UnitBaseUnitID       *uint
 			UnitConversionFactor float64
+			UnitDecimalPlaces    int
 		}
 
 		var poiData []POIData
@@ -218,7 +241,8 @@ func (r *purchaseOrderRepository) ReceiveInventory(ctx context.Context, req dto.
 			u.symbol as unit_symbol,
 			u.unit_type as unit_type,
 			u.base_unit_id as unit_base_unit_id,
-			u.conversion_factor as unit_conversion_factor
+			u.conversion_factor as unit_conversion_factor,
+			u.decimal_places as unit_decimal_places
 		`).
 			Joins(`LEFT JOIN inventory_items ii ON poi.product_id = ii.product_id
 				AND ii.status = ?
@@ -258,6 +282,12 @@ func (r *purchaseOrderRepository) ReceiveInventory(ctx context.Context, req dto.
 				return pkg.NewAppError(pkg.ErrorCodeValidation,
 					fmt.Sprintf("received quantity %s exceeds remaining quantity %s for item ID %d",
 						dtoItem.ReceivedQuantity.String(), remainingQuantity.String(), dtoItem.ID), nil)
+			}
+
+			receivedQuantityDecimalPlaces := getDecimalPlaces(dtoItem.ReceivedQuantity)
+			if receivedQuantityDecimalPlaces > poItem.UnitDecimalPlaces {
+				return pkg.NewAppError(pkg.ErrorCodeValidation,
+					fmt.Sprintf("decimal places must be less than or equal to %d", poItem.UnitDecimalPlaces), nil)
 			}
 
 			poItem.ReceivedQuantity = poItem.ReceivedQuantity.Add(dtoItem.ReceivedQuantity)
@@ -507,4 +537,109 @@ func (r *purchaseOrderRepository) UpdatePurchaseOrder(ctx context.Context, id ui
 
 		return nil
 	})
+}
+
+// GetPurchaseOrderItemByID retrieves a purchase order item by purchase order ID and item ID
+func (r *purchaseOrderRepository) GetPurchaseOrderItemByID(ctx context.Context, purchaseOrderID, itemID uint) (*models.PurchaseOrderItem, error) {
+	var item models.PurchaseOrderItem
+	err := r.db.WithContext(ctx).
+		Preload("Product").
+		Preload("Product.Unit").
+		Preload("Unit").
+		Preload("Unit.BaseUnit").
+		Where("purchase_order_id = ? AND id = ?", purchaseOrderID, itemID).
+		First(&item).Error
+	if err != nil {
+		if err == gorm.ErrRecordNotFound {
+			return nil, pkg.NewAppError(pkg.ErrorCodeNotFound, fmt.Sprintf("purchase order item with ID %d not found in purchase order %d", itemID, purchaseOrderID), nil)
+		}
+		return nil, fmt.Errorf("failed to get purchase order item: %w", err)
+	}
+	return &item, nil
+}
+
+// loadBaseUnitChain recursively loads the base unit chain for multi-level hierarchies
+// visited map prevents infinite loops in case of circular references
+func (r *purchaseOrderRepository) loadBaseUnitChain(ctx context.Context, unit *models.Unit, visited map[uint]bool) {
+	if unit.BaseUnitID == nil {
+		return
+	}
+	// Safety check: prevent infinite loops
+	if visited[unit.ID] {
+		return
+	}
+	visited[unit.ID] = true
+
+	// If base unit is not loaded, load it
+	if unit.BaseUnit == nil {
+		var baseUnit models.Unit
+		if err := r.db.WithContext(ctx).
+			Preload("BaseUnit").
+			First(&baseUnit, "id = ?", *unit.BaseUnitID).Error; err != nil {
+			return
+		}
+		unit.BaseUnit = &baseUnit
+	}
+	// Recursively load the base unit's chain
+	r.loadBaseUnitChain(ctx, unit.BaseUnit, visited)
+}
+
+// findAllUnitsWithRootBaseUnit finds all units that have the same root base unit
+// It recursively traverses the hierarchy to find all descendants
+func (r *purchaseOrderRepository) findAllUnitsWithRootBaseUnit(ctx context.Context, rootBaseUnitID uint, unitType string) ([]*models.Unit, error) {
+	var allUnits []*models.Unit
+	visited := make(map[uint]bool)
+
+	// Recursively collect all units in the hierarchy
+	var collectUnits func(unitID uint) error
+	collectUnits = func(unitID uint) error {
+		if visited[unitID] {
+			return nil
+		}
+		visited[unitID] = true
+
+		// Find all units that have this unit as their base unit
+		var directChildren []models.Unit
+		if err := r.db.WithContext(ctx).
+			Preload("BaseUnit").
+			Where("base_unit_id = ? AND unit_type = ?", unitID, unitType).
+			Find(&directChildren).Error; err != nil {
+			return fmt.Errorf("failed to find direct children of unit %d: %w", unitID, err)
+		}
+
+		// Add direct children to the result and load their base unit chains
+		for i := range directChildren {
+			// Load the full base unit chain for each unit
+			chainVisited := make(map[uint]bool)
+			r.loadBaseUnitChain(ctx, &directChildren[i], chainVisited)
+			allUnits = append(allUnits, &directChildren[i])
+			// Recursively collect their children
+			if err := collectUnits(directChildren[i].ID); err != nil {
+				return err
+			}
+		}
+
+		return nil
+	}
+
+	// Start collecting from the root base unit
+	if err := collectUnits(rootBaseUnitID); err != nil {
+		return nil, err
+	}
+
+	return allUnits, nil
+}
+
+// getDecimalPlaces returns the number of decimal places in a decimal.Decimal
+// This counts the actual significant decimal places (e.g., "100.11" has 2, "100.00" has 0)
+func getDecimalPlaces(d decimal.Decimal) int {
+	// Convert to string and count decimal places
+	// The String() method will show the actual decimal places without trailing zeros
+	str := d.String()
+	parts := strings.Split(str, ".")
+	if len(parts) == 1 {
+		return 0
+	}
+	// Count actual decimal places (trailing zeros are already removed by String())
+	return len(parts[1])
 }

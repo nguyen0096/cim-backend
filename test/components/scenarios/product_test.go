@@ -197,6 +197,7 @@ func (suite *ComponentTestSuite) TestUpdateProductStatus() {
 	testProduct := models.Product{
 		Name:        "Test Product",
 		Description: "Test Description",
+		UnitID: 1,
 	}
 	err := db.WithContext(ctx).Create(&testProduct).Error
 	require.NoError(t, err, "Failed to create product")
