@@ -11,7 +11,6 @@ import (
 	"gorm.io/gorm/logger"
 
 	"cim-backend/internal/config"
-	"cim-backend/internal/models"
 )
 
 func Initialize(cfg config.DatabaseConfig) (*gorm.DB, error) {
@@ -28,41 +27,9 @@ func Initialize(cfg config.DatabaseConfig) (*gorm.DB, error) {
 	return db, nil
 }
 
-// AutoMigrate runs GORM auto migrations to create/update table schemas
-func AutoMigrate(db *gorm.DB) error {
-	return db.AutoMigrate(
-		&models.User{},
-		&models.Supplier{},
-		&models.Product{},
-		&models.Inventory{},
-		&models.InventoryItem{},
-		&models.InventoryTransaction{},
-		&models.PurchaseOrder{},
-		&models.PurchaseOrderItem{},
-		&models.Settings{},
-		&models.PaymentReceiptForm{},
-		&models.InventorySubmission{},
-	)
-}
-
-// MigrateScripts runs SQL migration scripts from migration directory (up)
-func MigrateScripts(db *gorm.DB, migrationDir string) error {
-	return runSQLMigration(db, migrationDir, "up")
-}
-
-// MigrateUp runs GORM auto migrations first, then SQL migration scripts
+// MigrateUp runs SQL migration scripts from migration directory (up)
 func MigrateUp(db *gorm.DB, migrationDir string) error {
-	// Run GORM auto migrations first to create tables
-	if err := AutoMigrate(db); err != nil {
-		return err
-	}
-
-	// Then run SQL migration scripts for data migrations and other SQL-based changes
-	if err := MigrateScripts(db, migrationDir); err != nil {
-		return err
-	}
-
-	return nil
+	return runSQLMigration(db, migrationDir, "up")
 }
 
 // MigrateDown rolls back SQL migration scripts from migration directory (down one step)

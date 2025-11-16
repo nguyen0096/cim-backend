@@ -1629,7 +1629,7 @@ func SeedDatabase() error {
 	}
 
 	// Seed users after database schema is populated
-	if err := seedUsers(db); err != nil {
+	if err := seedUsers(db, cfg.Casbin); err != nil {
 		return fmt.Errorf("failed to seed users: %w", err)
 	}
 
@@ -1637,9 +1637,9 @@ func SeedDatabase() error {
 }
 
 // seedUsers populates the database with default users
-func seedUsers(db *gorm.DB) error {
+func seedUsers(db *gorm.DB, casbinCfg config.CasbinConfig) error {
 	// Initialize Casbin service
-	casbinService, err := auth.NewCasbinService(db)
+	casbinService, err := auth.NewCasbinService(db, casbinCfg)
 	if err != nil {
 		return fmt.Errorf("failed to initialize Casbin service: %w", err)
 	}

@@ -1,56 +1,35 @@
 package apptest
 
 import (
-	"cim-backend/internal/models"
-	"cim-backend/test/components/helpers"
-	"context"
 	"fmt"
+	"strconv"
 
-	"github.com/google/uuid"
 	. "github.com/onsi/ginkgo/v2"
-	. "github.com/onsi/gomega"
 )
 
-var (
-	testContainer *helpers.TestContainer
-)
-
-// SetupTestContainer initializes the test container before all tests
-var _ = BeforeSuite(func() {
-	ctx := context.Background()
-
-	By("Setting up test containers")
-	tc, err := helpers.SetupTestContainers(ctx)
-	Expect(err).NotTo(HaveOccurred(), "Failed to setup test containers")
-	Expect(tc).NotTo(BeNil())
-
-	testContainer = tc
-
-	GinkgoWriter.Printf("Test container initialized successfully\n")
-	GinkgoWriter.Printf("Base URL: %s\n", testContainer.BaseURL)
-})
-
-// CleanupTestContainer cleans up the test container after all tests
-var _ = AfterSuite(func() {
-	By("Cleaning up test containers")
-	if testContainer != nil {
-		testContainer.Cleanup()
-		GinkgoWriter.Printf("Test container cleaned up successfully\n")
+// ToString converts various types to string
+// Fails the test if value is nil or unsupported type (fail-fast for tests)
+func ToString(v interface{}) string {
+	if v == nil {
+		Fail("ToString: value is nil - field may be missing from response")
+		return ""
 	}
-})
-
-// CreateUniqueUserWithToken is a helper function to create a test user with a token
-func CreateUniqueUserWithToken(role models.UserRole) (*models.User, string, error) {
-	email := fmt.Sprintf("test-user-%s@example.com", uuid.New().String())
-	user, err := helpers.CreateTestUser(context.Background(), testContainer.DB, email, email, role)
-	if err != nil {
-		return nil, "", fmt.Errorf("failed to create test user: %w", err)
+	switch val := v.(type) {
+	case string:
+		return val
+	case float64:
+		// JSON numbers are decoded as float64
+		return strconv.FormatFloat(val, 'f', -1, 64)
+	case int:
+		return strconv.Itoa(val)
+	case uint:
+		return strconv.FormatUint(uint64(val), 10)
+	default:
+		Fail(fmt.Sprintf("ToString: unsupported type %T", v))
+		return ""
 	}
-	token := helpers.GetAuthToken(testContainer.MockAuth, user.UID, user.Email, user.Name)
-	return user, token, nil
 }
 
-// GetTestContainer returns the shared test container
-func GetTestContainer() *helpers.TestContainer {
-	return testContainer
+func Failf(format string, args ...any) {
+	Fail(fmt.Sprintf(format, args...), 1)
 }

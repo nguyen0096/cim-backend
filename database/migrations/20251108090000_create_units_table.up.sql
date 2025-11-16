@@ -12,9 +12,16 @@ CREATE TABLE IF NOT EXISTS units (
     deleted_at TIMESTAMP WITH TIME ZONE
 );
 
-ALTER TABLE units
-    ADD CONSTRAINT fk_units_base_unit
-    FOREIGN KEY (base_unit_id) REFERENCES units(id);
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint WHERE conname = 'fk_units_base_unit'
+    ) THEN
+        ALTER TABLE units
+            ADD CONSTRAINT fk_units_base_unit
+            FOREIGN KEY (base_unit_id) REFERENCES units(id);
+    END IF;
+END $$;
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_units_unit_type_name ON units (unit_type, name);
 
@@ -39,8 +46,15 @@ WHERE unit_id IS NULL;
 ALTER TABLE products
     ALTER COLUMN unit_id SET NOT NULL;
 
-ALTER TABLE products
-    ADD CONSTRAINT fk_products_units FOREIGN KEY (unit_id) REFERENCES units(id);
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint WHERE conname = 'fk_products_units'
+    ) THEN
+        ALTER TABLE products
+            ADD CONSTRAINT fk_products_units FOREIGN KEY (unit_id) REFERENCES units(id);
+    END IF;
+END $$;
 
 -- Drop legacy unit column
 ALTER TABLE products DROP COLUMN IF EXISTS unit;

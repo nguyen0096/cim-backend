@@ -6,10 +6,13 @@ import (
 	"strings"
 
 	"github.com/joho/godotenv"
+
+	"cim-backend/pkg/log"
 )
 
 type Config struct {
 	Environment  string
+	Log          log.Config
 	Database     DatabaseConfig
 	Server       ServerConfig
 	JWT          JWTConfig
@@ -17,6 +20,7 @@ type Config struct {
 	Excel        ExcelConfig
 	Migration    MigrationConfig
 	GoogleSheets GoogleSheetsConfig
+	Casbin       CasbinConfig
 }
 
 type DatabaseConfig struct {
@@ -56,6 +60,11 @@ type GoogleSheetsConfig struct {
 	InventorySpreadsheetID string
 }
 
+type CasbinConfig struct {
+	ModelFile  string
+	PolicyFile string
+}
+
 // Load loads configuration from environment variables.
 // Optional filePath parameter can be provided to load a specific .env file.
 // If no filePath is provided, it attempts to load .env from the current directory.
@@ -90,6 +99,10 @@ func Load(filePath ...string) *Config {
 		GoogleSheets: GoogleSheetsConfig{
 			ServiceAccountPath:     getEnv("GOOGLE_SERVICE_ACCOUNT", ""),
 			InventorySpreadsheetID: getEnv("INVENTORY_SPREADSHEET_ID", ""),
+		},
+		Casbin: CasbinConfig{
+			ModelFile:  getEnv("CASBIN_MODEL_FILE", "rbac_model.conf"),
+			PolicyFile: getEnv("CASBIN_POLICY_FILE", "rbac_policy.csv"),
 		},
 	}
 }

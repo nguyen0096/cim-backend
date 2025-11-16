@@ -10,6 +10,8 @@ import (
 )
 
 // FirebaseAuthInterface defines the interface for Firebase authentication
+//
+//go:generate mockery --name=FirebaseAuthInterface --structname=FirebaseAuthInterface --output=./authmocks --outpkg=authmocks
 type FirebaseAuthInterface interface {
 	VerifyToken(ctx context.Context, idToken string) (*auth.Token, error)
 	GetUser(ctx context.Context, uid string) (*auth.UserRecord, error)

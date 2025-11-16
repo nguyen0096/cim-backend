@@ -1,8 +1,12 @@
-.PHONY: build run test clean docker-build docker-run docker-stop migrate-up migrate-down docs mock proto proto-install proto-clean buf-install buf-lint buf-format
+.PHONY: build build-util run test clean docker-build docker-run docker-stop migrate-up migrate-down docs mock proto proto-install proto-clean buf-install buf-lint buf-format
 
 # Build the application
 build:
 	go build -o bin/main .
+
+# Build the utility binary
+build-util:
+	go build -o bin/util ./cmd/util
 
 # Run the application
 run:
@@ -37,7 +41,7 @@ fmt:
 
 # Database migrations
 migrate-up:
-	go run ./cmd/util migrate up
+	go run ./cmd/util migrate
 
 migrate-down:
 	go run ./cmd/util migrate down
@@ -63,23 +67,26 @@ seed-db:
 # Help
 help:
 	@echo "Available commands:"
-	@echo "  build          - Build the application"
-	@echo "  run            - Run the application"
-	@echo "  test           - Run tests"
-	@echo "  test-coverage  - Run tests with coverage"
-	@echo "  clean          - Clean build artifacts"
-	@echo "  deps           - Install dependencies"
-	@echo "  lint           - Run linter"
-	@echo "  fmt            - Format code"
-	@echo "  docker-build   - Build Docker images"
-	@echo "  docker-run     - Run with Docker Compose"
-	@echo "  docker-stop    - Stop Docker containers"
-	@echo "  docker-logs    - Show Docker logs"
-	@echo "  dev-setup      - Setup development environment"
-	@echo "  prod-setup     - Setup production environment"
-	@echo "  docs           - Generate API documentation"
-	@echo "  test-api       - Test API with sample data"
-	@echo "  seed-db        - Seed database with mock data"
+	@echo "  build            - Build the application"
+	@echo "  build-util       - Build the utility binary"
+	@echo "  run              - Run the application"
+	@echo "  test             - Run tests"
+	@echo "  test-coverage    - Run tests with coverage"
+	@echo "  clean            - Clean build artifacts"
+	@echo "  deps             - Install dependencies"
+	@echo "  lint             - Run linter"
+	@echo "  fmt              - Format code"
+	@echo "  migrate-up       - Run database migrations (alias)"
+	@echo "  migrate-down     - Rollback last migration"
+	@echo "  docker-build     - Build Docker images"
+	@echo "  docker-run       - Run with Docker Compose"
+	@echo "  docker-stop      - Stop Docker containers"
+	@echo "  docker-logs      - Show Docker logs"
+	@echo "  dev-setup        - Setup development environment"
+	@echo "  prod-setup       - Setup production environment"
+	@echo "  docs             - Generate API documentation"
+	@echo "  test-api         - Test API with sample data"
+	@echo "  seed-db          - Seed database with mock data"
 
 generate:
 	go generate ./...

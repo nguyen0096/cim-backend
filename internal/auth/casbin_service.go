@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"os"
 
+	"cim-backend/internal/config"
+
 	"github.com/casbin/casbin/v2"
 	gormadapter "github.com/casbin/gorm-adapter/v3"
 
@@ -18,12 +20,12 @@ type CasbinService struct {
 }
 
 // NewCasbinService creates a new Casbin service with PostgreSQL adapter
-func NewCasbinService(db *gorm.DB) (*CasbinService, error) {
+func NewCasbinService(db *gorm.DB, casbinCfg config.CasbinConfig) (*CasbinService, error) {
 	// Get the path to the model file
-	fileAdapter := fileadapter.NewAdapter("rbac_policy.csv")
+	fileAdapter := fileadapter.NewAdapter(casbinCfg.PolicyFile)
 
 	// Initialize Casbin enforcer
-	enforcer, err := casbin.NewEnforcer("rbac_model.conf", fileAdapter)
+	enforcer, err := casbin.NewEnforcer(casbinCfg.ModelFile, fileAdapter)
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize casbin enforcer: %w", err)
 	}

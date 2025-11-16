@@ -30,7 +30,7 @@ func SetupServer(
 	logger *logrus.Logger,
 ) (*echo.Echo, error) {
 	// Initialize Casbin service for authorization
-	casbinService, err := auth.NewCasbinService(db)
+	casbinService, err := auth.NewCasbinService(db, cfg.Casbin)
 	if err != nil {
 		return nil, err
 	}

@@ -53,14 +53,28 @@ ALTER TABLE units
 ALTER COLUMN level SET NOT NULL,
 ALTER COLUMN level SET DEFAULT 1;
 
-ALTER TABLE units
-ADD CONSTRAINT chk_units_level CHECK (level >= 1 AND level <= 4);
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint WHERE conname = 'chk_units_level'
+    ) THEN
+        ALTER TABLE units
+        ADD CONSTRAINT chk_units_level CHECK (level >= 1 AND level <= 4);
+    END IF;
+END $$;
 
 -- Make decimal_places NOT NULL and add check constraint
 ALTER TABLE units
 ALTER COLUMN decimal_places SET NOT NULL,
 ALTER COLUMN decimal_places SET DEFAULT 0;
 
-ALTER TABLE units
-ADD CONSTRAINT chk_units_decimal_places CHECK (decimal_places >= 0 AND decimal_places <= 10);
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint WHERE conname = 'chk_units_decimal_places'
+    ) THEN
+        ALTER TABLE units
+        ADD CONSTRAINT chk_units_decimal_places CHECK (decimal_places >= 0 AND decimal_places <= 10);
+    END IF;
+END $$;
 
