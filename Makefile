@@ -86,3 +86,6 @@ generate:
 
 migrate-file:
 	migrate create -ext sql -dir database/migrations ${NAME}
+
+test-components:
+	go test -v ./test/components/scenarios -run TestComponentTestSuite

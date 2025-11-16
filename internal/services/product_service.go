@@ -868,6 +868,18 @@ func (s *productService) ExportProductsToExcel(ctx context.Context, writer io.Wr
 		}
 	}
 
+	// Helper to write a full row starting at column A to keep row-writing logic centralized
+	writeRow := func(rowNum int, values []interface{}) error {
+		startCell, err := excelize.CoordinatesToCellName(1, rowNum)
+		if err != nil {
+			return fmt.Errorf("failed to get cell name for row %d: %w", rowNum, err)
+		}
+		if err := f.SetSheetRow(sheetName, startCell, &values); err != nil {
+			return fmt.Errorf("failed to set row %d: %w", rowNum, err)
+		}
+		return nil
+	}
+
 	// Write product rows
 	rowNum := 2 // Start from row 2 (row 1 is header)
 	// For products with multiple suppliers, create one row per supplier
@@ -890,40 +902,29 @@ func (s *productService) ExportProductsToExcel(ctx context.Context, writer io.Wr
 				"", // ContactPhone
 				"", // Address
 			}
-			for i, value := range row {
-				cellName, err := excelize.CoordinatesToCellName(i+1, rowNum)
-				if err != nil {
-					return fmt.Errorf("failed to get cell name for row %d: %w", rowNum, err)
-				}
-				if err := f.SetCellValue(sheetName, cellName, value); err != nil {
-					return fmt.Errorf("failed to set cell value: %w", err)
-				}
+			if err := writeRow(rowNum, row); err != nil {
+				return err
 			}
 			rowNum++
-		} else {
-			// Product with suppliers - write one row per supplier
-			for _, supplier := range product.Suppliers {
-				row := []interface{}{
-					product.Name,
-					product.Description,
-					product.ProductType,
-					unitName,
-					supplier.Name,
-					supplier.ContactEmail,
-					supplier.ContactPhone,
-					supplier.Address,
-				}
-				for i, value := range row {
-					cellName, err := excelize.CoordinatesToCellName(i+1, rowNum)
-					if err != nil {
-						return fmt.Errorf("failed to get cell name for row %d: %w", rowNum, err)
-					}
-					if err := f.SetCellValue(sheetName, cellName, value); err != nil {
-						return fmt.Errorf("failed to set cell value: %w", err)
-					}
-				}
-				rowNum++
+			continue
+		}
+
+		// Product with suppliers - write one row per supplier
+		for _, supplier := range product.Suppliers {
+			row := []interface{}{
+				product.Name,
+				product.Description,
+				product.ProductType,
+				unitName,
+				supplier.Name,
+				supplier.ContactEmail,
+				supplier.ContactPhone,
+				supplier.Address,
 			}
+			if err := writeRow(rowNum, row); err != nil {
+				return err
+			}
+			rowNum++
 		}
 	}
 

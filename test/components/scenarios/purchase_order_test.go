@@ -23,17 +23,17 @@ func (suite *ComponentTestSuite) TestCreatePurchaseOrder() {
 	db := suite.sharedTestContainer.DB
 	testSuppliers := []models.Supplier{
 		{
-			Name: "Test Supplier 1",
+			Name: fmt.Sprintf("Test Supplier 1 %s", uuid.New().String()),
 		},
 		{
-			Name: "Test Supplier 2",
+			Name: fmt.Sprintf("Test Supplier 2 %s", uuid.New().String()),
 		},
 	}
 	err := db.WithContext(ctx).Create(&testSuppliers).Error
 	require.NoError(t, err, "Failed to create suppliers")
 
 	testBaseUnit := models.Unit{
-		Name:             "Test Base Unit",
+		Name:             fmt.Sprintf("Test Base Unit %s", uuid.New().String()),
 		Symbol:           "BU",
 		UnitType:         "length",
 		ConversionFactor: 1,
@@ -41,7 +41,7 @@ func (suite *ComponentTestSuite) TestCreatePurchaseOrder() {
 	err = db.WithContext(ctx).Create(&testBaseUnit).Error
 	require.NoError(t, err, "Failed to create base unit")
 	testDerivedUnit := models.Unit{
-		Name:             "Test Derived Unit",
+		Name:             fmt.Sprintf("Test Derived Unit %s", uuid.New().String()),
 		Symbol:           "DU",
 		UnitType:         "length",
 		ConversionFactor: 10,
@@ -51,11 +51,11 @@ func (suite *ComponentTestSuite) TestCreatePurchaseOrder() {
 	require.NoError(t, err, "Failed to create derived unit")
 	testProducts := []models.Product{
 		{
-			Name:   "Test Product 1",
+			Name:   fmt.Sprintf("Test Product 1 %s", uuid.New().String()),
 			UnitID: testBaseUnit.ID,
 		},
 		{
-			Name:   "Test Product 2",
+			Name:   fmt.Sprintf("Test Product 2 %s", uuid.New().String()),
 			UnitID: testBaseUnit.ID,
 		},
 	}
@@ -63,7 +63,7 @@ func (suite *ComponentTestSuite) TestCreatePurchaseOrder() {
 	require.NoError(t, err, "Failed to create products")
 	testInventories := []models.Inventory{
 		{
-			Name: "Test Inventory 1",
+			Name: fmt.Sprintf("Test Inventory 1 %s", uuid.New().String()),
 		},
 	}
 	err = db.WithContext(ctx).Create(&testInventories).Error
@@ -159,78 +159,43 @@ func (suite *ComponentTestSuite) TestCreatePurchaseOrderWithDifferentUnits() {
 	ctx := pkg.WithUserEmail(context.Background(), "test@example.com")
 	db := suite.sharedTestContainer.DB
 
-	testUnits := []models.Unit{
-		{
-			Base:             models.Base{ID: 2},
-			Name:             "Base Unit 2",
-			ConversionFactor: 1,
-			UnitType:         "general",
-		},
-		{
-			Base:             models.Base{ID: 3},
-			Name:             "Base Unit 3",
-			ConversionFactor: 1,
-			UnitType:         "mass",
-		},
-		{
-			Base:             models.Base{ID: 4},
-			BaseUnitID:       pkg.Ptr(uint(1)),
-			Name:             "Test Unit 2",
-			ConversionFactor: 20,
-			UnitType:         "general",
-		},
-		{
-			Base:             models.Base{ID: 5},
-			BaseUnitID:       pkg.Ptr(uint(3)),
-			Name:             "Test Unit 3",
-			ConversionFactor: 20,
-			UnitType:         "mass",
-		},
-	}
-
-	err := db.WithContext(ctx).Create(&testUnits).Error
-	require.NoError(t, err, "Failed to create units")
+	testUnits := suite.setupUnitTestData(t)
 
 	testSuppliers := []models.Supplier{
 		{
-			Base: models.Base{ID: 1},
-			Name: "Test Supplier 1",
+			Name: fmt.Sprintf("Test Supplier 1 %s", uuid.New().String()),
 		},
 	}
-	err = db.WithContext(ctx).Create(&testSuppliers).Error
+	err := db.WithContext(ctx).Create(&testSuppliers).Error
 	require.NoError(t, err, "Failed to create suppliers")
 
 	testProducts := []models.Product{
 		{
-			Base:   models.Base{ID: 1},
-			Name:   "Test Product 1",
-			UnitID: 1,
+			Name:   fmt.Sprintf("Test Product 1 %s", uuid.New().String()),
+			UnitID: testUnits[0].ID,
 		},
 	}
 	err = db.WithContext(ctx).Create(&testProducts).Error
 	require.NoError(t, err, "Failed to create products")
-
 	testInventories := []models.Inventory{
 		{
-			Base: models.Base{ID: 1},
-			Name: "Test Inventory 1",
+			Name: fmt.Sprintf("Test Inventory 1 %s", uuid.New().String()),
 		},
 	}
 	err = db.WithContext(ctx).Create(&testInventories).Error
 	require.NoError(t, err, "Failed to create inventories")
-
 	t.Run("should create purchase order with different units and same base unit", func(t *testing.T) {
 		_, token, err := suite.CreateUniqueEmailAndToken(models.RoleAdmin)
 		require.NoError(t, err)
 
 		payload := map[string]interface{}{
-			"inventory_id": 1,
+			"inventory_id": testInventories[0].ID,
 			"items": []map[string]interface{}{
 				{
-					"product_id":  1,
-					"supplier_id": 1,
+					"product_id":  testProducts[0].ID,
+					"supplier_id": testSuppliers[0].ID,
 					"quantity":    2,
-					"unit_id":     4,
+					"unit_id":     testUnits[2].ID,
 					"unit_price":  100,
 				},
 			},
@@ -243,15 +208,14 @@ func (suite *ComponentTestSuite) TestCreatePurchaseOrderWithDifferentUnits() {
 		var purchaseOrderResp map[string]interface{}
 		err = json.NewDecoder(resp.Body).Decode(&purchaseOrderResp)
 		require.NoError(t, err)
-		assert.Equal(t, 200, int(purchaseOrderResp["total_amount"].(float64)))
+		assert.Equal(t, "200", purchaseOrderResp["total_amount"].(string))
 		assert.Equal(t, 1, len(purchaseOrderResp["items"].([]interface{})))
 		respItems := purchaseOrderResp["items"].([]interface{})
-		assert.Equal(t, 40, int(respItems[0].(map[string]interface{})["quantity"].(float64)))
-		assert.Equal(t, uint(1), uint(respItems[0].(map[string]interface{})["unit_id"].(float64)))
-		// After conversion, unit_id is 1 (base unit), so the unit name should be the base unit's name
-		assert.Equal(t, "unit", respItems[0].(map[string]interface{})["unit"].(map[string]interface{})["name"])
-		assert.Equal(t, 5.0, respItems[0].(map[string]interface{})["unit_price"].(float64))
-		assert.Equal(t, 200, int(respItems[0].(map[string]interface{})["total_amount"].(float64)))
+		assert.Equal(t, decimal.NewFromInt(2).Mul(decimal.NewFromFloat(testUnits[2].ConversionFactor*testUnits[1].ConversionFactor)).String(), respItems[0].(map[string]interface{})["quantity"].(string))
+		assert.Equal(t, testUnits[0].ID, uint(respItems[0].(map[string]interface{})["unit_id"].(float64)))
+		assert.Equal(t, testUnits[0].Name, respItems[0].(map[string]interface{})["unit"].(map[string]interface{})["name"])
+		assert.Equal(t, float64(100)/float64(testUnits[2].ConversionFactor*testUnits[1].ConversionFactor), respItems[0].(map[string]interface{})["unit_price"].(float64))
+		assert.Equal(t, "200", respItems[0].(map[string]interface{})["total_amount"].(string))
 
 		// Verify database
 		var purchaseOrder models.PurchaseOrder
@@ -261,27 +225,34 @@ func (suite *ComponentTestSuite) TestCreatePurchaseOrderWithDifferentUnits() {
 		assert.Equal(t, "200", purchaseOrder.TotalAmount.String())
 		items := purchaseOrder.Items
 		assert.Equal(t, 1, len(items))
-		assert.Equal(t, uint(1), *items[0].ProductID)
-		assert.Equal(t, uint(1), *items[0].SupplierID)
-		assert.Equal(t, uint(1), *items[0].UnitID)
-		quantityFloat, _ := items[0].Quantity.Float64()
-		assert.Equal(t, 40, int(quantityFloat))
-		assert.Equal(t, 5.0, items[0].UnitPrice)
+		assert.Equal(t, testProducts[0].ID, *items[0].ProductID)
+		assert.Equal(t, testSuppliers[0].ID, *items[0].SupplierID)
+		assert.Equal(t, testUnits[0].ID, *items[0].UnitID)
+		assert.Equal(t, decimal.NewFromInt(2).Mul(decimal.NewFromFloat(testUnits[2].ConversionFactor*testUnits[1].ConversionFactor)).String(), items[0].Quantity.String())
+		assert.Equal(t, float64(100)/float64(testUnits[2].ConversionFactor*testUnits[1].ConversionFactor), items[0].UnitPrice)
 		assert.Equal(t, "200", items[0].TotalAmount.String())
 	})
 
 	t.Run("should not create purchase order with different units and different base unit", func(t *testing.T) {
 		_, token, err := suite.CreateUniqueEmailAndToken(models.RoleAdmin)
 		require.NoError(t, err)
+		differentBaseUnit := models.Unit{
+			Name:             fmt.Sprintf("Different Base Unit %s", uuid.New().String()),
+			Symbol:           "DBU",
+			UnitType:         "length",
+			ConversionFactor: 100,
+		}
+		err = db.WithContext(ctx).Create(&differentBaseUnit).Error
+		require.NoError(t, err, "Failed to create different base unit")
 
 		payload := map[string]interface{}{
-			"inventory_id": 1,
+			"inventory_id": testInventories[0].ID,
 			"items": []map[string]interface{}{
 				{
-					"product_id":  1,
-					"supplier_id": 1,
+					"product_id":  testProducts[0].ID,
+					"supplier_id": testSuppliers[0].ID,
 					"quantity":    2,
-					"unit_id":     5,
+					"unit_id":     differentBaseUnit.ID,
 					"unit_price":  100,
 				},
 			},
@@ -297,20 +268,25 @@ func (suite *ComponentTestSuite) TestCancelPurchaseOrder() {
 	t := suite.T()
 	ctx := pkg.WithUserEmail(context.Background(), "test@example.com")
 	db := suite.sharedTestContainer.DB
+	testUnit := models.Unit{
+		Name:             fmt.Sprintf("Test Unit %s", uuid.New().String()),
+		UnitType:         uuid.New().String(),
+		ConversionFactor: 1,
+	}
+	err := db.WithContext(ctx).Create(&testUnit).Error
+	require.NoError(t, err, "Failed to create unit")
 	testSuppliers := []models.Supplier{
 		{
-			Base: models.Base{ID: 1},
-			Name: "Test Supplier 1",
+			Name: fmt.Sprintf("Test Supplier 1 %s", uuid.New().String()),
 		},
 	}
-	err := db.WithContext(ctx).Create(&testSuppliers).Error
+	err = db.WithContext(ctx).Create(&testSuppliers).Error
 	require.NoError(t, err, "Failed to create suppliers")
 
 	testProducts := []models.Product{
 		{
-			Base:   models.Base{ID: 1},
-			Name:   "Test Product 1",
-			UnitID: 1,
+			Name:   fmt.Sprintf("Test Product 1 %s", uuid.New().String()),
+			UnitID: testUnit.ID,
 		},
 	}
 	err = db.WithContext(ctx).Create(&testProducts).Error
@@ -318,14 +294,11 @@ func (suite *ComponentTestSuite) TestCancelPurchaseOrder() {
 
 	testInventories := []models.Inventory{
 		{
-			Base: models.Base{ID: 1},
-			Name: "Test Inventory 1",
+			Name: fmt.Sprintf("Test Inventory 1 %s", uuid.New().String()),
 		},
 	}
 	err = db.WithContext(ctx).Create(&testInventories).Error
 	require.NoError(t, err, "Failed to create inventories")
-
-	currentId := uint(1000)
 
 	t.Run("should cancel purchase order", func(t *testing.T) {
 		testCases := []struct {
@@ -344,14 +317,12 @@ func (suite *ComponentTestSuite) TestCancelPurchaseOrder() {
 			{role: models.RoleAccountant, currentStatus: models.PurchaseOrderStatusCompleted, expectedStatus: models.PurchaseOrderStatusCompleted},
 		}
 		for _, testCase := range testCases {
-			currentId++
 			t.Run(fmt.Sprintf("When current status is %s and user has %s role", testCase.currentStatus, testCase.role), func(t *testing.T) {
 				_, token, err := suite.CreateUniqueEmailAndToken(testCase.role)
 				require.NoError(t, err)
 
 				unitID := testProducts[0].UnitID
 				testPurchaseOrder := models.PurchaseOrder{
-					Base:        models.Base{ID: currentId},
 					OrderNumber: uuid.New().String(),
 					Status:      testCase.currentStatus,
 					InventoryID: &testInventories[0].ID,
@@ -402,13 +373,11 @@ func (suite *ComponentTestSuite) TestCancelPurchaseOrder() {
 			{role: models.RoleBotForm, currentStatus: models.PurchaseOrderStatusFullyDelivered, expectedStatus: models.PurchaseOrderStatusOrderPlaced},
 		}
 		for _, testCase := range testCases {
-			currentId++
 			t.Run(fmt.Sprintf("When current status is %s and user has %s role", testCase.currentStatus, testCase.role), func(t *testing.T) {
 				_, token, err := suite.CreateUniqueEmailAndToken(testCase.role)
 				require.NoError(t, err)
 				unitID := testProducts[0].UnitID
 				testPurchaseOrder := models.PurchaseOrder{
-					Base:        models.Base{ID: currentId},
 					OrderNumber: uuid.New().String(),
 					Status:      testCase.currentStatus,
 					InventoryID: &testInventories[0].ID,
@@ -509,8 +478,6 @@ func (suite *ComponentTestSuite) TestReceivePurchaseOrder() {
 		return nil
 	})
 
-	currentId := uint(1000)
-
 	t.Run("should receive purchase order", func(t *testing.T) {
 		roles := []models.UserRole{models.RoleAdmin, models.RoleAccountant, models.RoleStaff}
 		testCases := []struct {
@@ -557,7 +524,6 @@ func (suite *ComponentTestSuite) TestReceivePurchaseOrder() {
 		for _, testCase := range testCases {
 			for _, role := range roles {
 				t.Run(fmt.Sprintf("When current status is %s and user has %s role", testCase.currentPOStatus, role), func(t *testing.T) {
-					currentId++
 					_, token, err := suite.CreateUniqueEmailAndToken(role)
 					require.NoError(t, err)
 					unitID1 := testProducts[0].UnitID
@@ -575,7 +541,6 @@ func (suite *ComponentTestSuite) TestReceivePurchaseOrder() {
 					item2Status = models.PurchaseOrderItemStatusAwaitingDelivery
 
 					testPurchaseOrder := models.PurchaseOrder{
-						Base:        models.Base{ID: currentId},
 						OrderNumber: uuid.New().String(),
 						Status:      testCase.currentPOStatus,
 						InventoryID: &testInventories[0].ID,
@@ -786,8 +751,6 @@ func (suite *ComponentTestSuite) TestUpdatePurchaseOrder() {
 	err = db.WithContext(ctx).Create(&testInventories).Error
 	require.NoError(t, err, "Failed to create inventories")
 
-	currentId := uint(3000)
-
 	t.Run("should update purchase order", func(t *testing.T) {
 		roles := []models.UserRole{models.RoleAdmin, models.RoleAccountant}
 		testCases := []struct {
@@ -855,12 +818,9 @@ func (suite *ComponentTestSuite) TestUpdatePurchaseOrder() {
 		for _, testCase := range testCases {
 			for _, role := range roles {
 				t.Run(fmt.Sprintf("When current status is %s and user has %s role", testCase.currentPOStatus, role), func(t *testing.T) {
-					currentId++
 					_, token, err := suite.CreateUniqueEmailAndToken(role)
 					require.NoError(t, err)
-
 					testPurchaseOrder := models.PurchaseOrder{
-						Base:        models.Base{ID: currentId},
 						OrderNumber: uuid.New().String(),
 						Status:      testCase.currentPOStatus,
 						InventoryID: &testInventories[0].ID,
@@ -929,13 +889,11 @@ func (suite *ComponentTestSuite) TestUpdatePurchaseOrder() {
 	})
 
 	t.Run("should remove purchase order items if received quantity is 0, then add new item", func(t *testing.T) {
-		currentId++
 		_, token, err := suite.CreateUniqueEmailAndToken(models.RoleAdmin)
 		require.NoError(t, err)
 
 		// 1 item in database
 		testPurchaseOrder := models.PurchaseOrder{
-			Base:        models.Base{ID: currentId},
 			OrderNumber: uuid.New().String(),
 			Status:      models.PurchaseOrderStatusOrderPlaced,
 			InventoryID: &testInventories[0].ID,
@@ -965,7 +923,7 @@ func (suite *ComponentTestSuite) TestUpdatePurchaseOrder() {
 				{
 					"product_id":  testProducts[1].ID,
 					"supplier_id": testSuppliers[0].ID,
-					"unit_id":     testDerivedUnit.ID,
+					"unit_id":     testBaseUnit.ID,
 					"quantity":    100,
 				},
 			},
@@ -1005,12 +963,10 @@ func (suite *ComponentTestSuite) TestUpdatePurchaseOrder() {
 	})
 
 	t.Run("should update quantity & total amount when derived unit is updated", func(t *testing.T) {
-		currentId++
 		_, token, err := suite.CreateUniqueEmailAndToken(models.RoleAdmin)
 		require.NoError(t, err)
 
 		testPurchaseOrder := models.PurchaseOrder{
-			Base:        models.Base{ID: currentId},
 			OrderNumber: uuid.New().String(),
 			Status:      models.PurchaseOrderStatusOrderPlaced,
 			InventoryID: &testInventories[0].ID,
@@ -1033,9 +989,7 @@ func (suite *ComponentTestSuite) TestUpdatePurchaseOrder() {
 
 		urlPath := fmt.Sprintf("/api/v1/purchase-orders/%d", purchaseOrderID)
 		// Use derived unit (testDerivedUnit2 has conversion factor 10, base unit ID testBaseUnit.ID)
-		derivedUnitID := testDerivedUnit2.ID
 		newQuantity := 10
-		derivedUnitPrice := 100.0
 		// Expected converted values: quantity = 10 * 10 = 100, unit_price = 100 / 10 = 10, base unit ID = testBaseUnit.ID
 		expectedBaseQuantity := decimal.NewFromInt(100) // float64(newQuantity) * testDerivedUnit2.ConversionFactor
 		expectedBaseUnitPrice := 10.0                   // 100 / 10 = 10
@@ -1049,9 +1003,9 @@ func (suite *ComponentTestSuite) TestUpdatePurchaseOrder() {
 				{
 					"product_id":  testProducts[0].ID,
 					"supplier_id": testSuppliers[0].ID,
-					"unit_id":     derivedUnitID,
+					"unit_id":     testDerivedUnit2.ID,
 					"quantity":    newQuantity,
-					"unit_price":  derivedUnitPrice,
+					"unit_price":  100.0,
 				},
 			},
 		}
@@ -1091,20 +1045,17 @@ func (suite *ComponentTestSuite) TestUpdatePurchaseOrder() {
 		assert.Equal(t, 1, len(items))
 		assert.Equal(t, uint(testProducts[0].ID), *items[0].ProductID)
 		assert.Equal(t, expectedBaseQuantity.String(), items[0].Quantity.String())
-		itemsReceived, _ := items[0].ReceivedQuantity.Float64()
-		assert.Equal(t, items[0].Quantity.InexactFloat64(), itemsReceived)
-		assert.Equal(t, models.PurchaseOrderItemStatusAwaitingDelivery, items[0].Status)
 		assert.Equal(t, expectedBaseUnitID, *items[0].UnitID)
+		assert.Equal(t, expectedBaseUnitPrice, items[0].UnitPrice)
+		assert.Equal(t, models.PurchaseOrderItemStatusAwaitingDelivery, items[0].Status)
 	})
 
 	t.Run("should not remove purchase order items if received quantity is not 0", func(t *testing.T) {
-		currentId++
 		_, token, err := suite.CreateUniqueEmailAndToken(models.RoleAdmin)
 		require.NoError(t, err)
 
 		// 1 item in database
 		testPurchaseOrder := models.PurchaseOrder{
-			Base:        models.Base{ID: currentId},
 			OrderNumber: uuid.New().String(),
 			Status:      models.PurchaseOrderStatusOrderPlaced,
 			InventoryID: &testInventories[0].ID,
@@ -1153,7 +1104,6 @@ func (suite *ComponentTestSuite) TestUpdatePurchaseOrder() {
 		roles := []models.UserRole{models.RoleStaff, models.RoleBotForm}
 		for _, role := range roles {
 			t.Run(fmt.Sprintf("When user has %s role", role), func(t *testing.T) {
-				currentId++
 				_, token, err := suite.CreateUniqueEmailAndToken(role)
 				require.NoError(t, err)
 				payload := map[string]interface{}{
@@ -1170,7 +1120,6 @@ func (suite *ComponentTestSuite) TestUpdatePurchaseOrder() {
 					},
 				}
 				testPurchaseOrder := models.PurchaseOrder{
-					Base:        models.Base{ID: currentId},
 					OrderNumber: uuid.New().String(),
 					Status:      models.PurchaseOrderStatusOrderPlaced,
 					InventoryID: &testInventories[0].ID,
@@ -1206,8 +1155,8 @@ func (suite *ComponentTestSuite) TestUpdatePurchaseOrder() {
 		_, token, err := suite.CreateUniqueEmailAndToken(models.RoleAdmin)
 		require.NoError(t, err)
 		t.Run("when purchase order is not found", func(t *testing.T) {
-			currentId++
-			urlPath := fmt.Sprintf("/api/v1/purchase-orders/%d", currentId)
+			notFoundId := uuid.New().ID()
+			urlPath := fmt.Sprintf("/api/v1/purchase-orders/%d", notFoundId)
 			payload := map[string]interface{}{
 				"inventory_id": testInventories[0].ID,
 				"notes":        uuid.New().String(),
@@ -1227,12 +1176,27 @@ func (suite *ComponentTestSuite) TestUpdatePurchaseOrder() {
 			var errorResp map[string]interface{}
 			err = json.NewDecoder(resp.Body).Decode(&errorResp)
 			require.NoError(t, err)
-			assert.Equal(t, fmt.Sprintf("purchase order with ID %d not found", currentId), errorResp["error"])
+			assert.Equal(t, fmt.Sprintf("purchase order with ID %d not found", notFoundId), errorResp["error"])
 		})
 
 		t.Run("when no items are provided", func(t *testing.T) {
-			currentId++
-			urlPath := fmt.Sprintf("/api/v1/purchase-orders/%d", currentId)
+			testPurchaseOrder := models.PurchaseOrder{
+				OrderNumber: uuid.New().String(),
+				Status:      models.PurchaseOrderStatusOrderPlaced,
+				InventoryID: &testInventories[0].ID,
+				Items:       []*models.PurchaseOrderItem{
+					{
+						ProductID: &testProducts[0].ID,
+						SupplierID: &testSuppliers[0].ID,
+						UnitID:     pkg.Ptr(testBaseUnit.ID),
+						Quantity:   decimal.NewFromInt(100),
+						UnitPrice:  1000,
+					},
+				},
+			}
+			err = db.WithContext(ctx).Create(&testPurchaseOrder).Error
+			require.NoError(t, err, "Failed to create purchase order")
+			urlPath := fmt.Sprintf("/api/v1/purchase-orders/%d", testPurchaseOrder.ID)
 			payload := map[string]interface{}{
 				"inventory_id": testInventories[0].ID,
 				"notes":        uuid.New().String(),
@@ -1324,7 +1288,7 @@ func (suite *ComponentTestSuite) TestGetPurchaseOrder() {
 		err = db.WithContext(ctx).Create(&testPurchaseOrder).Error
 		require.NoError(t, err, "Failed to create purchase order")
 		purchaseOrderID := testPurchaseOrder.ID
-	
+
 		urlPath := fmt.Sprintf("/api/v1/purchase-orders/%d", purchaseOrderID)
 		resp, err := helpers.MakeRequest(t, "GET", suite.sharedTestContainer.BaseURL+urlPath, token, nil)
 		require.NoError(t, err)
@@ -1397,7 +1361,7 @@ func (suite *ComponentTestSuite) TestGetPurchaseOrder() {
 				err = db.WithContext(ctx).Create(&testPurchaseOrder).Error
 				require.NoError(t, err, "Failed to create purchase order")
 				purchaseOrderID := testPurchaseOrder.ID
-			
+
 				urlPath := fmt.Sprintf("/api/v1/purchase-orders/%d", purchaseOrderID)
 				resp, err := helpers.MakeRequest(t, "GET", suite.sharedTestContainer.BaseURL+urlPath, token, nil)
 				require.NoError(t, err)

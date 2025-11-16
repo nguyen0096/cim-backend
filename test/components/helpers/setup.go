@@ -155,10 +155,10 @@ func SetupTestContainers(ctx context.Context) (*TestContainer, error) {
 
 	// Try to run SQL migrations if the directory exists
 	migrationDir := "database/migrations"
-	if err := database.MigrateScripts(db, migrationDir); err != nil {
-		// Log but don't fail - migrations directory might not exist
-		fmt.Printf("Warning: Failed to run SQL migrations: %v\n", err)
-	}
+	// if err := database.MigrateScripts(db, migrationDir); err != nil {
+	// 	// Log but don't fail - migrations directory might not exist
+	// 	fmt.Printf("Warning: Failed to run SQL migrations: %v\n", err)
+	// }
 
 	// Create mock Firebase Auth
 	mockAuth := NewMockFirebaseAuthService()

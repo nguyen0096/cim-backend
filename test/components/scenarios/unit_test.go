@@ -15,54 +15,63 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-var units = []models.Unit{
-	{
-		Base:             models.Base{ID: 100},
-		Name:             "Base Unit",
-		Symbol:           "bu",
-		UnitType:         "general",
-		Level:            1,
+func (suite *ComponentTestSuite) setupUnitTestData(t *testing.T) ([]models.Unit) {
+	db := suite.sharedTestContainer.DB
+	ctx := pkg.WithUserEmail(context.Background(), "test@example.com")
+
+	baseUnit := models.Unit{
+		Name: fmt.Sprintf("Base Unit %s", uuid.New().String()),
+		Symbol: "bu",
+		UnitType: "general",
+		Level: 1,
 		ConversionFactor: 1,
-	},
-	{
-		Base:             models.Base{ID: 101},
-		BaseUnitID:       pkg.Ptr(uint(100)),
-		Name:             "Derived Unit 1",
+	}
+	err := db.WithContext(ctx).Create(&baseUnit).Error
+	require.NoError(t, err)
+
+	unitLevel2 := models.Unit{
+		BaseUnitID:       pkg.Ptr(baseUnit.ID),
+		Name:             fmt.Sprintf("Derived Unit 1 %s", uuid.New().String()),
 		Symbol:           "du1",
 		UnitType:         "general",
 		Level:            2,
 		ConversionFactor: 2,
-	},
-	{
-		Base:             models.Base{ID: 102},
-		BaseUnitID:       pkg.Ptr(uint(101)),
-		Name:             "Derived Unit 2",
+	}
+	err = db.WithContext(ctx).Create(&unitLevel2).Error
+	require.NoError(t, err)
+	unitLevel3 := models.Unit{
+		BaseUnitID:       pkg.Ptr(unitLevel2.ID),
+		Name:             fmt.Sprintf("Derived Unit 2 %s", uuid.New().String()),
 		Symbol:           "du2",
 		UnitType:         "general",
 		Level:            3,
 		ConversionFactor: 4,
-	},
-	{
-		Base:             models.Base{ID: 103},
-		BaseUnitID:       pkg.Ptr(uint(102)),
-		Name:             "Derived Unit 3",
+	}
+	err = db.WithContext(ctx).Create(&unitLevel3).Error
+	require.NoError(t, err)
+	unitLevel4 := models.Unit{
+		BaseUnitID:       pkg.Ptr(unitLevel3.ID),
+		Name:             fmt.Sprintf("Derived Unit 3 %s", uuid.New().String()),
 		Symbol:           "du3",
 		UnitType:         "general",
 		Level:            4,
 		ConversionFactor: 8,
-	},
+	}
+	err = db.WithContext(ctx).Create(&unitLevel4).Error
+	require.NoError(t, err)
+    return []models.Unit{baseUnit, unitLevel2, unitLevel3, unitLevel4}
 }
+
 
 func (suite *ComponentTestSuite) TestCreateUnit() {
 	t := suite.T()
 	db := suite.sharedTestContainer.DB
 
+	units := suite.setupUnitTestData(t)
+
 	t.Cleanup(func() {
 		db.WithContext(pkg.WithUserEmail(context.Background(), "test@example.com")).Delete(&units)
 	})
-
-	err := db.WithContext(pkg.WithUserEmail(context.Background(), "test@example.com")).Create(&units).Error
-	require.NoError(t, err)
 
 	t.Run("should create and get unit", func(t *testing.T) {
 		roles := []models.UserRole{models.RoleAdmin, models.RoleAccountant}
@@ -71,7 +80,7 @@ func (suite *ComponentTestSuite) TestCreateUnit() {
 				_, token, err := suite.CreateUniqueEmailAndToken(role)
 				require.NoError(t, err)
 
-				name := "Test Unit" + uuid.New().String()
+				name := fmt.Sprintf("Test Unit %s", uuid.New().String())
 
 				payload := map[string]interface{}{
 					"name":              name,
@@ -154,12 +163,10 @@ func (suite *ComponentTestSuite) TestGetUnit() {
 	t := suite.T()
 	db := suite.sharedTestContainer.DB
 
+	units := suite.setupUnitTestData(t)
 	t.Cleanup(func() {
 		db.WithContext(pkg.WithUserEmail(context.Background(), "test@example.com")).Delete(&units)
 	})
-
-	err := db.WithContext(pkg.WithUserEmail(context.Background(), "test@example.com")).Create(&units).Error
-	require.NoError(t, err)
 
 	t.Run("should get base unit with all derived units", func(t *testing.T) {
 		_, token, err := suite.CreateUniqueEmailAndToken(models.RoleAdmin)
@@ -343,18 +350,8 @@ func (suite *ComponentTestSuite) TestSearchUnit() {
 	require.NoError(t, err)
 
 	// Collect all created unit IDs for cleanup
-	var createdUnitIDs []uint
-	for _, unit := range baseUnits {
-		createdUnitIDs = append(createdUnitIDs, unit.ID)
-	}
-	for _, unit := range derivedUnits {
-		createdUnitIDs = append(createdUnitIDs, unit.ID)
-	}
-
 	t.Cleanup(func() {
-		if len(createdUnitIDs) > 0 {
-			db.WithContext(ctx).Where("id IN ?", createdUnitIDs).Delete(&models.Unit{})
-		}
+		db.WithContext(ctx).Delete([]models.Unit{baseUnits[0], baseUnits[1], baseUnits[2], derivedUnits[0], derivedUnits[1]})
 	})
 
 	t.Run("should search units by name", func(t *testing.T) {
@@ -563,9 +560,7 @@ func (suite *ComponentTestSuite) TestUpdateUnit() {
 	err = db.WithContext(ctx).Create(&level4Unit).Error
 	require.NoError(t, err)
 	t.Cleanup(func() {
-		var unitIDs []uint
-		unitIDs = append(unitIDs, baseUnit.ID, level2Unit.ID, baseUnit.ID, level2Unit.ID, level3Unit.ID, level4Unit.ID)
-		db.WithContext(ctx).Where("id IN ?", unitIDs).Delete(&models.Unit{})
+		db.WithContext(ctx).Delete([]models.Unit{baseUnit, level2Unit, level3Unit, level4Unit})
 	})
 
 	t.Run("should update unit", func(t *testing.T) {
@@ -575,7 +570,7 @@ func (suite *ComponentTestSuite) TestUpdateUnit() {
 				_, token, err := suite.CreateUniqueEmailAndToken(role)
 				require.NoError(t, err)
 
-				updatedName := "Updated Unit Name" + uuid.New().String()
+				updatedName := fmt.Sprintf("Updated Unit Name %s", uuid.New().String())
 				payload := map[string]interface{}{
 					"name":              updatedName,
 					"symbol":            "updated",
@@ -608,7 +603,7 @@ func (suite *ComponentTestSuite) TestUpdateUnit() {
 		// Create a fresh level2Unit for this test to avoid conflicts with previous updates
 		// The previous test modifies the shared level2Unit, so we need a fresh one
 		freshLevel2Unit := models.Unit{
-			Name:             "Fresh Level 2 Unit" + uuid.New().String(),
+			Name:             fmt.Sprintf("Fresh Level 2 Unit %s", uuid.New().String()),
 			Symbol:           "fl2",
 			UnitType:         "general",
 			ConversionFactor: 2,
@@ -622,7 +617,7 @@ func (suite *ComponentTestSuite) TestUpdateUnit() {
 		// Create a fresh unit for this test to avoid conflicts with previous updates
 		// This unit starts at level 3 (with freshLevel2Unit at level 2 as base)
 		testUnitForLevelChange := models.Unit{
-			Name:             "Level Change Test Unit" + uuid.New().String(),
+			Name:             fmt.Sprintf("Level Change Test Unit %s", uuid.New().String()),
 			Symbol:           "lctu",
 			UnitType:         "general",
 			ConversionFactor: 3,
