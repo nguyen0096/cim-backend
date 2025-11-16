@@ -768,7 +768,7 @@ func (s *productService) ImportProductsFromExcel(ctx context.Context, excelReade
 }
 
 // ExportProductsToCSV exports products to CSV format matching the import template
-// CSV format: Name;Description;ProductType;Suppliers;ContactEmail;ContactPhone;Address;Unit
+// CSV format: Name;Description;ProductType;Unit;Suppliers;ContactEmail;ContactPhone;Address
 // Products with multiple suppliers will have one row per supplier
 func (s *productService) ExportProductsToCSV(ctx context.Context, writer io.Writer, status, productType string, supplierID uint) error {
 	// Get all products with suppliers and units preloaded
@@ -784,7 +784,7 @@ func (s *productService) ExportProductsToCSV(ctx context.Context, writer io.Writ
 	defer csvWriter.Flush()
 
 	// Write header
-	header := []string{"Name", "Description", "ProductType", "Suppliers", "ContactEmail", "ContactPhone", "Address", "Unit"}
+	header := []string{"Name", "Description", "ProductType", "Unit", "Suppliers", "ContactEmail", "ContactPhone", "Address"}
 	if err := csvWriter.Write(header); err != nil {
 		return fmt.Errorf("failed to write CSV header: %w", err)
 	}
@@ -803,11 +803,11 @@ func (s *productService) ExportProductsToCSV(ctx context.Context, writer io.Writ
 				product.Name,
 				product.Description,
 				product.ProductType,
+				unitName,
 				"", // Suppliers
 				"", // ContactEmail
 				"", // ContactPhone
 				"", // Address
-				unitName,
 			}
 			if err := csvWriter.Write(row); err != nil {
 				return fmt.Errorf("failed to write CSV row for product '%s': %w", product.Name, err)
@@ -823,11 +823,11 @@ func (s *productService) ExportProductsToCSV(ctx context.Context, writer io.Writ
 					product.Name,
 					product.Description,
 					product.ProductType,
+					unitName,
 					supplier.Name,
 					supplier.ContactEmail,
 					supplier.ContactPhone,
 					supplier.Address,
-					unitName,
 				}
 				if err := csvWriter.Write(row); err != nil {
 					return fmt.Errorf("failed to write CSV row for product '%s' and supplier '%s': %w", product.Name, supplier.Name, err)
@@ -840,7 +840,7 @@ func (s *productService) ExportProductsToCSV(ctx context.Context, writer io.Writ
 }
 
 // ExportProductsToExcel exports products to Excel format matching the import template
-// Excel format: Name;Description;ProductType;Suppliers;ContactEmail;ContactPhone;Address;Unit
+// Excel format: Name;Description;ProductType;Unit;Suppliers;ContactEmail;ContactPhone;Address
 // Products with multiple suppliers will have one row per supplier
 func (s *productService) ExportProductsToExcel(ctx context.Context, writer io.Writer, status, productType string, supplierID uint) error {
 	// Get all products with suppliers and units preloaded
@@ -857,7 +857,7 @@ func (s *productService) ExportProductsToExcel(ctx context.Context, writer io.Wr
 	// Use the default sheet that comes with NewFile()
 
 	// Write header
-	headers := []string{"Name", "Description", "ProductType", "Suppliers", "ContactEmail", "ContactPhone", "Address", "Unit"}
+	headers := []string{"Name", "Description", "ProductType", "Unit", "Suppliers", "ContactEmail", "ContactPhone", "Address"}
 	for i, header := range headers {
 		cellName, err := excelize.CoordinatesToCellName(i+1, 1)
 		if err != nil {
@@ -884,11 +884,11 @@ func (s *productService) ExportProductsToExcel(ctx context.Context, writer io.Wr
 				product.Name,
 				product.Description,
 				product.ProductType,
+				unitName,
 				"", // Suppliers
 				"", // ContactEmail
 				"", // ContactPhone
 				"", // Address
-				unitName,
 			}
 			for i, value := range row {
 				cellName, err := excelize.CoordinatesToCellName(i+1, rowNum)
@@ -907,11 +907,11 @@ func (s *productService) ExportProductsToExcel(ctx context.Context, writer io.Wr
 					product.Name,
 					product.Description,
 					product.ProductType,
+					unitName,
 					supplier.Name,
 					supplier.ContactEmail,
 					supplier.ContactPhone,
 					supplier.Address,
-					unitName,
 				}
 				for i, value := range row {
 					cellName, err := excelize.CoordinatesToCellName(i+1, rowNum)

@@ -197,7 +197,7 @@ func (suite *ComponentTestSuite) TestUpdateProductStatus() {
 	testProduct := models.Product{
 		Name:        "Test Product",
 		Description: "Test Description",
-		UnitID: 1,
+		UnitID:      1,
 	}
 	err := db.WithContext(ctx).Create(&testProduct).Error
 	require.NoError(t, err, "Failed to create product")
@@ -532,206 +532,6 @@ func (suite *ComponentTestSuite) TestImportProductsFromCsvAndExcel() {
 	}
 }
 
-func (suite *ComponentTestSuite) TestExportProductsToCSV() {
-	t := suite.T()
-	_, units, suppliers, _, cleanup := suite.setupExportTestData(t)
-	defer pkg.CleanUp(t, func() error { cleanup(); return nil })
-
-	_, token, err := suite.CreateUniqueEmailAndToken(models.RoleAdmin)
-	require.NoError(t, err)
-
-	t.Run("should export all products to CSV", func(t *testing.T) {
-		resp, err := helpers.MakeRequest(t, "GET", suite.sharedTestContainer.BaseURL+"/api/v1/products/export-csv", token, nil)
-		require.NoError(t, err)
-		defer resp.Body.Close()
-
-		assert.Equal(t, 200, resp.StatusCode)
-		assert.Equal(t, "text/csv; charset=utf-8", resp.Header.Get("Content-Type"))
-		assert.Contains(t, resp.Header.Get("Content-Disposition"), "attachment; filename=products_export.csv")
-
-		body, err := io.ReadAll(resp.Body)
-		require.NoError(t, err)
-		records := parseCSVExport(t, body)
-
-		expectedHeader := []string{"Name", "Description", "ProductType", "Suppliers", "ContactEmail", "ContactPhone", "Address", "Unit"}
-		assert.Equal(t, expectedHeader, records[0])
-		assert.GreaterOrEqual(t, len(records), 6, "Should have at least 1 header + 5 data rows")
-
-		productRows := buildProductRowsMap(records)
-
-		// Verify Product 1 (2 suppliers = 2 rows)
-		p1Rows := productRows["Product 1"]
-		require.True(t, len(p1Rows) == 2, "Product 1 should have 2 rows")
-		for _, row := range p1Rows {
-			assert.Equal(t, []string{"Product 1", "Description 1", "Type A"}, row[:3])
-			assert.Contains(t, []string{"Supplier A", "Supplier B"}, row[3])
-			assert.Equal(t, units[0].Symbol, row[7])
-		}
-
-		// Verify Product 2
-		p2Rows := productRows["Product 2"]
-		require.Len(t, p2Rows, 1)
-		assert.Equal(t, []string{"Product 2", "Description 2", "Type A", "Supplier B", "supplierb@example.com", "098-765-4321", "456 Oak Ave", units[1].Symbol}, p2Rows[0])
-
-		// Verify Product 3 (no suppliers)
-		p3Rows := productRows["Product 3"]
-		require.Len(t, p3Rows, 1)
-		assert.Equal(t, []string{"Product 3", "Description 3", "Type B", "", "", "", "", units[0].Symbol}, p3Rows[0])
-
-		// Verify Product 4 (supplier with empty contact info)
-		p4Rows := productRows["Product 4"]
-		require.Len(t, p4Rows, 1)
-		assert.Equal(t, []string{"Product 4", "Description 4", "Type B", "Supplier C", "", "", "", units[1].Symbol}, p4Rows[0])
-	})
-
-	testCases := []struct {
-		name             string
-		url              string
-		expectedProducts map[string]bool
-	}{
-		{
-			name: "should export products filtered by status",
-			url:  suite.sharedTestContainer.BaseURL + "/api/v1/products/export-csv?status=active",
-			expectedProducts: map[string]bool{
-				"Product 1": true, "Product 2": true, "Product 3": false, "Product 4": true,
-			},
-		},
-		{
-			name: "should export products filtered by product_type",
-			url:  fmt.Sprintf("%s/api/v1/products/export-csv?product_type=%s", suite.sharedTestContainer.BaseURL, url.QueryEscape("Type A")),
-			expectedProducts: map[string]bool{
-				"Product 1": true, "Product 2": true, "Product 3": false, "Product 4": false,
-			},
-		},
-		{
-			name: "should export products filtered by supplier_id",
-			url:  fmt.Sprintf("%s/api/v1/products/export-csv?supplier_id=%d", suite.sharedTestContainer.BaseURL, suppliers[1].ID),
-			expectedProducts: map[string]bool{
-				"Product 1": true, "Product 2": true, "Product 3": false, "Product 4": false,
-			},
-		},
-		{
-			name: "should export products with combined filters",
-			url:  fmt.Sprintf("%s/api/v1/products/export-csv?status=active&product_type=%s", suite.sharedTestContainer.BaseURL, url.QueryEscape("Type A")),
-			expectedProducts: map[string]bool{
-				"Product 1": true, "Product 2": true, "Product 3": false, "Product 4": false,
-			},
-		},
-	}
-
-	for _, tc := range testCases {
-		t.Run(tc.name, func(t *testing.T) {
-			resp, err := helpers.MakeRequest(t, "GET", tc.url, token, nil)
-			require.NoError(t, err)
-			defer resp.Body.Close()
-			assert.Equal(t, 200, resp.StatusCode)
-
-			body, err := io.ReadAll(resp.Body)
-			require.NoError(t, err)
-			records := parseCSVExport(t, body)
-			verifyExportFilter(t, records, tc.expectedProducts)
-		})
-	}
-}
-
-func (suite *ComponentTestSuite) TestExportProductsToExcel() {
-	t := suite.T()
-	_, units, suppliers, _, cleanup := suite.setupExportTestData(t)
-	defer pkg.CleanUp(t, func() error { cleanup(); return nil })
-
-	_, token, err := suite.CreateUniqueEmailAndToken(models.RoleAdmin)
-	require.NoError(t, err)
-
-	t.Run("should export all products to Excel", func(t *testing.T) {
-		resp, err := helpers.MakeRequest(t, "GET", suite.sharedTestContainer.BaseURL+"/api/v1/products/export-excel", token, nil)
-		require.NoError(t, err)
-		defer resp.Body.Close()
-
-		assert.Equal(t, 200, resp.StatusCode)
-		assert.Equal(t, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", resp.Header.Get("Content-Type"))
-		assert.Contains(t, resp.Header.Get("Content-Disposition"), "attachment; filename=products_export.xlsx")
-
-		body, err := io.ReadAll(resp.Body)
-		require.NoError(t, err)
-		rows := parseExcelExport(t, body)
-
-		expectedHeader := []string{"Name", "Description", "ProductType", "Suppliers", "ContactEmail", "ContactPhone", "Address", "Unit"}
-		assert.Equal(t, expectedHeader, rows[0])
-		assert.GreaterOrEqual(t, len(rows), 6, "Should have at least 1 header + 5 data rows")
-
-		productRows := buildProductRowsMap(rows)
-
-		// Verify Product 1 (2 suppliers = 2 rows)
-		p1Rows := productRows["Product 1"]
-		require.Len(t, p1Rows, 2, "Product 1 should have 2 rows")
-
-		// Verify Product 2
-		p2Rows := productRows["Product 2"]
-		require.Len(t, p2Rows, 1)
-		assert.Equal(t, []string{"Product 2", "Description 2", "Type A", "Supplier B", "supplierb@example.com", "098-765-4321", "456 Oak Ave", units[1].Symbol}, p2Rows[0])
-
-		// Verify Product 3 (no suppliers)
-		p3Rows := productRows["Product 3"]
-		require.Len(t, p3Rows, 1)
-		assert.Equal(t, []string{"Product 3", "Description 3", "Type B", "", "", "", "", units[0].Symbol}, p3Rows[0])
-
-		// Verify Product 4 (supplier with empty contact info)
-		p4Rows := productRows["Product 4"]
-		require.Len(t, p4Rows, 1)
-		assert.Equal(t, []string{"Product 4", "Description 4", "Type B", "Supplier C", "", "", "", units[1].Symbol}, p4Rows[0])
-	})
-
-	testCases := []struct {
-		name             string
-		url              string
-		expectedProducts map[string]bool
-	}{
-		{
-			name: "should export products filtered by status",
-			url:  suite.sharedTestContainer.BaseURL + "/api/v1/products/export-excel?status=active",
-			expectedProducts: map[string]bool{
-				"Product 1": true, "Product 2": true, "Product 3": false, "Product 4": true,
-			},
-		},
-		{
-			name: "should export products filtered by product_type",
-			url:  fmt.Sprintf("%s/api/v1/products/export-excel?product_type=%s", suite.sharedTestContainer.BaseURL, url.QueryEscape("Type A")),
-			expectedProducts: map[string]bool{
-				"Product 1": true, "Product 2": true, "Product 3": false, "Product 4": false,
-			},
-		},
-		{
-			name: "should export products filtered by supplier_id",
-			url:  fmt.Sprintf("%s/api/v1/products/export-excel?supplier_id=%d", suite.sharedTestContainer.BaseURL, suppliers[1].ID),
-			expectedProducts: map[string]bool{
-				"Product 1": true, "Product 2": true, "Product 3": false, "Product 4": false,
-			},
-		},
-		{
-			name: "should export products with combined filters",
-			url:  fmt.Sprintf("%s/api/v1/products/export-excel?status=active&product_type=%s", suite.sharedTestContainer.BaseURL, url.QueryEscape("Type A")),
-			expectedProducts: map[string]bool{
-				"Product 1": true, "Product 2": true, "Product 3": false, "Product 4": false,
-			},
-		},
-	}
-
-	for _, tc := range testCases {
-		t.Run(tc.name, func(t *testing.T) {
-			resp, err := helpers.MakeRequest(t, "GET", tc.url, token, nil)
-			require.NoError(t, err)
-			defer resp.Body.Close()
-			assert.Equal(t, 200, resp.StatusCode)
-
-			body, err := io.ReadAll(resp.Body)
-			require.NoError(t, err)
-			rows := parseExcelExport(t, body)
-			verifyExportFilter(t, rows, tc.expectedProducts)
-		})
-	}
-}
-
-
 // setupExportTestData creates test data for export tests
 func (suite *ComponentTestSuite) setupExportTestData(t *testing.T) (ctx context.Context, units []models.Unit, suppliers []models.Supplier, products []models.Product, cleanup func()) {
 	ctx = pkg.WithUserEmail(context.Background(), "test@example.com")
@@ -839,5 +639,204 @@ func verifyExportFilter(t *testing.T, rows [][]string, expectedProducts map[stri
 	}
 	for name, shouldExist := range expectedProducts {
 		assert.Equal(t, shouldExist, productNames[name], fmt.Sprintf("Product %s should%s be in export", name, map[bool]string{true: "", false: " not"}[shouldExist]))
+	}
+}
+
+func (suite *ComponentTestSuite) TestExportProductsToCSV() {
+	t := suite.T()
+	_, units, suppliers, _, cleanup := suite.setupExportTestData(t)
+	defer pkg.CleanUp(t, func() error { cleanup(); return nil })
+
+	_, token, err := suite.CreateUniqueEmailAndToken(models.RoleAdmin)
+	require.NoError(t, err)
+
+	t.Run("should export all products to CSV", func(t *testing.T) {
+		resp, err := helpers.MakeRequest(t, "GET", suite.sharedTestContainer.BaseURL+"/api/v1/products/export-csv", token, nil)
+		require.NoError(t, err)
+		defer resp.Body.Close()
+
+		assert.Equal(t, 200, resp.StatusCode)
+		assert.Equal(t, "text/csv; charset=utf-8", resp.Header.Get("Content-Type"))
+		assert.Contains(t, resp.Header.Get("Content-Disposition"), "attachment; filename=products_export.csv")
+
+		body, err := io.ReadAll(resp.Body)
+		require.NoError(t, err)
+		records := parseCSVExport(t, body)
+
+		expectedHeader := []string{"Name", "Description", "ProductType", "Unit", "Suppliers", "ContactEmail", "ContactPhone", "Address"}
+		assert.Equal(t, expectedHeader, records[0])
+		assert.GreaterOrEqual(t, len(records), 6, "Should have at least 1 header + 5 data rows")
+
+		productRows := buildProductRowsMap(records)
+
+		// Verify Product 1 (2 suppliers = 2 rows)
+		p1Rows := productRows["Product 1"]
+		require.True(t, len(p1Rows) == 2, "Product 1 should have 2 rows")
+		for _, row := range p1Rows {
+			assert.Equal(t, []string{"Product 1", "Description 1", "Type A"}, row[:3])
+			assert.Contains(t, []string{"Supplier A", "Supplier B"}, row[4])
+			assert.Equal(t, units[0].Symbol, row[3])
+		}
+
+		// Verify Product 2
+		p2Rows := productRows["Product 2"]
+		require.Len(t, p2Rows, 1)
+		assert.Equal(t, []string{"Product 2", "Description 2", "Type A", units[1].Symbol, "Supplier B", "supplierb@example.com", "098-765-4321", "456 Oak Ave"}, p2Rows[0])
+
+		// Verify Product 3 (no suppliers)
+		p3Rows := productRows["Product 3"]
+		require.Len(t, p3Rows, 1)
+		assert.Equal(t, []string{"Product 3", "Description 3", "Type B", units[0].Symbol, "", "", "", ""}, p3Rows[0])
+
+		// Verify Product 4 (supplier with empty contact info)
+		p4Rows := productRows["Product 4"]
+		require.Len(t, p4Rows, 1)
+		assert.Equal(t, []string{"Product 4", "Description 4", "Type B", units[1].Symbol, "Supplier C", "", "", ""}, p4Rows[0])
+	})
+
+	testCases := []struct {
+		name             string
+		url              string
+		expectedProducts map[string]bool
+	}{
+		{
+			name: "should export products filtered by status",
+			url:  suite.sharedTestContainer.BaseURL + "/api/v1/products/export-csv?status=active",
+			expectedProducts: map[string]bool{
+				"Product 1": true, "Product 2": true, "Product 3": false, "Product 4": true,
+			},
+		},
+		{
+			name: "should export products filtered by product_type",
+			url:  fmt.Sprintf("%s/api/v1/products/export-csv?product_type=%s", suite.sharedTestContainer.BaseURL, url.QueryEscape("Type A")),
+			expectedProducts: map[string]bool{
+				"Product 1": true, "Product 2": true, "Product 3": false, "Product 4": false,
+			},
+		},
+		{
+			name: "should export products filtered by supplier_id",
+			url:  fmt.Sprintf("%s/api/v1/products/export-csv?supplier_id=%d", suite.sharedTestContainer.BaseURL, suppliers[1].ID),
+			expectedProducts: map[string]bool{
+				"Product 1": true, "Product 2": true, "Product 3": false, "Product 4": false,
+			},
+		},
+		{
+			name: "should export products with combined filters",
+			url:  fmt.Sprintf("%s/api/v1/products/export-csv?status=active&product_type=%s", suite.sharedTestContainer.BaseURL, url.QueryEscape("Type A")),
+			expectedProducts: map[string]bool{
+				"Product 1": true, "Product 2": true, "Product 3": false, "Product 4": false,
+			},
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			resp, err := helpers.MakeRequest(t, "GET", tc.url, token, nil)
+			require.NoError(t, err)
+			defer resp.Body.Close()
+			assert.Equal(t, 200, resp.StatusCode)
+
+			body, err := io.ReadAll(resp.Body)
+			require.NoError(t, err)
+			records := parseCSVExport(t, body)
+			verifyExportFilter(t, records, tc.expectedProducts)
+		})
+	}
+}
+
+func (suite *ComponentTestSuite) TestExportProductsToExcel() {
+	t := suite.T()
+	_, units, suppliers, _, cleanup := suite.setupExportTestData(t)
+	defer pkg.CleanUp(t, func() error { cleanup(); return nil })
+
+	_, token, err := suite.CreateUniqueEmailAndToken(models.RoleAdmin)
+	require.NoError(t, err)
+
+	t.Run("should export all products to Excel", func(t *testing.T) {
+		resp, err := helpers.MakeRequest(t, "GET", suite.sharedTestContainer.BaseURL+"/api/v1/products/export-excel", token, nil)
+		require.NoError(t, err)
+		defer resp.Body.Close()
+
+		assert.Equal(t, 200, resp.StatusCode)
+		assert.Equal(t, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", resp.Header.Get("Content-Type"))
+		assert.Contains(t, resp.Header.Get("Content-Disposition"), "attachment; filename=products_export.xlsx")
+
+		body, err := io.ReadAll(resp.Body)
+		require.NoError(t, err)
+		rows := parseExcelExport(t, body)
+
+		expectedHeader := []string{"Name", "Description", "ProductType", "Unit", "Suppliers", "ContactEmail", "ContactPhone", "Address"}
+		assert.Equal(t, expectedHeader, rows[0])
+		assert.GreaterOrEqual(t, len(rows), 6, "Should have at least 1 header + 5 data rows")
+
+		productRows := buildProductRowsMap(rows)
+
+		// Verify Product 1 (2 suppliers = 2 rows)
+		p1Rows := productRows["Product 1"]
+		require.Len(t, p1Rows, 2, "Product 1 should have 2 rows")
+
+		// Verify Product 2
+		p2Rows := productRows["Product 2"]
+		require.Len(t, p2Rows, 1)
+		assert.Equal(t, []string{"Product 2", "Description 2", "Type A", units[1].Symbol, "Supplier B", "supplierb@example.com", "098-765-4321", "456 Oak Ave"}, p2Rows[0])
+
+		// Verify Product 3 (no suppliers)
+		p3Rows := productRows["Product 3"]
+		require.Len(t, p3Rows, 1)
+		assert.Equal(t, []string{"Product 3", "Description 3", "Type B", units[0].Symbol, "", "", "", ""}, p3Rows[0])
+
+		// Verify Product 4 (supplier with empty contact info)
+		p4Rows := productRows["Product 4"]
+		require.Len(t, p4Rows, 1)
+		assert.Equal(t, []string{"Product 4", "Description 4", "Type B", units[1].Symbol, "Supplier C", "", "", ""}, p4Rows[0])
+	})
+
+	testCases := []struct {
+		name             string
+		url              string
+		expectedProducts map[string]bool
+	}{
+		{
+			name: "should export products filtered by status",
+			url:  suite.sharedTestContainer.BaseURL + "/api/v1/products/export-excel?status=active",
+			expectedProducts: map[string]bool{
+				"Product 1": true, "Product 2": true, "Product 3": false, "Product 4": true,
+			},
+		},
+		{
+			name: "should export products filtered by product_type",
+			url:  fmt.Sprintf("%s/api/v1/products/export-excel?product_type=%s", suite.sharedTestContainer.BaseURL, url.QueryEscape("Type A")),
+			expectedProducts: map[string]bool{
+				"Product 1": true, "Product 2": true, "Product 3": false, "Product 4": false,
+			},
+		},
+		{
+			name: "should export products filtered by supplier_id",
+			url:  fmt.Sprintf("%s/api/v1/products/export-excel?supplier_id=%d", suite.sharedTestContainer.BaseURL, suppliers[1].ID),
+			expectedProducts: map[string]bool{
+				"Product 1": true, "Product 2": true, "Product 3": false, "Product 4": false,
+			},
+		},
+		{
+			name: "should export products with combined filters",
+			url:  fmt.Sprintf("%s/api/v1/products/export-excel?status=active&product_type=%s", suite.sharedTestContainer.BaseURL, url.QueryEscape("Type A")),
+			expectedProducts: map[string]bool{
+				"Product 1": true, "Product 2": true, "Product 3": false, "Product 4": false,
+			},
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			resp, err := helpers.MakeRequest(t, "GET", tc.url, token, nil)
+			require.NoError(t, err)
+			defer resp.Body.Close()
+			assert.Equal(t, 200, resp.StatusCode)
+
+			body, err := io.ReadAll(resp.Body)
+			require.NoError(t, err)
+			rows := parseExcelExport(t, body)
+			verifyExportFilter(t, rows, tc.expectedProducts)
+		})
 	}
 }
