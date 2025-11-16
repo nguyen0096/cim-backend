@@ -368,113 +368,56 @@ func (suite *ComponentTestSuite) TestImportProductsFromCsvAndExcel() {
 			assert.Equal(t, float64(12), importProductsResp["count"]) // CSV contains 12 unique products (including COCA COLA 500ML without supplier)
 			assert.Equal(t, "Products imported successfully", importProductsResp["message"])
 
-			// Verify first product: PEPSI 390 ml (has multiple suppliers due to duplicate name)
-			var products []*models.Product
-			err = db.WithContext(testCtx).Preload("Unit").Preload("Suppliers").Where("name = ?", "PEPSI 390 ml").Find(&products).Error
-			require.NoError(t, err)
-			assert.Equal(t, 1, len(products))
-			assert.Equal(t, "PEPSI 390 ml", products[0].Name)
-			assert.Equal(t, "PEPSI 390 ml", products[0].Description)
-			assert.Equal(t, "NƯỚC", products[0].ProductType)
-			assert.Equal(t, "active", products[0].Status)
-			require.NotNil(t, products[0].Unit)
-			assert.Equal(t, "lốc", products[0].Unit.Symbol)
-			assert.Equal(t, user.Email, products[0].CreatedBy)
-			assert.Equal(t, user.Email, products[0].UpdatedBy)
-			// Verify product has both PEPSI and COCACOLA suppliers (n-n relationship)
-			assert.Equal(t, 2, len(products[0].Suppliers))
-			supplierNames := make(map[string]bool)
-			for _, s := range products[0].Suppliers {
-				supplierNames[s.Name] = true
+			// verifyProduct verifies a product by name
+			verifyProduct := func(name string, expectedType, expectedUnit, expectedStatus string, expectedSupplierNames []string, checkCreatedBy bool) *models.Product {
+				var products []*models.Product
+				err = db.WithContext(testCtx).Preload("Unit").Preload("Suppliers").Where("name = ?", name).Find(&products).Error
+				require.NoError(t, err)
+				require.Len(t, products, 1, "Product %s should exist", name)
+				p := products[0]
+				assert.Equal(t, name, p.Name)
+				assert.Equal(t, name, p.Description)
+				assert.Equal(t, expectedType, p.ProductType)
+				if expectedStatus != "" {
+					assert.Equal(t, expectedStatus, p.Status)
+				}
+				require.NotNil(t, p.Unit, "Product %s should have unit", name)
+				assert.Equal(t, expectedUnit, p.Unit.Symbol)
+				if checkCreatedBy {
+					assert.Equal(t, user.Email, p.CreatedBy)
+					assert.Equal(t, user.Email, p.UpdatedBy)
+				}
+				if len(expectedSupplierNames) > 0 {
+					assert.Equal(t, len(expectedSupplierNames), len(p.Suppliers), "Product %s should have %d suppliers", name, len(expectedSupplierNames))
+					supplierNames := make(map[string]bool)
+					for _, s := range p.Suppliers {
+						supplierNames[s.Name] = true
+					}
+					for _, expectedName := range expectedSupplierNames {
+						assert.True(t, supplierNames[expectedName], "Product %s should have supplier %s", name, expectedName)
+					}
+				} else {
+					assert.Equal(t, 0, len(p.Suppliers), "Product %s should have no suppliers", name)
+				}
+				return p
 			}
-			assert.True(t, supplierNames["PEPSI"])
-			assert.True(t, supplierNames["COCACOLA"])
 
-			// Verify second product: PEPSI LON 320 ML
-			var products2 []*models.Product
-			err = db.WithContext(testCtx).Preload("Unit").Preload("Suppliers").Where("name = ?", "PEPSI LON 320 ML").Find(&products2).Error
-			require.NoError(t, err)
-			assert.Equal(t, 1, len(products2))
-			assert.Equal(t, "PEPSI LON 320 ML", products2[0].Name)
-			assert.Equal(t, "PEPSI LON 320 ML", products2[0].Description)
-			assert.Equal(t, "NƯỚC", products2[0].ProductType)
-			require.NotNil(t, products2[0].Unit)
-			assert.Equal(t, "thùng", products2[0].Unit.Symbol)
-			// Verify product has PEPSI supplier
-			assert.Equal(t, 1, len(products2[0].Suppliers))
-			assert.Equal(t, "PEPSI", products2[0].Suppliers[0].Name)
+			// Verify first product: PEPSI 390 ml (has multiple suppliers)
+			verifyProduct("PEPSI 390 ml", "NƯỚC", "lốc", "active", []string{"PEPSI", "COCACOLA"}, true)
 
-			// Verify third product: FANTA LON XÁ XỊ 320 ML
-			var products3 []*models.Product
-			err = db.WithContext(testCtx).Preload("Unit").Preload("Suppliers").Where("name = ?", "FANTA LON XÁ XỊ  320 ML").Find(&products3).Error
-			require.NoError(t, err)
-			assert.Equal(t, 1, len(products3))
-			assert.Equal(t, "FANTA LON XÁ XỊ  320 ML", products3[0].Name)
-			assert.Equal(t, "FANTA LON XÁ XỊ  320 ML", products3[0].Description)
-			assert.Equal(t, "NƯỚC", products3[0].ProductType)
-			require.NotNil(t, products3[0].Unit)
-			assert.Equal(t, "lốc", products3[0].Unit.Symbol)
-			// Verify product has COCACOLA supplier
-			assert.Equal(t, 1, len(products3[0].Suppliers))
-			assert.Equal(t, "COCACOLA", products3[0].Suppliers[0].Name)
+			// Verify other products
+			verifyProduct("PEPSI LON 320 ML", "NƯỚC", "thùng", "", []string{"PEPSI"}, false)
+			verifyProduct("FANTA LON XÁ XỊ  320 ML", "NƯỚC", "lốc", "", []string{"COCACOLA"}, false)
+			verifyProduct("MILO NẮP VẬN 210 ML", "NƯỚC", "thùng", "", []string{"SỮA MILO"}, false)
+			verifyProduct("SỮA BẮP THÁI SƠN", "ĂN NHẸ", "chai", "", []string{"SỮA THÁI SƠN"}, false)
+			verifyProduct("COCA COLA 500ML", "NƯỚC", "thùng", "", nil, false)
 
-			// Verify fourth product: MILO NẮP VẬN 210 ML
-			var products4 []*models.Product
-			err = db.WithContext(testCtx).Preload("Unit").Preload("Suppliers").Where("name = ?", "MILO NẮP VẬN 210 ML").Find(&products4).Error
-			require.NoError(t, err)
-			assert.Equal(t, 1, len(products4))
-			assert.Equal(t, "MILO NẮP VẬN 210 ML", products4[0].Name)
-			assert.Equal(t, "MILO NẮP VẬN 210 ML", products4[0].Description)
-			assert.Equal(t, "NƯỚC", products4[0].ProductType)
-			require.NotNil(t, products4[0].Unit)
-			assert.Equal(t, "thùng", products4[0].Unit.Symbol)
-			// Verify product has SỮA MILO supplier
-			assert.Equal(t, 1, len(products4[0].Suppliers))
-			assert.Equal(t, "SỮA MILO", products4[0].Suppliers[0].Name)
-
-			// Verify fifth product: SỮA BẮP THÁI SƠN
-			var products5 []*models.Product
-			err = db.WithContext(testCtx).Preload("Unit").Preload("Suppliers").Where("name = ?", "SỮA BẮP THÁI SƠN").Find(&products5).Error
-			require.NoError(t, err)
-			assert.Equal(t, 1, len(products5))
-			assert.Equal(t, "SỮA BẮP THÁI SƠN", products5[0].Name)
-			assert.Equal(t, "SỮA BẮP THÁI SƠN", products5[0].Description)
-			assert.Equal(t, "ĂN NHẸ", products5[0].ProductType)
-			require.NotNil(t, products5[0].Unit)
-			assert.Equal(t, "chai", products5[0].Unit.Symbol)
-			// Verify product has SỮA THÁI SƠN supplier
-			assert.Equal(t, 1, len(products5[0].Suppliers))
-			assert.Equal(t, "SỮA THÁI SƠN", products5[0].Suppliers[0].Name)
-
-			// Verify product without supplier: COCA COLA 500ML (line 13 has product name but no supplier)
-			var products6 []*models.Product
-			err = db.WithContext(testCtx).Preload("Unit").Preload("Suppliers").Where("name = ?", "COCA COLA 500ML").Find(&products6).Error
-			require.NoError(t, err)
-			assert.Equal(t, 1, len(products6))
-			assert.Equal(t, "COCA COLA 500ML", products6[0].Name)
-			assert.Equal(t, "COCA COLA 500ML", products6[0].Description)
-			assert.Equal(t, "NƯỚC", products6[0].ProductType)
-			require.NotNil(t, products6[0].Unit)
-			assert.Equal(t, "thùng", products6[0].Unit.Symbol)
-			// Verify product has no suppliers (supplier name was missing in CSV)
-			assert.Equal(t, 0, len(products6[0].Suppliers))
-
-			// Verify product type: ĂN NHẸ
-			var products7 []*models.Product
-			err = db.WithContext(testCtx).Preload("Unit").Preload("Suppliers").Where("name = ?", "CƠM THỊT KHO TRỨNG").Find(&products7).Error
-			require.NoError(t, err)
-			assert.Equal(t, 1, len(products7))
-			assert.Equal(t, "CƠM THỊT KHO TRỨNG", products7[0].Name)
-			assert.Equal(t, "CƠM THỊT KHO TRỨNG", products7[0].Description)
-			assert.Equal(t, "CƠM", products7[0].ProductType)
-			assert.Equal(t, "active", products7[0].Status)
-			assert.Equal(t, "phần", products7[0].Unit.Symbol)
-			assert.Equal(t, "phần", products7[0].Unit.Name)
-			assert.Equal(t, 1, len(products7[0].Suppliers))
-			assert.Equal(t, "NHÀ HÀNG 5 SAO", products7[0].Suppliers[0].Name)
-			assert.Equal(t, "5stars@example.com", products7[0].Suppliers[0].ContactEmail)
-			assert.Equal(t, "028-3896100", products7[0].Suppliers[0].ContactPhone)
-			assert.Equal(t, "1, Tân Kỳ Tân Quý, TPHCM", products7[0].Suppliers[0].Address)
+			// Verify product with full supplier details
+			p7 := verifyProduct("CƠM THỊT KHO TRỨNG", "CƠM", "phần", "active", []string{"NHÀ HÀNG 5 SAO"}, false)
+			assert.Equal(t, "phần", p7.Unit.Name)
+			assert.Equal(t, "5stars@example.com", p7.Suppliers[0].ContactEmail)
+			assert.Equal(t, "028-3896100", p7.Suppliers[0].ContactPhone)
+			assert.Equal(t, "1, Tân Kỳ Tân Quý, TPHCM", p7.Suppliers[0].Address)
 
 			// Verify total unique products count
 			var allProducts []*models.Product
@@ -591,126 +534,8 @@ func (suite *ComponentTestSuite) TestImportProductsFromCsvAndExcel() {
 
 func (suite *ComponentTestSuite) TestExportProductsToCSV() {
 	t := suite.T()
-	ctx := pkg.WithUserEmail(context.Background(), "test@example.com")
-	db := suite.sharedTestContainer.DB
-
-	// Setup test data
-	testUnit1 := models.Unit{
-		UnitType:         "general",
-		Name:             "Thùng",
-		Symbol:           "Thùng",
-		ConversionFactor: 1,
-	}
-	testUnit2 := models.Unit{
-		UnitType:         "general",
-		Name:             "Lốc",
-		Symbol:           "Lốc",
-		ConversionFactor: 1,
-	}
-	err := db.WithContext(ctx).Create(&testUnit1).Error
-	require.NoError(t, err, "Failed to create unit 1")
-	err = db.WithContext(ctx).Create(&testUnit2).Error
-	require.NoError(t, err, "Failed to create unit 2")
-
-	testSuppliers := []models.Supplier{
-		{
-			Name:         "Supplier A",
-			ContactEmail: "suppliera@example.com",
-			ContactPhone: "123-456-7890",
-			Address:      "123 Main St",
-			Status:       "active",
-		},
-		{
-			Name:         "Supplier B",
-			ContactEmail: "supplierb@example.com",
-			ContactPhone: "098-765-4321",
-			Address:      "456 Oak Ave",
-			Status:       "active",
-		},
-		{
-			Name:         "Supplier C",
-			ContactEmail: "",
-			ContactPhone: "",
-			Address:      "",
-			Status:       "active",
-		},
-	}
-	err = db.WithContext(ctx).Create(&testSuppliers).Error
-	require.NoError(t, err, "Failed to create suppliers")
-
-	testProducts := []models.Product{
-		{
-			Name:        "Product 1",
-			Description: "Description 1",
-			ProductType: "Type A",
-			UnitID:      testUnit1.ID,
-			Status:      "active",
-			Suppliers: []*models.Supplier{
-				{Base: models.Base{ID: testSuppliers[0].ID}},
-				{Base: models.Base{ID: testSuppliers[1].ID}},
-			},
-		},
-		{
-			Name:        "Product 2",
-			Description: "Description 2",
-			ProductType: "Type A",
-			UnitID:      testUnit2.ID,
-			Status:      "active",
-			Suppliers: []*models.Supplier{
-				{Base: models.Base{ID: testSuppliers[1].ID}},
-			},
-		},
-		{
-			Name:        "Product 3",
-			Description: "Description 3",
-			ProductType: "Type B",
-			UnitID:      testUnit1.ID,
-			Status:      "inactive",
-			Suppliers:   []*models.Supplier{},
-		},
-		{
-			Name:        "Product 4",
-			Description: "Description 4",
-			ProductType: "Type B",
-			UnitID:      testUnit2.ID,
-			Status:      "active",
-			Suppliers: []*models.Supplier{
-				{Base: models.Base{ID: testSuppliers[2].ID}},
-			},
-		},
-	}
-	err = db.WithContext(ctx).Create(&testProducts).Error
-	require.NoError(t, err, "Failed to create products")
-
-	var productIDs []uint
-	var supplierIDs []uint
-	var unitIDs []uint
-	for _, p := range testProducts {
-		productIDs = append(productIDs, p.ID)
-	}
-	for _, s := range testSuppliers {
-		supplierIDs = append(supplierIDs, s.ID)
-	}
-	unitIDs = append(unitIDs, testUnit1.ID, testUnit2.ID)
-
-	defer pkg.CleanUp(t, func() error {
-		if len(productIDs) > 0 {
-			if err := db.WithContext(ctx).Where("id IN ?", productIDs).Delete(&models.Product{}).Error; err != nil {
-				return err
-			}
-		}
-		if len(supplierIDs) > 0 {
-			if err := db.WithContext(ctx).Where("id IN ?", supplierIDs).Delete(&models.Supplier{}).Error; err != nil {
-				return err
-			}
-		}
-		if len(unitIDs) > 0 {
-			if err := db.WithContext(ctx).Where("id IN ?", unitIDs).Delete(&models.Unit{}).Error; err != nil {
-				return err
-			}
-		}
-		return nil
-	})
+	_, units, suppliers, _, cleanup := suite.setupExportTestData(t)
+	defer pkg.CleanUp(t, func() error { cleanup(); return nil })
 
 	_, token, err := suite.CreateUniqueEmailAndToken(models.RoleAdmin)
 	require.NoError(t, err)
@@ -724,340 +549,95 @@ func (suite *ComponentTestSuite) TestExportProductsToCSV() {
 		assert.Equal(t, "text/csv; charset=utf-8", resp.Header.Get("Content-Type"))
 		assert.Contains(t, resp.Header.Get("Content-Disposition"), "attachment; filename=products_export.csv")
 
-		// Parse CSV response
 		body, err := io.ReadAll(resp.Body)
 		require.NoError(t, err)
+		records := parseCSVExport(t, body)
 
-		reader := csv.NewReader(strings.NewReader(string(body)))
-		reader.Comma = ';'
-		records, err := reader.ReadAll()
-		require.NoError(t, err)
+		expectedHeader := []string{"Name", "Description", "ProductType", "Suppliers", "ContactEmail", "ContactPhone", "Address", "Unit"}
+		assert.Equal(t, expectedHeader, records[0])
+		assert.GreaterOrEqual(t, len(records), 6, "Should have at least 1 header + 5 data rows")
 
-		// Verify header
-		assert.Equal(t, []string{"Name", "Description", "ProductType", "Suppliers", "ContactEmail", "ContactPhone", "Address", "Unit"}, records[0])
+		productRows := buildProductRowsMap(records)
 
-		// Verify data rows
-		// Product 1 has 2 suppliers, so should have 2 rows
-		// Product 2 has 1 supplier, so should have 1 row
-		// Product 3 has no suppliers, so should have 1 row with empty supplier fields
-		// Product 4 has 1 supplier, so should have 1 row
-		// Total: 1 header + 5 data rows = 6 rows
-		assert.GreaterOrEqual(t, len(records), 5, "Should have at least 5 data rows")
-
-		// Build a map of product names to their rows
-		productRows := make(map[string][][]string)
-		for i := 1; i < len(records); i++ {
-			if len(records[i]) >= 1 {
-				productName := records[i][0]
-				productRows[productName] = append(productRows[productName], records[i])
-			}
-		}
-
-		// Verify Product 1 (has 2 suppliers)
-		product1Rows, exists := productRows["Product 1"]
-		require.True(t, exists, "Product 1 should be in export")
-		assert.Equal(t, 2, len(product1Rows), "Product 1 should have 2 rows (one per supplier)")
-		for _, row := range product1Rows {
-			assert.Equal(t, "Product 1", row[0])
-			assert.Equal(t, "Description 1", row[1])
-			assert.Equal(t, "Type A", row[2])
+		// Verify Product 1 (2 suppliers = 2 rows)
+		p1Rows := productRows["Product 1"]
+		require.True(t, len(p1Rows) == 2, "Product 1 should have 2 rows")
+		for _, row := range p1Rows {
+			assert.Equal(t, []string{"Product 1", "Description 1", "Type A"}, row[:3])
 			assert.Contains(t, []string{"Supplier A", "Supplier B"}, row[3])
-			if row[3] == "Supplier A" {
-				assert.Equal(t, "suppliera@example.com", row[4])
-				assert.Equal(t, "123-456-7890", row[5])
-				assert.Equal(t, "123 Main St", row[6])
-			} else if row[3] == "Supplier B" {
-				assert.Equal(t, "supplierb@example.com", row[4])
-				assert.Equal(t, "098-765-4321", row[5])
-				assert.Equal(t, "456 Oak Ave", row[6])
-			}
-			assert.Equal(t, "Thùng", row[7])
+			assert.Equal(t, units[0].Symbol, row[7])
 		}
 
-		// Verify Product 2 (has 1 supplier)
-		product2Rows, exists := productRows["Product 2"]
-		require.True(t, exists, "Product 2 should be in export")
-		assert.Equal(t, 1, len(product2Rows), "Product 2 should have 1 row")
-		assert.Equal(t, "Product 2", product2Rows[0][0])
-		assert.Equal(t, "Description 2", product2Rows[0][1])
-		assert.Equal(t, "Type A", product2Rows[0][2])
-		assert.Equal(t, "Supplier B", product2Rows[0][3])
-		assert.Equal(t, "supplierb@example.com", product2Rows[0][4])
-		assert.Equal(t, "098-765-4321", product2Rows[0][5])
-		assert.Equal(t, "456 Oak Ave", product2Rows[0][6])
-		assert.Equal(t, "Lốc", product2Rows[0][7])
+		// Verify Product 2
+		p2Rows := productRows["Product 2"]
+		require.Len(t, p2Rows, 1)
+		assert.Equal(t, []string{"Product 2", "Description 2", "Type A", "Supplier B", "supplierb@example.com", "098-765-4321", "456 Oak Ave", units[1].Symbol}, p2Rows[0])
 
 		// Verify Product 3 (no suppliers)
-		product3Rows, exists := productRows["Product 3"]
-		require.True(t, exists, "Product 3 should be in export")
-		assert.Equal(t, 1, len(product3Rows), "Product 3 should have 1 row")
-		assert.Equal(t, "Product 3", product3Rows[0][0])
-		assert.Equal(t, "Description 3", product3Rows[0][1])
-		assert.Equal(t, "Type B", product3Rows[0][2])
-		assert.Equal(t, "", product3Rows[0][3], "Supplier should be empty")
-		assert.Equal(t, "", product3Rows[0][4], "ContactEmail should be empty")
-		assert.Equal(t, "", product3Rows[0][5], "ContactPhone should be empty")
-		assert.Equal(t, "", product3Rows[0][6], "Address should be empty")
-		assert.Equal(t, "Thùng", product3Rows[0][7])
+		p3Rows := productRows["Product 3"]
+		require.Len(t, p3Rows, 1)
+		assert.Equal(t, []string{"Product 3", "Description 3", "Type B", "", "", "", "", units[0].Symbol}, p3Rows[0])
 
-		// Verify Product 4 (has 1 supplier with empty contact info)
-		product4Rows, exists := productRows["Product 4"]
-		require.True(t, exists, "Product 4 should be in export")
-		assert.Equal(t, 1, len(product4Rows), "Product 4 should have 1 row")
-		assert.Equal(t, "Product 4", product4Rows[0][0])
-		assert.Equal(t, "Description 4", product4Rows[0][1])
-		assert.Equal(t, "Type B", product4Rows[0][2])
-		assert.Equal(t, "Supplier C", product4Rows[0][3])
-		assert.Equal(t, "", product4Rows[0][4], "ContactEmail should be empty")
-		assert.Equal(t, "", product4Rows[0][5], "ContactPhone should be empty")
-		assert.Equal(t, "", product4Rows[0][6], "Address should be empty")
-		assert.Equal(t, "Lốc", product4Rows[0][7])
+		// Verify Product 4 (supplier with empty contact info)
+		p4Rows := productRows["Product 4"]
+		require.Len(t, p4Rows, 1)
+		assert.Equal(t, []string{"Product 4", "Description 4", "Type B", "Supplier C", "", "", "", units[1].Symbol}, p4Rows[0])
 	})
 
-	t.Run("should export products filtered by status", func(t *testing.T) {
-		resp, err := helpers.MakeRequest(t, "GET", suite.sharedTestContainer.BaseURL+"/api/v1/products/export-csv?status=active", token, nil)
-		require.NoError(t, err)
-		defer resp.Body.Close()
+	testCases := []struct {
+		name             string
+		url              string
+		expectedProducts map[string]bool
+	}{
+		{
+			name: "should export products filtered by status",
+			url:  suite.sharedTestContainer.BaseURL + "/api/v1/products/export-csv?status=active",
+			expectedProducts: map[string]bool{
+				"Product 1": true, "Product 2": true, "Product 3": false, "Product 4": true,
+			},
+		},
+		{
+			name: "should export products filtered by product_type",
+			url:  fmt.Sprintf("%s/api/v1/products/export-csv?product_type=%s", suite.sharedTestContainer.BaseURL, url.QueryEscape("Type A")),
+			expectedProducts: map[string]bool{
+				"Product 1": true, "Product 2": true, "Product 3": false, "Product 4": false,
+			},
+		},
+		{
+			name: "should export products filtered by supplier_id",
+			url:  fmt.Sprintf("%s/api/v1/products/export-csv?supplier_id=%d", suite.sharedTestContainer.BaseURL, suppliers[1].ID),
+			expectedProducts: map[string]bool{
+				"Product 1": true, "Product 2": true, "Product 3": false, "Product 4": false,
+			},
+		},
+		{
+			name: "should export products with combined filters",
+			url:  fmt.Sprintf("%s/api/v1/products/export-csv?status=active&product_type=%s", suite.sharedTestContainer.BaseURL, url.QueryEscape("Type A")),
+			expectedProducts: map[string]bool{
+				"Product 1": true, "Product 2": true, "Product 3": false, "Product 4": false,
+			},
+		},
+	}
 
-		assert.Equal(t, 200, resp.StatusCode)
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			resp, err := helpers.MakeRequest(t, "GET", tc.url, token, nil)
+			require.NoError(t, err)
+			defer resp.Body.Close()
+			assert.Equal(t, 200, resp.StatusCode)
 
-		body, err := io.ReadAll(resp.Body)
-		require.NoError(t, err)
-
-		reader := csv.NewReader(strings.NewReader(string(body)))
-		reader.Comma = ';'
-		records, err := reader.ReadAll()
-		require.NoError(t, err)
-
-		// Verify only active products are exported (Product 1, 2, 4 - not Product 3)
-		productNames := make(map[string]bool)
-		for i := 1; i < len(records); i++ {
-			if len(records[i]) >= 1 {
-				productNames[records[i][0]] = true
-			}
-		}
-
-		assert.True(t, productNames["Product 1"], "Product 1 should be in export")
-		assert.True(t, productNames["Product 2"], "Product 2 should be in export")
-		assert.False(t, productNames["Product 3"], "Product 3 (inactive) should not be in export")
-		assert.True(t, productNames["Product 4"], "Product 4 should be in export")
-	})
-
-	t.Run("should export products filtered by product_type", func(t *testing.T) {
-		urlPath := fmt.Sprintf("%s/api/v1/products/export-csv?product_type=%s", suite.sharedTestContainer.BaseURL, url.QueryEscape("Type A"))
-		resp, err := helpers.MakeRequest(t, "GET", urlPath, token, nil)
-		require.NoError(t, err)
-		defer resp.Body.Close()
-
-		assert.Equal(t, 200, resp.StatusCode)
-
-		body, err := io.ReadAll(resp.Body)
-		require.NoError(t, err)
-
-		reader := csv.NewReader(strings.NewReader(string(body)))
-		reader.Comma = ';'
-		records, err := reader.ReadAll()
-		require.NoError(t, err)
-
-		// Verify only Type A products are exported (Product 1, 2)
-		productNames := make(map[string]bool)
-		for i := 1; i < len(records); i++ {
-			if len(records[i]) >= 1 {
-				productNames[records[i][0]] = true
-				assert.Equal(t, "Type A", records[i][2], "All exported products should be Type A")
-			}
-		}
-
-		assert.True(t, productNames["Product 1"], "Product 1 should be in export")
-		assert.True(t, productNames["Product 2"], "Product 2 should be in export")
-		assert.False(t, productNames["Product 3"], "Product 3 (Type B) should not be in export")
-		assert.False(t, productNames["Product 4"], "Product 4 (Type B) should not be in export")
-	})
-
-	t.Run("should export products filtered by supplier_id", func(t *testing.T) {
-		supplierID := testSuppliers[1].ID // Supplier B
-		resp, err := helpers.MakeRequest(t, "GET", fmt.Sprintf("%s/api/v1/products/export-csv?supplier_id=%d", suite.sharedTestContainer.BaseURL, supplierID), token, nil)
-		require.NoError(t, err)
-		defer resp.Body.Close()
-
-		assert.Equal(t, 200, resp.StatusCode)
-
-		body, err := io.ReadAll(resp.Body)
-		require.NoError(t, err)
-
-		reader := csv.NewReader(strings.NewReader(string(body)))
-		reader.Comma = ';'
-		records, err := reader.ReadAll()
-		require.NoError(t, err)
-
-		// Verify only products with Supplier B are exported (Product 1, 2)
-		productNames := make(map[string]bool)
-		for i := 1; i < len(records); i++ {
-			if len(records[i]) >= 1 {
-				productNames[records[i][0]] = true
-			}
-		}
-
-		assert.True(t, productNames["Product 1"], "Product 1 should be in export (has Supplier B)")
-		assert.True(t, productNames["Product 2"], "Product 2 should be in export (has Supplier B)")
-		assert.False(t, productNames["Product 3"], "Product 3 should not be in export (no suppliers)")
-		assert.False(t, productNames["Product 4"], "Product 4 should not be in export (has Supplier C)")
-	})
-
-	t.Run("should export products with combined filters", func(t *testing.T) {
-		urlPath := fmt.Sprintf("%s/api/v1/products/export-csv?status=active&product_type=%s", suite.sharedTestContainer.BaseURL, url.QueryEscape("Type A"))
-		resp, err := helpers.MakeRequest(t, "GET", urlPath, token, nil)
-		require.NoError(t, err)
-		defer resp.Body.Close()
-
-		assert.Equal(t, 200, resp.StatusCode)
-
-		body, err := io.ReadAll(resp.Body)
-		require.NoError(t, err)
-
-		reader := csv.NewReader(strings.NewReader(string(body)))
-		reader.Comma = ';'
-		records, err := reader.ReadAll()
-		require.NoError(t, err)
-
-		// Verify only active Type A products are exported (Product 1, 2)
-		productNames := make(map[string]bool)
-		for i := 1; i < len(records); i++ {
-			if len(records[i]) >= 1 {
-				productNames[records[i][0]] = true
-				assert.Equal(t, "Type A", records[i][2], "All exported products should be Type A")
-			}
-		}
-
-		assert.True(t, productNames["Product 1"], "Product 1 should be in export")
-		assert.True(t, productNames["Product 2"], "Product 2 should be in export")
-		assert.False(t, productNames["Product 3"], "Product 3 should not be in export (inactive)")
-		assert.False(t, productNames["Product 4"], "Product 4 should not be in export (Type B)")
-	})
+			body, err := io.ReadAll(resp.Body)
+			require.NoError(t, err)
+			records := parseCSVExport(t, body)
+			verifyExportFilter(t, records, tc.expectedProducts)
+		})
+	}
 }
 
 func (suite *ComponentTestSuite) TestExportProductsToExcel() {
 	t := suite.T()
-	ctx := pkg.WithUserEmail(context.Background(), "test@example.com")
-	db := suite.sharedTestContainer.DB
-
-	// Setup test data (same as CSV export test)
-	testUnit1 := models.Unit{
-		UnitType:         "general",
-		Name:             "Thùng",
-		Symbol:           "Thùng",
-		ConversionFactor: 1,
-	}
-	testUnit2 := models.Unit{
-		UnitType:         "general",
-		Name:             "Lốc",
-		Symbol:           "Lốc",
-		ConversionFactor: 1,
-	}
-	err := db.WithContext(ctx).Create(&testUnit1).Error
-	require.NoError(t, err, "Failed to create unit 1")
-	err = db.WithContext(ctx).Create(&testUnit2).Error
-	require.NoError(t, err, "Failed to create unit 2")
-
-	testSuppliers := []models.Supplier{
-		{
-			Name:         "Supplier A",
-			ContactEmail: "suppliera@example.com",
-			ContactPhone: "123-456-7890",
-			Address:      "123 Main St",
-			Status:       "active",
-		},
-		{
-			Name:         "Supplier B",
-			ContactEmail: "supplierb@example.com",
-			ContactPhone: "098-765-4321",
-			Address:      "456 Oak Ave",
-			Status:       "active",
-		},
-		{
-			Name:         "Supplier C",
-			ContactEmail: "",
-			ContactPhone: "",
-			Address:      "",
-			Status:       "active",
-		},
-	}
-	err = db.WithContext(ctx).Create(&testSuppliers).Error
-	require.NoError(t, err, "Failed to create suppliers")
-
-	testProducts := []models.Product{
-		{
-			Name:        "Product 1",
-			Description: "Description 1",
-			ProductType: "Type A",
-			UnitID:      testUnit1.ID,
-			Status:      "active",
-			Suppliers: []*models.Supplier{
-				{Base: models.Base{ID: testSuppliers[0].ID}},
-				{Base: models.Base{ID: testSuppliers[1].ID}},
-			},
-		},
-		{
-			Name:        "Product 2",
-			Description: "Description 2",
-			ProductType: "Type A",
-			UnitID:      testUnit2.ID,
-			Status:      "active",
-			Suppliers: []*models.Supplier{
-				{Base: models.Base{ID: testSuppliers[1].ID}},
-			},
-		},
-		{
-			Name:        "Product 3",
-			Description: "Description 3",
-			ProductType: "Type B",
-			UnitID:      testUnit1.ID,
-			Status:      "inactive",
-			Suppliers:   []*models.Supplier{},
-		},
-		{
-			Name:        "Product 4",
-			Description: "Description 4",
-			ProductType: "Type B",
-			UnitID:      testUnit2.ID,
-			Status:      "active",
-			Suppliers: []*models.Supplier{
-				{Base: models.Base{ID: testSuppliers[2].ID}},
-			},
-		},
-	}
-	err = db.WithContext(ctx).Create(&testProducts).Error
-	require.NoError(t, err, "Failed to create products")
-
-	var productIDs []uint
-	var supplierIDs []uint
-	var unitIDs []uint
-	for _, p := range testProducts {
-		productIDs = append(productIDs, p.ID)
-	}
-	for _, s := range testSuppliers {
-		supplierIDs = append(supplierIDs, s.ID)
-	}
-	unitIDs = append(unitIDs, testUnit1.ID, testUnit2.ID)
-
-	defer pkg.CleanUp(t, func() error {
-		if len(productIDs) > 0 {
-			if err := db.WithContext(ctx).Where("id IN ?", productIDs).Delete(&models.Product{}).Error; err != nil {
-				return err
-			}
-		}
-		if len(supplierIDs) > 0 {
-			if err := db.WithContext(ctx).Where("id IN ?", supplierIDs).Delete(&models.Supplier{}).Error; err != nil {
-				return err
-			}
-		}
-		if len(unitIDs) > 0 {
-			if err := db.WithContext(ctx).Where("id IN ?", unitIDs).Delete(&models.Unit{}).Error; err != nil {
-				return err
-			}
-		}
-		return nil
-	})
+	_, units, suppliers, _, cleanup := suite.setupExportTestData(t)
+	defer pkg.CleanUp(t, func() error { cleanup(); return nil })
 
 	_, token, err := suite.CreateUniqueEmailAndToken(models.RoleAdmin)
 	require.NoError(t, err)
@@ -1071,209 +651,193 @@ func (suite *ComponentTestSuite) TestExportProductsToExcel() {
 		assert.Equal(t, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", resp.Header.Get("Content-Type"))
 		assert.Contains(t, resp.Header.Get("Content-Disposition"), "attachment; filename=products_export.xlsx")
 
-		// Read and parse Excel response
 		body, err := io.ReadAll(resp.Body)
 		require.NoError(t, err)
+		rows := parseExcelExport(t, body)
 
-		f, err := excelize.OpenReader(bytes.NewReader(body))
-		require.NoError(t, err)
-		defer f.Close()
+		expectedHeader := []string{"Name", "Description", "ProductType", "Suppliers", "ContactEmail", "ContactPhone", "Address", "Unit"}
+		assert.Equal(t, expectedHeader, rows[0])
+		assert.GreaterOrEqual(t, len(rows), 6, "Should have at least 1 header + 5 data rows")
 
-		// Get sheet name
-		sheetName := f.GetSheetList()[0]
-		rows, err := f.GetRows(sheetName)
-		require.NoError(t, err)
+		productRows := buildProductRowsMap(rows)
 
-		// Verify header
-		assert.Equal(t, []string{"Name", "Description", "ProductType", "Suppliers", "ContactEmail", "ContactPhone", "Address", "Unit"}, rows[0])
+		// Verify Product 1 (2 suppliers = 2 rows)
+		p1Rows := productRows["Product 1"]
+		require.Len(t, p1Rows, 2, "Product 1 should have 2 rows")
 
-		// Verify data rows (at least 5 data rows expected)
-		assert.GreaterOrEqual(t, len(rows), 6, "Should have at least header + 5 data rows")
-
-		// Build a map of product names to their rows
-		productRows := make(map[string][][]string)
-		for i := 1; i < len(rows); i++ {
-			if len(rows[i]) >= 1 {
-				productName := rows[i][0]
-				productRows[productName] = append(productRows[productName], rows[i])
-			}
-		}
-
-		// Verify Product 1 (has 2 suppliers)
-		product1Rows, exists := productRows["Product 1"]
-		require.True(t, exists, "Product 1 should be in export")
-		assert.Equal(t, 2, len(product1Rows), "Product 1 should have 2 rows (one per supplier)")
-
-		// Verify Product 2 (has 1 supplier)
-		product2Rows, exists := productRows["Product 2"]
-		require.True(t, exists, "Product 2 should be in export")
-		assert.Equal(t, 1, len(product2Rows), "Product 2 should have 1 row")
-		assert.Equal(t, "Product 2", product2Rows[0][0])
-		assert.Equal(t, "Description 2", product2Rows[0][1])
-		assert.Equal(t, "Type A", product2Rows[0][2])
-		assert.Equal(t, "Supplier B", product2Rows[0][3])
-		assert.Equal(t, "supplierb@example.com", product2Rows[0][4])
-		assert.Equal(t, "098-765-4321", product2Rows[0][5])
-		assert.Equal(t, "456 Oak Ave", product2Rows[0][6])
-		assert.Equal(t, "Lốc", product2Rows[0][7])
+		// Verify Product 2
+		p2Rows := productRows["Product 2"]
+		require.Len(t, p2Rows, 1)
+		assert.Equal(t, []string{"Product 2", "Description 2", "Type A", "Supplier B", "supplierb@example.com", "098-765-4321", "456 Oak Ave", units[1].Symbol}, p2Rows[0])
 
 		// Verify Product 3 (no suppliers)
-		product3Rows, exists := productRows["Product 3"]
-		require.True(t, exists, "Product 3 should be in export")
-		assert.Equal(t, 1, len(product3Rows), "Product 3 should have 1 row")
-		assert.Equal(t, "Product 3", product3Rows[0][0])
-		assert.Equal(t, "Description 3", product3Rows[0][1])
-		assert.Equal(t, "Type B", product3Rows[0][2])
-		assert.Equal(t, "", product3Rows[0][3], "Supplier should be empty")
-		assert.Equal(t, "", product3Rows[0][4], "ContactEmail should be empty")
-		assert.Equal(t, "", product3Rows[0][5], "ContactPhone should be empty")
-		assert.Equal(t, "", product3Rows[0][6], "Address should be empty")
-		assert.Equal(t, "Thùng", product3Rows[0][7])
+		p3Rows := productRows["Product 3"]
+		require.Len(t, p3Rows, 1)
+		assert.Equal(t, []string{"Product 3", "Description 3", "Type B", "", "", "", "", units[0].Symbol}, p3Rows[0])
 
-		// Verify Product 4 (has 1 supplier with empty contact info)
-		product4Rows, exists := productRows["Product 4"]
-		require.True(t, exists, "Product 4 should be in export")
-		assert.Equal(t, 1, len(product4Rows), "Product 4 should have 1 row")
-		assert.Equal(t, "Product 4", product4Rows[0][0])
-		assert.Equal(t, "Description 4", product4Rows[0][1])
-		assert.Equal(t, "Type B", product4Rows[0][2])
-		assert.Equal(t, "Supplier C", product4Rows[0][3])
-		assert.Equal(t, "", product4Rows[0][4], "ContactEmail should be empty")
-		assert.Equal(t, "", product4Rows[0][5], "ContactPhone should be empty")
-		assert.Equal(t, "", product4Rows[0][6], "Address should be empty")
-		assert.Equal(t, "Lốc", product4Rows[0][7])
+		// Verify Product 4 (supplier with empty contact info)
+		p4Rows := productRows["Product 4"]
+		require.Len(t, p4Rows, 1)
+		assert.Equal(t, []string{"Product 4", "Description 4", "Type B", "Supplier C", "", "", "", units[1].Symbol}, p4Rows[0])
 	})
 
-	t.Run("should export products filtered by status", func(t *testing.T) {
-		resp, err := helpers.MakeRequest(t, "GET", suite.sharedTestContainer.BaseURL+"/api/v1/products/export-excel?status=active", token, nil)
-		require.NoError(t, err)
-		defer resp.Body.Close()
+	testCases := []struct {
+		name             string
+		url              string
+		expectedProducts map[string]bool
+	}{
+		{
+			name: "should export products filtered by status",
+			url:  suite.sharedTestContainer.BaseURL + "/api/v1/products/export-excel?status=active",
+			expectedProducts: map[string]bool{
+				"Product 1": true, "Product 2": true, "Product 3": false, "Product 4": true,
+			},
+		},
+		{
+			name: "should export products filtered by product_type",
+			url:  fmt.Sprintf("%s/api/v1/products/export-excel?product_type=%s", suite.sharedTestContainer.BaseURL, url.QueryEscape("Type A")),
+			expectedProducts: map[string]bool{
+				"Product 1": true, "Product 2": true, "Product 3": false, "Product 4": false,
+			},
+		},
+		{
+			name: "should export products filtered by supplier_id",
+			url:  fmt.Sprintf("%s/api/v1/products/export-excel?supplier_id=%d", suite.sharedTestContainer.BaseURL, suppliers[1].ID),
+			expectedProducts: map[string]bool{
+				"Product 1": true, "Product 2": true, "Product 3": false, "Product 4": false,
+			},
+		},
+		{
+			name: "should export products with combined filters",
+			url:  fmt.Sprintf("%s/api/v1/products/export-excel?status=active&product_type=%s", suite.sharedTestContainer.BaseURL, url.QueryEscape("Type A")),
+			expectedProducts: map[string]bool{
+				"Product 1": true, "Product 2": true, "Product 3": false, "Product 4": false,
+			},
+		},
+	}
 
-		assert.Equal(t, 200, resp.StatusCode)
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			resp, err := helpers.MakeRequest(t, "GET", tc.url, token, nil)
+			require.NoError(t, err)
+			defer resp.Body.Close()
+			assert.Equal(t, 200, resp.StatusCode)
 
-		body, err := io.ReadAll(resp.Body)
-		require.NoError(t, err)
+			body, err := io.ReadAll(resp.Body)
+			require.NoError(t, err)
+			rows := parseExcelExport(t, body)
+			verifyExportFilter(t, rows, tc.expectedProducts)
+		})
+	}
+}
 
-		f, err := excelize.OpenReader(bytes.NewReader(body))
-		require.NoError(t, err)
-		defer f.Close()
 
-		sheetName := f.GetSheetList()[0]
-		rows, err := f.GetRows(sheetName)
-		require.NoError(t, err)
+// setupExportTestData creates test data for export tests
+func (suite *ComponentTestSuite) setupExportTestData(t *testing.T) (ctx context.Context, units []models.Unit, suppliers []models.Supplier, products []models.Product, cleanup func()) {
+	ctx = pkg.WithUserEmail(context.Background(), "test@example.com")
+	db := suite.sharedTestContainer.DB
 
-		// Verify only active products are exported (Product 1, 2, 4 - not Product 3)
-		productNames := make(map[string]bool)
-		for i := 1; i < len(rows); i++ {
-			if len(rows[i]) >= 1 {
-				productNames[rows[i][0]] = true
-			}
+	units = []models.Unit{
+		{UnitType: "general", Name: "Thùng", Symbol: "Thùng", ConversionFactor: 1},
+		{UnitType: "general", Name: "Lốc", Symbol: "Lốc", ConversionFactor: 1},
+	}
+	require.NoError(t, db.WithContext(ctx).Create(&units).Error, "Failed to create units")
+
+	suppliers = []models.Supplier{
+		{Name: "Supplier A", ContactEmail: "suppliera@example.com", ContactPhone: "123-456-7890", Address: "123 Main St", Status: "active"},
+		{Name: "Supplier B", ContactEmail: "supplierb@example.com", ContactPhone: "098-765-4321", Address: "456 Oak Ave", Status: "active"},
+		{Name: "Supplier C", Status: "active"},
+	}
+	require.NoError(t, db.WithContext(ctx).Create(&suppliers).Error, "Failed to create suppliers")
+
+	products = []models.Product{
+		{
+			Name: "Product 1", Description: "Description 1", ProductType: "Type A", UnitID: units[0].ID, Status: "active",
+			Suppliers: []*models.Supplier{{Base: models.Base{ID: suppliers[0].ID}}, {Base: models.Base{ID: suppliers[1].ID}}},
+		},
+		{
+			Name: "Product 2", Description: "Description 2", ProductType: "Type A", UnitID: units[1].ID, Status: "active",
+			Suppliers: []*models.Supplier{{Base: models.Base{ID: suppliers[1].ID}}},
+		},
+		{
+			Name: "Product 3", Description: "Description 3", ProductType: "Type B", UnitID: units[0].ID, Status: "inactive",
+			Suppliers: []*models.Supplier{},
+		},
+		{
+			Name: "Product 4", Description: "Description 4", ProductType: "Type B", UnitID: units[1].ID, Status: "active",
+			Suppliers: []*models.Supplier{{Base: models.Base{ID: suppliers[2].ID}}},
+		},
+	}
+	require.NoError(t, db.WithContext(ctx).Create(&products).Error, "Failed to create products")
+
+	productIDs := make([]uint, len(products))
+	supplierIDs := make([]uint, len(suppliers))
+	unitIDs := make([]uint, len(units))
+	for i, p := range products {
+		productIDs[i] = p.ID
+	}
+	for i, s := range suppliers {
+		supplierIDs[i] = s.ID
+	}
+	for i, u := range units {
+		unitIDs[i] = u.ID
+	}
+
+	cleanup = func() {
+		if len(productIDs) > 0 {
+			db.WithContext(ctx).Where("id IN ?", productIDs).Delete(&models.Product{})
 		}
-
-		assert.True(t, productNames["Product 1"], "Product 1 should be in export")
-		assert.True(t, productNames["Product 2"], "Product 2 should be in export")
-		assert.False(t, productNames["Product 3"], "Product 3 (inactive) should not be in export")
-		assert.True(t, productNames["Product 4"], "Product 4 should be in export")
-	})
-
-	t.Run("should export products filtered by product_type", func(t *testing.T) {
-		urlPath := fmt.Sprintf("%s/api/v1/products/export-excel?product_type=%s", suite.sharedTestContainer.BaseURL, url.QueryEscape("Type A"))
-		resp, err := helpers.MakeRequest(t, "GET", urlPath, token, nil)
-		require.NoError(t, err)
-		defer resp.Body.Close()
-
-		assert.Equal(t, 200, resp.StatusCode)
-
-		body, err := io.ReadAll(resp.Body)
-		require.NoError(t, err)
-
-		f, err := excelize.OpenReader(bytes.NewReader(body))
-		require.NoError(t, err)
-		defer f.Close()
-
-		sheetName := f.GetSheetList()[0]
-		rows, err := f.GetRows(sheetName)
-		require.NoError(t, err)
-
-		// Verify only Type A products are exported (Product 1, 2)
-		productNames := make(map[string]bool)
-		for i := 1; i < len(rows); i++ {
-			if len(rows[i]) >= 1 {
-				productNames[rows[i][0]] = true
-				assert.Equal(t, "Type A", rows[i][2], "All exported products should be Type A")
-			}
+		if len(supplierIDs) > 0 {
+			db.WithContext(ctx).Where("id IN ?", supplierIDs).Delete(&models.Supplier{})
 		}
-
-		assert.True(t, productNames["Product 1"], "Product 1 should be in export")
-		assert.True(t, productNames["Product 2"], "Product 2 should be in export")
-		assert.False(t, productNames["Product 3"], "Product 3 (Type B) should not be in export")
-		assert.False(t, productNames["Product 4"], "Product 4 (Type B) should not be in export")
-	})
-
-	t.Run("should export products filtered by supplier_id", func(t *testing.T) {
-		supplierID := testSuppliers[1].ID // Supplier B
-		resp, err := helpers.MakeRequest(t, "GET", fmt.Sprintf("%s/api/v1/products/export-excel?supplier_id=%d", suite.sharedTestContainer.BaseURL, supplierID), token, nil)
-		require.NoError(t, err)
-		defer resp.Body.Close()
-
-		assert.Equal(t, 200, resp.StatusCode)
-
-		body, err := io.ReadAll(resp.Body)
-		require.NoError(t, err)
-
-		f, err := excelize.OpenReader(bytes.NewReader(body))
-		require.NoError(t, err)
-		defer f.Close()
-
-		sheetName := f.GetSheetList()[0]
-		rows, err := f.GetRows(sheetName)
-		require.NoError(t, err)
-
-		// Verify only products with Supplier B are exported (Product 1, 2)
-		productNames := make(map[string]bool)
-		for i := 1; i < len(rows); i++ {
-			if len(rows[i]) >= 1 {
-				productNames[rows[i][0]] = true
-			}
+		if len(unitIDs) > 0 {
+			db.WithContext(ctx).Where("id IN ?", unitIDs).Delete(&models.Unit{})
 		}
+	}
 
-		assert.True(t, productNames["Product 1"], "Product 1 should be in export (has Supplier B)")
-		assert.True(t, productNames["Product 2"], "Product 2 should be in export (has Supplier B)")
-		assert.False(t, productNames["Product 3"], "Product 3 should not be in export (no suppliers)")
-		assert.False(t, productNames["Product 4"], "Product 4 should not be in export (has Supplier C)")
-	})
+	return ctx, units, suppliers, products, cleanup
+}
 
-	t.Run("should export products with combined filters", func(t *testing.T) {
-		urlPath := fmt.Sprintf("%s/api/v1/products/export-excel?status=active&product_type=%s", suite.sharedTestContainer.BaseURL, url.QueryEscape("Type A"))
-		resp, err := helpers.MakeRequest(t, "GET", urlPath, token, nil)
-		require.NoError(t, err)
-		defer resp.Body.Close()
+// parseCSVExport parses CSV export response
+func parseCSVExport(t *testing.T, body []byte) [][]string {
+	reader := csv.NewReader(strings.NewReader(string(body)))
+	reader.Comma = ';'
+	records, err := reader.ReadAll()
+	require.NoError(t, err)
+	return records
+}
 
-		assert.Equal(t, 200, resp.StatusCode)
+// parseExcelExport parses Excel export response
+func parseExcelExport(t *testing.T, body []byte) [][]string {
+	f, err := excelize.OpenReader(bytes.NewReader(body))
+	require.NoError(t, err)
+	defer f.Close()
+	sheetName := f.GetSheetList()[0]
+	rows, err := f.GetRows(sheetName)
+	require.NoError(t, err)
+	return rows
+}
 
-		body, err := io.ReadAll(resp.Body)
-		require.NoError(t, err)
-
-		f, err := excelize.OpenReader(bytes.NewReader(body))
-		require.NoError(t, err)
-		defer f.Close()
-
-		sheetName := f.GetSheetList()[0]
-		rows, err := f.GetRows(sheetName)
-		require.NoError(t, err)
-
-		// Verify only active Type A products are exported (Product 1, 2)
-		productNames := make(map[string]bool)
-		for i := 1; i < len(rows); i++ {
-			if len(rows[i]) >= 1 {
-				productNames[rows[i][0]] = true
-				assert.Equal(t, "Type A", rows[i][2], "All exported products should be Type A")
-			}
+// buildProductRowsMap groups export rows by product name
+func buildProductRowsMap(rows [][]string) map[string][][]string {
+	productRows := make(map[string][][]string)
+	for i := 1; i < len(rows); i++ {
+		if len(rows[i]) >= 1 && rows[i][0] != "" {
+			productRows[rows[i][0]] = append(productRows[rows[i][0]], rows[i])
 		}
+	}
+	return productRows
+}
 
-		assert.True(t, productNames["Product 1"], "Product 1 should be in export")
-		assert.True(t, productNames["Product 2"], "Product 2 should be in export")
-		assert.False(t, productNames["Product 3"], "Product 3 should not be in export (inactive)")
-		assert.False(t, productNames["Product 4"], "Product 4 should not be in export (Type B)")
-	})
+// verifyExportFilter verifies exported products match expected filters
+func verifyExportFilter(t *testing.T, rows [][]string, expectedProducts map[string]bool) {
+	productNames := make(map[string]bool)
+	for i := 1; i < len(rows); i++ {
+		if len(rows[i]) >= 1 && rows[i][0] != "" {
+			productNames[rows[i][0]] = true
+		}
+	}
+	for name, shouldExist := range expectedProducts {
+		assert.Equal(t, shouldExist, productNames[name], fmt.Sprintf("Product %s should%s be in export", name, map[bool]string{true: "", false: " not"}[shouldExist]))
+	}
 }
