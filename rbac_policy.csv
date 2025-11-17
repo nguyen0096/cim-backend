@@ -63,7 +63,12 @@ p, accountant, suppliers, create, allow
 p, accountant, suppliers, update, allow
 p, accountant, inventories, view, allow
 p, accountant, inventory-items, view, allow
+
 p, accountant, inventory-submissions, create, allow
+p, accountant, inventory-submissions, update, allow
+p, accountant, inventory-submissions, delete, allow
+p, accountant, inventory-submissions, approve, allow
+
 p, accountant, purchase-orders, view, allow
 p, accountant, purchase-orders, create, allow
 p, accountant, purchase-orders, update, allow
