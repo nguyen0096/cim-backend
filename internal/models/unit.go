@@ -10,7 +10,7 @@ type Unit struct {
 	ConversionFactor          float64    `json:"conversion_factor" gorm:"not null;default:1"`
 	ConversionFactorToCurrent *float64   `json:"conversion_factor_to_current,omitempty" gorm:"-"` // Calculated field, not stored in DB
 	Level                     int        `json:"level" gorm:"type:smallint;not null;default:1;check:level >= 1 AND level <= 4"`
-	DecimalPlaces             int        `json:"decimal_places" gorm:"type:smallint;not null;default:0;check:decimal_places >= 0 AND decimal_places <= 10"`
+	DecimalPlaces             int        `json:"decimal_places" gorm:"type:smallint;not null;default:2;check:decimal_places >= 0 AND decimal_places <= 10"`
 	BaseUnitID                *uint      `json:"base_unit_id,omitempty" gorm:"column:base_unit_id"`
 	BaseUnit                  *Unit      `json:"base_unit,omitempty" gorm:"foreignKey:BaseUnitID;references:ID" validate:"-"`
 	DerivedUnits              []*Unit    `json:"derived_units,omitempty" gorm:"foreignKey:BaseUnitID" validate:"-"`
