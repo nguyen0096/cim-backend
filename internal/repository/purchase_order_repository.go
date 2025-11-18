@@ -123,7 +123,9 @@ func (r *purchaseOrderRepository) List(ctx context.Context, params models.ListPa
 		}
 	}
 
-	statuses := models.AllPurchaseOrderStatuses
+	// Create a copy of all statuses to avoid modifying the global slice
+	statuses := make([]models.PurchaseOrderStatus, len(models.AllPurchaseOrderStatuses))
+	copy(statuses, models.AllPurchaseOrderStatuses)
 
 	if params.Status != "" {
 		statuses = []models.PurchaseOrderStatus{models.PurchaseOrderStatus(params.Status)}
@@ -131,20 +133,11 @@ func (r *purchaseOrderRepository) List(ctx context.Context, params models.ListPa
 
 	if !pkg.HasPermission(ctx, "purchase-orders", "view_status_completed") {
 		statuses = slices.DeleteFunc(statuses, func(status models.PurchaseOrderStatus) bool {
-			return status == models.PurchaseOrderStatusCompleted
+			return status == models.PurchaseOrderStatusCompleted || status == models.PurchaseOrderStatusCancelled
 		})
 	}
 
-	// Apply status filter
-	if len(statuses) > 0 {
-		baseQuery = baseQuery.Where("status IN ?", statuses)
-	}
-
-	// Apply same search filter for data
-	if params.Search != "" {
-		baseQuery = baseQuery.Where("order_number ILIKE ? OR notes ILIKE ?", "%"+params.Search+"%", "%"+params.Search+"%")
-	}
-
+	baseQuery = baseQuery.Where("status IN ?", statuses)
 	baseQuery = baseQuery.Preload("Items").Preload("Items.Product").Preload("Items.Supplier").Preload("Items.Unit")
 
 	// Check if user has permission to view prices
