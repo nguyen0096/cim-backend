@@ -46,20 +46,53 @@ func (s *paymentReceiptFormService) buildFormNumber(date time.Time, inventoryID 
 // generateNextFormNumber generates the next available form number in date-increment format
 func (s *paymentReceiptFormService) generateNextFormNumber(ctx context.Context, date time.Time, inventoryID uint) (string, error) {
 	dateString := date.Format("20060102")
-	// Count all existing forms to get the next increment number
-	var count int64
-	err := s.db.WithContext(ctx).
-		Model(&models.PaymentReceiptForm{}).
-		Where("form_number LIKE ?", fmt.Sprintf("%s-%d-%%", dateString, inventoryID)).
-		Count(&count).Error
 
-	if err != nil {
-		return "", fmt.Errorf("failed to generate form number: %w", err)
+	// Use a transaction with retry logic to handle race conditions
+	var formNumber string
+	maxRetries := 3
+
+	for attempt := 0; attempt < maxRetries; attempt++ {
+		// Count all existing forms (including soft-deleted) to get the next increment number
+		var count int64
+		err := s.db.WithContext(ctx).
+			Unscoped().
+			Model(&models.PaymentReceiptForm{}).
+			Where("form_number LIKE ?", fmt.Sprintf("%s-%d-%%", dateString, inventoryID)).
+			Count(&count).Error
+
+		if err != nil {
+			return "", fmt.Errorf("failed to count existing forms: %w", err)
+		}
+
+		// Generate form number with next increment
+		increment := count + 1
+		formNumber = s.buildFormNumber(date, inventoryID, increment)
+
+		// Verify this form number doesn't exist
+		var existingCount int64
+		err = s.db.WithContext(ctx).
+			Unscoped().
+			Model(&models.PaymentReceiptForm{}).
+			Where("form_number = ?", formNumber).
+			Count(&existingCount).Error
+
+		if err != nil {
+			return "", fmt.Errorf("failed to verify form number uniqueness: %w", err)
+		}
+
+		// If form number is unique, return it
+		if existingCount == 0 {
+			return formNumber, nil
+		}
+
+		// If we reach here, there's a race condition, retry
+		if attempt == maxRetries-1 {
+			return "", fmt.Errorf("failed to generate unique form number after %d attempts", maxRetries)
+		}
+
+		// Small delay before retry
+		time.Sleep(time.Millisecond * 10 * time.Duration(attempt+1))
 	}
-
-	// Generate form number: date-increment (e.g., 20240115-001)
-	increment := count + 1
-	formNumber := s.buildFormNumber(date, inventoryID, increment)
 
 	return formNumber, nil
 }
@@ -110,12 +143,15 @@ func (s *paymentReceiptFormService) validatePaymentReceiptFormFields(form *model
 
 // prepareFormForSubmission prepares a form for submission by generating form number and setting status
 func (s *paymentReceiptFormService) prepareFormForSubmission(ctx context.Context, form *models.PaymentReceiptForm, inventoryID uint) error {
-	formNumber, err := s.generateNextFormNumber(ctx, form.Date, inventoryID)
-	if err != nil {
-		return fmt.Errorf("failed to generate form number: %w", err)
+	// Only generate a new form number if one doesn't already exist
+	if form.FormNumber == nil || *form.FormNumber == "" {
+		formNumber, err := s.generateNextFormNumber(ctx, form.Date, inventoryID)
+		if err != nil {
+			return fmt.Errorf("failed to generate form number: %w", err)
+		}
+		form.FormNumber = &formNumber
 	}
 
-	form.FormNumber = &formNumber
 	form.Status = models.PaymentReceiptFormStatusSubmitted
 	return nil
 }

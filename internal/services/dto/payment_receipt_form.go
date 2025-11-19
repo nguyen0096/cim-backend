@@ -1,6 +1,7 @@
 package dto
 
 import (
+	"strings"
 	"time"
 
 	"cim-backend/internal/models"
@@ -46,9 +47,19 @@ func (p *PaymentReceiptFormPayload) ToPaymentReceiptForm() (*models.PaymentRecei
 		}
 	}
 
-	date, err := time.Parse("2006-01-02", p.Date)
-	if err == nil {
-		model.Date = date
+	if p.Date == "" {
+		return model, nil
+	}
+	if strings.Contains(p.Date, "T") {
+		date, err := time.Parse(time.RFC3339, p.Date)
+		if err == nil {
+			model.Date = date
+		}
+	} else {
+		date, err := time.Parse("2006-01-02", p.Date)
+		if err == nil {
+			model.Date = date
+		}
 	}
 
 	return model, nil
