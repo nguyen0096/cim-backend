@@ -141,21 +141,6 @@ func (s *paymentReceiptFormService) validatePaymentReceiptFormFields(form *model
 	return nil
 }
 
-// prepareFormForSubmission prepares a form for submission by generating form number and setting status
-func (s *paymentReceiptFormService) prepareFormForSubmission(ctx context.Context, form *models.PaymentReceiptForm, inventoryID uint) error {
-	// Only generate a new form number if one doesn't already exist
-	if form.FormNumber == nil || *form.FormNumber == "" {
-		formNumber, err := s.generateNextFormNumber(ctx, form.Date, inventoryID)
-		if err != nil {
-			return fmt.Errorf("failed to generate form number: %w", err)
-		}
-		form.FormNumber = &formNumber
-	}
-
-	form.Status = models.PaymentReceiptFormStatusSubmitted
-	return nil
-}
-
 // SubmitPaymentReceiptForm updates a payment receipt form (used by bot_form role)
 func (s *paymentReceiptFormService) SubmitPaymentReceiptForm(ctx context.Context, form *models.PaymentReceiptForm) error {
 	// Validate required fields
@@ -163,10 +148,7 @@ func (s *paymentReceiptFormService) SubmitPaymentReceiptForm(ctx context.Context
 		return err
 	}
 
-	// Prepare form for submission
-	if err := s.prepareFormForSubmission(ctx, form, *form.PurchaseOrder.InventoryID); err != nil {
-		return err
-	}
+	form.Status = models.PaymentReceiptFormStatusSubmitted
 
 	// Update the form
 	if err := s.paymentReceiptFormRepo.Update(ctx, form); err != nil {
@@ -194,14 +176,6 @@ func (s *paymentReceiptFormService) UpdatePaymentReceiptForm(ctx context.Context
 		return err
 	}
 
-	// Get inventory ID from existing form's purchase order
-	inventoryID := *existingForm.PurchaseOrder.InventoryID
-
-	// Prepare form for submission (still needs approval)
-	if err := s.prepareFormForSubmission(ctx, form, inventoryID); err != nil {
-		return err
-	}
-
 	// Update the form
 	if err := s.paymentReceiptFormRepo.Update(ctx, form); err != nil {
 		return fmt.Errorf("failed to update payment receipt form: %w", err)
@@ -213,7 +187,7 @@ func (s *paymentReceiptFormService) UpdatePaymentReceiptForm(ctx context.Context
 // ApprovePaymentReceiptForm approves a payment receipt form
 func (s *paymentReceiptFormService) ApprovePaymentReceiptForm(ctx context.Context, id uint) error {
 	// Get the form to check if it exists and current status
-	form, err := s.paymentReceiptFormRepo.GetByID(ctx, id)
+	form, err := s.paymentReceiptFormRepo.GetByIDFull(ctx, id)
 	if err != nil {
 		return fmt.Errorf("failed to approve payment receipt form: %w", err)
 	}
@@ -226,9 +200,16 @@ func (s *paymentReceiptFormService) ApprovePaymentReceiptForm(ctx context.Contex
 		return pkg.NewAppError(pkg.ErrorCodeValidation, "Cannot approve a rejected payment receipt form", nil)
 	}
 
-	// Update status to approved
-	if err := s.paymentReceiptFormRepo.UpdateStatus(ctx, id, models.PaymentReceiptFormStatusApproved); err != nil {
-		return fmt.Errorf("failed to approve payment receipt form: %w", err)
+	form.Status = models.PaymentReceiptFormStatusApproved
+	formNumber, err := s.generateNextFormNumber(ctx, form.Date, *form.PurchaseOrder.InventoryID)
+	if err != nil {
+		return fmt.Errorf("failed to generate form number: %w", err)
+	}
+	form.FormNumber = &formNumber
+
+	// Update the form
+	if err := s.paymentReceiptFormRepo.Update(ctx, form); err != nil {
+		return fmt.Errorf("failed to update payment receipt form: %w", err)
 	}
 
 	return nil
