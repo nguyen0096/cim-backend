@@ -216,10 +216,20 @@ func (suite *ComponentTestSuite) TestPaymentReceiptFormPendingStream() {
 		initialPayload := decodeEventPayload(initialEvent)
 		require.NotNil(t, initialPayload)
 		assert.Equal(t, string(models.PaymentReceiptFormStatusPending), initialPayload["status"])
-		assert.Equal(t, testPendingForm.FormNumber, initialPayload["form_number"])
+		if testPendingForm.FormNumber != nil {
+			formNumberValue, ok := initialPayload["form_number"].(string)
+			require.True(t, ok)
+			assert.Equal(t, *testPendingForm.FormNumber, formNumberValue)
+		} else {
+			assert.Nil(t, initialPayload["form_number"])
+		}
 		assert.Equal(t, testPendingForm.PurchaseOrderID, uint(initialPayload["purchase_order_id"].(float64)))
 		assert.Equal(t, testPendingForm.FullName, initialPayload["full_name"])
-		assert.Equal(t, testPendingForm.Date.Format("2006-01-02"), initialPayload["date"].(string))
+		initialDateValue, ok := initialPayload["date"].(string)
+		require.True(t, ok)
+		parsedInitialDate, err := time.Parse(time.RFC3339, initialDateValue)
+		require.NoError(t, err)
+		assert.Equal(t, testPendingForm.Date.Format("2006-01-02"), parsedInitialDate.Format("2006-01-02"))
 		assert.Equal(t, testPendingForm.Department, initialPayload["department"].(string))
 		assert.Equal(t, testPendingForm.Details, initialPayload["details"].(string))
 		assert.Equal(t, testPendingForm.TotalAmount, initialPayload["total_amount"].(float64))
@@ -273,6 +283,72 @@ func (suite *ComponentTestSuite) TestPaymentReceiptFormPendingStream() {
 			assert.Equal(t, expectedForm.Department, payload["department"])
 			assert.Equal(t, expectedForm.Details, payload["details"])
 			assert.Equal(t, expectedForm.TotalAmount, payload["total_amount"].(float64))
+		}
+	})
+
+	t.Run("should generate incremental form numbers when forms are approved", func(t *testing.T) {
+		require.NoError(t, db.WithContext(ctx).Exec("DELETE FROM payment_receipt_forms").Error)
+
+		// Create multiple forms with the same date and purchase order (same inventory ID)
+		formDate := time.Now()
+		var createdFormIDs []uint
+		for i := 0; i < 3; i++ {
+			form := models.PaymentReceiptForm{
+				Base: models.Base{
+					CreatedAt: time.Now(),
+				},
+				PurchaseOrderID: purchaseOrder.ID,
+				FullName:        fmt.Sprintf("Form %d", i+1),
+				Date:            formDate,
+				Department:      "Test Department",
+				Details:         fmt.Sprintf("Test form %d", i+1),
+				TotalAmount:     float64(1000 + i*100),
+				Status:          models.PaymentReceiptFormStatusPending,
+			}
+			require.NoError(t, db.WithContext(ctx).Create(&form).Error)
+			createdFormIDs = append(createdFormIDs, form.ID)
+		}
+
+		// Get admin token for approval
+		_, adminToken, err := suite.CreateUniqueEmailAndToken(models.RoleAdmin)
+		require.NoError(t, err)
+
+		// Approve forms one by one and verify incremental form numbers
+		expectedDatePrefix := formDate.Format("20060102")
+		expectedInventoryID := *purchaseOrder.InventoryID
+
+		for i, formID := range createdFormIDs {
+			approveURL := fmt.Sprintf("%s/api/v1/payment-receipt-forms/%d/approve", suite.sharedTestContainer.BaseURL, formID)
+			approveResp, err := helpers.MakeRequest(t, "PUT", approveURL, adminToken, nil)
+			require.NoError(t, err)
+			defer approveResp.Body.Close()
+			assert.Equal(t, http.StatusOK, approveResp.StatusCode)
+
+			// Fetch the approved form to verify form number
+			getURL := fmt.Sprintf("%s/api/v1/payment-receipt-forms/%d", suite.sharedTestContainer.BaseURL, formID)
+			getResp, err := helpers.MakeRequest(t, "GET", getURL, adminToken, nil)
+			require.NoError(t, err)
+			defer getResp.Body.Close()
+			assert.Equal(t, http.StatusOK, getResp.StatusCode)
+
+			var formResp map[string]interface{}
+			err = json.NewDecoder(getResp.Body).Decode(&formResp)
+			require.NoError(t, err)
+
+			formNumber, ok := formResp["form_number"].(string)
+			require.True(t, ok, "form_number should be a string")
+			require.NotEmpty(t, formNumber, "form_number should not be empty")
+
+			// Verify form number format: YYYYMMDD-inventoryID-increment
+			expectedFormNumber := fmt.Sprintf("%s-%d-%d", expectedDatePrefix, expectedInventoryID, i+1)
+			assert.Equal(t, expectedFormNumber, formNumber, "Form number should be incremental")
+		}
+
+		// Cleanup
+		for _, formID := range createdFormIDs {
+			t.Cleanup(func() {
+				db.WithContext(ctx).Delete(&models.PaymentReceiptForm{}, formID)
+			})
 		}
 	})
 }
