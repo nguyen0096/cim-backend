@@ -235,8 +235,14 @@ func (m *mockPaymentReceiptFormRepository) DeletePermanently(ctx context.Context
 func (m *mockPaymentReceiptFormRepository) GetByIDFull(ctx context.Context, id uint) (*models.PaymentReceiptForm, error) {
 	return nil, nil
 }
-func (m *mockPaymentReceiptFormRepository) GetLatestPaymentReceiptForm(ctx context.Context, purchaseOrderID uint, status models.PaymentReceiptFormStatus) (*models.PaymentReceiptForm, error) {
-	return m.approvedForm, m.err
+func (m *mockPaymentReceiptFormRepository) GetLatestPaymentReceiptForms(ctx context.Context, purchaseOrderID uint, status models.PaymentReceiptFormStatus, limit int) ([]*models.PaymentReceiptForm, error) {
+	if m.err != nil {
+		return nil, m.err
+	}
+	if m.approvedForm == nil {
+		return []*models.PaymentReceiptForm{}, nil
+	}
+	return []*models.PaymentReceiptForm{m.approvedForm}, nil
 }
 
 // Implement other required methods as no-ops for this test

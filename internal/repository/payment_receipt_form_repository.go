@@ -23,7 +23,7 @@ type PaymentReceiptFormRepository interface {
 	Delete(ctx context.Context, id uint) error
 	DeletePermanently(ctx context.Context, id uint) error
 	Search(ctx context.Context, query string, req *dto.PaymentReceiptFormListRequest) ([]models.PaymentReceiptForm, int64, error)
-	GetLatestPaymentReceiptForm(ctx context.Context, purchaseOrderID uint, status models.PaymentReceiptFormStatus) (*models.PaymentReceiptForm, error)
+	GetLatestPaymentReceiptForms(ctx context.Context, purchaseOrderID uint, status models.PaymentReceiptFormStatus, limit int) ([]*models.PaymentReceiptForm, error)
 }
 
 type paymentReceiptFormRepository struct {
@@ -210,22 +210,25 @@ func (r *paymentReceiptFormRepository) Search(ctx context.Context, query string,
 	return forms, total, nil
 }
 
-// GetLatestPendingForm retrieves the latest payment receipt form in pending status
-func (r *paymentReceiptFormRepository) GetLatestPaymentReceiptForm(ctx context.Context, purchaseOrderID uint, status models.PaymentReceiptFormStatus) (*models.PaymentReceiptForm, error) {
-	var form models.PaymentReceiptForm
+// GetLatestPaymentReceiptForms retrieves the latest payment receipt forms in the provided status
+func (r *paymentReceiptFormRepository) GetLatestPaymentReceiptForms(ctx context.Context, purchaseOrderID uint, status models.PaymentReceiptFormStatus, limit int) ([]*models.PaymentReceiptForm, error) {
+	var forms []*models.PaymentReceiptForm
 	query := r.db.WithContext(ctx).
 		Preload("PurchaseOrder").
 		Omit("PurchaseOrder.TotalAmount").
 		Where("status = ?", status).
 		Order("created_at DESC")
+
+	if limit > 0 {
+		query = query.Limit(limit)
+	}
+	
 	if purchaseOrderID != 0 {
 		query = query.Where("purchase_order_id = ?", purchaseOrderID)
 	}
-	if err := query.First(&form).Error; err != nil {
-		if err == gorm.ErrRecordNotFound {
-			return nil, nil
-		}
-		return nil, fmt.Errorf("failed to get latest pending payment receipt form: %w", err)
+
+	if err := query.Find(&forms).Error; err != nil {
+		return nil, fmt.Errorf("failed to get latest payment receipt forms: %w", err)
 	}
-	return &form, nil
+	return forms, nil
 }

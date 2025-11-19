@@ -23,7 +23,7 @@ type PaymentReceiptFormService interface {
 	RejectPaymentReceiptForm(ctx context.Context, id uint) error
 	DeletePaymentReceiptForm(ctx context.Context, id uint) error
 	SearchPaymentReceiptForms(ctx context.Context, query string, req *dto.PaymentReceiptFormListRequest) ([]models.PaymentReceiptForm, int64, error)
-	LatestPendingPaymentReceiptFormStream(ctx context.Context, purchaseOrderID uint) (*models.PaymentReceiptForm, error)
+	LatestPendingPaymentReceiptFormStream(ctx context.Context, purchaseOrderID uint, limit int) ([]*models.PaymentReceiptForm, error)
 }
 
 type paymentReceiptFormService struct {
@@ -249,11 +249,11 @@ func (s *paymentReceiptFormService) SearchPaymentReceiptForms(ctx context.Contex
 	return forms, total, nil
 }
 
-// LatestPendingPaymentReceiptFormStream retrieves the latest payment receipt form in pending status
-func (s *paymentReceiptFormService) LatestPendingPaymentReceiptFormStream(ctx context.Context, purchaseOrderID uint) (*models.PaymentReceiptForm, error) {
-	form, err := s.paymentReceiptFormRepo.GetLatestPaymentReceiptForm(ctx, purchaseOrderID, models.PaymentReceiptFormStatusPending)
+// LatestPendingPaymentReceiptFormStream retrieves the latest payment receipt forms in pending status
+func (s *paymentReceiptFormService) LatestPendingPaymentReceiptFormStream(ctx context.Context, purchaseOrderID uint, limit int) ([]*models.PaymentReceiptForm, error) {
+	forms, err := s.paymentReceiptFormRepo.GetLatestPaymentReceiptForms(ctx, purchaseOrderID, models.PaymentReceiptFormStatusPending, limit)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get latest pending payment receipt form: %w", err)
+		return nil, fmt.Errorf("failed to get latest pending payment receipt forms: %w", err)
 	}
-	return form, nil
+	return forms, nil
 }

@@ -70,12 +70,12 @@ func (m *MockPaymentReceiptFormRepository) UpdateStatus(ctx context.Context, id 
 	return args.Error(0)
 }
 
-func (m *MockPaymentReceiptFormRepository) GetLatestPaymentReceiptForm(ctx context.Context, purchaseOrderID uint, status models.PaymentReceiptFormStatus) (*models.PaymentReceiptForm, error) {
-	args := m.Called(ctx, purchaseOrderID, status)
+func (m *MockPaymentReceiptFormRepository) GetLatestPaymentReceiptForms(ctx context.Context, purchaseOrderID uint, status models.PaymentReceiptFormStatus, limit int) ([]*models.PaymentReceiptForm, error) {
+	args := m.Called(ctx, purchaseOrderID, status, limit)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
 	}
-	return args.Get(0).(*models.PaymentReceiptForm), args.Error(1)
+	return args.Get(0).([]*models.PaymentReceiptForm), args.Error(1)
 }
 
 func TestPaymentReceiptFormService_CreatePaymentReceiptForm(t *testing.T) {
@@ -221,59 +221,50 @@ func TestPaymentReceiptFormService_CreatePaymentReceiptForm(t *testing.T) {
 
 func TestPaymentReceiptFormService_LatestPendingPaymentReceiptFormStream(t *testing.T) {
 	tests := []struct {
-		name        string
-		expectError bool
-		errorCode   pkg.ErrorCode
-		mockForm    *models.PaymentReceiptForm
+		name           string
+		expectedForms  []*models.PaymentReceiptForm
+		expectedLength int
+		expectError    bool
 	}{
 		{
-			name:        "should get latest pending payment receipt form successfully",
-			expectError: false,
-			mockForm: &models.PaymentReceiptForm{
-				FullName:    "John Doe",
-				Department:  "Finance",
-				Details:     "Office supplies",
-				TotalAmount: 100.50,
-				Status:      models.PaymentReceiptFormStatusPending,
+			name: "should get latest pending payment receipt form successfully",
+			expectedForms: []*models.PaymentReceiptForm{
+				{
+					FullName:    "John Doe",
+					Department:  "Finance",
+					Details:     "Office supplies",
+					TotalAmount: 100.50,
+					Status:      models.PaymentReceiptFormStatusPending,
+				},
 			},
+			expectedLength: 1,
 		},
 		{
-			name:        "should return not found error when no pending form exists",
-			expectError: true,
-			errorCode:   pkg.ErrorCodeNotFound,
-			mockForm:    nil,
+			name:           "should return empty slice when no pending form exists",
+			expectedForms:  []*models.PaymentReceiptForm{},
+			expectedLength: 0,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// Arrange
 			mockRepo := new(MockPaymentReceiptFormRepository)
 			service := NewPaymentReceiptFormService(mockRepo, nil)
 
-			if tt.expectError {
-				mockRepo.On("GetLatestPaymentReceiptForm", mock.Anything, uint(0), models.PaymentReceiptFormStatusPending).Return(nil, pkg.NewAppError(tt.errorCode, "No pending payment receipt form found", nil))
-			} else {
-				mockRepo.On("GetLatestPaymentReceiptForm", mock.Anything, uint(0), models.PaymentReceiptFormStatusPending).Return(tt.mockForm, nil)
-			}
+			mockRepo.On("GetLatestPaymentReceiptForms", mock.Anything, uint(0), models.PaymentReceiptFormStatusPending, 5).Return(tt.expectedForms, nil)
 
-			// Act
-			result, err := service.LatestPendingPaymentReceiptFormStream(context.Background(), 0)
+			result, err := service.LatestPendingPaymentReceiptFormStream(context.Background(), 0, 5)
 
-			// Assert
 			if tt.expectError {
 				assert.Error(t, err)
-				if appErr, ok := err.(*pkg.AppError); ok {
-					assert.Equal(t, tt.errorCode, appErr.Code)
-				}
 				assert.Nil(t, result)
-			} else {
-				assert.NoError(t, err)
-				assert.NotNil(t, result)
-				assert.Equal(t, tt.mockForm.FullName, result.FullName)
-				assert.Equal(t, tt.mockForm.Status, result.Status)
-				mockRepo.AssertExpectations(t)
+				return
 			}
+
+			assert.NoError(t, err)
+			require.NotNil(t, result)
+			assert.Equal(t, tt.expectedLength, len(result))
+			mockRepo.AssertExpectations(t)
 		})
 	}
 }

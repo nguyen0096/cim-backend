@@ -37,6 +37,7 @@ func (c *ClientConnection) Close() {
 type PaymentReceiptFormHandler struct {
 	paymentReceiptFormService services.PaymentReceiptFormService
 	settingsService           services.SettingsService
+	purchaseOrderService      services.PurchaseOrderService
 	logger                    *logrus.Logger
 	// Notification system
 	clients   sync.Map
@@ -44,9 +45,10 @@ type PaymentReceiptFormHandler struct {
 }
 
 // NewPaymentReceiptFormHandler creates a new payment receipt form handler
-func NewPaymentReceiptFormHandler(paymentReceiptFormService services.PaymentReceiptFormService, settingsService services.SettingsService, logger *logrus.Logger) *PaymentReceiptFormHandler {
+func NewPaymentReceiptFormHandler(paymentReceiptFormService services.PaymentReceiptFormService, purchaseOrderService services.PurchaseOrderService, settingsService services.SettingsService, logger *logrus.Logger) *PaymentReceiptFormHandler {
 	handler := &PaymentReceiptFormHandler{
 		paymentReceiptFormService: paymentReceiptFormService,
+		purchaseOrderService:      purchaseOrderService,
 		settingsService:           settingsService,
 		logger:                    logger,
 		broadcast:                 make(chan NotificationMessage),
@@ -149,14 +151,14 @@ func (h *PaymentReceiptFormHandler) CreatePaymentReceiptForm(c echo.Context) err
 	}
 
 	// Check if there's already a pending form
-	pendingForm, err := h.paymentReceiptFormService.LatestPendingPaymentReceiptFormStream(c.Request().Context(), payload.PurchaseOrderID)
-	if err != nil {
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to check for pending forms"})
-	}
+	// pendingForm, err := h.paymentReceiptFormService.LatestPendingPaymentReceiptFormStream(c.Request().Context(), payload.PurchaseOrderID)
+	// if err != nil {
+	// 	return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to check for pending forms"})
+	// }
 
-	if pendingForm != nil {
-		return c.JSON(http.StatusConflict, map[string]string{"error": "There is already a pending payment receipt form. Please complete or cancel the existing form before creating a new one."})
-	}
+	// if pendingForm != nil {
+	// 	return c.JSON(http.StatusConflict, map[string]string{"error": "There is already a pending payment receipt form. Please complete or cancel the existing form before creating a new one."})
+	// }
 
 	form, err := payload.ToPaymentReceiptForm()
 	if err != nil {
@@ -181,15 +183,22 @@ func (h *PaymentReceiptFormHandler) CreatePaymentReceiptForm(c echo.Context) err
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to create payment receipt form"})
 	}
 
+	// Get the purchase order (to retrieve its order number)
+	po, err := h.purchaseOrderService.GetPurchaseOrderByID(form.PurchaseOrderID)
+	if err != nil {
+		if appErr, ok := err.(*pkg.AppError); ok {
+			return c.JSON(appErr.HTTPStatus(), map[string]string{"error": appErr.Message})
+		}
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to retrieve purchase order"})
+	}
+	if po != nil {
+		form.PurchaseOrder = po
+	}
+
 	// Send notification to all connected clients
 	notification := NotificationMessage{
-		Type: "pending_form_update",
-		Data: map[string]interface{}{
-			"status":            "pending",
-			"id":                form.ID,
-			"purchase_order_id": form.PurchaseOrderID,
-			"purchase_order":    form.PurchaseOrder,
-		},
+		Type:      "pending_form_update",
+		Data:      form,
 		Timestamp: time.Now().UTC(),
 	}
 
@@ -607,9 +616,9 @@ func (h *PaymentReceiptFormHandler) SendKeepAlive(c echo.Context) error {
 	return h.sendSSEEvent(c, "keep_alive", keepAliveData)
 }
 
-// sendInitialPendingForm sends the current pending form if it exists
+// sendInitialPendingForm sends the current pending form(s) if they exist
 func (h *PaymentReceiptFormHandler) sendInitialPendingForm(c echo.Context) error {
-	form, err := h.paymentReceiptFormService.LatestPendingPaymentReceiptFormStream(c.Request().Context(), 0)
+	forms, err := h.paymentReceiptFormService.LatestPendingPaymentReceiptFormStream(c.Request().Context(), 0, 0)
 	if err != nil {
 		// Send error event
 		errorData := map[string]interface{}{
@@ -619,13 +628,18 @@ func (h *PaymentReceiptFormHandler) sendInitialPendingForm(c echo.Context) error
 		return h.sendSSEEvent(c, "error", errorData)
 	}
 
-	if form != nil {
-		return h.sendSSEEvent(c, "pending_form_update", form)
-	} else {
-		// No pending form
+	if len(forms) == 0 {
 		eventData := map[string]interface{}{
 			"message": "No pending payment receipt form found",
 		}
 		return h.sendSSEEvent(c, "pending_form_update", eventData)
 	}
+
+	for _, form := range forms {
+		if err := h.sendSSEEvent(c, "pending_form_update", form); err != nil {
+			return fmt.Errorf("failed to send pending form: %w", err)
+		}
+	}
+
+	return nil
 }

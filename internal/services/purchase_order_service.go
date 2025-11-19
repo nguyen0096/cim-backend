@@ -338,7 +338,7 @@ func (s *purchaseOrderService) UpdatePurchaseOrderStatus(ctx context.Context, id
 
 	if status == models.PurchaseOrderStatusCompleted {
 		// Check if there is an approved payment receipt form before completing
-		approvedForm, err := s.paymentReceiptFormRepo.GetLatestPaymentReceiptForm(ctx, id, models.PaymentReceiptFormStatusApproved)
+		forms, err := s.paymentReceiptFormRepo.GetLatestPaymentReceiptForms(ctx, id, models.PaymentReceiptFormStatusApproved, 1)
 		if err != nil {
 			s.logger.WithFields(logrus.Fields{
 				"operation":         "UpdatePurchaseOrderStatus",
@@ -348,7 +348,7 @@ func (s *purchaseOrderService) UpdatePurchaseOrderStatus(ctx context.Context, id
 			return fmt.Errorf("failed to check for approved payment receipt form: %w", err)
 		}
 
-		if approvedForm == nil {
+		if len(forms) == 0 {
 			s.logger.WithFields(logrus.Fields{
 				"operation":         "UpdatePurchaseOrderStatus",
 				"purchase_order_id": id,
@@ -356,6 +356,7 @@ func (s *purchaseOrderService) UpdatePurchaseOrderStatus(ctx context.Context, id
 			return pkg.ErrNoApprovedPaymentReceiptForm()
 		}
 
+		approvedForm := forms[0]
 		go s.queueRevenueExpenseRequest(approvedForm.ID)
 	}
 
@@ -1222,4 +1223,3 @@ func (s *purchaseOrderService) convertQuantityBetweenUnits(
 
 	return targetQuantity, nil
 }
-
