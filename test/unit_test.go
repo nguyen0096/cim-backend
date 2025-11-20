@@ -388,7 +388,7 @@ var _ = Describe("Unit API", func() {
 		It("should search units by name", func() {
 			client := NewClient(tenv, models.RoleAdmin)
 
-			resp, err := client.MakeRequest("GET", "/api/v1/units?q=Kilogram", nil, WithAuth())
+			resp, err := client.MakeRequest("GET", "/api/v1/units", nil, WithAuth(), WithParams(map[string]string{"q": "Kilogram"}))
 			Expect(err).NotTo(HaveOccurred())
 			Expect(resp.StatusCode).To(Equal(200))
 
@@ -409,7 +409,7 @@ var _ = Describe("Unit API", func() {
 		It("should search units by symbol", func() {
 			client := NewClient(tenv, models.RoleAdmin)
 
-			resp, err := client.MakeRequest("GET", "/api/v1/units?q=ml", nil, WithAuth())
+			resp, err := client.MakeRequest("GET", "/api/v1/units", nil, WithAuth(), WithParams(map[string]string{"q": "ml"}))
 			Expect(err).NotTo(HaveOccurred())
 			Expect(resp.StatusCode).To(Equal(200))
 
@@ -430,7 +430,7 @@ var _ = Describe("Unit API", func() {
 		It("should search units case-insensitively", func() {
 			client := NewClient(tenv, models.RoleAdmin)
 
-			resp, err := client.MakeRequest("GET", "/api/v1/units?q=LITER", nil, WithAuth())
+			resp, err := client.MakeRequest("GET", "/api/v1/units", nil, WithAuth(), WithParams(map[string]string{"q": "LITER"}))
 			Expect(err).NotTo(HaveOccurred())
 			Expect(resp.StatusCode).To(Equal(200))
 
@@ -451,7 +451,7 @@ var _ = Describe("Unit API", func() {
 		It("should search units with unit_type filter", func() {
 			client := NewClient(tenv, models.RoleAdmin)
 
-			resp, err := client.MakeRequest("GET", "/api/v1/units?q=Search&unit_type=mass", nil, WithAuth())
+			resp, err := client.MakeRequest("GET", "/api/v1/units", nil, WithAuth(), WithParams(map[string]string{"q": "Search", "unit_type": "mass"}))
 			Expect(err).NotTo(HaveOccurred())
 			Expect(resp.StatusCode).To(Equal(200))
 
@@ -466,7 +466,7 @@ var _ = Describe("Unit API", func() {
 		It("should search units with base_only filter", func() {
 			client := NewClient(tenv, models.RoleAdmin)
 
-			resp, err := client.MakeRequest("GET", "/api/v1/units?q=Search&base_only=true", nil, WithAuth())
+			resp, err := client.MakeRequest("GET", "/api/v1/units", nil, WithAuth(), WithParams(map[string]string{"q": "Search", "base_only": "true"}))
 			Expect(err).NotTo(HaveOccurred())
 			Expect(resp.StatusCode).To(Equal(200))
 
@@ -481,7 +481,7 @@ var _ = Describe("Unit API", func() {
 		It("should search units with pagination", func() {
 			client := NewClient(tenv, models.RoleAdmin)
 
-			resp, err := client.MakeRequest("GET", "/api/v1/units?q=Search&limit=2&page=1", nil, WithAuth())
+			resp, err := client.MakeRequest("GET", "/api/v1/units", nil, WithAuth(), WithParams(map[string]string{"q": "Search", "limit": "2", "page": "1"}))
 			Expect(err).NotTo(HaveOccurred())
 			Expect(resp.StatusCode).To(Equal(200))
 
@@ -495,7 +495,7 @@ var _ = Describe("Unit API", func() {
 		It("should return empty results for non-matching query", func() {
 			client := NewClient(tenv, models.RoleAdmin)
 
-			resp, err := client.MakeRequest("GET", "/api/v1/units?q=NonExistentUnit12345", nil, WithAuth())
+			resp, err := client.MakeRequest("GET", "/api/v1/units", nil, WithAuth(), WithParams(map[string]string{"q": "NonExistentUnit12345"}))
 			Expect(err).NotTo(HaveOccurred())
 			Expect(resp.StatusCode).To(Equal(200))
 

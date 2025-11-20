@@ -86,6 +86,19 @@ func WithAuth() RequestOptions {
 	}
 }
 
+// WithParams adds query parameters to the request.
+func WithParams(params map[string]string) RequestOptions {
+	return func(client *Client, req *http.Request) {
+		if len(params) > 0 {
+			q := req.URL.Query()
+			for key, value := range params {
+				q.Set(key, value)
+			}
+			req.URL.RawQuery = q.Encode()
+		}
+	}
+}
+
 // MakeRequest makes an HTTP request to the test server with auth headers
 func (c *Client) MakeRequest(
 	method, path string,
