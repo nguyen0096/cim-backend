@@ -224,7 +224,7 @@ func (t *TestBox) InitMockDependencies() {
 
 func (t *TestBox) InitAndStartServer() {
 	var err error
-	t.Server, err = server.SetupServer(&t.Config, t.DB, t.AuthMock, log.Logger)
+	t.Server, err = server.SetupServer(&t.Config, t.DB, t.AuthMock)
 	Expect(err).NotTo(HaveOccurred(), "Failed to setup server")
 
 	listener, err := net.Listen("tcp", fmt.Sprintf(":%s", testServerPort))

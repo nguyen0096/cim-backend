@@ -46,7 +46,6 @@ type purchaseOrderService struct {
 	excelService               ExcelService
 	settingsService            SettingsService
 	db                         *gorm.DB
-	logger                     *logrus.Logger
 	revenueExpenseRequestQueue chan revenueExpenseRequest
 }
 
@@ -65,7 +64,6 @@ func NewPurchaseOrderService(
 	excelService ExcelService,
 	settingsService SettingsService,
 	db *gorm.DB,
-	logger *logrus.Logger,
 ) PurchaseOrderService {
 	// Create a buffered channel to queue revenue expense requests
 	// Buffer size of 100 allows queuing up to 100 requests without blocking
@@ -80,7 +78,6 @@ func NewPurchaseOrderService(
 		excelService:               excelService,
 		settingsService:            settingsService,
 		db:                         db,
-		logger:                     logger,
 		revenueExpenseRequestQueue: requestQueue,
 	}
 

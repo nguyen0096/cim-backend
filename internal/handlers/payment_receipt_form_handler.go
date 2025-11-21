@@ -5,6 +5,7 @@ import (
 	"cim-backend/internal/services"
 	"cim-backend/internal/services/dto"
 	"cim-backend/pkg"
+	"cim-backend/pkg/log"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -38,19 +39,17 @@ type PaymentReceiptFormHandler struct {
 	paymentReceiptFormService services.PaymentReceiptFormService
 	settingsService           services.SettingsService
 	purchaseOrderService      services.PurchaseOrderService
-	logger                    *logrus.Logger
 	// Notification system
 	clients   sync.Map
 	broadcast chan NotificationMessage
 }
 
 // NewPaymentReceiptFormHandler creates a new payment receipt form handler
-func NewPaymentReceiptFormHandler(paymentReceiptFormService services.PaymentReceiptFormService, purchaseOrderService services.PurchaseOrderService, settingsService services.SettingsService, logger *logrus.Logger) *PaymentReceiptFormHandler {
+func NewPaymentReceiptFormHandler(paymentReceiptFormService services.PaymentReceiptFormService, purchaseOrderService services.PurchaseOrderService, settingsService services.SettingsService) *PaymentReceiptFormHandler {
 	handler := &PaymentReceiptFormHandler{
 		paymentReceiptFormService: paymentReceiptFormService,
 		purchaseOrderService:      purchaseOrderService,
 		settingsService:           settingsService,
-		logger:                    logger,
 		broadcast:                 make(chan NotificationMessage),
 	}
 
@@ -62,7 +61,7 @@ func NewPaymentReceiptFormHandler(paymentReceiptFormService services.PaymentRece
 
 func (h *PaymentReceiptFormHandler) registerClient(client *ClientConnection) {
 	h.clients.Store(client.ID, client)
-	h.logger.WithFields(logrus.Fields{
+	log.WithFields(logrus.Fields{
 		"client_id":         client.ID,
 		"total_connections": h.getConnectionCount(),
 	}).Info("Client connected")
@@ -73,7 +72,7 @@ func (h *PaymentReceiptFormHandler) unregisterClient(clientID string) {
 		client.(*ClientConnection).Close()
 	}
 
-	h.logger.WithFields(logrus.Fields{
+	log.WithFields(logrus.Fields{
 		"client_id":         clientID,
 		"total_connections": h.getConnectionCount(),
 	}).Info("Client disconnected")
@@ -111,7 +110,7 @@ func (h *PaymentReceiptFormHandler) getAllClients() []*ClientConnection {
 func (h *PaymentReceiptFormHandler) runNotificationHub() {
 	for message := range h.broadcast {
 		connectionCount := h.getConnectionCount()
-		h.logger.WithFields(logrus.Fields{
+		log.WithFields(logrus.Fields{
 			"message_type":      message.Type,
 			"total_connections": connectionCount,
 		}).Info("Broadcasting message to connected clients")
@@ -122,7 +121,7 @@ func (h *PaymentReceiptFormHandler) runNotificationHub() {
 			case client.SendChan <- message:
 			default:
 				// Client channel is full, skip this client
-				h.logger.WithField("client_id", client.ID).Warn("Client channel full, skipping message")
+				log.WithField("client_id", client.ID).Warn("Client channel full, skipping message")
 			}
 			return true
 		})
@@ -205,14 +204,14 @@ func (h *PaymentReceiptFormHandler) CreatePaymentReceiptForm(c echo.Context) err
 	// Broadcast to all connected clients
 	select {
 	case h.broadcast <- notification:
-		h.logger.WithFields(logrus.Fields{
+		log.WithFields(logrus.Fields{
 			"form_id":    form.ID,
 			"full_name":  form.FullName,
 			"department": form.Department,
 		}).Info("Form created and notification queued for broadcast")
 	default:
 		// Broadcast channel is full, continue without blocking
-		h.logger.Warn("Broadcast channel full, notification not sent")
+		log.Warn("Broadcast channel full, notification not sent")
 	}
 
 	return c.JSON(http.StatusCreated, form)
@@ -347,7 +346,7 @@ func (h *PaymentReceiptFormHandler) SubmitPaymentReceiptForm(c echo.Context) err
 		if appErr, ok := err.(*pkg.AppError); ok {
 			return c.JSON(appErr.HTTPStatus(), map[string]string{"error": appErr.Message})
 		}
-		h.logger.WithFields(logrus.Fields{
+		log.WithFields(logrus.Fields{
 			"error":   err.Error(),
 			"details": "Failed to submit payment receipt form",
 		}).Error("Failed to submit payment receipt form")
@@ -399,7 +398,7 @@ func (h *PaymentReceiptFormHandler) UpdatePaymentReceiptForm(c echo.Context) err
 		if appErr, ok := err.(*pkg.AppError); ok {
 			return c.JSON(appErr.HTTPStatus(), map[string]string{"error": appErr.Message})
 		}
-		h.logger.WithFields(logrus.Fields{
+		log.WithFields(logrus.Fields{
 			"error":   err.Error(),
 			"details": "Failed to update payment receipt form",
 		}).Error("Failed to update payment receipt form")
@@ -538,7 +537,7 @@ func (h *PaymentReceiptFormHandler) LatestPendingPaymentReceiptFormStream(c echo
 
 	client := h.getClientConnection(clientID)
 	if client != nil {
-		h.logger.WithField("client_id", clientID).Info("Another connection has been made, closing old connection")
+		log.WithField("client_id", clientID).Info("Another connection has been made, closing old connection")
 		h.unregisterClient(clientID)
 	}
 
@@ -558,7 +557,7 @@ func (h *PaymentReceiptFormHandler) LatestPendingPaymentReceiptFormStream(c echo
 
 	// Send initial pending form if exists
 	if err := h.sendInitialPendingForm(c); err != nil {
-		h.logger.WithFields(logrus.Fields{
+		log.WithFields(logrus.Fields{
 			"client_id": clientID,
 			"error":     err.Error(),
 		}).Error("Failed to send initial pending form")
@@ -570,7 +569,7 @@ func (h *PaymentReceiptFormHandler) LatestPendingPaymentReceiptFormStream(c echo
 		select {
 		case <-c.Request().Context().Done():
 			// Client disconnected
-			h.logger.WithField("client_id", clientID).Info("SSE client disconnected")
+			log.WithField("client_id", clientID).Info("SSE client disconnected")
 			return nil
 		case notification := <-client.SendChan:
 			// Send notification to client

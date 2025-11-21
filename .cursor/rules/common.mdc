@@ -97,3 +97,7 @@ internal/
 - Always validate inputs and check for nil or out-of-range access before use.
 - Use the “comma-ok” pattern for type assertions and safe defaults for empty results.
 - **Goal:** no panic should ever reach production — all errors must be caught, wrapped, and returned.
+
+### Logging
+
+All logs must be done using "cim-backend/pkg/log". This package has a default logger initialized to avoid nil logger case.

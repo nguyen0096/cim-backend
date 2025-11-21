@@ -16,7 +16,6 @@ import (
 
 	"github.com/labstack/echo/v4"
 	echoMiddleware "github.com/labstack/echo/v4/middleware"
-	"github.com/sirupsen/logrus"
 	echoSwagger "github.com/swaggo/echo-swagger"
 	"gorm.io/gorm"
 )
@@ -27,7 +26,6 @@ func SetupServer(
 	cfg *config.Config,
 	db *gorm.DB,
 	firebaseAuth auth.FirebaseAuthInterface,
-	logger *logrus.Logger,
 ) (*echo.Echo, error) {
 	// Initialize Casbin service for authorization
 	casbinService, err := auth.NewCasbinService(db, cfg.Casbin)
@@ -56,21 +54,21 @@ func SetupServer(
 	inventoryService := services.NewInventoryService(inventoryRepo, inventoryItemRepo, inventorySubmissionRepo, productRepo)
 	inventoryItemService := services.NewInventoryItemService(inventoryItemRepo, inventoryRepo, productRepo)
 	excelService := services.NewExcelService(productRepo, inventoryRepo, settingsService)
-	purchaseOrderService := services.NewPurchaseOrderService(purchaseOrderRepo, paymentReceiptFormRepo, unitRepo, productRepo, inventoryService, excelService, settingsService, db, logger)
+	purchaseOrderService := services.NewPurchaseOrderService(purchaseOrderRepo, paymentReceiptFormRepo, unitRepo, productRepo, inventoryService, excelService, settingsService, db)
 	paymentReceiptFormService := services.NewPaymentReceiptFormService(paymentReceiptFormRepo, db)
 
 	// Initialize handlers
 	userHandler := handlers.NewUserHandler(userService, firebaseAuth)
 	supplierHandler := handlers.NewSupplierHandler(supplierService)
 	unitHandler := handlers.NewUnitHandler(unitService)
-	productHandler := handlers.NewProductHandler(productService, logger)
+	productHandler := handlers.NewProductHandler(productService)
 	inventoryHandler := handlers.NewInventoryHandler(inventoryService)
 	inventoryItemHandler := handlers.NewInventoryItemHandler(inventoryItemService)
-	purchaseOrderHandler := handlers.NewPurchaseOrderHandler(purchaseOrderRepo, purchaseOrderService, logger)
+	purchaseOrderHandler := handlers.NewPurchaseOrderHandler(purchaseOrderRepo, purchaseOrderService)
 	excelHandler := handlers.NewExcelHandler(excelService)
 	settingsHandler := handlers.NewSettingsHandler(settingsService)
-	paymentReceiptFormHandler := handlers.NewPaymentReceiptFormHandler(paymentReceiptFormService, purchaseOrderService, settingsService, logger)
-	revenueExpenseHandler := handlers.NewRevenueExpenseHandler(excelService, settingsService, logger)
+	paymentReceiptFormHandler := handlers.NewPaymentReceiptFormHandler(paymentReceiptFormService, purchaseOrderService, settingsService)
+	revenueExpenseHandler := handlers.NewRevenueExpenseHandler(excelService, settingsService)
 
 	// Initialize Echo
 	e := echo.New()

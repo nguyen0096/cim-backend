@@ -5,9 +5,7 @@ import (
 	"cim-backend/internal/auth"
 	"cim-backend/internal/config"
 	"cim-backend/internal/server"
-	"log"
-
-	"github.com/sirupsen/logrus"
+	"cim-backend/pkg/log"
 )
 
 // @title Import Export Backend API
@@ -35,9 +33,9 @@ func main() {
 	cfg := config.Load()
 
 	// Initialize logger
-	logger := logrus.New()
-	logger.SetLevel(logrus.InfoLevel)
-	logger.Infof("Starting application in %s environment", cfg.Environment)
+	log.MustInit(cfg.Log)
+
+	log.Infof("Starting application in %s environment", cfg.Environment)
 
 	// Initialize Firebase Auth
 	firebaseAuth, err := auth.NewFirebaseAuthService(cfg.Firebase.ServiceAccountPath)
@@ -52,13 +50,13 @@ func main() {
 	}
 
 	// Setup server with all routes and middleware
-	e, err := server.SetupServer(cfg, db, firebaseAuth, logger)
+	e, err := server.SetupServer(cfg, db, firebaseAuth)
 	if err != nil {
 		log.Fatal("Failed to setup server:", err)
 	}
 
 	// Start server
-	logger.Infof("Server starting on %s:%s", cfg.Server.Host, cfg.Server.Port)
+	log.Infof("Server starting on %s:%s", cfg.Server.Host, cfg.Server.Port)
 	if err := e.Start(cfg.Server.Host + ":" + cfg.Server.Port); err != nil {
 		log.Fatal("Failed to start server:", err)
 	}

@@ -4,6 +4,7 @@ import (
 	"cim-backend/internal/models"
 	"cim-backend/internal/services"
 	"cim-backend/pkg"
+	"cim-backend/pkg/log"
 	"net/http"
 	"path/filepath"
 	"time"
@@ -65,13 +66,11 @@ func (r *ProductSearchRequest) SetDefaults() {
 
 type ProductHandler struct {
 	productService services.ProductService
-	logger         *logrus.Logger
 }
 
-func NewProductHandler(productService services.ProductService, logger *logrus.Logger) *ProductHandler {
+func NewProductHandler(productService services.ProductService) *ProductHandler {
 	return &ProductHandler{
 		productService: productService,
-		logger:         logger,
 	}
 }
 
@@ -82,7 +81,7 @@ func (h *ProductHandler) getRequestLogger(c echo.Context, operation string) *log
 		correlationID = uuid.New().String()
 	}
 
-	return h.logger.WithFields(logrus.Fields{
+	return log.Logger.WithFields(logrus.Fields{
 		"operation":      operation,
 		"method":         c.Request().Method,
 		"path":           c.Request().URL.Path,

@@ -4,6 +4,7 @@ import (
 	"cim-backend/internal/config"
 	"cim-backend/internal/services"
 	"cim-backend/pkg"
+	"cim-backend/pkg/log"
 	"net/http"
 	"time"
 
@@ -14,15 +15,13 @@ import (
 type RevenueExpenseHandler struct {
 	excelService    services.ExcelService
 	settingsService services.SettingsService
-	logger          *logrus.Logger
 }
 
 // NewRevenueExpenseHandler creates a new RevenueExpenseHandler
-func NewRevenueExpenseHandler(excelService services.ExcelService, settingsService services.SettingsService, logger *logrus.Logger) *RevenueExpenseHandler {
+func NewRevenueExpenseHandler(excelService services.ExcelService, settingsService services.SettingsService) *RevenueExpenseHandler {
 	return &RevenueExpenseHandler{
 		excelService:    excelService,
 		settingsService: settingsService,
-		logger:          logger,
 	}
 }
 
@@ -69,7 +68,7 @@ func (h *RevenueExpenseHandler) FinalizeRevenueExpense(c echo.Context) error {
 
 	var lastFinalizedDate time.Time
 	if err := h.settingsService.GetSettingValue(c.Request().Context(), config.LastFinalizedDateSettingsKey, &lastFinalizedDate); err != nil {
-		h.logger.WithFields(logrus.Fields{
+		log.WithFields(logrus.Fields{
 			"error":   err.Error(),
 			"details": "Failed to get last finalized date",
 		}).Error("Failed to get last finalized date")

@@ -20,7 +20,7 @@ func Test_generatePurchaseOrderNumber(t *testing.T) {
 	// Setup
 	mockRepo := repositorymocks.NewPurchaseOrderRepository(t)
 	// Note: Service mocks are not used in this test as it's not needed for generatePurchaseOrderNumber
-	service := NewPurchaseOrderService(mockRepo, nil, nil, nil, nil, nil, nil, nil, nil).(*purchaseOrderService)
+	service := NewPurchaseOrderService(mockRepo, nil, nil, nil, nil, nil, nil, nil).(*purchaseOrderService)
 
 	t.Run("should generate valid purchase order number format", func(t *testing.T) {
 		// Execute
@@ -58,7 +58,7 @@ func TestCreatePurchaseOrder(t *testing.T) {
 	t.Run("should create purchase order with auto-generated order number when empty", func(t *testing.T) {
 		// Setup
 		mockRepo := repositorymocks.NewPurchaseOrderRepository(t)
-		service := NewPurchaseOrderService(mockRepo, nil, nil, nil, nil, nil, nil, nil, nil)
+		service := NewPurchaseOrderService(mockRepo, nil, nil, nil, nil, nil, nil, nil)
 
 		purchaseOrder := &models.PurchaseOrder{
 			// OrderNumber is empty - should be auto-generated
@@ -97,7 +97,7 @@ func TestCreatePurchaseOrder(t *testing.T) {
 	t.Run("should create purchase order without changing provided order number", func(t *testing.T) {
 		// Setup
 		mockRepo := repositorymocks.NewPurchaseOrderRepository(t)
-		service := NewPurchaseOrderService(mockRepo, nil, nil, nil, nil, nil, nil, nil, nil)
+		service := NewPurchaseOrderService(mockRepo, nil, nil, nil, nil, nil, nil, nil)
 
 		existingOrderNumber := "CUSTOM-PO-123"
 		purchaseOrder := &models.PurchaseOrder{
@@ -128,7 +128,7 @@ func TestCreatePurchaseOrder(t *testing.T) {
 	t.Run("should return error when repository fails", func(t *testing.T) {
 		// Setup
 		mockRepo := repositorymocks.NewPurchaseOrderRepository(t)
-		service := NewPurchaseOrderService(mockRepo, nil, nil, nil, nil, nil, nil, nil, nil)
+		service := NewPurchaseOrderService(mockRepo, nil, nil, nil, nil, nil, nil, nil)
 
 		purchaseOrder := &models.PurchaseOrder{
 			Status:      models.PurchaseOrderStatusOrderPlaced,
@@ -157,7 +157,7 @@ func TestUpdatePurchaseOrderStatus_WithApprovalCheck(t *testing.T) {
 		// Setup
 		mockRepo := repositorymocks.NewPurchaseOrderRepository(t)
 		mockPaymentRepo := &mockPaymentReceiptFormRepository{}
-		service := NewPurchaseOrderService(mockRepo, mockPaymentRepo, nil, nil, nil, nil, nil, nil, nil)
+		service := NewPurchaseOrderService(mockRepo, mockPaymentRepo, nil, nil, nil, nil, nil, nil)
 
 		// Mock payment receipt form repository to return nil (no approved form found)
 		mockPaymentRepo.approvedForm = nil
@@ -178,7 +178,7 @@ func TestUpdatePurchaseOrderStatus_WithApprovalCheck(t *testing.T) {
 		// Setup
 		mockRepo := repositorymocks.NewPurchaseOrderRepository(t)
 		mockPaymentRepo := &mockPaymentReceiptFormRepository{}
-		service := NewPurchaseOrderService(mockRepo, mockPaymentRepo, nil, nil, nil, nil, nil, nil, nil)
+		service := NewPurchaseOrderService(mockRepo, mockPaymentRepo, nil, nil, nil, nil, nil, nil)
 
 		// Mock the repository to return success for status update
 		mockRepo.On("UpdateStatus", mock.Anything, uint(1), models.PurchaseOrderStatusCompleted).Return(nil)

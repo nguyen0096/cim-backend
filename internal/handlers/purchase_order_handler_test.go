@@ -14,7 +14,6 @@ import (
 
 	"github.com/labstack/echo/v4"
 	"github.com/shopspring/decimal"
-	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
@@ -31,8 +30,7 @@ func TestCreatePurchaseOrder(t *testing.T) {
 	setupTest := func(t *testing.T) *testSetup {
 		mockRepo := repositorymocks.NewPurchaseOrderRepository(t)
 		mockService := servicemocks.NewPurchaseOrderService(t)
-		logger := logrus.New()
-		handler := NewPurchaseOrderHandler(mockRepo, mockService, logger)
+		handler := NewPurchaseOrderHandler(mockRepo, mockService)
 		e := echo.New()
 
 		// Set up the custom error handler to properly handle validation errors

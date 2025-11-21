@@ -6,6 +6,7 @@ import (
 	"cim-backend/internal/services"
 	"cim-backend/internal/services/dto"
 	"cim-backend/pkg"
+	"cim-backend/pkg/log"
 	"errors"
 	"fmt"
 	"net/http"
@@ -19,18 +20,15 @@ import (
 type PurchaseOrderHandler struct {
 	purchaseOrderRepository repository.PurchaseOrderRepository
 	purchaseOrderService    services.PurchaseOrderService
-	logger                  *logrus.Logger
 }
 
 func NewPurchaseOrderHandler(
 	purchaseOrderRepo repository.PurchaseOrderRepository,
 	purchaseOrderService services.PurchaseOrderService,
-	logger *logrus.Logger,
 ) *PurchaseOrderHandler {
 	return &PurchaseOrderHandler{
 		purchaseOrderRepository: purchaseOrderRepo,
 		purchaseOrderService:    purchaseOrderService,
-		logger:                  logger,
 	}
 }
 
@@ -40,7 +38,7 @@ func (h *PurchaseOrderHandler) getRequestLogger(c echo.Context, operation string
 		correlationID = uuid.New().String()
 	}
 
-	return h.logger.WithFields(logrus.Fields{
+	return log.Logger.WithFields(logrus.Fields{
 		"operation":      operation,
 		"method":         c.Request().Method,
 		"path":           c.Request().URL.Path,

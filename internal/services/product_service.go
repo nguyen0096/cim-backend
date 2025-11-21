@@ -523,6 +523,7 @@ func (s *productService) ImportProductsFromExcel(ctx context.Context, excelReade
 	for headerInx < len(rows) && len(rows[headerInx]) < 4 {
 		headerInx++
 	}
+	log.Debugf("headerInx: %d", headerInx)
 
 	// Check if we found a valid header row
 	if headerInx >= len(rows) {
@@ -540,6 +541,7 @@ func (s *productService) ImportProductsFromExcel(ctx context.Context, excelReade
 	for i := range header {
 		header[i] = strings.ToLower(strings.TrimSpace(header[i]))
 	}
+	log.Debugf("header: %v", header)
 
 	// Find column indices
 	nameIdx := -1
