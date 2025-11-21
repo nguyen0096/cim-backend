@@ -22,7 +22,7 @@ type PurchaseOrderItem struct {
 	Supplier         *Supplier               `json:"supplier,omitempty" gorm:"foreignKey:SupplierID"`
 	UnitID           *uint                   `json:"unit_id" gorm:"not null" validate:"required"`
 	Unit             *Unit                   `json:"unit,omitempty" gorm:"foreignKey:UnitID"`
-	UnitPrice        float64                 `json:"unit_price" gorm:"type:decimal(13,2)" validate:"min=0"`
+	UnitPrice        float64                 `json:"unit_price" gorm:"type:decimal(13,2)"validate:"min=0"`
 	Quantity         decimal.Decimal         `json:"quantity" gorm:"type:decimal(10,2);not null" validate:"required"`
 	ReceivedQuantity decimal.Decimal         `json:"received_quantity" gorm:"type:decimal(10,2);default:0"`
 	Status           PurchaseOrderItemStatus `json:"status" gorm:"default:awaiting_delivery;check:status IN ('awaiting_delivery', 'partially_delivered', 'delivered', 'cancelled')" example:"delivering"`

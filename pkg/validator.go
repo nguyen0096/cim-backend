@@ -7,7 +7,13 @@ import (
 	"github.com/go-playground/validator/v10"
 )
 
-var Validator = validator.New()
+var Validator *validator.Validate
+
+func init() {
+	Validator = validator.New()
+
+	// Validator.RegisterValidation("is-awesome", ValidateMyVal)
+}
 
 // IsCSVFile checks if the filename has a .csv extension
 func IsCSVFile(filename string) bool {
