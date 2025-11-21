@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"strings"
+	"time"
 
 	"cim-backend/internal/auth"
 	"cim-backend/internal/config"
@@ -83,20 +84,49 @@ func SetupServer(
 		LogURI:    true,
 		LogStatus: true,
 		LogValuesFunc: func(c echo.Context, values echoMiddleware.RequestLoggerValues) error {
-			log.WithFields(logrus.Fields{
-				"time":         values.StartTime,
-				"uri":          values.URI,
-				"method":       values.Method,
-				"status":       values.Status,
-				"latency":      values.Latency,
-				"remote_ip":    values.RemoteIP,
-				"user_agent":   values.UserAgent,
-				"error":        values.Error,
-				"router_path":  values.RoutePath,
-				"headers":      values.Headers,
-				"query_params": values.QueryParams,
-				"request_id":   values.RequestID,
-			}).Info("request")
+			req := c.Request()
+			res := c.Response()
+
+			fields := logrus.Fields{
+				"time":       values.StartTime.Format(time.RFC3339),
+				"remote_ip":  c.RealIP(),
+				"host":       req.Host,
+				"method":     values.Method,
+				"uri":        values.URI,
+				"path":       req.URL.Path,
+				"route":      c.Path(),
+				"protocol":   req.Proto,
+				"status":     values.Status,
+				"latency":    values.Latency.String(),
+				"latency_ms": values.Latency.Milliseconds(),
+				"bytes_in":   req.Header.Get(echo.HeaderContentLength),
+				"bytes_out":  res.Size,
+			}
+
+			// Add optional fields if present
+			if referer := req.Referer(); referer != "" {
+				fields["referer"] = referer
+			}
+			if userAgent := req.UserAgent(); userAgent != "" {
+				fields["user_agent"] = userAgent
+			}
+			if requestID := req.Header.Get(echo.HeaderXRequestID); requestID != "" {
+				fields["request_id"] = requestID
+			} else if requestID := res.Header().Get(echo.HeaderXRequestID); requestID != "" {
+				fields["request_id"] = requestID
+			}
+
+			logger := log.WithFields(fields)
+
+			if values.Error != nil || values.Status >= 400 {
+				if values.Error != nil {
+					logger.WithError(values.Error).Error("request error")
+				} else {
+					logger.Error("request error")
+				}
+			} else {
+				logger.Info("request success")
+			}
 			return nil
 		},
 	}))
