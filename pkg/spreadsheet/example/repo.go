@@ -1,13 +1,12 @@
-package googlesheets
+package integration
 
 import (
-	"context"
-	"fmt"
-	"strconv"
-
 	"cim-backend/internal/config"
 	"cim-backend/internal/models"
 	"cim-backend/pkg/spreadsheet"
+	"context"
+	"fmt"
+	"strconv"
 )
 
 type InventoryGoogleSheetsRepository interface {

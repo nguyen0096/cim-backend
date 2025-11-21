@@ -18,11 +18,11 @@ func TestListAvailableSheets(t *testing.T) {
 
 	// Check if Google Sheets config is set
 	if cfg.GoogleSheets.ServiceAccountPath == "" {
-		t.Skip(skipMessageServiceAccount)
+		t.Skip("GOOGLE_SERVICE_ACCOUNT is not set")
 	}
 
 	if cfg.GoogleSheets.InventorySpreadsheetID == "" {
-		t.Skip(skipMessageSpreadsheetID)
+		t.Skip("INVENTORY_SPREADSHEET_ID is not set")
 	}
 
 	// Adjust service account path to be relative to test directory

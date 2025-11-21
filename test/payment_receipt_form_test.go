@@ -3,6 +3,8 @@ package apptest
 import (
 	"cim-backend/internal/models"
 	"cim-backend/pkg"
+	"cim-backend/pkg/testutil"
+	"cim-backend/pkg/testutil/fixture"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -50,27 +52,27 @@ var _ = Describe("Payment Receipt Form API", func() {
 		tenv.DB.WithContext(ctx).Exec("DELETE FROM payment_receipt_forms")
 
 		// Create test data
-		testUnit = tenv.WithUnit(models.Unit{
+		testUnit = fixture.WithUnit(tenv.ContextfulDB(), models.Unit{
 			Name:             fmt.Sprintf("SSE Unit %s", uuid.New().String()),
 			UnitType:         "general",
 			ConversionFactor: 1,
 		})
 
-		testSupplier = tenv.WithSupplier(models.Supplier{
+		testSupplier = fixture.WithSupplier(tenv.ContextfulDB(), models.Supplier{
 			Name: fmt.Sprintf("SSE Supplier %s", uuid.New().String()),
 		})
 
-		testProduct = tenv.WithProduct(models.Product{
+		testProduct = fixture.WithProduct(tenv.ContextfulDB(), models.Product{
 			Name:   fmt.Sprintf("SSE Product %s", uuid.New().String()),
 			UnitID: testUnit.ID,
 		})
 
-		testInventory = tenv.WithInventory(models.Inventory{
+		testInventory = fixture.WithInventory(tenv.ContextfulDB(), models.Inventory{
 			Name:     fmt.Sprintf("SSE Inventory %s", uuid.New().String()),
 			Location: "Automation Floor",
 		})
 
-		testPurchaseOrder = tenv.WithPurchaseOrder(models.PurchaseOrder{
+		testPurchaseOrder = fixture.WithPurchaseOrder(tenv.ContextfulDB(), models.PurchaseOrder{
 			OrderNumber: fmt.Sprintf("PO-%s", uuid.New().String()),
 			InventoryID: &testInventory.ID,
 			Status:      models.PurchaseOrderStatusOrderPlaced,
@@ -88,8 +90,8 @@ var _ = Describe("Payment Receipt Form API", func() {
 
 	Describe("Payment Receipt Form Pending Stream", func() {
 		It("should stream pending payment receipt form updates", func() {
-			adminClient := NewClient(tenv, models.RoleAdmin)
-			botClient := NewClient(tenv, models.RoleBotForm)
+			adminClient := testutil.NewClient(tenv, models.RoleAdmin)
+			botClient := testutil.NewClient(tenv, models.RoleBotForm)
 
 			sseURL := tenv.BaseURL + "/api/v1/payment-receipt-forms/pending"
 			sseCtx, sseCancel := context.WithCancel(context.Background())
@@ -123,11 +125,11 @@ var _ = Describe("Payment Receipt Form API", func() {
 				"details":           "Generated from SSE component test",
 				"total_amount":      125000,
 			}
-			resp, err := adminClient.MakeRequest("POST", "/api/v1/payment-receipt-forms", payload, WithAuth())
+			resp, err := adminClient.MakeRequest("POST", "/api/v1/payment-receipt-forms", payload, testutil.WithAuth())
 			Expect(err).NotTo(HaveOccurred())
 			Expect(resp.StatusCode).To(Equal(201))
 
-			formResp := ParseResponse(resp)
+			formResp := testutil.ParseResponse(resp)
 			createdFormID := uint(formResp["id"].(float64))
 
 			// Should receive pending event
@@ -156,7 +158,7 @@ var _ = Describe("Payment Receipt Form API", func() {
 
 		It("should get initial pending forms if there are any pending forms", func() {
 			ctx := pkg.WithUserEmail(context.Background(), "test@cim.local")
-			
+
 			testPendingForm := models.PaymentReceiptForm{
 				FormNumber:      pkg.Ptr(fmt.Sprintf("FORM-%s", uuid.New().String())),
 				PurchaseOrderID: testPurchaseOrder.ID,
@@ -174,7 +176,7 @@ var _ = Describe("Payment Receipt Form API", func() {
 				tenv.DB.WithContext(cleanupCtx).Delete(&models.PaymentReceiptForm{}, testPendingForm.ID)
 			})
 
-			botClient := NewClient(tenv, models.RoleBotForm)
+			botClient := testutil.NewClient(tenv, models.RoleBotForm)
 
 			sseURL := tenv.BaseURL + "/api/v1/payment-receipt-forms/pending"
 			sseCtx, sseCancel := context.WithCancel(context.Background())
@@ -237,7 +239,7 @@ var _ = Describe("Payment Receipt Form API", func() {
 				err := tenv.DB.WithContext(ctx).Create(&form).Error
 				Expect(err).NotTo(HaveOccurred())
 				createdForms = append(createdForms, form)
-				
+
 				formID := form.ID
 				DeferCleanup(func() {
 					cleanupCtx := pkg.WithUserEmail(context.Background(), "test@cim.local")
@@ -245,7 +247,7 @@ var _ = Describe("Payment Receipt Form API", func() {
 				})
 			}
 
-			botClient := NewClient(tenv, models.RoleBotForm)
+			botClient := testutil.NewClient(tenv, models.RoleBotForm)
 
 			sseURL := tenv.BaseURL + "/api/v1/payment-receipt-forms/pending?limit=2"
 			sseCtx, sseCancel := context.WithCancel(context.Background())
@@ -279,7 +281,7 @@ var _ = Describe("Payment Receipt Form API", func() {
 			ctx := pkg.WithUserEmail(context.Background(), "test@cim.local")
 			tenv.DB.WithContext(ctx).Exec("DELETE FROM payment_receipt_forms")
 
-			adminClient := NewClient(tenv, models.RoleAdmin)
+			adminClient := testutil.NewClient(tenv, models.RoleAdmin)
 
 			// Create multiple forms with the same date and purchase order (same inventory ID)
 			formDate := time.Now()
@@ -297,7 +299,7 @@ var _ = Describe("Payment Receipt Form API", func() {
 				err := tenv.DB.WithContext(ctx).Create(&form).Error
 				Expect(err).NotTo(HaveOccurred())
 				createdFormIDs = append(createdFormIDs, form.ID)
-				
+
 				formID := form.ID
 				DeferCleanup(func() {
 					cleanupCtx := pkg.WithUserEmail(context.Background(), "test@cim.local")
@@ -311,17 +313,17 @@ var _ = Describe("Payment Receipt Form API", func() {
 
 			for i, formID := range createdFormIDs {
 				approveURL := fmt.Sprintf("/api/v1/payment-receipt-forms/%d/approve", formID)
-				approveResp, err := adminClient.MakeRequest("PUT", approveURL, nil, WithAuth())
+				approveResp, err := adminClient.MakeRequest("PUT", approveURL, nil, testutil.WithAuth())
 				Expect(err).NotTo(HaveOccurred())
 				Expect(approveResp.StatusCode).To(Equal(200))
 
 				// Fetch the approved form to verify form number
 				getURL := fmt.Sprintf("/api/v1/payment-receipt-forms/%d", formID)
-				getResp, err := adminClient.MakeRequest("GET", getURL, nil, WithAuth())
+				getResp, err := adminClient.MakeRequest("GET", getURL, nil, testutil.WithAuth())
 				Expect(err).NotTo(HaveOccurred())
 				Expect(getResp.StatusCode).To(Equal(200))
 
-				formResp := ParseResponse(getResp)
+				formResp := testutil.ParseResponse(getResp)
 				formNumber, ok := formResp["form_number"].(string)
 				Expect(ok).To(BeTrue(), "form_number should be a string")
 				Expect(formNumber).NotTo(BeEmpty(), "form_number should not be empty")
@@ -333,4 +335,3 @@ var _ = Describe("Payment Receipt Form API", func() {
 		})
 	})
 })
-

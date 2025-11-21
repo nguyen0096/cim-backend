@@ -13,9 +13,9 @@ var (
 	Logger *logrus.Logger
 )
 
-// DefaultConfig provides a fallback configuration if MustNew is not called
+// DefaultConfig provides a fallback configuration if Logger is not initialized
 var DefaultConfig = Config{
-	LogLevel: logrus.InfoLevel,
+	LogLevel: logrus.ErrorLevel,
 }
 
 type Config struct {

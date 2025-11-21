@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"cim-backend/internal/models"
+	"cim-backend/pkg"
 )
 
 type PaymentReceiptFormListRequest struct {
@@ -52,14 +53,16 @@ func (p *PaymentReceiptFormPayload) ToPaymentReceiptForm() (*models.PaymentRecei
 	}
 	if strings.Contains(p.Date, "T") {
 		date, err := time.Parse(time.RFC3339, p.Date)
-		if err == nil {
-			model.Date = date
+		if err != nil {
+			return nil, pkg.NewAppError(pkg.ErrorCodeValidation, "Invalid date format. Expected RFC3339 format", err)
 		}
+		model.Date = date
 	} else {
 		date, err := time.Parse("2006-01-02", p.Date)
-		if err == nil {
-			model.Date = date
+		if err != nil {
+			return nil, pkg.NewAppError(pkg.ErrorCodeValidation, "Invalid date format. Expected YYYY-MM-DD format", err)
 		}
+		model.Date = date
 	}
 
 	return model, nil

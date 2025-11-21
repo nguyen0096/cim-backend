@@ -1,4 +1,4 @@
-package apptest
+package testutil
 
 import (
 	"context"
@@ -38,14 +38,14 @@ const (
 	suiteDeprovisionTimeout  = 10 * time.Second
 )
 
-// TestEnv holds all test infrastructure (database, server, etc.)
-type TestEnv struct {
+// TestBox holds all test components like infrastructure (database, server, etc.),
+// mocks, and default context.
+type TestBox struct {
 	Config      config.Config
 	DBContainer testcontainers.Container
 	DB          *gorm.DB
 	Server      *echo.Echo
 	BaseURL     string
-	originalDir string
 	Cleanup     func()
 
 	// Default context
@@ -55,7 +55,9 @@ type TestEnv struct {
 	AuthMock *authmocks.FirebaseAuthInterface
 }
 
-func (t *TestEnv) getDBConfig(ctx context.Context) (config.DatabaseConfig, error) {
+// GetTestContainerDBConfig returns the database configuration for the test container.
+// DB container must be provisioned before calling this function.
+func (t *TestBox) GetTestContainerDBConfig(ctx context.Context) (config.DatabaseConfig, error) {
 	var result config.DatabaseConfig
 
 	if t.DBContainer == nil {
@@ -83,11 +85,11 @@ func (t *TestEnv) getDBConfig(ctx context.Context) (config.DatabaseConfig, error
 	}, nil
 }
 
-func (t *TestEnv) loadConfig() {
+func (t *TestBox) GetConfig() {
 	ctx, cancel := context.WithTimeout(context.Background(), suiteSetupStepTimeout)
 	defer cancel()
 
-	dbConfig, err := t.getDBConfig(ctx)
+	dbConfig, err := t.GetTestContainerDBConfig(ctx)
 	Expect(err).NotTo(HaveOccurred(), "Failed to get database config")
 
 	t.Config = config.Config{
@@ -117,7 +119,7 @@ func (t *TestEnv) loadConfig() {
 	}
 }
 
-func (t *TestEnv) provisionDB() {
+func (t *TestBox) ProvisionDB() {
 	var err error
 
 	ctx, cancel := context.WithTimeout(context.Background(), suiteProvisionTimeout)
@@ -141,7 +143,7 @@ func (t *TestEnv) provisionDB() {
 	Expect(err).NotTo(HaveOccurred(), "Failed to provision database")
 }
 
-func (t *TestEnv) deprovisionDB() {
+func (t *TestBox) DeprovisionDB() {
 
 	// Terminate database container
 	if t.DBContainer != nil {
@@ -156,11 +158,11 @@ func (t *TestEnv) deprovisionDB() {
 	}
 }
 
-func (t *TestEnv) initDBConn() {
+func (t *TestBox) InitDBConn() {
 	ctx, cancel := context.WithTimeout(context.Background(), suiteSetupStepTimeout)
 	defer cancel()
 
-	dbConfig, err := t.getDBConfig(ctx)
+	dbConfig, err := t.GetTestContainerDBConfig(ctx)
 	Expect(err).NotTo(HaveOccurred(), "Failed to get database config")
 
 	// Retry connection with exponential backoff
@@ -186,7 +188,7 @@ func (t *TestEnv) initDBConn() {
 	t.DB = db
 }
 
-func (t *TestEnv) closeDBConn() {
+func (t *TestBox) CloseDBConn() {
 	if t.DB != nil {
 		sqlDB, err := t.DB.DB()
 		if err == nil {
@@ -200,7 +202,7 @@ func (t *TestEnv) closeDBConn() {
 	}
 }
 
-func (t *TestEnv) runMigrations() {
+func (t *TestBox) RunMigrations() {
 	if t.DB == nil {
 		Fail("Database connection not established")
 	}
@@ -211,16 +213,16 @@ func (t *TestEnv) runMigrations() {
 	}
 }
 
-func (t *TestEnv) initDependencies() {
+func (t *TestBox) InitDependencies() {
 	_, err := log.Init(t.Config.Log)
 	Expect(err).NotTo(HaveOccurred(), "Failed to initialize logger")
 }
 
-func (t *TestEnv) initMockDependencies() {
+func (t *TestBox) InitMockDependencies() {
 	t.AuthMock = &authmocks.FirebaseAuthInterface{}
 }
 
-func (t *TestEnv) initAndStartServer() {
+func (t *TestBox) InitAndStartServer() {
 	var err error
 	t.Server, err = server.SetupServer(&t.Config, t.DB, t.AuthMock, log.Logger)
 	Expect(err).NotTo(HaveOccurred(), "Failed to setup server")
@@ -249,7 +251,7 @@ func (t *TestEnv) initAndStartServer() {
 	}
 }
 
-func (t *TestEnv) shutdownServer() {
+func (t *TestBox) ShutdownServer() {
 	if t.Server != nil {
 		ctx, cancel := context.WithTimeout(context.Background(), suiteTeardownStepTimeout)
 		defer cancel()
@@ -259,4 +261,9 @@ func (t *TestEnv) shutdownServer() {
 		}
 		GinkgoWriter.Printf("Server shutdown successfully\n")
 	}
+}
+
+func (t *TestBox) ContextfulDB() *gorm.DB {
+	ctx := t.DefaultContext
+	return t.DB.WithContext(ctx)
 }

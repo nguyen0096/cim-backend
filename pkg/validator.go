@@ -2,17 +2,27 @@ package pkg
 
 import (
 	"path/filepath"
+	"reflect"
 	"strings"
 
 	"github.com/go-playground/validator/v10"
+	"github.com/shopspring/decimal"
 )
 
 var Validator *validator.Validate
 
 func init() {
 	Validator = validator.New()
+	Validator.RegisterCustomTypeFunc(ValidateDecimal, decimal.Decimal{})
+}
 
-	// Validator.RegisterValidation("is-awesome", ValidateMyVal)
+// ValidateDecimal extracts the value from decimal.Decimal for validation
+func ValidateDecimal(field reflect.Value) interface{} {
+	if field.Type() == reflect.TypeOf(decimal.Decimal{}) {
+		dec := field.Interface().(decimal.Decimal)
+		return dec.String()
+	}
+	return nil
 }
 
 // IsCSVFile checks if the filename has a .csv extension

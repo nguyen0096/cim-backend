@@ -196,7 +196,18 @@ func TestPaymentReceiptFormService_CreatePaymentReceiptForm(t *testing.T) {
 
 			// Act
 			form, err := tt.payload.ToPaymentReceiptForm()
-			require.NoError(t, err)
+			if err != nil {
+				// Handle conversion errors
+				if tt.expectError {
+					assert.Error(t, err)
+					if appErr, ok := err.(*pkg.AppError); ok {
+						assert.Equal(t, tt.errorCode, appErr.Code)
+					}
+					return
+				}
+				require.NoError(t, err)
+			}
+
 			result, err := service.CreatePaymentReceiptForm(context.Background(), form)
 
 			// Assert

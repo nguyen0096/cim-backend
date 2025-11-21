@@ -3,6 +3,8 @@ package apptest
 import (
 	"cim-backend/internal/models"
 	"cim-backend/pkg"
+	"cim-backend/pkg/testutil"
+	"cim-backend/pkg/testutil/fixture"
 	"fmt"
 
 	"github.com/google/uuid"
@@ -46,7 +48,7 @@ var _ = Describe("Unit API", func() {
 				ConversionFactor: 8,
 			}
 
-			testUnits = tenv.WithUnits([]models.Unit{baseUnit, unitLevel2, unitLevel3, unitLevel4})
+			testUnits = fixture.WithUnits(tenv.ContextfulDB(), []models.Unit{baseUnit, unitLevel2, unitLevel3, unitLevel4})
 			// Set up base unit references after creation
 			testUnits[1].BaseUnitID = pkg.Ptr(testUnits[0].ID)
 			testUnits[2].BaseUnitID = pkg.Ptr(testUnits[1].ID)
@@ -58,7 +60,7 @@ var _ = Describe("Unit API", func() {
 
 		Context("when user has authorized role", func() {
 			It("should create and get unit with admin role", func() {
-				client := NewClient(tenv, models.RoleAdmin)
+				client := testutil.NewClient(tenv, models.RoleAdmin)
 				name := fmt.Sprintf("Test Unit %s", uuid.New().String())
 
 				payload := map[string]interface{}{
@@ -70,11 +72,11 @@ var _ = Describe("Unit API", func() {
 					"decimal_places":    2,
 				}
 
-				resp, err := client.MakeRequest("POST", "/api/v1/units", payload, WithAuth())
+				resp, err := client.MakeRequest("POST", "/api/v1/units", payload, testutil.WithAuth())
 				Expect(err).NotTo(HaveOccurred())
 				Expect(resp.StatusCode).To(Equal(201))
 
-				unitResp := ParseResponse(resp)
+				unitResp := testutil.ParseResponse(resp)
 				Expect(unitResp["name"]).To(Equal(name))
 				Expect(unitResp["symbol"]).To(Equal("test"))
 				Expect(unitResp["unit_type"]).To(Equal("general"))
@@ -84,7 +86,7 @@ var _ = Describe("Unit API", func() {
 			})
 
 			It("should create and get unit with accountant role", func() {
-				client := NewClient(tenv, models.RoleAccountant)
+				client := testutil.NewClient(tenv, models.RoleAccountant)
 				name := fmt.Sprintf("Test Unit %s", uuid.New().String())
 
 				payload := map[string]interface{}{
@@ -96,18 +98,18 @@ var _ = Describe("Unit API", func() {
 					"decimal_places":    2,
 				}
 
-				resp, err := client.MakeRequest("POST", "/api/v1/units", payload, WithAuth())
+				resp, err := client.MakeRequest("POST", "/api/v1/units", payload, testutil.WithAuth())
 				Expect(err).NotTo(HaveOccurred())
 				Expect(resp.StatusCode).To(Equal(201))
 
-				unitResp := ParseResponse(resp)
+				unitResp := testutil.ParseResponse(resp)
 				Expect(unitResp["name"]).To(Equal(name))
 			})
 		})
 
 		Context("when user has unauthorized role", func() {
 			It("should not create unit with staff role", func() {
-				client := NewClient(tenv, models.RoleStaff)
+				client := testutil.NewClient(tenv, models.RoleStaff)
 
 				payload := map[string]interface{}{
 					"name":              uuid.New().String(),
@@ -117,16 +119,16 @@ var _ = Describe("Unit API", func() {
 					"conversion_factor": 1,
 				}
 
-				resp, err := client.MakeRequest("POST", "/api/v1/units", payload, WithAuth())
+				resp, err := client.MakeRequest("POST", "/api/v1/units", payload, testutil.WithAuth())
 				Expect(err).NotTo(HaveOccurred())
 				Expect(resp.StatusCode).To(Equal(403))
 
-				errorResp := ParseResponse(resp)
+				errorResp := testutil.ParseResponse(resp)
 				Expect(errorResp["error"]).To(Equal(fmt.Sprintf("Access denied: %s role cannot create units", models.RoleStaff)))
 			})
 
 			It("should not create unit with bot form role", func() {
-				client := NewClient(tenv, models.RoleBotForm)
+				client := testutil.NewClient(tenv, models.RoleBotForm)
 
 				payload := map[string]interface{}{
 					"name":              uuid.New().String(),
@@ -136,18 +138,18 @@ var _ = Describe("Unit API", func() {
 					"conversion_factor": 1,
 				}
 
-				resp, err := client.MakeRequest("POST", "/api/v1/units", payload, WithAuth())
+				resp, err := client.MakeRequest("POST", "/api/v1/units", payload, testutil.WithAuth())
 				Expect(err).NotTo(HaveOccurred())
 				Expect(resp.StatusCode).To(Equal(403))
 
-				errorResp := ParseResponse(resp)
+				errorResp := testutil.ParseResponse(resp)
 				Expect(errorResp["error"]).To(Equal(fmt.Sprintf("Access denied: %s role cannot create units", models.RoleBotForm)))
 			})
 		})
 
 		Context("when reaching maximum hierarchy depth", func() {
 			It("should return error", func() {
-				client := NewClient(tenv, models.RoleAdmin)
+				client := testutil.NewClient(tenv, models.RoleAdmin)
 
 				payload := map[string]interface{}{
 					"name":              "Test Unit" + uuid.New().String(),
@@ -157,11 +159,11 @@ var _ = Describe("Unit API", func() {
 					"conversion_factor": 1,
 				}
 
-				resp, err := client.MakeRequest("POST", "/api/v1/units", payload, WithAuth())
+				resp, err := client.MakeRequest("POST", "/api/v1/units", payload, testutil.WithAuth())
 				Expect(err).NotTo(HaveOccurred())
 				Expect(resp.StatusCode).To(Equal(400))
 
-				errorResp := ParseResponse(resp)
+				errorResp := testutil.ParseResponse(resp)
 				Expect(errorResp["error"]).To(ContainSubstring("Maximum allowed hierarchy depth is 4 levels"))
 			})
 		})
@@ -200,7 +202,7 @@ var _ = Describe("Unit API", func() {
 				ConversionFactor: 8,
 			}
 
-			testUnits = tenv.WithUnits([]models.Unit{baseUnit, unitLevel2, unitLevel3, unitLevel4})
+			testUnits = fixture.WithUnits(tenv.ContextfulDB(), []models.Unit{baseUnit, unitLevel2, unitLevel3, unitLevel4})
 			testUnits[1].BaseUnitID = pkg.Ptr(testUnits[0].ID)
 			testUnits[2].BaseUnitID = pkg.Ptr(testUnits[1].ID)
 			testUnits[3].BaseUnitID = pkg.Ptr(testUnits[2].ID)
@@ -210,14 +212,14 @@ var _ = Describe("Unit API", func() {
 		})
 
 		It("should get base unit with all derived units", func() {
-			client := NewClient(tenv, models.RoleAdmin)
+			client := testutil.NewClient(tenv, models.RoleAdmin)
 
 			urlPath := fmt.Sprintf("/api/v1/units/%d", testUnits[0].ID)
-			resp, err := client.MakeRequest("GET", urlPath, nil, WithAuth())
+			resp, err := client.MakeRequest("GET", urlPath, nil, testutil.WithAuth())
 			Expect(err).NotTo(HaveOccurred())
 			Expect(resp.StatusCode).To(Equal(200))
 
-			unitResp := ParseResponse(resp)
+			unitResp := testutil.ParseResponse(resp)
 			Expect(unitResp["name"]).To(Equal(testUnits[0].Name))
 			Expect(unitResp["symbol"]).To(Equal(testUnits[0].Symbol))
 			Expect(unitResp["unit_type"]).To(Equal(testUnits[0].UnitType))
@@ -243,14 +245,14 @@ var _ = Describe("Unit API", func() {
 		})
 
 		It("should get derived unit with base unit and all derived units with conversion factor to current unit", func() {
-			client := NewClient(tenv, models.RoleAdmin)
+			client := testutil.NewClient(tenv, models.RoleAdmin)
 
 			urlPath := fmt.Sprintf("/api/v1/units/%d", testUnits[1].ID)
-			resp, err := client.MakeRequest("GET", urlPath, nil, WithAuth())
+			resp, err := client.MakeRequest("GET", urlPath, nil, testutil.WithAuth())
 			Expect(err).NotTo(HaveOccurred())
 			Expect(resp.StatusCode).To(Equal(200))
 
-			unitResp := ParseResponse(resp)
+			unitResp := testutil.ParseResponse(resp)
 			Expect(unitResp["name"]).To(Equal(testUnits[1].Name))
 			Expect(unitResp["symbol"]).To(Equal(testUnits[1].Symbol))
 			Expect(unitResp["unit_type"]).To(Equal(testUnits[1].UnitType))
@@ -285,14 +287,14 @@ var _ = Describe("Unit API", func() {
 		})
 
 		It("should get derived unit with root base unit and all derived units with conversion factor to current unit", func() {
-			client := NewClient(tenv, models.RoleAdmin)
+			client := testutil.NewClient(tenv, models.RoleAdmin)
 
 			urlPath := fmt.Sprintf("/api/v1/units/%d", testUnits[2].ID)
-			resp, err := client.MakeRequest("GET", urlPath, nil, WithAuth())
+			resp, err := client.MakeRequest("GET", urlPath, nil, testutil.WithAuth())
 			Expect(err).NotTo(HaveOccurred())
 			Expect(resp.StatusCode).To(Equal(200))
 
-			unitResp := ParseResponse(resp)
+			unitResp := testutil.ParseResponse(resp)
 			Expect(unitResp["name"]).To(Equal(testUnits[2].Name))
 			Expect(unitResp["symbol"]).To(Equal(testUnits[2].Symbol))
 			Expect(unitResp["unit_type"]).To(Equal(testUnits[2].UnitType))
@@ -361,7 +363,7 @@ var _ = Describe("Unit API", func() {
 				},
 			}
 
-			testUnits = tenv.WithUnits(baseUnits)
+			testUnits = fixture.WithUnits(tenv.ContextfulDB(), baseUnits)
 
 			// Create derived units that reference base units
 			derivedUnits := []models.Unit{
@@ -381,18 +383,18 @@ var _ = Describe("Unit API", func() {
 				},
 			}
 
-			derivedTestUnits := tenv.WithUnits(derivedUnits)
+			derivedTestUnits := fixture.WithUnits(tenv.ContextfulDB(), derivedUnits)
 			testUnits = append(testUnits, derivedTestUnits...)
 		})
 
 		It("should search units by name", func() {
-			client := NewClient(tenv, models.RoleAdmin)
+			client := testutil.NewClient(tenv, models.RoleAdmin)
 
-			resp, err := client.MakeRequest("GET", "/api/v1/units", nil, WithAuth(), WithParams(map[string]string{"q": "Kilogram"}))
+			resp, err := client.MakeRequest("GET", "/api/v1/units", nil, testutil.WithAuth(), testutil.WithParams(map[string]string{"q": "Kilogram"}))
 			Expect(err).NotTo(HaveOccurred())
 			Expect(resp.StatusCode).To(Equal(200))
 
-			searchResp := ParseResponse(resp)
+			searchResp := testutil.ParseResponse(resp)
 			Expect(searchResp["total"]).To(BeNumerically(">=", 1))
 			data := searchResp["data"].([]interface{})
 			found := false
@@ -407,13 +409,13 @@ var _ = Describe("Unit API", func() {
 		})
 
 		It("should search units by symbol", func() {
-			client := NewClient(tenv, models.RoleAdmin)
+			client := testutil.NewClient(tenv, models.RoleAdmin)
 
-			resp, err := client.MakeRequest("GET", "/api/v1/units", nil, WithAuth(), WithParams(map[string]string{"q": "ml"}))
+			resp, err := client.MakeRequest("GET", "/api/v1/units", nil, testutil.WithAuth(), testutil.WithParams(map[string]string{"q": "ml"}))
 			Expect(err).NotTo(HaveOccurred())
 			Expect(resp.StatusCode).To(Equal(200))
 
-			searchResp := ParseResponse(resp)
+			searchResp := testutil.ParseResponse(resp)
 			Expect(searchResp["total"]).To(BeNumerically(">=", 1))
 			data := searchResp["data"].([]interface{})
 			found := false
@@ -428,13 +430,13 @@ var _ = Describe("Unit API", func() {
 		})
 
 		It("should search units case-insensitively", func() {
-			client := NewClient(tenv, models.RoleAdmin)
+			client := testutil.NewClient(tenv, models.RoleAdmin)
 
-			resp, err := client.MakeRequest("GET", "/api/v1/units", nil, WithAuth(), WithParams(map[string]string{"q": "LITER"}))
+			resp, err := client.MakeRequest("GET", "/api/v1/units", nil, testutil.WithAuth(), testutil.WithParams(map[string]string{"q": "LITER"}))
 			Expect(err).NotTo(HaveOccurred())
 			Expect(resp.StatusCode).To(Equal(200))
 
-			searchResp := ParseResponse(resp)
+			searchResp := testutil.ParseResponse(resp)
 			Expect(searchResp["total"]).To(BeNumerically(">=", 1))
 			data := searchResp["data"].([]interface{})
 			found := false
@@ -449,13 +451,13 @@ var _ = Describe("Unit API", func() {
 		})
 
 		It("should search units with unit_type filter", func() {
-			client := NewClient(tenv, models.RoleAdmin)
+			client := testutil.NewClient(tenv, models.RoleAdmin)
 
-			resp, err := client.MakeRequest("GET", "/api/v1/units", nil, WithAuth(), WithParams(map[string]string{"q": "Search", "unit_type": "mass"}))
+			resp, err := client.MakeRequest("GET", "/api/v1/units", nil, testutil.WithAuth(), testutil.WithParams(map[string]string{"q": "Search", "unit_type": "mass"}))
 			Expect(err).NotTo(HaveOccurred())
 			Expect(resp.StatusCode).To(Equal(200))
 
-			searchResp := ParseResponse(resp)
+			searchResp := testutil.ParseResponse(resp)
 			data := searchResp["data"].([]interface{})
 			for _, item := range data {
 				unitMap := item.(map[string]interface{})
@@ -464,13 +466,13 @@ var _ = Describe("Unit API", func() {
 		})
 
 		It("should search units with base_only filter", func() {
-			client := NewClient(tenv, models.RoleAdmin)
+			client := testutil.NewClient(tenv, models.RoleAdmin)
 
-			resp, err := client.MakeRequest("GET", "/api/v1/units", nil, WithAuth(), WithParams(map[string]string{"q": "Search", "base_only": "true"}))
+			resp, err := client.MakeRequest("GET", "/api/v1/units", nil, testutil.WithAuth(), testutil.WithParams(map[string]string{"q": "Search", "base_only": "true"}))
 			Expect(err).NotTo(HaveOccurred())
 			Expect(resp.StatusCode).To(Equal(200))
 
-			searchResp := ParseResponse(resp)
+			searchResp := testutil.ParseResponse(resp)
 			data := searchResp["data"].([]interface{})
 			for _, item := range data {
 				unitMap := item.(map[string]interface{})
@@ -479,13 +481,13 @@ var _ = Describe("Unit API", func() {
 		})
 
 		It("should search units with pagination", func() {
-			client := NewClient(tenv, models.RoleAdmin)
+			client := testutil.NewClient(tenv, models.RoleAdmin)
 
-			resp, err := client.MakeRequest("GET", "/api/v1/units", nil, WithAuth(), WithParams(map[string]string{"q": "Search", "limit": "2", "page": "1"}))
+			resp, err := client.MakeRequest("GET", "/api/v1/units", nil, testutil.WithAuth(), testutil.WithParams(map[string]string{"q": "Search", "limit": "2", "page": "1"}))
 			Expect(err).NotTo(HaveOccurred())
 			Expect(resp.StatusCode).To(Equal(200))
 
-			searchResp := ParseResponse(resp)
+			searchResp := testutil.ParseResponse(resp)
 			Expect(searchResp["limit"]).To(Equal(float64(2)))
 			Expect(searchResp["page"]).To(Equal(float64(1)))
 			data := searchResp["data"].([]interface{})
@@ -493,13 +495,13 @@ var _ = Describe("Unit API", func() {
 		})
 
 		It("should return empty results for non-matching query", func() {
-			client := NewClient(tenv, models.RoleAdmin)
+			client := testutil.NewClient(tenv, models.RoleAdmin)
 
-			resp, err := client.MakeRequest("GET", "/api/v1/units", nil, WithAuth(), WithParams(map[string]string{"q": "NonExistentUnit12345"}))
+			resp, err := client.MakeRequest("GET", "/api/v1/units", nil, testutil.WithAuth(), testutil.WithParams(map[string]string{"q": "NonExistentUnit12345"}))
 			Expect(err).NotTo(HaveOccurred())
 			Expect(resp.StatusCode).To(Equal(200))
 
-			searchResp := ParseResponse(resp)
+			searchResp := testutil.ParseResponse(resp)
 			Expect(searchResp["total"]).To(Equal(float64(0)))
 			data := searchResp["data"].([]interface{})
 			Expect(len(data)).To(Equal(0), "Should return empty array for non-matching query")
@@ -513,14 +515,14 @@ var _ = Describe("Unit API", func() {
 		var level4Unit *models.Unit
 
 		BeforeEach(func() {
-			baseUnit = tenv.WithUnit(models.Unit{
+			baseUnit = fixture.WithUnit(tenv.ContextfulDB(), models.Unit{
 				Name:             "Update Test Base Unit",
 				Symbol:           "utbu",
 				UnitType:         "general",
 				ConversionFactor: 1,
 			})
 
-			level2Unit = tenv.WithUnit(models.Unit{
+			level2Unit = fixture.WithUnit(tenv.ContextfulDB(), models.Unit{
 				Name:             "Level 2 Unit",
 				Symbol:           "l2",
 				UnitType:         "general",
@@ -529,7 +531,7 @@ var _ = Describe("Unit API", func() {
 				Level:            2,
 			})
 
-			level3Unit = tenv.WithUnit(models.Unit{
+			level3Unit = fixture.WithUnit(tenv.ContextfulDB(), models.Unit{
 				Name:             "Level 3 Unit",
 				Symbol:           "l3",
 				UnitType:         "general",
@@ -538,7 +540,7 @@ var _ = Describe("Unit API", func() {
 				Level:            3,
 			})
 
-			level4Unit = tenv.WithUnit(models.Unit{
+			level4Unit = fixture.WithUnit(tenv.ContextfulDB(), models.Unit{
 				Name:             "Level 4 Unit",
 				Symbol:           "l4",
 				UnitType:         "general",
@@ -550,7 +552,7 @@ var _ = Describe("Unit API", func() {
 
 		Context("when user has authorized role", func() {
 			It("should update unit with admin role", func() {
-				client := NewClient(tenv, models.RoleAdmin)
+				client := testutil.NewClient(tenv, models.RoleAdmin)
 				updatedName := fmt.Sprintf("Updated Unit Name %s", uuid.New().String())
 
 				payload := map[string]interface{}{
@@ -563,11 +565,11 @@ var _ = Describe("Unit API", func() {
 				}
 
 				urlPath := fmt.Sprintf("/api/v1/units/%d", level2Unit.ID)
-				resp, err := client.MakeRequest("PUT", urlPath, payload, WithAuth())
+				resp, err := client.MakeRequest("PUT", urlPath, payload, testutil.WithAuth())
 				Expect(err).NotTo(HaveOccurred())
 				Expect(resp.StatusCode).To(Equal(200))
 
-				unitResp := ParseResponse(resp)
+				unitResp := testutil.ParseResponse(resp)
 				Expect(unitResp["name"]).To(Equal(updatedName))
 				Expect(unitResp["symbol"]).To(Equal("updated"))
 				Expect(unitResp["unit_type"]).To(Equal("general"))
@@ -577,7 +579,7 @@ var _ = Describe("Unit API", func() {
 			})
 
 			It("should update unit with accountant role", func() {
-				client := NewClient(tenv, models.RoleAccountant)
+				client := testutil.NewClient(tenv, models.RoleAccountant)
 				updatedName := fmt.Sprintf("Updated Unit Name %s", uuid.New().String())
 
 				payload := map[string]interface{}{
@@ -590,20 +592,20 @@ var _ = Describe("Unit API", func() {
 				}
 
 				urlPath := fmt.Sprintf("/api/v1/units/%d", level2Unit.ID)
-				resp, err := client.MakeRequest("PUT", urlPath, payload, WithAuth())
+				resp, err := client.MakeRequest("PUT", urlPath, payload, testutil.WithAuth())
 				Expect(err).NotTo(HaveOccurred())
 				Expect(resp.StatusCode).To(Equal(200))
 
-				unitResp := ParseResponse(resp)
+				unitResp := testutil.ParseResponse(resp)
 				Expect(unitResp["name"]).To(Equal(updatedName))
 			})
 		})
 
 		It("should update unit level and conversion factor to current when change base unit", func() {
-			client := NewClient(tenv, models.RoleAdmin)
+			client := testutil.NewClient(tenv, models.RoleAdmin)
 
 			// Create a fresh level2Unit for this test
-			freshLevel2Unit := tenv.WithUnit(models.Unit{
+			freshLevel2Unit := fixture.WithUnit(tenv.ContextfulDB(), models.Unit{
 				Name:             fmt.Sprintf("Fresh Level 2 Unit %s", uuid.New().String()),
 				Symbol:           "fl2",
 				UnitType:         "general",
@@ -613,7 +615,7 @@ var _ = Describe("Unit API", func() {
 			})
 
 			// Create a unit for level change test
-			testUnitForLevelChange := tenv.WithUnit(models.Unit{
+			testUnitForLevelChange := fixture.WithUnit(tenv.ContextfulDB(), models.Unit{
 				Name:             fmt.Sprintf("Level Change Test Unit %s", uuid.New().String()),
 				Symbol:           "lctu",
 				UnitType:         "general",
@@ -624,11 +626,11 @@ var _ = Describe("Unit API", func() {
 
 			// Get base unit to see its derived units
 			urlPathGet := fmt.Sprintf("/api/v1/units/%d", baseUnit.ID)
-			respGet, err := client.MakeRequest("GET", urlPathGet, nil, WithAuth())
+			respGet, err := client.MakeRequest("GET", urlPathGet, nil, testutil.WithAuth())
 			Expect(err).NotTo(HaveOccurred())
 			Expect(respGet.StatusCode).To(Equal(200))
 
-			conversionFactorResp := ParseResponse(respGet)
+			conversionFactorResp := testutil.ParseResponse(respGet)
 			derivedUnits := conversionFactorResp["derived_units"].([]interface{})
 
 			// Find the conversion factor for testUnitForLevelChange
@@ -653,21 +655,21 @@ var _ = Describe("Unit API", func() {
 			}
 
 			urlPath := fmt.Sprintf("/api/v1/units/%d", testUnitForLevelChange.ID)
-			resp, err := client.MakeRequest("PUT", urlPath, payload, WithAuth())
+			resp, err := client.MakeRequest("PUT", urlPath, payload, testutil.WithAuth())
 			Expect(err).NotTo(HaveOccurred())
 			Expect(resp.StatusCode).To(Equal(200))
 
-			unitResp := ParseResponse(resp)
+			unitResp := testutil.ParseResponse(resp)
 			Expect(unitResp["level"]).To(Equal(float64(2)))
 			Expect(unitResp["conversion_factor"]).To(Equal(float64(10)))
 			Expect(unitResp["base_unit_id"]).To(Equal(float64(baseUnit.ID)))
 
 			// Get base unit again to verify conversion factor
-			respGet2, err := client.MakeRequest("GET", urlPathGet, nil, WithAuth())
+			respGet2, err := client.MakeRequest("GET", urlPathGet, nil, testutil.WithAuth())
 			Expect(err).NotTo(HaveOccurred())
 			Expect(respGet2.StatusCode).To(Equal(200))
 
-			conversionFactorResp2 := ParseResponse(respGet2)
+			conversionFactorResp2 := testutil.ParseResponse(respGet2)
 			derivedUnits2 := conversionFactorResp2["derived_units"].([]interface{})
 
 			var testDerivedUnitResp2 map[string]interface{}
@@ -684,7 +686,7 @@ var _ = Describe("Unit API", func() {
 
 		Context("when user has unauthorized role", func() {
 			It("should not update unit with staff role", func() {
-				client := NewClient(tenv, models.RoleStaff)
+				client := testutil.NewClient(tenv, models.RoleStaff)
 
 				payload := map[string]interface{}{
 					"name":              "Updated Name",
@@ -695,16 +697,16 @@ var _ = Describe("Unit API", func() {
 				}
 
 				urlPath := fmt.Sprintf("/api/v1/units/%d", level2Unit.ID)
-				resp, err := client.MakeRequest("PUT", urlPath, payload, WithAuth())
+				resp, err := client.MakeRequest("PUT", urlPath, payload, testutil.WithAuth())
 				Expect(err).NotTo(HaveOccurred())
 				Expect(resp.StatusCode).To(Equal(403))
 
-				errorResp := ParseResponse(resp)
+				errorResp := testutil.ParseResponse(resp)
 				Expect(errorResp["error"]).To(Equal(fmt.Sprintf("Access denied: %s role cannot update units", models.RoleStaff)))
 			})
 
 			It("should not update unit with bot form role", func() {
-				client := NewClient(tenv, models.RoleBotForm)
+				client := testutil.NewClient(tenv, models.RoleBotForm)
 
 				payload := map[string]interface{}{
 					"name":              "Updated Name",
@@ -715,18 +717,18 @@ var _ = Describe("Unit API", func() {
 				}
 
 				urlPath := fmt.Sprintf("/api/v1/units/%d", level2Unit.ID)
-				resp, err := client.MakeRequest("PUT", urlPath, payload, WithAuth())
+				resp, err := client.MakeRequest("PUT", urlPath, payload, testutil.WithAuth())
 				Expect(err).NotTo(HaveOccurred())
 				Expect(resp.StatusCode).To(Equal(403))
 
-				errorResp := ParseResponse(resp)
+				errorResp := testutil.ParseResponse(resp)
 				Expect(errorResp["error"]).To(Equal(fmt.Sprintf("Access denied: %s role cannot update units", models.RoleBotForm)))
 			})
 		})
 
 		Context("when unit not found", func() {
 			It("should return error", func() {
-				client := NewClient(tenv, models.RoleAdmin)
+				client := testutil.NewClient(tenv, models.RoleAdmin)
 
 				payload := map[string]interface{}{
 					"name":              "Updated Name",
@@ -735,20 +737,20 @@ var _ = Describe("Unit API", func() {
 					"conversion_factor": 1,
 				}
 
-				resp, err := client.MakeRequest("PUT", "/api/v1/units/999999", payload, WithAuth())
+				resp, err := client.MakeRequest("PUT", "/api/v1/units/999999", payload, testutil.WithAuth())
 				Expect(err).NotTo(HaveOccurred())
 				Expect(resp.StatusCode).To(Equal(404))
 
-				errorResp := ParseResponse(resp)
+				errorResp := testutil.ParseResponse(resp)
 				Expect(errorResp["error"]).To(ContainSubstring("not found"))
 			})
 		})
 
 		Context("when duplicate name exists", func() {
 			It("should return error", func(ctx SpecContext) {
-				client := NewClient(tenv, models.RoleAdmin)
+				client := testutil.NewClient(tenv, models.RoleAdmin)
 
-				duplicateTestUnit := tenv.WithUnit(models.Unit{
+				duplicateTestUnit := fixture.WithUnit(tenv.ContextfulDB(), models.Unit{
 					Name:             "Duplicate Test Unit",
 					Symbol:           "dtu",
 					UnitType:         "general",
@@ -763,20 +765,20 @@ var _ = Describe("Unit API", func() {
 				}
 
 				urlPath := fmt.Sprintf("/api/v1/units/%d", level2Unit.ID)
-				resp, err := client.MakeRequest("PUT", urlPath, payload, WithAuth())
+				resp, err := client.MakeRequest("PUT", urlPath, payload, testutil.WithAuth())
 				Expect(err).NotTo(HaveOccurred())
 				Expect(resp.StatusCode).To(Equal(409))
 
-				errorResp := ParseResponse(resp)
+				errorResp := testutil.ParseResponse(resp)
 				Expect(errorResp["error"]).To(ContainSubstring("already exists"))
 			})
 		})
 
 		Context("when reaching maximum hierarchy depth", func() {
 			It("should return error", func() {
-				client := NewClient(tenv, models.RoleAdmin)
+				client := testutil.NewClient(tenv, models.RoleAdmin)
 
-				testUnitForDepth := tenv.WithUnit(models.Unit{
+				testUnitForDepth := fixture.WithUnit(tenv.ContextfulDB(), models.Unit{
 					Name:             "Depth Test Unit" + uuid.New().String(),
 					Symbol:           "dtu",
 					UnitType:         "general",
@@ -794,20 +796,20 @@ var _ = Describe("Unit API", func() {
 				}
 
 				urlPath := fmt.Sprintf("/api/v1/units/%d", testUnitForDepth.ID)
-				resp, err := client.MakeRequest("PUT", urlPath, payload, WithAuth())
+				resp, err := client.MakeRequest("PUT", urlPath, payload, testutil.WithAuth())
 				Expect(err).NotTo(HaveOccurred())
 				Expect(resp.StatusCode).To(Equal(400))
 
-				errorResp := ParseResponse(resp)
+				errorResp := testutil.ParseResponse(resp)
 				Expect(errorResp["error"]).To(ContainSubstring("Maximum allowed hierarchy depth is 4 levels"))
 			})
 		})
 
 		Context("when base unit has different unit_type", func() {
 			It("should return error", func(ctx SpecContext) {
-				client := NewClient(tenv, models.RoleAdmin)
+				client := testutil.NewClient(tenv, models.RoleAdmin)
 
-				differentTypeUnit := tenv.WithUnit(models.Unit{
+				differentTypeUnit := fixture.WithUnit(tenv.ContextfulDB(), models.Unit{
 					Name:             "Different Type Unit",
 					Symbol:           "dtu",
 					UnitType:         "mass",
@@ -823,18 +825,18 @@ var _ = Describe("Unit API", func() {
 				}
 
 				urlPath := fmt.Sprintf("/api/v1/units/%d", level2Unit.ID)
-				resp, err := client.MakeRequest("PUT", urlPath, payload, WithAuth())
+				resp, err := client.MakeRequest("PUT", urlPath, payload, testutil.WithAuth())
 				Expect(err).NotTo(HaveOccurred())
 				Expect(resp.StatusCode).To(Equal(400))
 
-				errorResp := ParseResponse(resp)
+				errorResp := testutil.ParseResponse(resp)
 				Expect(errorResp["error"]).To(ContainSubstring("base unit must have the same unit_type"))
 			})
 		})
 
 		Context("when base unit conversion factor is not 1", func() {
 			It("should return error", func() {
-				client := NewClient(tenv, models.RoleAdmin)
+				client := testutil.NewClient(tenv, models.RoleAdmin)
 
 				payload := map[string]interface{}{
 					"name":              "Test Unit" + uuid.New().String(),
@@ -845,11 +847,11 @@ var _ = Describe("Unit API", func() {
 				}
 
 				urlPath := fmt.Sprintf("/api/v1/units/%d", baseUnit.ID)
-				resp, err := client.MakeRequest("PUT", urlPath, payload, WithAuth())
+				resp, err := client.MakeRequest("PUT", urlPath, payload, testutil.WithAuth())
 				Expect(err).NotTo(HaveOccurred())
 				Expect(resp.StatusCode).To(Equal(400))
 
-				errorResp := ParseResponse(resp)
+				errorResp := testutil.ParseResponse(resp)
 				Expect(errorResp["error"]).To(ContainSubstring("conversion_factor must be 1 for base units"))
 			})
 		})
@@ -859,7 +861,7 @@ var _ = Describe("Unit API", func() {
 		var testUnit *models.Unit
 
 		BeforeEach(func() {
-			testUnit = tenv.WithUnit(models.Unit{
+			testUnit = fixture.WithUnit(tenv.ContextfulDB(), models.Unit{
 				Name:             "Delete Test Unit",
 				Symbol:           "dtu",
 				UnitType:         "general",
@@ -869,10 +871,10 @@ var _ = Describe("Unit API", func() {
 
 		Context("when user has admin role", func() {
 			It("should delete unit", func(ctx SpecContext) {
-				client := NewClient(tenv, models.RoleAdmin)
+				client := testutil.NewClient(tenv, models.RoleAdmin)
 
 				urlPath := fmt.Sprintf("/api/v1/units/%d", testUnit.ID)
-				resp, err := client.MakeRequest("DELETE", urlPath, nil, WithAuth())
+				resp, err := client.MakeRequest("DELETE", urlPath, nil, testutil.WithAuth())
 				Expect(err).NotTo(HaveOccurred())
 				Expect(resp.StatusCode).To(Equal(204))
 
@@ -884,26 +886,26 @@ var _ = Describe("Unit API", func() {
 
 		Context("when user has unauthorized role", func() {
 			It("should not delete unit with staff role", func() {
-				client := NewClient(tenv, models.RoleStaff)
+				client := testutil.NewClient(tenv, models.RoleStaff)
 
 				urlPath := fmt.Sprintf("/api/v1/units/%d", testUnit.ID)
-				resp, err := client.MakeRequest("DELETE", urlPath, nil, WithAuth())
+				resp, err := client.MakeRequest("DELETE", urlPath, nil, testutil.WithAuth())
 				Expect(err).NotTo(HaveOccurred())
 				Expect(resp.StatusCode).To(Equal(403))
 
-				errorResp := ParseResponse(resp)
+				errorResp := testutil.ParseResponse(resp)
 				Expect(errorResp["error"]).To(Equal(fmt.Sprintf("Access denied: %s role cannot delete units", models.RoleStaff)))
 			})
 
 			It("should not delete unit with bot form role", func() {
-				client := NewClient(tenv, models.RoleBotForm)
+				client := testutil.NewClient(tenv, models.RoleBotForm)
 
 				urlPath := fmt.Sprintf("/api/v1/units/%d", testUnit.ID)
-				resp, err := client.MakeRequest("DELETE", urlPath, nil, WithAuth())
+				resp, err := client.MakeRequest("DELETE", urlPath, nil, testutil.WithAuth())
 				Expect(err).NotTo(HaveOccurred())
 				Expect(resp.StatusCode).To(Equal(403))
 
-				errorResp := ParseResponse(resp)
+				errorResp := testutil.ParseResponse(resp)
 				Expect(errorResp["error"]).To(Equal(fmt.Sprintf("Access denied: %s role cannot delete units", models.RoleBotForm)))
 			})
 		})

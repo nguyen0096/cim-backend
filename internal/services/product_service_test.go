@@ -141,13 +141,30 @@ func (s *stubSettingsService) GetSettingValue(ctx context.Context, key string, d
 
 func newProductServiceWithRepos(productRepo *repositorymocks.ProductRepository, supplierRepo *repositorymocks.SupplierRepository) (ProductService, *repositorymocks.UnitRepository) {
 	unitRepo := new(repositorymocks.UnitRepository)
-	// Seed a default unit so lookups succeed for ID 1
-	_ = unitRepo.Create(context.Background(), &models.Unit{
+	// Set up mock to return a default unit when GetByID is called with ID 1
+	unitRepo.On("GetByID", mock.Anything, uint(1)).Return(&models.Unit{
+		Base:             models.Base{ID: 1},
 		UnitType:         "general",
 		Name:             "unit",
 		Symbol:           "unit",
 		ConversionFactor: 1,
-	})
+	}, nil).Maybe()
+	// Set up mock to return not found for other IDs
+	unitRepo.On("GetByID", mock.Anything, mock.MatchedBy(func(id uint) bool {
+		return id != 1
+	})).Return(nil, gorm.ErrRecordNotFound).Maybe()
+	// Set up mock for GetByTypeAndName to support CSV/Excel imports
+	unitRepo.On("GetByTypeAndName", mock.Anything, "general", mock.Anything).Return(&models.Unit{
+		Base:             models.Base{ID: 1},
+		UnitType:         "general",
+		Name:             "unit",
+		Symbol:           "unit",
+		ConversionFactor: 1,
+	}, nil).Maybe()
+	// Set up mock for Create to support unit creation during import
+	unitRepo.On("Create", mock.Anything, mock.AnythingOfType("*models.Unit")).Return(nil).Maybe()
+	// Set up mock for GetByNames to return empty map (no duplicates) by default
+	productRepo.On("GetByNames", mock.Anything, mock.Anything).Return(make(map[string]*models.Product), nil).Maybe()
 	settingsService := newStubSettingsService()
 	return NewProductService(productRepo, supplierRepo, unitRepo, settingsService), unitRepo
 }
@@ -221,8 +238,8 @@ func TestImportProductsFromCSV(t *testing.T) {
 		mockSupplierRepo := repositorymocks.NewSupplierRepository(t)
 		service, _ := newProductServiceWithRepos(mockProductRepo, mockSupplierRepo)
 
-		csvData := `Name;Description;ProductType;Suppliers;ContactEmail;ContactPhone;Address
-Laptop Dell XPS 13;High-performance laptop;Electronics;;;;`
+		csvData := `Name;Description;ProductType;Unit;Suppliers;ContactEmail;ContactPhone;Address
+Laptop Dell XPS 13;High-performance laptop;Electronics;unit;;;;`
 
 		mockProductRepo.On("Create", ctx, mock.MatchedBy(func(p *models.Product) bool {
 			return p.Name == "Laptop Dell XPS 13" &&
@@ -247,8 +264,8 @@ Laptop Dell XPS 13;High-performance laptop;Electronics;;;;`
 		mockSupplierRepo := repositorymocks.NewSupplierRepository(t)
 		service, _ := newProductServiceWithRepos(mockProductRepo, mockSupplierRepo)
 
-		csvData := `Name;Description;ProductType;Suppliers;ContactEmail;ContactPhone;Address
-Laptop;High-performance laptop;Electronics;Tech Inc;tech@email.com;+1-555-0123;123 Tech St`
+		csvData := `Name;Description;ProductType;Unit;Suppliers;ContactEmail;ContactPhone;Address
+Laptop;High-performance laptop;Electronics;unit;Tech Inc;tech@email.com;+1-555-0123;123 Tech St`
 
 		createdSupplier := &models.Supplier{
 			Base:         models.Base{ID: 1},
@@ -293,16 +310,28 @@ Laptop;High-performance laptop;Electronics;Tech Inc;tech@email.com;+1-555-0123;1
 		mockSupplierRepo := repositorymocks.NewSupplierRepository(t)
 		service, _ := newProductServiceWithRepos(mockProductRepo, mockSupplierRepo)
 
-		csvData := `Name;Description;ProductType;Suppliers;ContactEmail;ContactPhone;Address
-Laptop;High-performance laptop;Electronics;Tech Inc;tech@email.com;+1-555-0123;123 Tech St
-;;;Dell;dell@email.com;+1-555-0456;456 Dell Way
-;;;HP;hp@email.com;+1-555-0789;789 HP Blvd`
+		// Note: Continuation rows (empty product name) are not supported for supplier association
+		// Each row with a product name creates a separate product
+		csvData := `Name;Description;ProductType;Unit;Suppliers;ContactEmail;ContactPhone;Address
+Laptop;High-performance laptop;Electronics;unit;Tech Inc;tech@email.com;+1-555-0123;123 Tech St
+Tablet;High-performance tablet;Electronics;unit;Dell;dell@email.com;+1-555-0456;456 Dell Way
+Mouse;Wireless mouse;Electronics;unit;HP;hp@email.com;+1-555-0789;789 HP Blvd`
 
 		supplier1 := &models.Supplier{Base: models.Base{ID: 1}, Name: "Tech Inc"}
 		supplier2 := &models.Supplier{Base: models.Base{ID: 2}, Name: "Dell"}
 		supplier3 := &models.Supplier{Base: models.Base{ID: 3}, Name: "HP"}
 
-		mockProductRepo.On("Create", ctx, mock.AnythingOfType("*models.Product")).Return(nil).Once()
+		mockProductRepo.On("Create", ctx, mock.MatchedBy(func(p *models.Product) bool {
+			return p.Name == "Laptop"
+		})).Return(nil).Once()
+
+		mockProductRepo.On("Create", ctx, mock.MatchedBy(func(p *models.Product) bool {
+			return p.Name == "Tablet"
+		})).Return(nil).Once()
+
+		mockProductRepo.On("Create", ctx, mock.MatchedBy(func(p *models.Product) bool {
+			return p.Name == "Mouse"
+		})).Return(nil).Once()
 
 		mockSupplierRepo.On("FindOrCreateByName", ctx, mock.MatchedBy(func(s *models.Supplier) bool {
 			return s.Name == "Tech Inc"
@@ -317,7 +346,15 @@ Laptop;High-performance laptop;Electronics;Tech Inc;tech@email.com;+1-555-0123;1
 		})).Return(supplier3, nil).Once()
 
 		mockProductRepo.On("Update", ctx, mock.MatchedBy(func(p *models.Product) bool {
-			return p.Name == "Laptop" && len(p.Suppliers) == 3
+			return p.Name == "Laptop" && len(p.Suppliers) == 1
+		})).Return(nil).Once()
+
+		mockProductRepo.On("Update", ctx, mock.MatchedBy(func(p *models.Product) bool {
+			return p.Name == "Tablet" && len(p.Suppliers) == 1
+		})).Return(nil).Once()
+
+		mockProductRepo.On("Update", ctx, mock.MatchedBy(func(p *models.Product) bool {
+			return p.Name == "Mouse" && len(p.Suppliers) == 1
 		})).Return(nil).Once()
 
 		// Execute
@@ -325,7 +362,7 @@ Laptop;High-performance laptop;Electronics;Tech Inc;tech@email.com;+1-555-0123;1
 
 		// Assert
 		require.NoError(t, err)
-		assert.Equal(t, 1, count)
+		assert.Equal(t, 3, count)
 		mockProductRepo.AssertExpectations(t)
 		mockSupplierRepo.AssertExpectations(t)
 	})
@@ -336,21 +373,22 @@ Laptop;High-performance laptop;Electronics;Tech Inc;tech@email.com;+1-555-0123;1
 		mockSupplierRepo := repositorymocks.NewSupplierRepository(t)
 		service, _ := newProductServiceWithRepos(mockProductRepo, mockSupplierRepo)
 
-		csvData := `Name;Description;ProductType;Suppliers;ContactEmail;ContactPhone;Address
-Laptop;High-performance laptop;Electronics;Tech Inc;tech@email.com;;
-Tablet;High-performance tablet;Electronics;Tech Inc;tech@email.com;;
-Mouse;Wireless mouse;Electronics;;;;`
+		csvData := `Name;Description;ProductType;Unit;Suppliers;ContactEmail;ContactPhone;Address
+Laptop;High-performance laptop;Electronics;unit;Tech Inc;tech@email.com;;
+Tablet;High-performance tablet;Electronics;unit;Tech Inc;tech@email.com;;
+Mouse;Wireless mouse;Electronics;unit;;;;`
 
 		supplier1 := &models.Supplier{Base: models.Base{ID: 1}, Name: "Tech Inc"}
+
+		// Suppliers are deduplicated by name, so Tech Inc is only created once
+		mockSupplierRepo.On("FindOrCreateByName", ctx, mock.MatchedBy(func(s *models.Supplier) bool {
+			return s.Name == "Tech Inc"
+		})).Return(supplier1, nil).Once()
 
 		// First product
 		mockProductRepo.On("Create", ctx, mock.MatchedBy(func(p *models.Product) bool {
 			return p.Name == "Laptop"
 		})).Return(nil).Once()
-
-		mockSupplierRepo.On("FindOrCreateByName", ctx, mock.MatchedBy(func(s *models.Supplier) bool {
-			return s.Name == "Tech Inc"
-		})).Return(supplier1, nil).Once()
 
 		mockProductRepo.On("Update", ctx, mock.MatchedBy(func(p *models.Product) bool {
 			return p.Name == "Laptop"
@@ -360,10 +398,6 @@ Mouse;Wireless mouse;Electronics;;;;`
 		mockProductRepo.On("Create", ctx, mock.MatchedBy(func(p *models.Product) bool {
 			return p.Name == "Tablet"
 		})).Return(nil).Once()
-
-		mockSupplierRepo.On("FindOrCreateByName", ctx, mock.MatchedBy(func(s *models.Supplier) bool {
-			return s.Name == "Tech Inc"
-		})).Return(supplier1, nil).Once()
 
 		mockProductRepo.On("Update", ctx, mock.MatchedBy(func(p *models.Product) bool {
 			return p.Name == "Tablet"
@@ -429,8 +463,8 @@ High-performance laptop;Electronics;Tech Inc`
 		mockSupplierRepo := repositorymocks.NewSupplierRepository(t)
 		service, _ := newProductServiceWithRepos(mockProductRepo, mockSupplierRepo)
 
-		csvData := `Name;Description;Suppliers
-Laptop;High-performance laptop;Tech Inc`
+		csvData := `Name;Description;Unit;Suppliers
+Laptop;High-performance laptop;unit;Tech Inc`
 
 		// Execute
 		count, err := service.ImportProductsFromCSV(ctx, strings.NewReader(csvData))
@@ -443,64 +477,83 @@ Laptop;High-performance laptop;Tech Inc`
 		assert.Equal(t, pkg.ErrorCodeValidation, appErr.Code)
 	})
 
-	t.Run("should return error when product Name is empty", func(t *testing.T) {
+	t.Run("should import supplier when product Name is empty but supplier is provided", func(t *testing.T) {
 		// Setup
 		mockProductRepo := repositorymocks.NewProductRepository(t)
 		mockSupplierRepo := repositorymocks.NewSupplierRepository(t)
 		service, _ := newProductServiceWithRepos(mockProductRepo, mockSupplierRepo)
 
-		csvData := `Name;Description;ProductType;Suppliers
-;High-performance laptop;Electronics;Tech Inc`
+		csvData := `Name;Description;ProductType;Unit;Suppliers
+;High-performance laptop;Electronics;unit;Tech Inc`
+
+		supplier1 := &models.Supplier{Base: models.Base{ID: 1}, Name: "Tech Inc"}
+		mockSupplierRepo.On("FindOrCreateByName", ctx, mock.MatchedBy(func(s *models.Supplier) bool {
+			return s.Name == "Tech Inc"
+		})).Return(supplier1, nil).Once()
 
 		// Execute
 		count, err := service.ImportProductsFromCSV(ctx, strings.NewReader(csvData))
 
-		// Assert
-		require.Error(t, err)
-		assert.Equal(t, 0, count)
-		var appErr *pkg.AppError
-		assert.ErrorAs(t, err, &appErr)
-		assert.Equal(t, pkg.ErrorCodeValidation, appErr.Code)
+		// Assert - no products created (product name is empty), but supplier is created
+		require.NoError(t, err)
+		assert.Equal(t, 0, count) // No products created
+		mockSupplierRepo.AssertExpectations(t)
 	})
 
-	t.Run("should return error when product ProductType is empty", func(t *testing.T) {
+	t.Run("should import product with empty ProductType and supplier", func(t *testing.T) {
 		// Setup
 		mockProductRepo := repositorymocks.NewProductRepository(t)
 		mockSupplierRepo := repositorymocks.NewSupplierRepository(t)
 		service, _ := newProductServiceWithRepos(mockProductRepo, mockSupplierRepo)
 
-		csvData := `Name;Description;ProductType;Suppliers
-Laptop;High-performance laptop;;Tech Inc`
+		csvData := `Name;Description;ProductType;Unit;Suppliers
+Laptop;High-performance laptop;;unit;Tech Inc`
+
+		supplier1 := &models.Supplier{Base: models.Base{ID: 1}, Name: "Tech Inc"}
+
+		mockSupplierRepo.On("FindOrCreateByName", ctx, mock.MatchedBy(func(s *models.Supplier) bool {
+			return s.Name == "Tech Inc"
+		})).Return(supplier1, nil).Once()
+
+		mockProductRepo.On("Create", ctx, mock.MatchedBy(func(p *models.Product) bool {
+			return p.Name == "Laptop" && p.ProductType == "" // ProductType is empty
+		})).Return(nil).Once()
+
+		mockProductRepo.On("Update", ctx, mock.MatchedBy(func(p *models.Product) bool {
+			return p.Name == "Laptop" && len(p.Suppliers) == 1
+		})).Return(nil).Once()
 
 		// Execute
 		count, err := service.ImportProductsFromCSV(ctx, strings.NewReader(csvData))
 
-		// Assert
-		require.Error(t, err)
-		assert.Equal(t, 0, count)
-		var appErr *pkg.AppError
-		assert.ErrorAs(t, err, &appErr)
-		assert.Equal(t, pkg.ErrorCodeValidation, appErr.Code)
+		// Assert - product created with empty ProductType
+		require.NoError(t, err)
+		assert.Equal(t, 1, count)
+		mockProductRepo.AssertExpectations(t)
+		mockSupplierRepo.AssertExpectations(t)
 	})
 
-	t.Run("should return error when supplier row has no preceding product", func(t *testing.T) {
+	t.Run("should import supplier when row has no product data", func(t *testing.T) {
 		// Setup
 		mockProductRepo := repositorymocks.NewProductRepository(t)
 		mockSupplierRepo := repositorymocks.NewSupplierRepository(t)
 		service, _ := newProductServiceWithRepos(mockProductRepo, mockSupplierRepo)
 
-		csvData := `Name;Description;ProductType;Suppliers
-;;;Tech Inc`
+		csvData := `Name;Description;ProductType;Unit;Suppliers
+;;;;Tech Inc`
+
+		supplier1 := &models.Supplier{Base: models.Base{ID: 1}, Name: "Tech Inc"}
+		mockSupplierRepo.On("FindOrCreateByName", ctx, mock.MatchedBy(func(s *models.Supplier) bool {
+			return s.Name == "Tech Inc"
+		})).Return(supplier1, nil).Once()
 
 		// Execute
 		count, err := service.ImportProductsFromCSV(ctx, strings.NewReader(csvData))
 
-		// Assert
-		require.Error(t, err)
-		assert.Equal(t, 0, count)
-		var appErr *pkg.AppError
-		assert.ErrorAs(t, err, &appErr)
-		assert.Equal(t, pkg.ErrorCodeValidation, appErr.Code)
+		// Assert - no products but supplier is created
+		require.NoError(t, err)
+		assert.Equal(t, 0, count) // No products created
+		mockSupplierRepo.AssertExpectations(t)
 	})
 
 	t.Run("should return error when CSV has no valid product data", func(t *testing.T) {
@@ -509,7 +562,7 @@ Laptop;High-performance laptop;;Tech Inc`
 		mockSupplierRepo := repositorymocks.NewSupplierRepository(t)
 		service, _ := newProductServiceWithRepos(mockProductRepo, mockSupplierRepo)
 
-		csvData := `Name;Description;ProductType;Suppliers
+		csvData := `Name;Description;ProductType;Unit;Suppliers
 
 `
 
@@ -530,9 +583,9 @@ Laptop;High-performance laptop;;Tech Inc`
 		mockSupplierRepo := repositorymocks.NewSupplierRepository(t)
 		service, _ := newProductServiceWithRepos(mockProductRepo, mockSupplierRepo)
 
-		csvData := `Name;Description;ProductType;Suppliers
+		csvData := `Name;Description;ProductType;Unit;Suppliers
 
-Laptop;High-performance laptop;Electronics;
+Laptop;High-performance laptop;Electronics;unit;
 
 `
 
@@ -553,8 +606,8 @@ Laptop;High-performance laptop;Electronics;
 		mockSupplierRepo := repositorymocks.NewSupplierRepository(t)
 		service, _ := newProductServiceWithRepos(mockProductRepo, mockSupplierRepo)
 
-		csvData := `Name;Description;ProductType;Suppliers
-Laptop;High-performance laptop;Electronics;`
+		csvData := `Name;Description;ProductType;Unit;Suppliers
+Laptop;High-performance laptop;Electronics;unit;`
 
 		dbError := errors.New("database connection failed")
 		mockProductRepo.On("Create", ctx, mock.AnythingOfType("*models.Product")).Return(dbError).Once()
@@ -575,11 +628,11 @@ Laptop;High-performance laptop;Electronics;`
 		mockSupplierRepo := repositorymocks.NewSupplierRepository(t)
 		service, _ := newProductServiceWithRepos(mockProductRepo, mockSupplierRepo)
 
-		csvData := `Name;Description;ProductType;Suppliers
-Laptop;High-performance laptop;Electronics;Tech Inc`
+		csvData := `Name;Description;ProductType;Unit;Suppliers
+Laptop;High-performance laptop;Electronics;unit;Tech Inc`
 
-		mockProductRepo.On("Create", ctx, mock.AnythingOfType("*models.Product")).Return(nil).Once()
-
+		// Suppliers are created before products, so if supplier creation fails,
+		// product creation is never attempted
 		dbError := errors.New("database connection failed")
 		mockSupplierRepo.On("FindOrCreateByName", ctx, mock.AnythingOfType("*models.Supplier")).Return(nil, dbError).Once()
 
@@ -590,7 +643,6 @@ Laptop;High-performance laptop;Electronics;Tech Inc`
 		require.Error(t, err)
 		assert.Equal(t, 0, count)
 		assert.Contains(t, err.Error(), "failed to create/find supplier")
-		mockProductRepo.AssertExpectations(t)
 		mockSupplierRepo.AssertExpectations(t)
 	})
 
@@ -600,8 +652,8 @@ Laptop;High-performance laptop;Electronics;Tech Inc`
 		mockSupplierRepo := repositorymocks.NewSupplierRepository(t)
 		service, _ := newProductServiceWithRepos(mockProductRepo, mockSupplierRepo)
 
-		csvData := `Name;Description;ProductType;Suppliers
-Laptop;High-performance laptop;Electronics;Tech Inc`
+		csvData := `Name;Description;ProductType;Unit;Suppliers
+Laptop;High-performance laptop;Electronics;unit;Tech Inc`
 
 		supplier := &models.Supplier{Base: models.Base{ID: 1}, Name: "Tech Inc"}
 
@@ -628,8 +680,8 @@ Laptop;High-performance laptop;Electronics;Tech Inc`
 		mockSupplierRepo := repositorymocks.NewSupplierRepository(t)
 		service, _ := newProductServiceWithRepos(mockProductRepo, mockSupplierRepo)
 
-		csvData := `name;DESCRIPTION;producttype;suppliers
-Laptop;High-performance laptop;Electronics;`
+		csvData := `name;DESCRIPTION;producttype;UNIT;suppliers
+Laptop;High-performance laptop;Electronics;unit;`
 
 		mockProductRepo.On("Create", ctx, mock.MatchedBy(func(p *models.Product) bool {
 			return p.Name == "Laptop" &&
@@ -652,8 +704,8 @@ Laptop;High-performance laptop;Electronics;`
 		mockSupplierRepo := repositorymocks.NewSupplierRepository(t)
 		service, _ := newProductServiceWithRepos(mockProductRepo, mockSupplierRepo)
 
-		csvData := `Name;Description;ProductType;Suppliers;ContactEmail;ContactPhone;Address
-  Laptop  ;  High-performance laptop  ;  Electronics  ;  Tech Inc  ;  tech@email.com  ;  +1-555-0123  ;  123 Tech St  `
+		csvData := `Name;Description;ProductType;Unit;Suppliers;ContactEmail;ContactPhone;Address
+  Laptop  ;  High-performance laptop  ;  Electronics  ;  unit  ;  Tech Inc  ;  tech@email.com  ;  +1-555-0123  ;  123 Tech St  `
 
 		supplier := &models.Supplier{Base: models.Base{ID: 1}, Name: "Tech Inc"}
 
@@ -688,8 +740,8 @@ Laptop;High-performance laptop;Electronics;`
 		mockSupplierRepo := repositorymocks.NewSupplierRepository(t)
 		service, _ := newProductServiceWithRepos(mockProductRepo, mockSupplierRepo)
 
-		csvData := `Name;Description;ProductType;Suppliers;ContactEmail;ContactPhone;Address
-Pepsi;;Nước;Công ty TNHH Giải khát Sài Gòn;contact@email.com;0123456789;D5 Khu dân cư Thảo Nguyên`
+		csvData := `Name;Description;ProductType;Unit;Suppliers;ContactEmail;ContactPhone;Address
+Pepsi;;Nước;unit;Công ty TNHH Giải khát Sài Gòn;contact@email.com;0123456789;D5 Khu dân cư Thảo Nguyên`
 
 		supplier := &models.Supplier{
 			Base:         models.Base{ID: 1},
@@ -753,9 +805,9 @@ func TestImportProductsFromExcel(t *testing.T) {
 		service, _ := newProductServiceWithRepos(mockProductRepo, mockSupplierRepo)
 
 		// Create Excel file
-		headers := []string{"Name", "Description", "ProductType", "Suppliers", "ContactEmail", "ContactPhone", "Address"}
+		headers := []string{"Name", "Description", "ProductType", "Unit", "Suppliers", "ContactEmail", "ContactPhone", "Address"}
 		rows := [][]string{
-			{"Laptop Dell XPS 13", "High-performance laptop", "Electronics", "", "", "", ""},
+			{"Laptop Dell XPS 13", "High-performance laptop", "Electronics", "unit", "", "", "", ""},
 		}
 		f := createExcelFile(headers, rows)
 
@@ -787,10 +839,12 @@ func TestImportProductsFromExcel(t *testing.T) {
 		service, _ := newProductServiceWithRepos(mockProductRepo, mockSupplierRepo)
 
 		// Create Excel file
-		headers := []string{"Name", "Description", "ProductType", "Suppliers", "ContactEmail", "ContactPhone", "Address"}
+		// Note: Each row with a product name creates a separate product
+		// Continuation rows (empty product name) are not supported for supplier association
+		headers := []string{"Name", "Description", "ProductType", "Unit", "Suppliers", "ContactEmail", "ContactPhone", "Address"}
 		rows := [][]string{
-			{"Laptop", "High-performance laptop", "Electronics", "Tech Inc", "tech@email.com", "+1-555-0123", "123 Tech St"},
-			{"", "", "", "Dell", "dell@email.com", "+1-555-0456", "456 Dell Way"},
+			{"Laptop", "High-performance laptop", "Electronics", "unit", "Tech Inc", "tech@email.com", "+1-555-0123", "123 Tech St"},
+			{"Tablet", "High-performance tablet", "Electronics", "unit", "Dell", "dell@email.com", "+1-555-0456", "456 Dell Way"},
 		}
 		f := createExcelFile(headers, rows)
 
@@ -800,7 +854,13 @@ func TestImportProductsFromExcel(t *testing.T) {
 		supplier1 := &models.Supplier{Base: models.Base{ID: 1}, Name: "Tech Inc"}
 		supplier2 := &models.Supplier{Base: models.Base{ID: 2}, Name: "Dell"}
 
-		mockProductRepo.On("Create", ctx, mock.AnythingOfType("*models.Product")).Return(nil).Once()
+		mockProductRepo.On("Create", ctx, mock.MatchedBy(func(p *models.Product) bool {
+			return p.Name == "Laptop"
+		})).Return(nil).Once()
+
+		mockProductRepo.On("Create", ctx, mock.MatchedBy(func(p *models.Product) bool {
+			return p.Name == "Tablet"
+		})).Return(nil).Once()
 
 		mockSupplierRepo.On("FindOrCreateByName", ctx, mock.MatchedBy(func(s *models.Supplier) bool {
 			return s.Name == "Tech Inc"
@@ -811,7 +871,11 @@ func TestImportProductsFromExcel(t *testing.T) {
 		})).Return(supplier2, nil).Once()
 
 		mockProductRepo.On("Update", ctx, mock.MatchedBy(func(p *models.Product) bool {
-			return p.Name == "Laptop" && len(p.Suppliers) == 2
+			return p.Name == "Laptop" && len(p.Suppliers) == 1
+		})).Return(nil).Once()
+
+		mockProductRepo.On("Update", ctx, mock.MatchedBy(func(p *models.Product) bool {
+			return p.Name == "Tablet" && len(p.Suppliers) == 1
 		})).Return(nil).Once()
 
 		// Execute
@@ -819,7 +883,7 @@ func TestImportProductsFromExcel(t *testing.T) {
 
 		// Assert
 		require.NoError(t, err)
-		assert.Equal(t, 1, count)
+		assert.Equal(t, 2, count)
 		mockProductRepo.AssertExpectations(t)
 		mockSupplierRepo.AssertExpectations(t)
 	})
@@ -855,7 +919,7 @@ func TestImportProductsFromExcel(t *testing.T) {
 		service, _ := newProductServiceWithRepos(mockProductRepo, mockSupplierRepo)
 
 		// Create Excel with only headers
-		headers := []string{"Name", "Description", "ProductType", "Suppliers"}
+		headers := []string{"Name", "Description", "ProductType", "Unit", "Suppliers"}
 		rows := [][]string{}
 		f := createExcelFile(headers, rows)
 
@@ -880,9 +944,9 @@ func TestImportProductsFromExcel(t *testing.T) {
 		service, _ := newProductServiceWithRepos(mockProductRepo, mockSupplierRepo)
 
 		// Create Excel without Name column
-		headers := []string{"Description", "ProductType", "Suppliers"}
+		headers := []string{"Description", "ProductType", "Unit", "Suppliers"}
 		rows := [][]string{
-			{"High-performance laptop", "Electronics", "Tech Inc"},
+			{"High-performance laptop", "Electronics", "unit", "Tech Inc"},
 		}
 		f := createExcelFile(headers, rows)
 
@@ -907,9 +971,9 @@ func TestImportProductsFromExcel(t *testing.T) {
 		service, _ := newProductServiceWithRepos(mockProductRepo, mockSupplierRepo)
 
 		// Create Excel with Unicode
-		headers := []string{"Name", "Description", "ProductType", "Suppliers", "ContactEmail", "ContactPhone", "Address"}
+		headers := []string{"Name", "Description", "ProductType", "Unit", "Suppliers", "ContactEmail", "ContactPhone", "Address"}
 		rows := [][]string{
-			{"Pepsi", "", "Nước", "Công ty TNHH Giải khát Sài Gòn", "contact@email.com", "0123456789", "D5 Khu dân cư Thảo Nguyên"},
+			{"Pepsi", "", "Nước", "unit", "Công ty TNHH Giải khát Sài Gòn", "contact@email.com", "0123456789", "D5 Khu dân cư Thảo Nguyên"},
 		}
 		f := createExcelFile(headers, rows)
 

@@ -11,16 +11,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-const (
-	// TestRevenueExpenseSpreadsheetID is the ID of the test Google Sheets spreadsheet
-	// This should be set via environment variable: TEST_REVENUE_EXPENSE_SPREADSHEET_ID
-	TestRevenueExpenseSpreadsheetID = "TEST_REVENUE_EXPENSE_SPREADSHEET_ID"
-
-	// TestGoogleAPIKey is the Google API key for accessing Google Sheets
-	// This should be set via environment variable: GOOGLE_SERVICE_ACCOUNT
-	TestGoogleAPIKey = "GOOGLE_SERVICE_ACCOUNT"
-)
-
 func TestRevenueExpenseGoogleSheetsRepositorySuite(t *testing.T) {
 	t.Skip("Skipping Google Sheets test on CI/CD")
 
@@ -30,8 +20,8 @@ func TestRevenueExpenseGoogleSheetsRepositorySuite(t *testing.T) {
 		}
 
 		// Check if test environment variables are set
-		spreadsheetID := os.Getenv(TestRevenueExpenseSpreadsheetID)
-		serviceAccountFilePath := os.Getenv(TestGoogleAPIKey)
+		spreadsheetID := os.Getenv("TEST_REVENUE_EXPENSE_SPREADSHEET_ID")
+		serviceAccountFilePath := os.Getenv("GOOGLE_SERVICE_ACCOUNT")
 
 		t.Log("=== Google Sheets test: handling with THU CHI Google Sheets ===")
 		t.Logf("Spreadsheet ID: %s", spreadsheetID)
@@ -153,8 +143,8 @@ func TestRevenueExpenseGoogleSheetsRepositorySuite(t *testing.T) {
 		revenueExpenseGoogleSheetsRepo := NewRevenueExpenseGoogleSheetsRepository()
 
 		// Use environment variables to pull service account and spreadsheet configs
-		serviceAccountFile := os.Getenv(TestGoogleAPIKey)
-		spreadsheetID := os.Getenv(TestRevenueExpenseSpreadsheetID)
+		serviceAccountFile := os.Getenv("GOOGLE_SERVICE_ACCOUNT")
+		spreadsheetID := os.Getenv("TEST_REVENUE_EXPENSE_SPREADSHEET_ID")
 
 		// Initialize with test service account and spreadsheet
 		err := revenueExpenseGoogleSheetsRepo.InitializeWithSpreadsheet(ctx, serviceAccountFile, spreadsheetID, sheetName)

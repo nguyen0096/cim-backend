@@ -2,6 +2,8 @@ package apptest
 
 import (
 	"cim-backend/internal/models"
+	"cim-backend/pkg/testutil"
+	"cim-backend/pkg/testutil/fixture"
 	"fmt"
 
 	"github.com/google/uuid"
@@ -15,7 +17,7 @@ var _ = Describe("Product API", func() {
 		var testUnit *models.Unit
 
 		BeforeEach(func() {
-			testUnit = tenv.WithUnit(models.Unit{
+			testUnit = fixture.WithUnit(tenv.ContextfulDB(), models.Unit{
 				UnitType:         uuid.New().String(),
 				Name:             fmt.Sprintf("Test Unit %s", uuid.New().String()),
 				ConversionFactor: 1,
@@ -24,7 +26,7 @@ var _ = Describe("Product API", func() {
 
 		Context("when user has authorized role", func() {
 			It("should create and get product with admin role", func() {
-				client := NewClient(tenv, models.RoleAdmin)
+				client := testutil.NewClient(tenv, models.RoleAdmin)
 				productName := fmt.Sprintf("Test Product %s", uuid.New().String())
 				productDescription := fmt.Sprintf("Test Description %s", uuid.New().String())
 
@@ -37,17 +39,17 @@ var _ = Describe("Product API", func() {
 					"status":       "active",
 				}
 
-				resp, err := client.MakeRequest("POST", "/api/v1/products", productData, WithAuth())
+				resp, err := client.MakeRequest("POST", "/api/v1/products", productData, testutil.WithAuth())
 				Expect(err).NotTo(HaveOccurred())
 				Expect(resp.StatusCode).To(Equal(201))
 
-				productResp := ParseResponse(resp)
+				productResp := testutil.ParseResponse(resp)
 				Expect(productResp["id"]).NotTo(BeNil())
 				Expect(productResp["name"]).To(Equal(productName))
 			})
 
 			It("should create and get product with accountant role", func() {
-				client := NewClient(tenv, models.RoleAccountant)
+				client := testutil.NewClient(tenv, models.RoleAccountant)
 				productName := fmt.Sprintf("Test Product %s", uuid.New().String())
 				productDescription := fmt.Sprintf("Test Description %s", uuid.New().String())
 
@@ -60,11 +62,11 @@ var _ = Describe("Product API", func() {
 					"status":       "active",
 				}
 
-				resp, err := client.MakeRequest("POST", "/api/v1/products", productData, WithAuth())
+				resp, err := client.MakeRequest("POST", "/api/v1/products", productData, testutil.WithAuth())
 				Expect(err).NotTo(HaveOccurred())
 				Expect(resp.StatusCode).To(Equal(201))
 
-				productResp := ParseResponse(resp)
+				productResp := testutil.ParseResponse(resp)
 				Expect(productResp["id"]).NotTo(BeNil())
 				Expect(productResp["name"]).To(Equal(productName))
 			})
@@ -72,7 +74,7 @@ var _ = Describe("Product API", func() {
 
 		Context("when user has unauthorized role", func() {
 			It("should not create product with staff role", func() {
-				client := NewClient(tenv, models.RoleStaff)
+				client := testutil.NewClient(tenv, models.RoleStaff)
 
 				productData := map[string]interface{}{
 					"name":         "Test Product",
@@ -83,16 +85,16 @@ var _ = Describe("Product API", func() {
 					"status":       "active",
 				}
 
-				resp, err := client.MakeRequest("POST", "/api/v1/products", productData, WithAuth())
+				resp, err := client.MakeRequest("POST", "/api/v1/products", productData, testutil.WithAuth())
 				Expect(err).NotTo(HaveOccurred())
 				Expect(resp.StatusCode).To(Equal(403))
 
-				errorResp := ParseResponse(resp)
+				errorResp := testutil.ParseResponse(resp)
 				Expect(errorResp["error"]).To(Equal(fmt.Sprintf("Access denied: %s role cannot create products", models.RoleStaff)))
 			})
 
 			It("should not create product with bot form role", func() {
-				client := NewClient(tenv, models.RoleBotForm)
+				client := testutil.NewClient(tenv, models.RoleBotForm)
 
 				productData := map[string]interface{}{
 					"name":         "Test Product",
@@ -103,11 +105,11 @@ var _ = Describe("Product API", func() {
 					"status":       "active",
 				}
 
-				resp, err := client.MakeRequest("POST", "/api/v1/products", productData, WithAuth())
+				resp, err := client.MakeRequest("POST", "/api/v1/products", productData, testutil.WithAuth())
 				Expect(err).NotTo(HaveOccurred())
 				Expect(resp.StatusCode).To(Equal(403))
 
-				errorResp := ParseResponse(resp)
+				errorResp := testutil.ParseResponse(resp)
 				Expect(errorResp["error"]).To(Equal(fmt.Sprintf("Access denied: %s role cannot create products", models.RoleBotForm)))
 			})
 		})
@@ -119,26 +121,26 @@ var _ = Describe("Product API", func() {
 		var testProduct *models.Product
 
 		BeforeEach(func() {
-			testUnit = tenv.WithUnit(models.Unit{
+			testUnit = fixture.WithUnit(tenv.ContextfulDB(), models.Unit{
 				Name:             fmt.Sprintf("Test Unit %s", uuid.New().String()),
 				ConversionFactor: 1,
 			})
 
-			supplier1 := tenv.WithSupplier(models.Supplier{
+			supplier1 := fixture.WithSupplier(tenv.ContextfulDB(), models.Supplier{
 				Name: fmt.Sprintf("Test Supplier 1 %s", uuid.New().String()),
 			})
-			supplier2 := tenv.WithSupplier(models.Supplier{
+			supplier2 := fixture.WithSupplier(tenv.ContextfulDB(), models.Supplier{
 				Name: fmt.Sprintf("Test Supplier 2 %s", uuid.New().String()),
 			})
-			supplier3 := tenv.WithSupplier(models.Supplier{
+			supplier3 := fixture.WithSupplier(tenv.ContextfulDB(), models.Supplier{
 				Name: fmt.Sprintf("Test Supplier 3 %s", uuid.New().String()),
 			})
-			supplier4 := tenv.WithSupplier(models.Supplier{
+			supplier4 := fixture.WithSupplier(tenv.ContextfulDB(), models.Supplier{
 				Name: fmt.Sprintf("Test Supplier 4 %s", uuid.New().String()),
 			})
 			testSuppliers = []models.Supplier{*supplier1, *supplier2, *supplier3, *supplier4}
 
-			testProduct = tenv.WithProduct(models.Product{
+			testProduct = fixture.WithProduct(tenv.ContextfulDB(), models.Product{
 				Name:        fmt.Sprintf("Test Product %s", uuid.New().String()),
 				Description: fmt.Sprintf("Test Description %s", uuid.New().String()),
 				ProductType: "test",
@@ -150,7 +152,7 @@ var _ = Describe("Product API", func() {
 
 		Context("when user has authorized role", func() {
 			It("should update product with admin role", func() {
-				client := NewClient(tenv, models.RoleAdmin)
+				client := testutil.NewClient(tenv, models.RoleAdmin)
 				newProductName := fmt.Sprintf("Test Product Edited %s", uuid.New().String())
 				newProductDescription := fmt.Sprintf("Test Description Edited %s", uuid.New().String())
 
@@ -164,11 +166,11 @@ var _ = Describe("Product API", func() {
 				}
 
 				urlPath := fmt.Sprintf("/api/v1/products/%d", testProduct.ID)
-				resp, err := client.MakeRequest("PUT", urlPath, updatedProductData, WithAuth())
+				resp, err := client.MakeRequest("PUT", urlPath, updatedProductData, testutil.WithAuth())
 				Expect(err).NotTo(HaveOccurred())
 				Expect(resp.StatusCode).To(Equal(200))
 
-				updatedProductResp := ParseResponse(resp)
+				updatedProductResp := testutil.ParseResponse(resp)
 				Expect(updatedProductResp["name"]).To(Equal(newProductName))
 				Expect(updatedProductResp["description"]).To(Equal(newProductDescription))
 				Expect(updatedProductResp["product_type"]).To(Equal("test_edited"))
@@ -179,7 +181,7 @@ var _ = Describe("Product API", func() {
 			})
 
 			It("should update product with accountant role", func() {
-				client := NewClient(tenv, models.RoleAccountant)
+				client := testutil.NewClient(tenv, models.RoleAccountant)
 				newProductName := fmt.Sprintf("Test Product Edited %s", uuid.New().String())
 				newProductDescription := fmt.Sprintf("Test Description Edited %s", uuid.New().String())
 
@@ -193,18 +195,18 @@ var _ = Describe("Product API", func() {
 				}
 
 				urlPath := fmt.Sprintf("/api/v1/products/%d", testProduct.ID)
-				resp, err := client.MakeRequest("PUT", urlPath, updatedProductData, WithAuth())
+				resp, err := client.MakeRequest("PUT", urlPath, updatedProductData, testutil.WithAuth())
 				Expect(err).NotTo(HaveOccurred())
 				Expect(resp.StatusCode).To(Equal(200))
 
-				updatedProductResp := ParseResponse(resp)
+				updatedProductResp := testutil.ParseResponse(resp)
 				Expect(updatedProductResp["name"]).To(Equal(newProductName))
 			})
 		})
 
 		Context("when user has unauthorized role", func() {
 			It("should not update product with staff role", func() {
-				client := NewClient(tenv, models.RoleStaff)
+				client := testutil.NewClient(tenv, models.RoleStaff)
 
 				updatedProductData := map[string]interface{}{
 					"name":         "Updated Name",
@@ -216,16 +218,16 @@ var _ = Describe("Product API", func() {
 				}
 
 				urlPath := fmt.Sprintf("/api/v1/products/%d", testProduct.ID)
-				resp, err := client.MakeRequest("PUT", urlPath, updatedProductData, WithAuth())
+				resp, err := client.MakeRequest("PUT", urlPath, updatedProductData, testutil.WithAuth())
 				Expect(err).NotTo(HaveOccurred())
 				Expect(resp.StatusCode).To(Equal(403))
 
-				errorResp := ParseResponse(resp)
+				errorResp := testutil.ParseResponse(resp)
 				Expect(errorResp["error"]).To(Equal(fmt.Sprintf("Access denied: %s role cannot update products", models.RoleStaff)))
 			})
 
 			It("should not update product with bot form role", func() {
-				client := NewClient(tenv, models.RoleBotForm)
+				client := testutil.NewClient(tenv, models.RoleBotForm)
 
 				updatedProductData := map[string]interface{}{
 					"name":         "Updated Name",
@@ -237,11 +239,11 @@ var _ = Describe("Product API", func() {
 				}
 
 				urlPath := fmt.Sprintf("/api/v1/products/%d", testProduct.ID)
-				resp, err := client.MakeRequest("PUT", urlPath, updatedProductData, WithAuth())
+				resp, err := client.MakeRequest("PUT", urlPath, updatedProductData, testutil.WithAuth())
 				Expect(err).NotTo(HaveOccurred())
 				Expect(resp.StatusCode).To(Equal(403))
 
-				errorResp := ParseResponse(resp)
+				errorResp := testutil.ParseResponse(resp)
 				Expect(errorResp["error"]).To(Equal(fmt.Sprintf("Access denied: %s role cannot update products", models.RoleBotForm)))
 			})
 		})
@@ -251,7 +253,7 @@ var _ = Describe("Product API", func() {
 		var testProduct *models.Product
 
 		BeforeEach(func() {
-			testProduct = tenv.WithProduct(models.Product{
+			testProduct = fixture.WithProduct(tenv.ContextfulDB(), models.Product{
 				Name:        "Test Product",
 				Description: "Test Description",
 				UnitID:      1,
@@ -261,14 +263,14 @@ var _ = Describe("Product API", func() {
 
 		Context("when user has authorized role", func() {
 			It("should update product status with admin role", func(ctx SpecContext) {
-				client := NewClient(tenv, models.RoleAdmin)
+				client := testutil.NewClient(tenv, models.RoleAdmin)
 
 				urlPath := fmt.Sprintf("/api/v1/products/%d/status", testProduct.ID)
-				resp, err := client.MakeRequest("PUT", urlPath, map[string]interface{}{"status": "inactive"}, WithAuth())
+				resp, err := client.MakeRequest("PUT", urlPath, map[string]interface{}{"status": "inactive"}, testutil.WithAuth())
 				Expect(err).NotTo(HaveOccurred())
 				Expect(resp.StatusCode).To(Equal(200))
 
-				updatedProductResp := ParseResponse(resp)
+				updatedProductResp := testutil.ParseResponse(resp)
 				Expect(updatedProductResp["status"]).To(Equal("inactive"))
 
 				// Verify in database
@@ -279,14 +281,14 @@ var _ = Describe("Product API", func() {
 			})
 
 			It("should update product status with accountant role", func(ctx SpecContext) {
-				client := NewClient(tenv, models.RoleAccountant)
+				client := testutil.NewClient(tenv, models.RoleAccountant)
 
 				urlPath := fmt.Sprintf("/api/v1/products/%d/status", testProduct.ID)
-				resp, err := client.MakeRequest("PUT", urlPath, map[string]interface{}{"status": "inactive"}, WithAuth())
+				resp, err := client.MakeRequest("PUT", urlPath, map[string]interface{}{"status": "inactive"}, testutil.WithAuth())
 				Expect(err).NotTo(HaveOccurred())
 				Expect(resp.StatusCode).To(Equal(200))
 
-				updatedProductResp := ParseResponse(resp)
+				updatedProductResp := testutil.ParseResponse(resp)
 				Expect(updatedProductResp["status"]).To(Equal("inactive"))
 
 				// Verify in database
@@ -299,26 +301,26 @@ var _ = Describe("Product API", func() {
 
 		Context("when user has unauthorized role", func() {
 			It("should not update product status with staff role", func() {
-				client := NewClient(tenv, models.RoleStaff)
+				client := testutil.NewClient(tenv, models.RoleStaff)
 
 				urlPath := fmt.Sprintf("/api/v1/products/%d/status", testProduct.ID)
-				resp, err := client.MakeRequest("PUT", urlPath, map[string]interface{}{"status": "inactive"}, WithAuth())
+				resp, err := client.MakeRequest("PUT", urlPath, map[string]interface{}{"status": "inactive"}, testutil.WithAuth())
 				Expect(err).NotTo(HaveOccurred())
 				Expect(resp.StatusCode).To(Equal(403))
 
-				errorResp := ParseResponse(resp)
+				errorResp := testutil.ParseResponse(resp)
 				Expect(errorResp["error"]).To(Equal(fmt.Sprintf("Access denied: %s role cannot update products", models.RoleStaff)))
 			})
 
 			It("should not update product status with bot form role", func() {
-				client := NewClient(tenv, models.RoleBotForm)
+				client := testutil.NewClient(tenv, models.RoleBotForm)
 
 				urlPath := fmt.Sprintf("/api/v1/products/%d/status", testProduct.ID)
-				resp, err := client.MakeRequest("PUT", urlPath, map[string]interface{}{"status": "inactive"}, WithAuth())
+				resp, err := client.MakeRequest("PUT", urlPath, map[string]interface{}{"status": "inactive"}, testutil.WithAuth())
 				Expect(err).NotTo(HaveOccurred())
 				Expect(resp.StatusCode).To(Equal(403))
 
-				errorResp := ParseResponse(resp)
+				errorResp := testutil.ParseResponse(resp)
 				Expect(errorResp["error"]).To(Equal(fmt.Sprintf("Access denied: %s role cannot update products", models.RoleBotForm)))
 			})
 		})
@@ -330,17 +332,17 @@ var _ = Describe("Product API", func() {
 		var testProduct *models.Product
 
 		BeforeEach(func() {
-			testUnit = tenv.WithUnit(models.Unit{
+			testUnit = fixture.WithUnit(tenv.ContextfulDB(), models.Unit{
 				UnitType:         uuid.New().String(),
 				Name:             fmt.Sprintf("Test Unit %s", uuid.New().String()),
 				ConversionFactor: 1,
 			})
 
-			testSupplier = tenv.WithSupplier(models.Supplier{
+			testSupplier = fixture.WithSupplier(tenv.ContextfulDB(), models.Supplier{
 				Name: fmt.Sprintf("Test Supplier 1 %s", uuid.New().String()),
 			})
 
-			testProduct = tenv.WithProduct(models.Product{
+			testProduct = fixture.WithProduct(tenv.ContextfulDB(), models.Product{
 				Name:        fmt.Sprintf("Test Product %s", uuid.New().String()),
 				Description: fmt.Sprintf("Test Description %s", uuid.New().String()),
 				ProductType: "test",
@@ -352,10 +354,10 @@ var _ = Describe("Product API", func() {
 
 		Context("when user has admin role", func() {
 			It("should delete product", func(ctx SpecContext) {
-				client := NewClient(tenv, models.RoleAdmin)
+				client := testutil.NewClient(tenv, models.RoleAdmin)
 
 				urlPath := fmt.Sprintf("/api/v1/products/%d", testProduct.ID)
-				resp, err := client.MakeRequest("DELETE", urlPath, nil, WithAuth())
+				resp, err := client.MakeRequest("DELETE", urlPath, nil, testutil.WithAuth())
 				Expect(err).NotTo(HaveOccurred())
 				Expect(resp.StatusCode).To(Equal(200))
 
@@ -367,41 +369,40 @@ var _ = Describe("Product API", func() {
 
 		Context("when user has unauthorized role", func() {
 			It("should not delete product with accountant role", func() {
-				client := NewClient(tenv, models.RoleAccountant)
+				client := testutil.NewClient(tenv, models.RoleAccountant)
 
 				urlPath := fmt.Sprintf("/api/v1/products/%d", testProduct.ID)
-				resp, err := client.MakeRequest("DELETE", urlPath, nil, WithAuth())
+				resp, err := client.MakeRequest("DELETE", urlPath, nil, testutil.WithAuth())
 				Expect(err).NotTo(HaveOccurred())
 				Expect(resp.StatusCode).To(Equal(403))
 
-				errorResp := ParseResponse(resp)
+				errorResp := testutil.ParseResponse(resp)
 				Expect(errorResp["error"]).To(Equal(fmt.Sprintf("Access denied: %s role cannot delete products", models.RoleAccountant)))
 			})
 
 			It("should not delete product with staff role", func() {
-				client := NewClient(tenv, models.RoleStaff)
+				client := testutil.NewClient(tenv, models.RoleStaff)
 
 				urlPath := fmt.Sprintf("/api/v1/products/%d", testProduct.ID)
-				resp, err := client.MakeRequest("DELETE", urlPath, nil, WithAuth())
+				resp, err := client.MakeRequest("DELETE", urlPath, nil, testutil.WithAuth())
 				Expect(err).NotTo(HaveOccurred())
 				Expect(resp.StatusCode).To(Equal(403))
 
-				errorResp := ParseResponse(resp)
+				errorResp := testutil.ParseResponse(resp)
 				Expect(errorResp["error"]).To(Equal(fmt.Sprintf("Access denied: %s role cannot delete products", models.RoleStaff)))
 			})
 
 			It("should not delete product with bot form role", func() {
-				client := NewClient(tenv, models.RoleBotForm)
+				client := testutil.NewClient(tenv, models.RoleBotForm)
 
 				urlPath := fmt.Sprintf("/api/v1/products/%d", testProduct.ID)
-				resp, err := client.MakeRequest("DELETE", urlPath, nil, WithAuth())
+				resp, err := client.MakeRequest("DELETE", urlPath, nil, testutil.WithAuth())
 				Expect(err).NotTo(HaveOccurred())
 				Expect(resp.StatusCode).To(Equal(403))
 
-				errorResp := ParseResponse(resp)
+				errorResp := testutil.ParseResponse(resp)
 				Expect(errorResp["error"]).To(Equal(fmt.Sprintf("Access denied: %s role cannot delete products", models.RoleBotForm)))
 			})
 		})
 	})
 })
-

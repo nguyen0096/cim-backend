@@ -196,10 +196,6 @@ func TestUnitHandler_CreateUnit_ValidationError(t *testing.T) {
 
 	requestBody := createUnitRequest{}
 
-	mockService.
-		On("CreateUnit", mock.Anything, mock.AnythingOfType("*models.Unit")).
-		Return(pkg.ErrValidation("unit_type is required", nil))
-
 	req, err := createRequest(http.MethodPost, "/units", requestBody)
 	assert.NoError(t, err)
 	rec := httptest.NewRecorder()
@@ -209,7 +205,6 @@ func TestUnitHandler_CreateUnit_ValidationError(t *testing.T) {
 	assert.Error(t, err)
 	e.HTTPErrorHandler(err, c)
 	assert.Equal(t, http.StatusBadRequest, rec.Code)
-	mockService.AssertExpectations(t)
 }
 
 func TestUnitHandler_GetUnit_NotFound(t *testing.T) {

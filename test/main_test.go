@@ -1,29 +1,31 @@
 package apptest
 
 import (
-	"cim-backend/pkg"
 	"context"
 	"testing"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+
+	"cim-backend/pkg"
+	"cim-backend/pkg/testutil"
 )
 
 var (
-	tenv *TestEnv
+	tenv *testutil.TestBox
 )
 
 // SetupTestContainer initializes the test container before all tests
 var _ = BeforeSuite(func(ctx SpecContext) {
-	tenv = &TestEnv{}
+	tenv = &testutil.TestBox{}
 
-	By("Provision database", tenv.provisionDB)
-	By("Load configuration", tenv.loadConfig)
-	By("Initialize database connection", tenv.initDBConn)
-	By("Run migrations", tenv.runMigrations)
-	By("Initialize dependencies", tenv.initDependencies)
-	By("Initialize mock dependencies", tenv.initMockDependencies)
-	By("By initializing and starting server", tenv.initAndStartServer)
+	By("Provision database", tenv.ProvisionDB)
+	By("Load configuration", tenv.GetConfig)
+	By("Initialize database connection", tenv.InitDBConn)
+	By("Run migrations", tenv.RunMigrations)
+	By("Initialize dependencies", tenv.InitDependencies)
+	By("Initialize mock dependencies", tenv.InitMockDependencies)
+	By("By initializing and starting server", tenv.InitAndStartServer)
 
 	By("Initialize default test context", func() {
 		tenv.DefaultContext = pkg.WithUserEmail(context.Background(), "test-admin@cim.local")
@@ -35,9 +37,9 @@ var _ = BeforeSuite(func(ctx SpecContext) {
 
 // CleanupTestContainer cleans up the test container after all tests
 var _ = AfterSuite(func(ctx SpecContext) {
-	By("Shutdown test server", tenv.shutdownServer)
-	By("Close database connection", tenv.closeDBConn)
-	By("Deprovision database", tenv.deprovisionDB)
+	By("Shutdown test server", tenv.ShutdownServer)
+	By("Close database connection", tenv.CloseDBConn)
+	By("Deprovision database", tenv.DeprovisionDB)
 })
 
 func TestApplication(t *testing.T) {

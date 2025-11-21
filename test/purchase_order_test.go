@@ -3,6 +3,8 @@ package apptest
 import (
 	"cim-backend/internal/models"
 	"cim-backend/pkg"
+	"cim-backend/pkg/testutil"
+	"cim-backend/pkg/testutil/fixture"
 	"fmt"
 	"time"
 
@@ -22,22 +24,22 @@ var _ = Describe("Purchase Order API", func() {
 
 		BeforeEach(func() {
 			// Create suppliers
-			supplier1 := tenv.WithSupplier(models.Supplier{
+			supplier1 := fixture.WithSupplier(tenv.ContextfulDB(), models.Supplier{
 				Name: fmt.Sprintf("Test Supplier 1 %s", uuid.New().String()),
 			})
-			supplier2 := tenv.WithSupplier(models.Supplier{
+			supplier2 := fixture.WithSupplier(tenv.ContextfulDB(), models.Supplier{
 				Name: fmt.Sprintf("Test Supplier 2 %s", uuid.New().String()),
 			})
 			testSuppliers = []models.Supplier{*supplier1, *supplier2}
 
 			// Create units
-			testBaseUnit = tenv.WithUnit(models.Unit{
+			testBaseUnit = fixture.WithUnit(tenv.ContextfulDB(), models.Unit{
 				Name:             fmt.Sprintf("Test Base Unit %s", uuid.New().String()),
 				Symbol:           "BU",
 				UnitType:         "length",
 				ConversionFactor: 1,
 			})
-			testDerivedUnit = tenv.WithUnit(models.Unit{
+			testDerivedUnit = fixture.WithUnit(tenv.ContextfulDB(), models.Unit{
 				Name:             fmt.Sprintf("Test Derived Unit %s", uuid.New().String()),
 				Symbol:           "DU",
 				UnitType:         "length",
@@ -46,7 +48,7 @@ var _ = Describe("Purchase Order API", func() {
 			})
 
 			// Create products
-			testProducts = tenv.WithProducts([]models.Product{
+			testProducts = fixture.WithProducts(tenv.ContextfulDB(), []models.Product{
 				{
 					Name:   fmt.Sprintf("Test Product 1 %s", uuid.New().String()),
 					UnitID: testBaseUnit.ID,
@@ -58,14 +60,14 @@ var _ = Describe("Purchase Order API", func() {
 			})
 
 			// Create inventory
-			testInventory = tenv.WithInventory(models.Inventory{
+			testInventory = fixture.WithInventory(tenv.ContextfulDB(), models.Inventory{
 				Name: fmt.Sprintf("Test Inventory 1 %s", uuid.New().String()),
 			})
 		})
 
 		Context("when user has authorized role", func() {
 			It("should create purchase order with admin role", func() {
-				client := NewClient(tenv, models.RoleAdmin)
+				client := testutil.NewClient(tenv, models.RoleAdmin)
 
 				purchaseOrderData := map[string]interface{}{
 					"inventory_id": testInventory.ID,
@@ -88,11 +90,11 @@ var _ = Describe("Purchase Order API", func() {
 					"notes": "Test purchase order",
 				}
 
-				resp, err := client.MakeRequest("POST", "/api/v1/purchase-orders", purchaseOrderData, WithAuth())
+				resp, err := client.MakeRequest("POST", "/api/v1/purchase-orders", purchaseOrderData, testutil.WithAuth())
 				Expect(err).NotTo(HaveOccurred())
 				Expect(resp.StatusCode).To(Equal(201))
 
-				purchaseOrderResp := ParseResponse(resp)
+				purchaseOrderResp := testutil.ParseResponse(resp)
 				Expect(purchaseOrderResp["id"]).NotTo(BeNil())
 				Expect(purchaseOrderResp["order_number"]).To(HavePrefix("PO-" + time.Now().Format("060102-1504")))
 				Expect(purchaseOrderResp["inventory_id"]).To(Equal(float64(testInventory.ID)))
@@ -119,7 +121,7 @@ var _ = Describe("Purchase Order API", func() {
 			})
 
 			It("should create purchase order with accountant role", func() {
-				client := NewClient(tenv, models.RoleAccountant)
+				client := testutil.NewClient(tenv, models.RoleAccountant)
 
 				purchaseOrderData := map[string]interface{}{
 					"inventory_id": testInventory.ID,
@@ -135,18 +137,18 @@ var _ = Describe("Purchase Order API", func() {
 					"notes": "Test purchase order",
 				}
 
-				resp, err := client.MakeRequest("POST", "/api/v1/purchase-orders", purchaseOrderData, WithAuth())
+				resp, err := client.MakeRequest("POST", "/api/v1/purchase-orders", purchaseOrderData, testutil.WithAuth())
 				Expect(err).NotTo(HaveOccurred())
 				Expect(resp.StatusCode).To(Equal(201))
 
-				purchaseOrderResp := ParseResponse(resp)
+				purchaseOrderResp := testutil.ParseResponse(resp)
 				Expect(purchaseOrderResp["status"]).To(Equal("order_placed"))
 			})
 		})
 
 		Context("when user has unauthorized role", func() {
 			It("should not create purchase order with staff role", func() {
-				client := NewClient(tenv, models.RoleStaff)
+				client := testutil.NewClient(tenv, models.RoleStaff)
 
 				purchaseOrderData := map[string]interface{}{
 					"inventory_id": testInventory.ID,
@@ -161,16 +163,16 @@ var _ = Describe("Purchase Order API", func() {
 					},
 				}
 
-				resp, err := client.MakeRequest("POST", "/api/v1/purchase-orders", purchaseOrderData, WithAuth())
+				resp, err := client.MakeRequest("POST", "/api/v1/purchase-orders", purchaseOrderData, testutil.WithAuth())
 				Expect(err).NotTo(HaveOccurred())
 				Expect(resp.StatusCode).To(Equal(403))
 
-				errorResp := ParseResponse(resp)
+				errorResp := testutil.ParseResponse(resp)
 				Expect(errorResp["error"]).To(Equal(fmt.Sprintf("Access denied: %s role cannot create purchase-orders", models.RoleStaff)))
 			})
 
 			It("should not create purchase order with bot form role", func() {
-				client := NewClient(tenv, models.RoleBotForm)
+				client := testutil.NewClient(tenv, models.RoleBotForm)
 
 				purchaseOrderData := map[string]interface{}{
 					"inventory_id": testInventory.ID,
@@ -185,11 +187,11 @@ var _ = Describe("Purchase Order API", func() {
 					},
 				}
 
-				resp, err := client.MakeRequest("POST", "/api/v1/purchase-orders", purchaseOrderData, WithAuth())
+				resp, err := client.MakeRequest("POST", "/api/v1/purchase-orders", purchaseOrderData, testutil.WithAuth())
 				Expect(err).NotTo(HaveOccurred())
 				Expect(resp.StatusCode).To(Equal(403))
 
-				errorResp := ParseResponse(resp)
+				errorResp := testutil.ParseResponse(resp)
 				Expect(errorResp["error"]).To(Equal(fmt.Sprintf("Access denied: %s role cannot create purchase-orders", models.RoleBotForm)))
 			})
 		})
@@ -203,14 +205,14 @@ var _ = Describe("Purchase Order API", func() {
 
 		BeforeEach(func() {
 			// Create unit hierarchy
-			baseUnit := tenv.WithUnit(models.Unit{
+			baseUnit := fixture.WithUnit(tenv.ContextfulDB(), models.Unit{
 				Name:             fmt.Sprintf("Base Unit %s", uuid.New().String()),
 				Symbol:           "bu",
 				UnitType:         "general",
 				Level:            1,
 				ConversionFactor: 1,
 			})
-			unit2 := tenv.WithUnit(models.Unit{
+			unit2 := fixture.WithUnit(tenv.ContextfulDB(), models.Unit{
 				Name:             fmt.Sprintf("Derived Unit 1 %s", uuid.New().String()),
 				Symbol:           "du1",
 				UnitType:         "general",
@@ -218,7 +220,7 @@ var _ = Describe("Purchase Order API", func() {
 				ConversionFactor: 2,
 				BaseUnitID:       pkg.Ptr(baseUnit.ID),
 			})
-			unit3 := tenv.WithUnit(models.Unit{
+			unit3 := fixture.WithUnit(tenv.ContextfulDB(), models.Unit{
 				Name:             fmt.Sprintf("Derived Unit 2 %s", uuid.New().String()),
 				Symbol:           "du2",
 				UnitType:         "general",
@@ -228,22 +230,22 @@ var _ = Describe("Purchase Order API", func() {
 			})
 			testUnits = []*models.Unit{baseUnit, unit2, unit3}
 
-			testSupplier = tenv.WithSupplier(models.Supplier{
+			testSupplier = fixture.WithSupplier(tenv.ContextfulDB(), models.Supplier{
 				Name: fmt.Sprintf("Test Supplier %s", uuid.New().String()),
 			})
 
-			testProduct = tenv.WithProduct(models.Product{
+			testProduct = fixture.WithProduct(tenv.ContextfulDB(), models.Product{
 				Name:   fmt.Sprintf("Test Product %s", uuid.New().String()),
 				UnitID: baseUnit.ID,
 			})
 
-			testInventory = tenv.WithInventory(models.Inventory{
+			testInventory = fixture.WithInventory(tenv.ContextfulDB(), models.Inventory{
 				Name: fmt.Sprintf("Test Inventory %s", uuid.New().String()),
 			})
 		})
 
 		It("should create purchase order with different units and same base unit", func() {
-			client := NewClient(tenv, models.RoleAdmin)
+			client := testutil.NewClient(tenv, models.RoleAdmin)
 
 			payload := map[string]interface{}{
 				"inventory_id": testInventory.ID,
@@ -258,11 +260,11 @@ var _ = Describe("Purchase Order API", func() {
 				},
 			}
 
-			resp, err := client.MakeRequest("POST", "/api/v1/purchase-orders", payload, WithAuth())
+			resp, err := client.MakeRequest("POST", "/api/v1/purchase-orders", payload, testutil.WithAuth())
 			Expect(err).NotTo(HaveOccurred())
 			Expect(resp.StatusCode).To(Equal(201))
 
-			purchaseOrderResp := ParseResponse(resp)
+			purchaseOrderResp := testutil.ParseResponse(resp)
 			Expect(purchaseOrderResp["total_amount"]).To(Equal("200"))
 
 			items := purchaseOrderResp["items"].([]interface{})
@@ -277,9 +279,9 @@ var _ = Describe("Purchase Order API", func() {
 		})
 
 		It("should not create purchase order with different base units", func() {
-			client := NewClient(tenv, models.RoleAdmin)
+			client := testutil.NewClient(tenv, models.RoleAdmin)
 
-			differentBaseUnit := tenv.WithUnit(models.Unit{
+			differentBaseUnit := fixture.WithUnit(tenv.ContextfulDB(), models.Unit{
 				Name:             fmt.Sprintf("Different Base Unit %s", uuid.New().String()),
 				Symbol:           "DBU",
 				UnitType:         "length",
@@ -299,7 +301,7 @@ var _ = Describe("Purchase Order API", func() {
 				},
 			}
 
-			resp, err := client.MakeRequest("POST", "/api/v1/purchase-orders", payload, WithAuth())
+			resp, err := client.MakeRequest("POST", "/api/v1/purchase-orders", payload, testutil.WithAuth())
 			Expect(err).NotTo(HaveOccurred())
 			Expect(resp.StatusCode).To(Equal(400))
 		})
@@ -312,31 +314,31 @@ var _ = Describe("Purchase Order API", func() {
 		var testInventory *models.Inventory
 
 		BeforeEach(func() {
-			testUnit = tenv.WithUnit(models.Unit{
+			testUnit = fixture.WithUnit(tenv.ContextfulDB(), models.Unit{
 				Name:             fmt.Sprintf("Test Unit %s", uuid.New().String()),
 				UnitType:         uuid.New().String(),
 				ConversionFactor: 1,
 			})
 
-			testSupplier = tenv.WithSupplier(models.Supplier{
+			testSupplier = fixture.WithSupplier(tenv.ContextfulDB(), models.Supplier{
 				Name: fmt.Sprintf("Test Supplier %s", uuid.New().String()),
 			})
 
-			testProduct = tenv.WithProduct(models.Product{
+			testProduct = fixture.WithProduct(tenv.ContextfulDB(), models.Product{
 				Name:   fmt.Sprintf("Test Product %s", uuid.New().String()),
 				UnitID: testUnit.ID,
 			})
 
-			testInventory = tenv.WithInventory(models.Inventory{
+			testInventory = fixture.WithInventory(tenv.ContextfulDB(), models.Inventory{
 				Name: fmt.Sprintf("Test Inventory %s", uuid.New().String()),
 			})
 		})
 
 		Context("when user has authorized role", func() {
 			It("should cancel order_placed purchase order with admin role", func(ctx SpecContext) {
-				client := NewClient(tenv, models.RoleAdmin)
+				client := testutil.NewClient(tenv, models.RoleAdmin)
 
-				testPurchaseOrder := tenv.WithPurchaseOrder(models.PurchaseOrder{
+				testPurchaseOrder := fixture.WithPurchaseOrder(tenv.ContextfulDB(), models.PurchaseOrder{
 					OrderNumber: uuid.New().String(),
 					Status:      models.PurchaseOrderStatusOrderPlaced,
 					InventoryID: &testInventory.ID,
@@ -351,11 +353,11 @@ var _ = Describe("Purchase Order API", func() {
 				})
 
 				urlPath := fmt.Sprintf("/api/v1/purchase-orders/%d/status", testPurchaseOrder.ID)
-				resp, err := client.MakeRequest("PUT", urlPath, map[string]interface{}{"status": "cancelled"}, WithAuth())
+				resp, err := client.MakeRequest("PUT", urlPath, map[string]interface{}{"status": "cancelled"}, testutil.WithAuth())
 				Expect(err).NotTo(HaveOccurred())
 				Expect(resp.StatusCode).To(Equal(200))
 
-				updateResp := ParseResponse(resp)
+				updateResp := testutil.ParseResponse(resp)
 				Expect(updateResp["message"]).To(Equal("Purchase order status updated successfully"))
 
 				// Verify in database
@@ -366,9 +368,9 @@ var _ = Describe("Purchase Order API", func() {
 			})
 
 			It("should cancel order_placed purchase order with accountant role", func() {
-				client := NewClient(tenv, models.RoleAccountant)
+				client := testutil.NewClient(tenv, models.RoleAccountant)
 
-				testPurchaseOrder := tenv.WithPurchaseOrder(models.PurchaseOrder{
+				testPurchaseOrder := fixture.WithPurchaseOrder(tenv.ContextfulDB(), models.PurchaseOrder{
 					OrderNumber: uuid.New().String(),
 					Status:      models.PurchaseOrderStatusOrderPlaced,
 					InventoryID: &testInventory.ID,
@@ -383,15 +385,15 @@ var _ = Describe("Purchase Order API", func() {
 				})
 
 				urlPath := fmt.Sprintf("/api/v1/purchase-orders/%d/status", testPurchaseOrder.ID)
-				resp, err := client.MakeRequest("PUT", urlPath, map[string]interface{}{"status": "cancelled"}, WithAuth())
+				resp, err := client.MakeRequest("PUT", urlPath, map[string]interface{}{"status": "cancelled"}, testutil.WithAuth())
 				Expect(err).NotTo(HaveOccurred())
 				Expect(resp.StatusCode).To(Equal(200))
 			})
 
 			It("should not change completed purchase order to cancelled", func(ctx SpecContext) {
-				client := NewClient(tenv, models.RoleAdmin)
+				client := testutil.NewClient(tenv, models.RoleAdmin)
 
-				testPurchaseOrder := tenv.WithPurchaseOrder(models.PurchaseOrder{
+				testPurchaseOrder := fixture.WithPurchaseOrder(tenv.ContextfulDB(), models.PurchaseOrder{
 					OrderNumber: uuid.New().String(),
 					Status:      models.PurchaseOrderStatusCompleted,
 					InventoryID: &testInventory.ID,
@@ -406,7 +408,7 @@ var _ = Describe("Purchase Order API", func() {
 				})
 
 				urlPath := fmt.Sprintf("/api/v1/purchase-orders/%d/status", testPurchaseOrder.ID)
-				resp, err := client.MakeRequest("PUT", urlPath, map[string]interface{}{"status": "cancelled"}, WithAuth())
+				resp, err := client.MakeRequest("PUT", urlPath, map[string]interface{}{"status": "cancelled"}, testutil.WithAuth())
 				Expect(err).NotTo(HaveOccurred())
 				Expect(resp.StatusCode).To(Equal(200))
 
@@ -420,9 +422,9 @@ var _ = Describe("Purchase Order API", func() {
 
 		Context("when user has unauthorized role", func() {
 			It("should not cancel purchase order with staff role", func() {
-				client := NewClient(tenv, models.RoleStaff)
+				client := testutil.NewClient(tenv, models.RoleStaff)
 
-				testPurchaseOrder := tenv.WithPurchaseOrder(models.PurchaseOrder{
+				testPurchaseOrder := fixture.WithPurchaseOrder(tenv.ContextfulDB(), models.PurchaseOrder{
 					OrderNumber: uuid.New().String(),
 					Status:      models.PurchaseOrderStatusOrderPlaced,
 					InventoryID: &testInventory.ID,
@@ -437,18 +439,18 @@ var _ = Describe("Purchase Order API", func() {
 				})
 
 				urlPath := fmt.Sprintf("/api/v1/purchase-orders/%d/status", testPurchaseOrder.ID)
-				resp, err := client.MakeRequest("PUT", urlPath, map[string]interface{}{"status": "cancelled"}, WithAuth())
+				resp, err := client.MakeRequest("PUT", urlPath, map[string]interface{}{"status": "cancelled"}, testutil.WithAuth())
 				Expect(err).NotTo(HaveOccurred())
 				Expect(resp.StatusCode).To(Equal(403))
 
-				errorResp := ParseResponse(resp)
+				errorResp := testutil.ParseResponse(resp)
 				Expect(errorResp["error"]).To(Equal(fmt.Sprintf("Access denied: %s role cannot update purchase-orders", models.RoleStaff)))
 			})
 
 			It("should not cancel purchase order with bot form role", func() {
-				client := NewClient(tenv, models.RoleBotForm)
+				client := testutil.NewClient(tenv, models.RoleBotForm)
 
-				testPurchaseOrder := tenv.WithPurchaseOrder(models.PurchaseOrder{
+				testPurchaseOrder := fixture.WithPurchaseOrder(tenv.ContextfulDB(), models.PurchaseOrder{
 					OrderNumber: uuid.New().String(),
 					Status:      models.PurchaseOrderStatusOrderPlaced,
 					InventoryID: &testInventory.ID,
@@ -463,11 +465,11 @@ var _ = Describe("Purchase Order API", func() {
 				})
 
 				urlPath := fmt.Sprintf("/api/v1/purchase-orders/%d/status", testPurchaseOrder.ID)
-				resp, err := client.MakeRequest("PUT", urlPath, map[string]interface{}{"status": "cancelled"}, WithAuth())
+				resp, err := client.MakeRequest("PUT", urlPath, map[string]interface{}{"status": "cancelled"}, testutil.WithAuth())
 				Expect(err).NotTo(HaveOccurred())
 				Expect(resp.StatusCode).To(Equal(403))
 
-				errorResp := ParseResponse(resp)
+				errorResp := testutil.ParseResponse(resp)
 				Expect(errorResp["error"]).To(Equal(fmt.Sprintf("Access denied: %s role cannot update purchase-orders", models.RoleBotForm)))
 			})
 		})

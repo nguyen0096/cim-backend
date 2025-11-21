@@ -6,6 +6,7 @@ import (
 	"cim-backend/internal/repository"
 	"cim-backend/internal/services/dto"
 	"cim-backend/pkg"
+	"cim-backend/pkg/log"
 	"context"
 	"crypto/rand"
 	"encoding/json"
@@ -86,7 +87,7 @@ func NewPurchaseOrderService(
 	// Start the worker goroutine to process revenue expense requests serially
 	go service.revenueExpenseWorker()
 
-	logger.Info("Purchase order service initialized with revenue expense worker")
+	log.Info("Purchase order service initialized with revenue expense worker")
 
 	return service
 }
@@ -158,7 +159,7 @@ func (s *purchaseOrderService) generatePurchaseOrderNumber() (string, error) {
 
 // CreatePurchaseOrder creates a new purchase order with auto-generated order number
 func (s *purchaseOrderService) CreatePurchaseOrder(ctx context.Context, purchaseOrder *models.PurchaseOrder) error {
-	s.logger.WithFields(logrus.Fields{
+	log.WithFields(logrus.Fields{
 		"operation":    "CreatePurchaseOrder",
 		"order_number": purchaseOrder.OrderNumber,
 	}).Info("Creating new purchase order")
@@ -167,14 +168,14 @@ func (s *purchaseOrderService) CreatePurchaseOrder(ctx context.Context, purchase
 	if purchaseOrder.OrderNumber == "" {
 		orderNumber, err := s.generatePurchaseOrderNumber()
 		if err != nil {
-			s.logger.WithFields(logrus.Fields{
+			log.WithFields(logrus.Fields{
 				"operation": "CreatePurchaseOrder",
 				"error":     err,
 			}).Error("Failed to generate purchase order number")
 			return fmt.Errorf("failed to generate purchase order number: %w", err)
 		}
 		purchaseOrder.OrderNumber = orderNumber
-		s.logger.WithFields(logrus.Fields{
+		log.WithFields(logrus.Fields{
 			"operation":    "CreatePurchaseOrder",
 			"order_number": orderNumber,
 		}).Info("Generated purchase order number")
@@ -189,7 +190,7 @@ func (s *purchaseOrderService) CreatePurchaseOrder(ctx context.Context, purchase
 			// Get product to check its unit
 			product, err := s.productRepo.GetByID(ctx, *item.ProductID)
 			if err != nil {
-				s.logger.WithFields(logrus.Fields{
+				log.WithFields(logrus.Fields{
 					"operation":  "CreatePurchaseOrder",
 					"product_id": *item.ProductID,
 					"error":      err,
@@ -200,7 +201,7 @@ func (s *purchaseOrderService) CreatePurchaseOrder(ctx context.Context, purchase
 			// Get base unit ID for product's unit
 			productBaseUnitID, err := s.getBaseUnitID(ctx, product.UnitID)
 			if err != nil {
-				s.logger.WithFields(logrus.Fields{
+				log.WithFields(logrus.Fields{
 					"operation":  "CreatePurchaseOrder",
 					"product_id": *item.ProductID,
 					"error":      err,
@@ -211,7 +212,7 @@ func (s *purchaseOrderService) CreatePurchaseOrder(ctx context.Context, purchase
 			// Get base unit ID for item's unit
 			itemBaseUnitID, err := s.getBaseUnitID(ctx, *item.UnitID)
 			if err != nil {
-				s.logger.WithFields(logrus.Fields{
+				log.WithFields(logrus.Fields{
 					"operation": "CreatePurchaseOrder",
 					"unit_id":   *item.UnitID,
 					"error":     err,
@@ -221,7 +222,7 @@ func (s *purchaseOrderService) CreatePurchaseOrder(ctx context.Context, purchase
 
 			// Validate that item's unit base unit matches product's unit base unit
 			if itemBaseUnitID != productBaseUnitID {
-				s.logger.WithFields(logrus.Fields{
+				log.WithFields(logrus.Fields{
 					"operation":         "CreatePurchaseOrder",
 					"product_id":        *item.ProductID,
 					"product_base_unit": productBaseUnitID,
@@ -236,7 +237,7 @@ func (s *purchaseOrderService) CreatePurchaseOrder(ctx context.Context, purchase
 			// Convert quantities to base unit
 			baseQuantity, baseUnitPrice, baseUnitID, err := s.convertQuantityToBaseUnit(ctx, item.Quantity, item.UnitPrice, *item.UnitID)
 			if err != nil {
-				s.logger.WithFields(logrus.Fields{
+				log.WithFields(logrus.Fields{
 					"operation": "CreatePurchaseOrder",
 					"unit_id":   *item.UnitID,
 					"error":     err,
@@ -251,7 +252,7 @@ func (s *purchaseOrderService) CreatePurchaseOrder(ctx context.Context, purchase
 
 	err := s.purchaseOrderRepo.Create(ctx, purchaseOrder)
 	if err != nil {
-		s.logger.WithFields(logrus.Fields{
+		log.WithFields(logrus.Fields{
 			"operation":    "CreatePurchaseOrder",
 			"order_number": purchaseOrder.OrderNumber,
 			"error":        err,
@@ -262,7 +263,7 @@ func (s *purchaseOrderService) CreatePurchaseOrder(ctx context.Context, purchase
 	// Reload purchase order with relationships
 	reloadedPO, err := s.purchaseOrderRepo.GetByID(purchaseOrder.ID)
 	if err != nil {
-		s.logger.WithFields(logrus.Fields{
+		log.WithFields(logrus.Fields{
 			"operation":    "CreatePurchaseOrder",
 			"order_number": purchaseOrder.OrderNumber,
 			"error":        err,
@@ -272,7 +273,7 @@ func (s *purchaseOrderService) CreatePurchaseOrder(ctx context.Context, purchase
 	*purchaseOrder = *reloadedPO
 	purchaseOrder.TotalAmount = purchaseOrder.CalculateTotalAmount()
 
-	s.logger.WithFields(logrus.Fields{
+	log.WithFields(logrus.Fields{
 		"operation":         "CreatePurchaseOrder",
 		"order_number":      purchaseOrder.OrderNumber,
 		"purchase_order_id": purchaseOrder.ID,
@@ -282,14 +283,14 @@ func (s *purchaseOrderService) CreatePurchaseOrder(ctx context.Context, purchase
 }
 
 func (s *purchaseOrderService) GetPurchaseOrderByID(id uint) (*models.PurchaseOrder, error) {
-	s.logger.WithFields(logrus.Fields{
+	log.WithFields(logrus.Fields{
 		"operation":         "GetPurchaseOrderByID",
 		"purchase_order_id": id,
 	}).Info("Retrieving purchase order by ID")
 
 	purchaseOrder, err := s.purchaseOrderRepo.GetByID(id)
 	if err != nil {
-		s.logger.WithFields(logrus.Fields{
+		log.WithFields(logrus.Fields{
 			"operation":         "GetPurchaseOrderByID",
 			"purchase_order_id": id,
 			"error":             err,
@@ -319,7 +320,7 @@ func (s *purchaseOrderService) GetPurchaseOrderByID(id uint) (*models.PurchaseOr
 	// Calculate total amount based on items
 	purchaseOrder.TotalAmount = purchaseOrder.CalculateTotalAmount()
 
-	s.logger.WithFields(logrus.Fields{
+	log.WithFields(logrus.Fields{
 		"operation":         "GetPurchaseOrderByID",
 		"purchase_order_id": id,
 		"order_number":      purchaseOrder.OrderNumber,
@@ -330,7 +331,7 @@ func (s *purchaseOrderService) GetPurchaseOrderByID(id uint) (*models.PurchaseOr
 }
 
 func (s *purchaseOrderService) UpdatePurchaseOrderStatus(ctx context.Context, id uint, status models.PurchaseOrderStatus) error {
-	s.logger.WithFields(logrus.Fields{
+	log.WithFields(logrus.Fields{
 		"operation":         "UpdatePurchaseOrderStatus",
 		"purchase_order_id": id,
 		"status":            status,
@@ -340,7 +341,7 @@ func (s *purchaseOrderService) UpdatePurchaseOrderStatus(ctx context.Context, id
 		// Check if there is an approved payment receipt form before completing
 		forms, err := s.paymentReceiptFormRepo.GetLatestPaymentReceiptForms(ctx, id, models.PaymentReceiptFormStatusApproved, 1)
 		if err != nil {
-			s.logger.WithFields(logrus.Fields{
+			log.WithFields(logrus.Fields{
 				"operation":         "UpdatePurchaseOrderStatus",
 				"purchase_order_id": id,
 				"error":             err,
@@ -349,7 +350,7 @@ func (s *purchaseOrderService) UpdatePurchaseOrderStatus(ctx context.Context, id
 		}
 
 		if len(forms) == 0 {
-			s.logger.WithFields(logrus.Fields{
+			log.WithFields(logrus.Fields{
 				"operation":         "UpdatePurchaseOrderStatus",
 				"purchase_order_id": id,
 			}).Warn("Cannot complete purchase order: no approved payment receipt form found")
@@ -362,7 +363,7 @@ func (s *purchaseOrderService) UpdatePurchaseOrderStatus(ctx context.Context, id
 
 	err := s.purchaseOrderRepo.UpdateStatus(ctx, id, status)
 	if err != nil {
-		s.logger.WithFields(logrus.Fields{
+		log.WithFields(logrus.Fields{
 			"operation":         "UpdatePurchaseOrderStatus",
 			"purchase_order_id": id,
 			"status":            status,
@@ -371,7 +372,7 @@ func (s *purchaseOrderService) UpdatePurchaseOrderStatus(ctx context.Context, id
 		return err
 	}
 
-	s.logger.WithFields(logrus.Fields{
+	log.WithFields(logrus.Fields{
 		"operation":         "UpdatePurchaseOrderStatus",
 		"purchase_order_id": id,
 		"status":            status,
@@ -381,14 +382,14 @@ func (s *purchaseOrderService) UpdatePurchaseOrderStatus(ctx context.Context, id
 }
 
 func (s *purchaseOrderService) DeletePurchaseOrder(id uint) error {
-	s.logger.WithFields(logrus.Fields{
+	log.WithFields(logrus.Fields{
 		"operation":         "DeletePurchaseOrder",
 		"purchase_order_id": id,
 	}).Info("Deleting purchase order")
 
 	err := s.purchaseOrderRepo.Delete(id)
 	if err != nil {
-		s.logger.WithFields(logrus.Fields{
+		log.WithFields(logrus.Fields{
 			"operation":         "DeletePurchaseOrder",
 			"purchase_order_id": id,
 			"error":             err,
@@ -396,7 +397,7 @@ func (s *purchaseOrderService) DeletePurchaseOrder(id uint) error {
 		return err
 	}
 
-	s.logger.WithFields(logrus.Fields{
+	log.WithFields(logrus.Fields{
 		"operation":         "DeletePurchaseOrder",
 		"purchase_order_id": id,
 	}).Info("Successfully deleted purchase order")
@@ -406,7 +407,7 @@ func (s *purchaseOrderService) DeletePurchaseOrder(id uint) error {
 
 // ListPurchaseOrders retrieves purchase orders with search and pagination
 func (s *purchaseOrderService) ListPurchaseOrders(ctx context.Context, params models.ListParams) (*models.PaginationResult[models.PurchaseOrder], error) {
-	s.logger.WithFields(logrus.Fields{
+	log.WithFields(logrus.Fields{
 		"operation": "ListPurchaseOrders",
 		"page":      params.Page,
 		"limit":     params.Limit,
@@ -421,7 +422,7 @@ func (s *purchaseOrderService) ListPurchaseOrders(ctx context.Context, params mo
 	// Get data and count from repository
 	purchaseOrders, total, err := s.purchaseOrderRepo.List(ctx, params)
 	if err != nil {
-		s.logger.WithFields(logrus.Fields{
+		log.WithFields(logrus.Fields{
 			"operation": "ListPurchaseOrders",
 			"error":     err,
 		}).Error("Failed to list purchase orders")
@@ -436,7 +437,7 @@ func (s *purchaseOrderService) ListPurchaseOrders(ctx context.Context, params mo
 	// Create pagination result
 	result := models.NewPaginationResult(purchaseOrders, total, params.Page, params.Limit)
 
-	s.logger.WithFields(logrus.Fields{
+	log.WithFields(logrus.Fields{
 		"operation":      "ListPurchaseOrders",
 		"total_count":    total,
 		"returned_count": len(purchaseOrders),
@@ -448,14 +449,14 @@ func (s *purchaseOrderService) ListPurchaseOrders(ctx context.Context, params mo
 }
 
 func (s *purchaseOrderService) GetPurchaseOrdersByStatus(status string) ([]models.PurchaseOrder, error) {
-	s.logger.WithFields(logrus.Fields{
+	log.WithFields(logrus.Fields{
 		"operation": "GetPurchaseOrdersByStatus",
 		"status":    status,
 	}).Info("Retrieving purchase orders by status")
 
 	purchaseOrders, err := s.purchaseOrderRepo.GetByStatus(status)
 	if err != nil {
-		s.logger.WithFields(logrus.Fields{
+		log.WithFields(logrus.Fields{
 			"operation": "GetPurchaseOrdersByStatus",
 			"status":    status,
 			"error":     err,
@@ -468,7 +469,7 @@ func (s *purchaseOrderService) GetPurchaseOrdersByStatus(status string) ([]model
 		purchaseOrders[i].TotalAmount = purchaseOrders[i].CalculateTotalAmount()
 	}
 
-	s.logger.WithFields(logrus.Fields{
+	log.WithFields(logrus.Fields{
 		"operation": "GetPurchaseOrdersByStatus",
 		"status":    status,
 		"count":     len(purchaseOrders),
@@ -478,14 +479,14 @@ func (s *purchaseOrderService) GetPurchaseOrdersByStatus(status string) ([]model
 }
 
 func (s *purchaseOrderService) ReceivePurchaseOrder(ctx context.Context, id uint) error {
-	s.logger.WithFields(logrus.Fields{
+	log.WithFields(logrus.Fields{
 		"operation":         "ReceivePurchaseOrder",
 		"purchase_order_id": id,
 	}).Info("Receiving purchase order")
 
 	purchaseOrder, err := s.purchaseOrderRepo.GetByID(id)
 	if err != nil {
-		s.logger.WithFields(logrus.Fields{
+		log.WithFields(logrus.Fields{
 			"operation":         "ReceivePurchaseOrder",
 			"purchase_order_id": id,
 			"error":             err,
@@ -496,7 +497,7 @@ func (s *purchaseOrderService) ReceivePurchaseOrder(ctx context.Context, id uint
 	// Update status to received
 	purchaseOrder.Status = models.PurchaseOrderStatusCompleted
 	if err := s.purchaseOrderRepo.Update(ctx, purchaseOrder); err != nil {
-		s.logger.WithFields(logrus.Fields{
+		log.WithFields(logrus.Fields{
 			"operation":         "ReceivePurchaseOrder",
 			"purchase_order_id": id,
 			"error":             err,
@@ -504,7 +505,7 @@ func (s *purchaseOrderService) ReceivePurchaseOrder(ctx context.Context, id uint
 		return fmt.Errorf("failed to update purchase order: %w", err)
 	}
 
-	s.logger.WithFields(logrus.Fields{
+	log.WithFields(logrus.Fields{
 		"operation":         "ReceivePurchaseOrder",
 		"purchase_order_id": id,
 		"items_count":       len(purchaseOrder.Items),
@@ -520,7 +521,7 @@ func (s *purchaseOrderService) ReceivePurchaseOrder(ctx context.Context, id uint
 			"purchase_order",
 			"Received from purchase order",
 		); err != nil {
-			s.logger.WithFields(logrus.Fields{
+			log.WithFields(logrus.Fields{
 				"operation":         "ReceivePurchaseOrder",
 				"purchase_order_id": id,
 				"product_id":        *item.ProductID,
@@ -531,7 +532,7 @@ func (s *purchaseOrderService) ReceivePurchaseOrder(ctx context.Context, id uint
 		}
 	}
 
-	s.logger.WithFields(logrus.Fields{
+	log.WithFields(logrus.Fields{
 		"operation":         "ReceivePurchaseOrder",
 		"purchase_order_id": id,
 		"order_number":      purchaseOrder.OrderNumber,
@@ -543,7 +544,7 @@ func (s *purchaseOrderService) ReceivePurchaseOrder(ctx context.Context, id uint
 
 // UpdatePurchaseOrderItemStatus updates the status of a purchase order item
 func (s *purchaseOrderService) UpdatePurchaseOrderItemStatus(ctx context.Context, purchaseOrderID, itemID uint, status models.PurchaseOrderItemStatus) (*dto.UpdatePurchaseOrderItemStatusResponse, error) {
-	s.logger.WithFields(logrus.Fields{
+	log.WithFields(logrus.Fields{
 		"operation":         "UpdatePurchaseOrderItemStatus",
 		"purchase_order_id": purchaseOrderID,
 		"item_id":           itemID,
@@ -559,7 +560,7 @@ func (s *purchaseOrderService) UpdatePurchaseOrderItemStatus(ctx context.Context
 			Where("id = ? AND purchase_order_id = ?", itemID, purchaseOrderID).
 			Update("status", status).Error
 		if err != nil {
-			s.logger.WithFields(logrus.Fields{
+			log.WithFields(logrus.Fields{
 				"operation":         "UpdatePurchaseOrderItemStatus",
 				"purchase_order_id": purchaseOrderID,
 				"item_id":           itemID,
@@ -588,7 +589,7 @@ func (s *purchaseOrderService) UpdatePurchaseOrderItemStatus(ctx context.Context
 			Where("id = ?", purchaseOrderID).
 			Update("status", orderStatus).Error
 		if err != nil {
-			s.logger.WithFields(logrus.Fields{
+			log.WithFields(logrus.Fields{
 				"operation":         "UpdatePurchaseOrderItemStatus",
 				"purchase_order_id": purchaseOrderID,
 				"order_status":      orderStatus,
@@ -608,7 +609,7 @@ func (s *purchaseOrderService) UpdatePurchaseOrderItemStatus(ctx context.Context
 	})
 
 	if err != nil {
-		s.logger.WithFields(logrus.Fields{
+		log.WithFields(logrus.Fields{
 			"operation":         "UpdatePurchaseOrderItemStatus",
 			"purchase_order_id": purchaseOrderID,
 			"item_id":           itemID,
@@ -617,7 +618,7 @@ func (s *purchaseOrderService) UpdatePurchaseOrderItemStatus(ctx context.Context
 		return nil, err
 	}
 
-	s.logger.WithFields(logrus.Fields{
+	log.WithFields(logrus.Fields{
 		"operation":         "UpdatePurchaseOrderItemStatus",
 		"purchase_order_id": purchaseOrderID,
 		"item_id":           itemID,
@@ -630,10 +631,10 @@ func (s *purchaseOrderService) UpdatePurchaseOrderItemStatus(ctx context.Context
 
 // revenueExpenseWorker processes revenue expense requests from the queue serially
 func (s *purchaseOrderService) revenueExpenseWorker() {
-	s.logger.Info("Revenue expense worker started")
+	log.Info("Revenue expense worker started")
 
 	for req := range s.revenueExpenseRequestQueue {
-		s.logger.WithFields(logrus.Fields{
+		log.WithFields(logrus.Fields{
 			"operation":               "revenueExpenseWorker",
 			"payment_receipt_form_id": req.paymentReceiptFormID,
 			"queue_length":            len(s.revenueExpenseRequestQueue),
@@ -643,7 +644,7 @@ func (s *purchaseOrderService) revenueExpenseWorker() {
 		s.handleRevenueExpenseAsyncBySettingsWithRetry(req.paymentReceiptFormID)
 	}
 
-	s.logger.Warn("Revenue expense worker stopped - channel closed")
+	log.Warn("Revenue expense worker stopped - channel closed")
 }
 
 // queueRevenueExpenseRequest queues a revenue expense request for serial processing
@@ -673,7 +674,7 @@ func (s *purchaseOrderService) handleRevenueExpenseAsyncBySettingsWithRetry(paym
 			defer func() {
 				if r := recover(); r != nil {
 					lastErr = fmt.Errorf("panic recovered: %v", r)
-					s.logger.WithFields(logrus.Fields{
+					log.WithFields(logrus.Fields{
 						"operation":               "handleRevenueExpenseAsyncBySettingsWithRetry",
 						"payment_receipt_form_id": paymentReceiptFormID,
 						"attempt":                 attempt,
@@ -684,7 +685,7 @@ func (s *purchaseOrderService) handleRevenueExpenseAsyncBySettingsWithRetry(paym
 				}
 			}()
 
-			s.logger.WithFields(logrus.Fields{
+			log.WithFields(logrus.Fields{
 				"operation":               "handleRevenueExpenseAsyncBySettingsWithRetry",
 				"payment_receipt_form_id": paymentReceiptFormID,
 				"attempt":                 attempt,
@@ -697,7 +698,7 @@ func (s *purchaseOrderService) handleRevenueExpenseAsyncBySettingsWithRetry(paym
 
 		// If successful, exit
 		if lastErr == nil {
-			s.logger.WithFields(logrus.Fields{
+			log.WithFields(logrus.Fields{
 				"operation":               "handleRevenueExpenseAsyncBySettingsWithRetry",
 				"payment_receipt_form_id": paymentReceiptFormID,
 				"attempt":                 attempt,
@@ -707,7 +708,7 @@ func (s *purchaseOrderService) handleRevenueExpenseAsyncBySettingsWithRetry(paym
 
 		// If this was the last attempt, log final failure
 		if attempt == maxRetries {
-			s.logger.WithFields(logrus.Fields{
+			log.WithFields(logrus.Fields{
 				"operation":               "handleRevenueExpenseAsyncBySettingsWithRetry",
 				"payment_receipt_form_id": paymentReceiptFormID,
 				"attempts":                attempt,
@@ -717,7 +718,7 @@ func (s *purchaseOrderService) handleRevenueExpenseAsyncBySettingsWithRetry(paym
 		}
 
 		// Log retry attempt with delay
-		s.logger.WithFields(logrus.Fields{
+		log.WithFields(logrus.Fields{
 			"operation":               "handleRevenueExpenseAsyncBySettingsWithRetry",
 			"payment_receipt_form_id": paymentReceiptFormID,
 			"attempt":                 attempt,
@@ -742,7 +743,7 @@ func (s *purchaseOrderService) handleRevenueExpenseAsyncBySettings(ctx context.C
 	// Get settings to determine file type
 	settings, err := s.settingsService.GetSetting(ctx, config.RevenueExpenseExcelSettingsKey)
 	if err != nil {
-		s.logger.WithFields(logrus.Fields{
+		log.WithFields(logrus.Fields{
 			"operation":               "handleRevenueExpenseAsyncBySettings",
 			"payment_receipt_form_id": paymentReceiptFormID,
 			"error":                   err,
@@ -751,7 +752,7 @@ func (s *purchaseOrderService) handleRevenueExpenseAsyncBySettings(ctx context.C
 	}
 
 	if settings == nil {
-		s.logger.WithFields(logrus.Fields{
+		log.WithFields(logrus.Fields{
 			"operation":               "handleRevenueExpenseAsyncBySettings",
 			"payment_receipt_form_id": paymentReceiptFormID,
 		}).Error("Revenue expense settings not configured")
@@ -760,7 +761,7 @@ func (s *purchaseOrderService) handleRevenueExpenseAsyncBySettings(ctx context.C
 
 	var settingsValue map[string]interface{}
 	if err := json.Unmarshal([]byte(settings.Value), &settingsValue); err != nil {
-		s.logger.WithFields(logrus.Fields{
+		log.WithFields(logrus.Fields{
 			"operation":               "handleRevenueExpenseAsyncBySettings",
 			"payment_receipt_form_id": paymentReceiptFormID,
 			"error":                   err,
@@ -770,7 +771,7 @@ func (s *purchaseOrderService) handleRevenueExpenseAsyncBySettings(ctx context.C
 
 	filePath, ok := settingsValue["filePath"].(string)
 	if !ok || filePath == "" {
-		s.logger.WithFields(logrus.Fields{
+		log.WithFields(logrus.Fields{
 			"operation":               "handleRevenueExpenseAsyncBySettings",
 			"payment_receipt_form_id": paymentReceiptFormID,
 		}).Error("filePath not found in revenue expense settings")
@@ -781,14 +782,14 @@ func (s *purchaseOrderService) handleRevenueExpenseAsyncBySettings(ctx context.C
 	isGoogleSheets := strings.Contains(filePath, "docs.google.com/spreadsheets")
 
 	if isGoogleSheets {
-		s.logger.WithFields(logrus.Fields{
+		log.WithFields(logrus.Fields{
 			"operation":               "handleRevenueExpenseAsyncBySettings",
 			"payment_receipt_form_id": paymentReceiptFormID,
 			"file_type":               "google_sheets",
 		}).Info("Detected Google Sheets, calling handleRevenueExpenseGoogleSheetsAsync")
 		s.handleRevenueExpenseGoogleSheetsAsync(ctx, paymentReceiptFormID, settingsValue)
 	} else {
-		s.logger.WithFields(logrus.Fields{
+		log.WithFields(logrus.Fields{
 			"operation":               "handleRevenueExpenseAsyncBySettings",
 			"payment_receipt_form_id": paymentReceiptFormID,
 			"file_type":               "local_file",
@@ -803,14 +804,14 @@ func (s *purchaseOrderService) handleRevenueExpenseAsync(ctx context.Context, pa
 
 	paymentReceiptForm, err := s.paymentReceiptFormRepo.GetByIDFull(ctx, paymentReceiptFormID)
 	if err != nil {
-		s.logger.WithFields(logrus.Fields{
+		log.WithFields(logrus.Fields{
 			"operation":               "handleRevenueExpenseAsync",
 			"payment_receipt_form_id": paymentReceiptFormID,
 			"error":                   err,
 		}).Error("Failed to get purchase order")
 		return
 	}
-	logger := s.logger.WithFields(logrus.Fields{
+	logger := log.WithFields(logrus.Fields{
 		"operation":               "handleRevenueExpenseAsync",
 		"payment_receipt_form_id": paymentReceiptForm.ID,
 		"form_number":             paymentReceiptForm.FormNumber,
@@ -820,7 +821,7 @@ func (s *purchaseOrderService) handleRevenueExpenseAsync(ctx context.Context, pa
 	// Get and validate settings
 	filePath, ok := settingsValue["filePath"].(string)
 	if !ok || filePath == "" {
-		s.logger.WithFields(logrus.Fields{
+		log.WithFields(logrus.Fields{
 			"operation":               "handleRevenueExpenseAsync",
 			"payment_receipt_form_id": paymentReceiptFormID,
 		}).Error("filePath not found in revenue expense settings")
@@ -828,7 +829,7 @@ func (s *purchaseOrderService) handleRevenueExpenseAsync(ctx context.Context, pa
 	}
 	sheetName, ok := settingsValue["sheetName"].(string)
 	if !ok || sheetName == "" {
-		s.logger.WithFields(logrus.Fields{
+		log.WithFields(logrus.Fields{
 			"operation":               "handleRevenueExpenseAsync",
 			"payment_receipt_form_id": paymentReceiptFormID,
 		}).Error("sheetName not found in revenue expense settings")
@@ -872,7 +873,7 @@ func (s *purchaseOrderService) handleRevenueExpenseGoogleSheetsAsync(ctx context
 
 	paymentReceiptForm, err := s.paymentReceiptFormRepo.GetByIDFull(ctx, paymentReceiptFormID)
 	if err != nil {
-		s.logger.WithFields(logrus.Fields{
+		log.WithFields(logrus.Fields{
 			"operation":               "handleRevenueExpenseGoogleSheetsAsync",
 			"payment_receipt_form_id": paymentReceiptFormID,
 			"error":                   err,
@@ -880,7 +881,7 @@ func (s *purchaseOrderService) handleRevenueExpenseGoogleSheetsAsync(ctx context
 		return
 	}
 
-	logger := s.logger.WithFields(logrus.Fields{
+	logger := log.WithFields(logrus.Fields{
 		"operation":               "handleRevenueExpenseGoogleSheetsAsync",
 		"payment_receipt_form_id": paymentReceiptForm.ID,
 		"form_number":             paymentReceiptForm.FormNumber,
@@ -889,7 +890,7 @@ func (s *purchaseOrderService) handleRevenueExpenseGoogleSheetsAsync(ctx context
 
 	filePath, ok := settingsValue["filePath"].(string)
 	if !ok || filePath == "" {
-		s.logger.WithFields(logrus.Fields{
+		log.WithFields(logrus.Fields{
 			"operation":               "handleRevenueExpenseGoogleSheetsAsync",
 			"payment_receipt_form_id": paymentReceiptFormID,
 		}).Error("filePath not found in revenue expense settings")
@@ -898,7 +899,7 @@ func (s *purchaseOrderService) handleRevenueExpenseGoogleSheetsAsync(ctx context
 
 	spreadsheetID := extractSpreadsheetID(filePath)
 	if spreadsheetID == "" {
-		s.logger.WithFields(logrus.Fields{
+		log.WithFields(logrus.Fields{
 			"operation":               "handleRevenueExpenseGoogleSheetsAsync",
 			"payment_receipt_form_id": paymentReceiptFormID,
 		}).Error("spreadsheetID not found in revenue expense settings")
@@ -907,7 +908,7 @@ func (s *purchaseOrderService) handleRevenueExpenseGoogleSheetsAsync(ctx context
 
 	sheetName, ok := settingsValue["sheetName"].(string)
 	if !ok || sheetName == "" {
-		s.logger.WithFields(logrus.Fields{
+		log.WithFields(logrus.Fields{
 			"operation":               "handleRevenueExpenseGoogleSheetsAsync",
 			"payment_receipt_form_id": paymentReceiptFormID,
 		}).Error("sheetName not found in revenue expense settings")
@@ -989,7 +990,7 @@ func (s *purchaseOrderService) createExpenseData(paymentReceiptForm *models.Paym
 	cellColors[0] = color
 	ordinalNumber, err := strconv.Atoi(strings.Split(*paymentReceiptForm.FormNumber, "-")[2])
 	if err != nil {
-		s.logger.WithFields(logrus.Fields{
+		log.WithFields(logrus.Fields{
 			"operation": "createExpenseData",
 			"error":     err,
 		}).Error("Failed to convert form number to ordinal number to int")
@@ -1001,7 +1002,7 @@ func (s *purchaseOrderService) createExpenseData(paymentReceiptForm *models.Paym
 	// for i, item := range items {
 	// 	// Add nil checks to prevent panics
 	// 	if item == nil {
-	// 		s.logger.WithFields(logrus.Fields{
+	// 		log.WithFields(logrus.Fields{
 	// 			"operation":  "createExpenseData",
 	// 			"item_index": i,
 	// 		}).Warn("Skipping nil purchase order item")
@@ -1048,7 +1049,7 @@ func (s *purchaseOrderService) getHeaderAndColorFromProductType(productType stri
 
 // UpdatePurchaseOrder updates a purchase order while preserving ReceivedQuantity
 func (s *purchaseOrderService) UpdatePurchaseOrder(ctx context.Context, id uint, req dto.UpdatePurchaseOrderRequest) (*models.PurchaseOrder, error) {
-	s.logger.WithFields(logrus.Fields{
+	log.WithFields(logrus.Fields{
 		"operation":         "UpdatePurchaseOrder",
 		"purchase_order_id": id,
 	}).Info("Updating purchase order")
@@ -1059,7 +1060,7 @@ func (s *purchaseOrderService) UpdatePurchaseOrder(ctx context.Context, id uint,
 			// Get product to check its unit
 			product, err := s.productRepo.GetByID(ctx, *req.Items[i].ProductID)
 			if err != nil {
-				s.logger.WithFields(logrus.Fields{
+				log.WithFields(logrus.Fields{
 					"operation":  "UpdatePurchaseOrder",
 					"product_id": *req.Items[i].ProductID,
 					"error":      err,
@@ -1070,7 +1071,7 @@ func (s *purchaseOrderService) UpdatePurchaseOrder(ctx context.Context, id uint,
 			// Get base unit ID for product's unit
 			productBaseUnitID, err := s.getBaseUnitID(ctx, product.UnitID)
 			if err != nil {
-				s.logger.WithFields(logrus.Fields{
+				log.WithFields(logrus.Fields{
 					"operation":  "UpdatePurchaseOrder",
 					"product_id": *req.Items[i].ProductID,
 					"error":      err,
@@ -1081,7 +1082,7 @@ func (s *purchaseOrderService) UpdatePurchaseOrder(ctx context.Context, id uint,
 			// Get base unit ID for item's unit
 			itemBaseUnitID, err := s.getBaseUnitID(ctx, *req.Items[i].UnitID)
 			if err != nil {
-				s.logger.WithFields(logrus.Fields{
+				log.WithFields(logrus.Fields{
 					"operation": "UpdatePurchaseOrder",
 					"unit_id":   *req.Items[i].UnitID,
 					"error":     err,
@@ -1091,7 +1092,7 @@ func (s *purchaseOrderService) UpdatePurchaseOrder(ctx context.Context, id uint,
 
 			// Validate that item's unit base unit matches product's unit base unit
 			if itemBaseUnitID != productBaseUnitID {
-				s.logger.WithFields(logrus.Fields{
+				log.WithFields(logrus.Fields{
 					"operation":         "UpdatePurchaseOrder",
 					"product_id":        *req.Items[i].ProductID,
 					"product_base_unit": productBaseUnitID,
@@ -1106,7 +1107,7 @@ func (s *purchaseOrderService) UpdatePurchaseOrder(ctx context.Context, id uint,
 			// Convert quantities to base unit
 			baseQuantity, baseUnitPrice, baseUnitID, err := s.convertQuantityToBaseUnit(ctx, req.Items[i].Quantity, req.Items[i].UnitPrice, *req.Items[i].UnitID)
 			if err != nil {
-				s.logger.WithFields(logrus.Fields{
+				log.WithFields(logrus.Fields{
 					"operation": "UpdatePurchaseOrder",
 					"unit_id":   *req.Items[i].UnitID,
 					"error":     err,
@@ -1121,7 +1122,7 @@ func (s *purchaseOrderService) UpdatePurchaseOrder(ctx context.Context, id uint,
 
 	po, err := s.purchaseOrderRepo.UpdatePurchaseOrder(ctx, id, req)
 	if err != nil {
-		s.logger.WithFields(logrus.Fields{
+		log.WithFields(logrus.Fields{
 			"operation":         "UpdatePurchaseOrder",
 			"purchase_order_id": id,
 			"error":             err,
@@ -1132,7 +1133,7 @@ func (s *purchaseOrderService) UpdatePurchaseOrder(ctx context.Context, id uint,
 	// Calculate total amount based on items
 	po.TotalAmount = po.CalculateTotalAmount()
 
-	s.logger.WithFields(logrus.Fields{
+	log.WithFields(logrus.Fields{
 		"operation":         "UpdatePurchaseOrder",
 		"purchase_order_id": id,
 		"total_amount":      po.TotalAmount,

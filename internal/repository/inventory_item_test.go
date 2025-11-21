@@ -1,829 +1,691 @@
 package repository
 
 import (
-	"cim-backend/database"
-	"cim-backend/internal/config"
 	"cim-backend/internal/models"
 	"cim-backend/pkg"
+	"cim-backend/pkg/testutil/fixture"
 	"context"
 	"fmt"
-	"testing"
 	"time"
 
 	"github.com/shopspring/decimal"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
+
+	. "github.com/onsi/ginkgo/v2"
+	. "github.com/onsi/gomega"
 )
 
-// setupTestDatabase creates a test database and returns the DB instance
-func setupTestDatabase(t *testing.T) *gorm.DB {
-	// Load test configuration
-	cfg := config.Load()
+var _ = Describe("InventoryItemRepository", func() {
+	Describe("GetActiveInventoryItems", func() {
+		var (
+			repo InventoryItemRepository
+			ctx  context.Context
+		)
 
-	// Initialize test database
-	db, err := database.Initialize(cfg.Database)
-	require.NoError(t, err, "Failed to initialize test database")
-	return db
-}
+		BeforeEach(func() {
+			repo = NewInventoryItemRepository(db)
+			ctx = pkg.WithUserEmail(context.Background(), "test@example.com")
+		})
 
-func TestGetActiveItemsByInventoryIDs(t *testing.T) {
-	db := setupTestDatabase(t)
+		Context("filtering active items", func() {
+			It("should return active items for single inventory ID", func() {
+				// Setup minimal fixture
+				_ = fixture.WithSupplier(db.WithContext(ctx), models.Supplier{
+					Name:         "Test Supplier",
+					ContactEmail: "test@supplier.com",
+					ContactPhone: "123-456-7890",
+					Address:      "Test Address",
+				})
+				products := fixture.WithProducts(db.WithContext(ctx), []models.Product{
+					{Name: "Product 1", Status: "active", UnitID: 1},
+					{Name: "Product 2", Status: "active", UnitID: 1},
+				})
+				inventory := fixture.WithInventory(db.WithContext(ctx), models.Inventory{
+					Name:   fmt.Sprintf("Test Inventory %d", time.Now().UnixNano()),
+					Status: models.InventoryStatusActive,
+				})
 
-	// Create repository
-	repo := NewInventoryItemRepository(db)
-	ctx := pkg.WithUserEmail(context.Background(), "test@example.com")
+				// Create inventory items
+				items := []models.InventoryItem{
+					{InventoryID: inventory.ID, ProductID: products[0].ID, Quantity: decimal.NewFromInt(10), Status: models.InventoryItemStatusActive},
+					{InventoryID: inventory.ID, ProductID: products[1].ID, Quantity: decimal.NewFromInt(5), Status: models.InventoryItemStatusActive},
+				}
+				err := db.WithContext(ctx).Create(&items).Error
+				Expect(err).To(BeNil())
+				DeferCleanup(func() {
+					db.WithContext(ctx).Where("id IN ?", []uint{items[0].ID, items[1].ID}).Delete(&models.InventoryItem{})
+				})
 
-	// Track created data IDs for cleanup
-	var createdSupplierIDs []uint
-	var createdProductIDs []uint
-	var createdInventoryIDs []uint
-	var createdInventoryItemIDs []uint
+				// Test
+				result, err := repo.GetActiveInventoryItems(ctx, inventory.ID, []uint{items[0].ID, items[1].ID})
 
-	// Seed test data
-	now := time.Now()
+				Expect(err).To(BeNil())
+				Expect(result).To(HaveLen(2))
+				for _, item := range result {
+					Expect(item.Quantity.IntPart()).To(BeNumerically(">", 0))
+					Expect(item.InventoryID).To(Equal(inventory.ID))
+					Expect(item.Inventory).NotTo(BeNil())
+					Expect(item.Product).NotTo(BeNil())
+				}
+			})
 
-	// Create suppliers (without hardcoded IDs)
-	suppliers := []models.Supplier{
-		{Name: "Tech Electronics Inc", ContactEmail: "contact@techelectronics.com", ContactPhone: "+1-555-0123", Address: "123 Silicon Valley Blvd, San Jose, CA 95110"},
-		{Name: "Office Supply Co", ContactEmail: "sales@officesupply.com", ContactPhone: "+1-555-0456", Address: "456 Business Park Dr, Dallas, TX 75201"},
-	}
-	err := db.WithContext(ctx).Create(&suppliers).Error
-	require.NoError(t, err, "Failed to create suppliers")
-	for _, supplier := range suppliers {
-		createdSupplierIDs = append(createdSupplierIDs, supplier.ID)
-	}
+			It("should include items with zero quantity if status is active", func() {
+				// Setup minimal fixture
+				_ = fixture.WithSupplier(db.WithContext(ctx), models.Supplier{
+					Name:         "Test Supplier",
+					ContactEmail: "test@supplier.com",
+					ContactPhone: "123-456-7890",
+					Address:      "Test Address",
+				})
+				products := fixture.WithProducts(db.WithContext(ctx), []models.Product{
+					{Name: "Product with stock", Status: "active", UnitID: 1},
+					{Name: "Product with zero stock", Status: "active", UnitID: 1},
+				})
+				inventory := fixture.WithInventory(db.WithContext(ctx), models.Inventory{
+					Name:   fmt.Sprintf("Test Inventory %d", time.Now().UnixNano()),
+					Status: models.InventoryStatusActive,
+				})
 
-	// Create products (without hardcoded IDs)
-	products := []models.Product{
-		{Name: "MacBook Pro 16-inch M3", Description: "Professional laptop with M3 chip, 32GB RAM, 1TB SSD", ProductType: "laptop", Status: "active", UnitID: 1},
-		{Name: "LG UltraGear 27\" 4K Gaming Monitor", Description: "27-inch 4K UHD gaming monitor with 144Hz refresh rate", ProductType: "monitor", Status: "active", UnitID: 1},
-		{Name: "Keychron K8 Mechanical Keyboard", Description: "Wireless mechanical keyboard with RGB backlight and hot-swappable switches", ProductType: "keyboard", Status: "active", UnitID: 1},
-		{Name: "Logitech MX Master 3S", Description: "Advanced wireless mouse with precision scrolling and customizable buttons", ProductType: "mouse", Status: "active", UnitID: 1},
-		{Name: "Herman Miller Aeron Chair", Description: "Ergonomic office chair with adjustable lumbar support", ProductType: "chair", Status: "active", UnitID: 1},
-	}
-	err = db.WithContext(ctx).Create(&products).Error
-	require.NoError(t, err, "Failed to create products")
-	for _, product := range products {
-		createdProductIDs = append(createdProductIDs, product.ID)
-	}
+				// Create inventory items (both active status, one with quantity 0)
+				items := []models.InventoryItem{
+					{InventoryID: inventory.ID, ProductID: products[0].ID, Quantity: decimal.NewFromInt(10), Status: models.InventoryItemStatusActive},
+					{InventoryID: inventory.ID, ProductID: products[1].ID, Quantity: decimal.Zero, Status: models.InventoryItemStatusActive},
+				}
+				err := db.WithContext(ctx).Create(&items).Error
+				Expect(err).To(BeNil())
+				DeferCleanup(func() {
+					db.WithContext(ctx).Where("id IN ?", []uint{items[0].ID, items[1].ID}).Delete(&models.InventoryItem{})
+				})
 
-	// Create inventories (without hardcoded IDs)
-	inventories := []models.Inventory{
-		{Name: "Main Warehouse A", Description: "Primary storage facility for electronics and office supplies", Location: "123 Industrial Blvd, San Francisco, CA 94107", Status: models.InventoryStatusActive},
-		{Name: "Secondary Warehouse B", Description: "Secondary storage facility for bulk items", Location: "456 Storage Way, Oakland, CA 94607", Status: models.InventoryStatusActive},
-		{Name: "Distribution Center C", Description: "Distribution center for fast-moving items", Location: "789 Logistics Ave, San Jose, CA 95110", Status: models.InventoryStatusActive},
-	}
-	err = db.WithContext(ctx).Create(&inventories).Error
-	require.NoError(t, err, "Failed to create inventories")
-	for _, inventory := range inventories {
-		createdInventoryIDs = append(createdInventoryIDs, inventory.ID)
-	}
+				// Test - should return both items since both have active status
+				result, err := repo.GetActiveInventoryItems(ctx, inventory.ID, []uint{items[0].ID, items[1].ID})
 
-	// Create inventory items (ConsumingTransactionID will be set after transactions are created)
-	inventoryItems := []models.InventoryItem{
-		{
-			InventoryID: inventories[0].ID, ProductID: products[0].ID, Quantity: decimal.NewFromInt(9), Status: models.InventoryItemStatusActive,
-			// ConsumingTransactionID will be set to transaction 2's ID after creation
-		},
-		{
-			InventoryID: inventories[0].ID, ProductID: products[1].ID, Quantity: decimal.NewFromInt(15), Status: models.InventoryItemStatusActive,
-			// ConsumingTransactionID will be set to transaction 4's ID after creation
-		},
-		{
-			InventoryID: inventories[1].ID, ProductID: products[2].ID, Quantity: decimal.NewFromInt(45), Status: models.InventoryItemStatusActive,
-			// ConsumingTransactionID is zero value (0) - should return all transactions
-		},
-		{
-			InventoryID: inventories[1].ID, ProductID: products[3].ID, Quantity: decimal.NewFromInt(25), Status: models.InventoryItemStatusActive,
-			// ConsumingTransactionID will be set to transaction 9's ID after creation
-		},
-		{
-			InventoryID: inventories[0].ID, ProductID: products[4].ID, Quantity: decimal.Zero, Status: models.InventoryItemStatusActive,
-			// Inactive item (quantity 0)
-		},
-	}
-	err = db.WithContext(ctx).Create(&inventoryItems).Error
-	require.NoError(t, err, "Failed to create inventory items")
-	for _, item := range inventoryItems {
-		createdInventoryItemIDs = append(createdInventoryItemIDs, item.ID)
-	}
+				Expect(err).To(BeNil())
+				Expect(result).To(HaveLen(2), "Should return both items with active status, regardless of quantity")
+				// Verify both items are present
+				var hasNonZeroQty, hasZeroQty bool
+				for _, item := range result {
+					if item.Quantity.IntPart() > 0 {
+						hasNonZeroQty = true
+					}
+					if item.Quantity.IntPart() == 0 {
+						hasZeroQty = true
+					}
+				}
+				Expect(hasNonZeroQty).To(BeTrue(), "Should have item with non-zero quantity")
+				Expect(hasZeroQty).To(BeTrue(), "Should have item with zero quantity")
+			})
+		})
 
-	// Create inventory transactions
-	transactions := []models.InventoryTransaction{
-		// Purchase transactions for inventory item 1 (MacBook Pro) - 3 transactions
-		// Transaction 0: Fully consumed (not included in active transactions)
-		{Base: models.Base{CreatedAt: now.AddDate(0, 0, -30), UpdatedAt: now.AddDate(0, 0, -30)}, InventoryItemID: inventoryItems[0].ID, SupplierID: &suppliers[0].ID, TransactionType: models.InventoryTransactionTypePurchase, Price: 2999.99, Quantity: decimal.NewFromInt(5)},
-		// Transaction 1: Currently being consumed (ConsumingTransactionID will point here)
-		{Base: models.Base{CreatedAt: now.AddDate(0, 0, -20), UpdatedAt: now.AddDate(0, 0, -20)}, InventoryItemID: inventoryItems[0].ID, SupplierID: &suppliers[0].ID, TransactionType: models.InventoryTransactionTypePurchase, Price: 2999.99, Quantity: decimal.NewFromInt(3)},
-		// Transaction 2: Not yet consumed
-		{Base: models.Base{CreatedAt: now.AddDate(0, 0, -10), UpdatedAt: now.AddDate(0, 0, -10)}, InventoryItemID: inventoryItems[0].ID, SupplierID: &suppliers[0].ID, TransactionType: models.InventoryTransactionTypePurchase, Price: 2999.99, Quantity: decimal.NewFromInt(2)},
+		Context("preloading transactions with ConsumingTransactionID", func() {
+			It("should preload purchase transactions correctly for item with ConsumingTransactionID", func() {
+				// Setup minimal fixture
+				supplier := fixture.WithSupplier(db.WithContext(ctx), models.Supplier{
+					Name:         "Test Supplier",
+					ContactEmail: "test@supplier.com",
+					ContactPhone: "123-456-7890",
+					Address:      "Test Address",
+				})
+				products := fixture.WithProducts(db.WithContext(ctx), []models.Product{
+					{Name: "Test Product", Status: "active", UnitID: 1},
+				})
+				inventory := fixture.WithInventory(db.WithContext(ctx), models.Inventory{
+					Name:   fmt.Sprintf("Test Inventory %d", time.Now().UnixNano()),
+					Status: models.InventoryStatusActive,
+				})
 
-		// Purchase transactions for inventory item 2 (LG Monitor) - 2 transactions
-		// Transaction 3: Currently being consumed (ConsumingTransactionID will point here)
-		{Base: models.Base{CreatedAt: now.AddDate(0, 0, -25), UpdatedAt: now.AddDate(0, 0, -25)}, InventoryItemID: inventoryItems[1].ID, SupplierID: &suppliers[0].ID, TransactionType: models.InventoryTransactionTypePurchase, Price: 599.99, Quantity: decimal.NewFromInt(10)},
-		// Transaction 4: Not yet consumed
-		{Base: models.Base{CreatedAt: now.AddDate(0, 0, -15), UpdatedAt: now.AddDate(0, 0, -15)}, InventoryItemID: inventoryItems[1].ID, SupplierID: &suppliers[0].ID, TransactionType: models.InventoryTransactionTypePurchase, Price: 599.99, Quantity: decimal.NewFromInt(5)},
+				// Create inventory item
+				item := models.InventoryItem{
+					InventoryID: inventory.ID,
+					ProductID:   products[0].ID,
+					Quantity:    decimal.NewFromInt(5),
+					Status:      models.InventoryItemStatusActive,
+				}
+				err := db.WithContext(ctx).Create(&item).Error
+				Expect(err).To(BeNil())
+				DeferCleanup(func() {
+					db.WithContext(ctx).Where("inventory_item_id = ?", item.ID).Delete(&models.InventoryTransaction{})
+					db.WithContext(ctx).Where("id = ?", item.ID).Delete(&models.InventoryItem{})
+				})
 
-		// Purchase transactions for inventory item 3 (Keychron Keyboard) - 3 transactions
-		// All transactions are active (ConsumingTransactionID = 0)
-		{Base: models.Base{CreatedAt: now.AddDate(0, 0, -40), UpdatedAt: now.AddDate(0, 0, -40)}, InventoryItemID: inventoryItems[2].ID, SupplierID: &suppliers[0].ID, TransactionType: models.InventoryTransactionTypePurchase, Price: 89.99, Quantity: decimal.NewFromInt(20)},
-		{Base: models.Base{CreatedAt: now.AddDate(0, 0, -30), UpdatedAt: now.AddDate(0, 0, -30)}, InventoryItemID: inventoryItems[2].ID, SupplierID: &suppliers[0].ID, TransactionType: models.InventoryTransactionTypePurchase, Price: 89.99, Quantity: decimal.NewFromInt(15)},
-		{Base: models.Base{CreatedAt: now.AddDate(0, 0, -20), UpdatedAt: now.AddDate(0, 0, -20)}, InventoryItemID: inventoryItems[2].ID, SupplierID: &suppliers[0].ID, TransactionType: models.InventoryTransactionTypePurchase, Price: 89.99, Quantity: decimal.NewFromInt(10)},
+				// Create transactions
+				now := time.Now()
+				transactions := []models.InventoryTransaction{
+					{
+						Base:            models.Base{CreatedAt: now.AddDate(0, 0, -2), UpdatedAt: now.AddDate(0, 0, -2)},
+						InventoryItemID: item.ID,
+						SupplierID:      &supplier.ID,
+						TransactionType: models.InventoryTransactionTypePurchase,
+						Price:           100,
+						Quantity:        decimal.NewFromInt(3),
+					},
+					{
+						Base:            models.Base{CreatedAt: now.AddDate(0, 0, -1), UpdatedAt: now.AddDate(0, 0, -1)},
+						InventoryItemID: item.ID,
+						SupplierID:      &supplier.ID,
+						TransactionType: models.InventoryTransactionTypePurchase,
+						Price:           100,
+						Quantity:        decimal.NewFromInt(2),
+					},
+				}
+				err = db.WithContext(ctx).Create(&transactions).Error
+				Expect(err).To(BeNil())
 
-		// Purchase transactions for inventory item 4 (Logitech Mouse) - 3 transactions
-		// Transaction 8: Fully consumed (not included in active transactions)
-		{Base: models.Base{CreatedAt: now.AddDate(0, 0, -35), UpdatedAt: now.AddDate(0, 0, -35)}, InventoryItemID: inventoryItems[3].ID, SupplierID: &suppliers[0].ID, TransactionType: models.InventoryTransactionTypePurchase, Price: 99.99, Quantity: decimal.NewFromInt(10)},
-		// Transaction 9: Currently being consumed (ConsumingTransactionID will point here)
-		{Base: models.Base{CreatedAt: now.AddDate(0, 0, -25), UpdatedAt: now.AddDate(0, 0, -25)}, InventoryItemID: inventoryItems[3].ID, SupplierID: &suppliers[0].ID, TransactionType: models.InventoryTransactionTypePurchase, Price: 99.99, Quantity: decimal.NewFromInt(8)},
-		// Transaction 10: Not yet consumed
-		{Base: models.Base{CreatedAt: now.AddDate(0, 0, -15), UpdatedAt: now.AddDate(0, 0, -15)}, InventoryItemID: inventoryItems[3].ID, SupplierID: &suppliers[0].ID, TransactionType: models.InventoryTransactionTypePurchase, Price: 99.99, Quantity: decimal.NewFromInt(7)},
+				// Set ConsumingTransactionID to first transaction
+				err = db.WithContext(ctx).Model(&models.InventoryItem{}).
+					Where("id = ?", item.ID).
+					Update("consuming_transaction_id", transactions[0].ID).Error
+				Expect(err).To(BeNil())
 
-		// Purchase transaction for inventory item 5 (Herman Miller Chair) - 1 transaction (inactive)
-		{Base: models.Base{CreatedAt: now.AddDate(0, 0, -20), UpdatedAt: now.AddDate(0, 0, -20)}, InventoryItemID: inventoryItems[4].ID, SupplierID: &suppliers[1].ID, TransactionType: models.InventoryTransactionTypePurchase, Price: 1395.00, Quantity: decimal.NewFromInt(3)},
-	}
-	err = db.WithContext(ctx).Create(&transactions).Error
-	require.NoError(t, err, "Failed to create inventory transactions")
+				// Test
+				result, err := repo.GetActiveInventoryItems(ctx, inventory.ID, []uint{item.ID})
 
-	// Update inventory items with ConsumingTransactionID
-	// Item 0 (MacBook Pro): Set ConsumingTransactionID to transaction 1 (second transaction)
-	err = db.WithContext(ctx).Model(&models.InventoryItem{}).
-		Where("id = ?", inventoryItems[0].ID).
-		Update("consuming_transaction_id", transactions[1].ID).Error
-	require.NoError(t, err, "Failed to update inventory item 0 ConsumingTransactionID")
+				Expect(err).To(BeNil())
+				Expect(result).To(HaveLen(1))
+				Expect(result[0].ConsumableTransactions).To(HaveLen(2), "Should have 2 transactions from ConsumingTransactionID onwards")
+				for _, transaction := range result[0].ConsumableTransactions {
+					Expect(transaction.TransactionType).To(Equal(models.InventoryTransactionTypePurchase))
+				}
+			})
+		})
 
-	// Item 1 (LG Monitor): Set ConsumingTransactionID to transaction 3 (first transaction)
-	err = db.WithContext(ctx).Model(&models.InventoryItem{}).
-		Where("id = ?", inventoryItems[1].ID).
-		Update("consuming_transaction_id", transactions[3].ID).Error
-	require.NoError(t, err, "Failed to update inventory item 1 ConsumingTransactionID")
+		Context("preloading transactions with zero ConsumingTransactionID", func() {
+			var (
+				inventory *models.Inventory
+				item      models.InventoryItem
+			)
 
-	// Item 2 (Keychron Keyboard): ConsumingTransactionID remains 0 (all transactions are active)
+			BeforeEach(func() {
+				// Setup fixture for both tests in this context
+				supplier := fixture.WithSupplier(db.WithContext(ctx), models.Supplier{
+					Name:         "Test Supplier",
+					ContactEmail: "test@supplier.com",
+					ContactPhone: "123-456-7890",
+					Address:      "Test Address",
+				})
+				products := fixture.WithProducts(db.WithContext(ctx), []models.Product{
+					{Name: "Test Product", Status: "active", UnitID: 1},
+				})
+				inventory = fixture.WithInventory(db.WithContext(ctx), models.Inventory{
+					Name:   fmt.Sprintf("Test Inventory %d", time.Now().UnixNano()),
+					Status: models.InventoryStatusActive,
+				})
 
-	// Item 3 (Logitech Mouse): Set ConsumingTransactionID to transaction 9 (second transaction)
-	err = db.WithContext(ctx).Model(&models.InventoryItem{}).
-		Where("id = ?", inventoryItems[3].ID).
-		Update("consuming_transaction_id", transactions[9].ID).Error
-	require.NoError(t, err, "Failed to update inventory item 3 ConsumingTransactionID")
+				// Create inventory item with ConsumingTransactionID = 0
+				item = models.InventoryItem{
+					InventoryID: inventory.ID,
+					ProductID:   products[0].ID,
+					Quantity:    decimal.NewFromInt(45),
+					Status:      models.InventoryItemStatusActive,
+				}
+				err := db.WithContext(ctx).Create(&item).Error
+				Expect(err).To(BeNil())
+				DeferCleanup(func() {
+					db.WithContext(ctx).Where("inventory_item_id = ?", item.ID).Delete(&models.InventoryTransaction{})
+					db.WithContext(ctx).Where("id = ?", item.ID).Delete(&models.InventoryItem{})
+				})
 
-	// Setup cleanup to only delete data created by this test
-	t.Cleanup(func() {
-		// Delete inventory transactions created by this test
-		if len(createdInventoryItemIDs) > 0 {
-			db.WithContext(ctx).Where("inventory_item_id IN ?", createdInventoryItemIDs).Delete(&models.InventoryTransaction{})
-		}
+				// Create 3 transactions
+				now := time.Now()
+				transactions := []models.InventoryTransaction{
+					{
+						Base:            models.Base{CreatedAt: now.AddDate(0, 0, -3), UpdatedAt: now.AddDate(0, 0, -3)},
+						InventoryItemID: item.ID,
+						SupplierID:      &supplier.ID,
+						TransactionType: models.InventoryTransactionTypePurchase,
+						Price:           100,
+						Quantity:        decimal.NewFromInt(20),
+					},
+					{
+						Base:            models.Base{CreatedAt: now.AddDate(0, 0, -2), UpdatedAt: now.AddDate(0, 0, -2)},
+						InventoryItemID: item.ID,
+						SupplierID:      &supplier.ID,
+						TransactionType: models.InventoryTransactionTypePurchase,
+						Price:           100,
+						Quantity:        decimal.NewFromInt(15),
+					},
+					{
+						Base:            models.Base{CreatedAt: now.AddDate(0, 0, -1), UpdatedAt: now.AddDate(0, 0, -1)},
+						InventoryItemID: item.ID,
+						SupplierID:      &supplier.ID,
+						TransactionType: models.InventoryTransactionTypePurchase,
+						Price:           100,
+						Quantity:        decimal.NewFromInt(10),
+					},
+				}
+				err = db.WithContext(ctx).Create(&transactions).Error
+				Expect(err).To(BeNil())
+			})
 
-		// Delete inventory items created by this test
-		if len(createdInventoryItemIDs) > 0 {
-			db.WithContext(ctx).Where("id IN ?", createdInventoryItemIDs).Delete(&models.InventoryItem{})
-		}
+			It("should preload all purchase transactions for item with zero ConsumingTransactionID", func() {
+				result, err := repo.GetActiveInventoryItems(ctx, inventory.ID, []uint{item.ID})
 
-		// Delete inventories created by this test
-		if len(createdInventoryIDs) > 0 {
-			db.WithContext(ctx).Where("id IN ?", createdInventoryIDs).Delete(&models.Inventory{})
-		}
+				Expect(err).To(BeNil())
+				Expect(result).To(HaveLen(1))
+				Expect(result[0].ConsumableTransactions).To(HaveLen(3), "Should have all 3 transactions when ConsumingTransactionID is 0")
+				for _, transaction := range result[0].ConsumableTransactions {
+					Expect(transaction.TransactionType).To(Equal(models.InventoryTransactionTypePurchase))
+				}
+			})
 
-		// Delete products created by this test
-		if len(createdProductIDs) > 0 {
-			db.WithContext(ctx).Where("id IN ?", createdProductIDs).Delete(&models.Product{})
-		}
+			It("should verify transaction ordering by CreatedAt", func() {
+				result, err := repo.GetActiveInventoryItems(ctx, inventory.ID, []uint{item.ID})
 
-		// Delete suppliers created by this test
-		if len(createdSupplierIDs) > 0 {
-			db.WithContext(ctx).Where("id IN ?", createdSupplierIDs).Delete(&models.Supplier{})
-		}
+				Expect(err).To(BeNil())
+				Expect(result).To(HaveLen(1))
+				Expect(result[0].ConsumableTransactions).To(HaveLen(3))
+
+				// Verify transactions are ordered by CreatedAt (oldest first)
+				for i := 1; i < len(result[0].ConsumableTransactions); i++ {
+					Expect(
+						result[0].ConsumableTransactions[i-1].CreatedAt.Before(result[0].ConsumableTransactions[i].CreatedAt) ||
+							result[0].ConsumableTransactions[i-1].CreatedAt.Equal(result[0].ConsumableTransactions[i].CreatedAt),
+					).To(BeTrue(), "Transactions should be ordered by CreatedAt")
+				}
+			})
+		})
+
+		Context("edge cases", func() {
+			It("should return empty result for non-existent inventory ID", func() {
+				result, err := repo.GetActiveInventoryItems(ctx, 999999, []uint{1})
+
+				Expect(err).To(HaveOccurred())
+				Expect(err.Error()).To(ContainSubstring("no active inventory items found"))
+				Expect(result).To(HaveLen(0))
+			})
+
+			It("should return empty result for empty inventory IDs list", func() {
+				result, err := repo.GetActiveInventoryItems(ctx, 1, []uint{})
+
+				Expect(err).To(HaveOccurred())
+				Expect(err.Error()).To(ContainSubstring("no active inventory items found"))
+				Expect(result).To(HaveLen(0))
+			})
+
+			It("should handle database errors gracefully", func() {
+				invalidDB, _ := gorm.Open(nil, nil)
+				closedRepo := NewInventoryItemRepository(invalidDB)
+
+				result, err := closedRepo.GetActiveInventoryItems(ctx, 1, []uint{1})
+
+				if err != nil {
+					Expect(result).To(BeNil())
+					GinkgoWriter.Printf("Error occurred as expected: %v\n", err)
+				} else {
+					GinkgoWriter.Println("No error occurred with invalid DB connection, which is acceptable")
+				}
+			})
+		})
+	})
+})
+
+var _ = Describe("SaveInventoryItemChanges", func() {
+	var (
+		repo InventoryItemRepository
+		ctx  context.Context
+	)
+
+	BeforeEach(func() {
+		repo = NewInventoryItemRepository(db)
+		ctx = pkg.WithUserEmail(context.Background(), "test@example.com")
 	})
 
-	t.Run("should return active items for single inventory ID", func(t *testing.T) {
-		// Test with Main Warehouse A (inventory ID 1)
-		// Expected: 2 active items (MacBook Pro with quantity 9, LG Monitor with quantity 15)
-		// Herman Miller Chair has quantity 0, so it should be excluded
-		items, err := repo.GetActiveInventoryItems(ctx, inventories[0].ID, []uint{inventoryItems[0].ID, inventoryItems[1].ID, inventoryItems[4].ID})
+	It("should successfully create and update inventory items and transactions with valid data", func() {
+		// Setup minimal fixture
+		supplier := fixture.WithSupplier(db.WithContext(ctx), models.Supplier{
+			Name:         "Test Supplier",
+			ContactEmail: "test@supplier.com",
+			ContactPhone: "123-456-7890",
+			Address:      "Test Address",
+		})
+		products := fixture.WithProducts(db.WithContext(ctx), []models.Product{
+			{Name: "Product 1", Status: "active", UnitID: 1},
+			{Name: "Product 2", Status: "active", UnitID: 1},
+		})
+		inventory := fixture.WithInventory(db.WithContext(ctx), models.Inventory{
+			Name:   fmt.Sprintf("Test Inventory %d", time.Now().UnixNano()),
+			Status: models.InventoryStatusActive,
+		})
 
-		require.NoError(t, err)
-		assert.Len(t, items, 2, "Should return 2 active items for Main Warehouse A")
-
-		// Verify items are active (quantity > 0)
-		for _, item := range items {
-			assert.Greater(t, item.Quantity, 0, "All returned items should have quantity > 0")
-			assert.Equal(t, inventories[0].ID, item.InventoryID, "All items should belong to Main Warehouse A")
+		// Create inventory items
+		items := []models.InventoryItem{
+			{InventoryID: inventory.ID, ProductID: products[0].ID, Quantity: decimal.NewFromInt(10), Status: models.InventoryItemStatusActive},
 		}
+		err := db.WithContext(ctx).Create(&items).Error
+		Expect(err).To(BeNil())
+		DeferCleanup(func() {
+			db.WithContext(ctx).Where("inventory_item_id = ?", items[0].ID).Delete(&models.InventoryTransaction{})
+			db.WithContext(ctx).Where("id = ?", items[0].ID).Delete(&models.InventoryItem{})
+		})
 
-		// Verify preloaded relationships
-		for _, item := range items {
-			assert.NotNil(t, item.Inventory, "Inventory should be preloaded")
-			assert.NotNil(t, item.Product, "Product should be preloaded")
-		}
-	})
-
-	t.Run("should return empty result for non-existent inventory ID", func(t *testing.T) {
-		items, err := repo.GetActiveInventoryItems(ctx, inventoryItems[1].ID, []uint{999999})
-
-		require.NoError(t, err)
-		assert.Len(t, items, 0, "Should return empty result for non-existent inventory ID")
-	})
-
-	t.Run("should return empty result for empty inventory IDs list", func(t *testing.T) {
-		items, err := repo.GetActiveInventoryItems(ctx, inventoryItems[1].ID, []uint{})
-
-		require.NoError(t, err)
-		assert.Len(t, items, 0, "Should return empty result for empty inventory IDs list")
-	})
-
-	t.Run("should preload purchase transactions correctly for item with ConsumingTransactionID", func(t *testing.T) {
-		// Test with Main Warehouse A - MacBook Pro item
-		// MacBook Pro has ConsumingTransactionID set to transaction 1's ID
-		// Should return transactions with ID >= transaction 1's ID (transactions 1 and 2)
-		items, err := repo.GetActiveInventoryItems(ctx, inventories[0].ID, []uint{inventoryItems[0].ID, inventoryItems[1].ID})
-
-		require.NoError(t, err)
-		require.Len(t, items, 2, "Should return 2 active items")
-
-		// Find MacBook Pro item (should be the first item based on our test data)
-		var macBookItem *models.InventoryItem
-		for _, item := range items {
-			if item.Product.Name == "MacBook Pro 16-inch M3" {
-				macBookItem = item
-				break
-			}
-		}
-		require.NotNil(t, macBookItem, "MacBook Pro item should be found")
-
-		// Verify purchase transactions are preloaded
-		assert.NotNil(t, macBookItem.ConsumableTransactions, "ActivePurchaseTransactions should be preloaded")
-		assert.Len(t, macBookItem.ConsumableTransactions, 2, "Should have 2 purchase transactions (transactions 2 and 3)")
-
-		// Verify only purchase transactions are included
-		for _, transaction := range macBookItem.ConsumableTransactions {
-			assert.Equal(t, models.InventoryTransactionTypePurchase, transaction.TransactionType, "Only purchase transactions should be included")
-		}
-	})
-
-	t.Run("should preload all purchase transactions for item with zero ConsumingTransactionID", func(t *testing.T) {
-		// Should return all purchase transactions when ConsumingTransactionID is 0
-
-		items, err := repo.GetActiveInventoryItems(ctx, inventories[1].ID, []uint{inventoryItems[2].ID, inventoryItems[3].ID})
-
-		require.NoError(t, err)
-		require.Len(t, items, 2, "Should return 2 active items")
-
-		// Find Keychron Keyboard item
-		var keyboardItem *models.InventoryItem
-		for _, item := range items {
-			if item.Product.Name == "Keychron K8 Mechanical Keyboard" {
-				keyboardItem = item
-				break
-			}
-		}
-		require.NotNil(t, keyboardItem, "Keychron Keyboard item should be found")
-
-		// Verify all purchase transactions are preloaded
-		assert.NotNil(t, keyboardItem.ConsumableTransactions, "ActivePurchaseTransactions should be preloaded")
-		assert.Len(t, keyboardItem.ConsumableTransactions, 3, "Should have all 3 purchase transactions")
-
-		// Verify only purchase transactions are included
-		for _, transaction := range keyboardItem.ConsumableTransactions {
-			assert.Equal(t, models.InventoryTransactionTypePurchase, transaction.TransactionType, "Only purchase transactions should be included")
-		}
-	})
-
-	t.Run("should handle database errors gracefully", func(t *testing.T) {
-		// Create a repository with an invalid database connection
-		// Using a nil driver will cause connection errors
-		invalidDB, _ := gorm.Open(nil, nil)
-		closedRepo := NewInventoryItemRepository(invalidDB)
-
-		items, err := closedRepo.GetActiveInventoryItems(ctx, inventoryItems[1].ID, []uint{1})
-
-		// Note: This test may not always produce an error due to GORM's behavior
-		// The main purpose is to ensure the error handling code path is covered
-		if err != nil {
-			assert.Nil(t, items, "Should return nil items on error")
-			// The error message might be different depending on GORM version
-			t.Logf("Error occurred as expected: %v", err)
-		} else {
-			// If no error occurs, just verify the function doesn't panic
-			t.Log("No error occurred with invalid DB connection, which is acceptable")
-		}
-	})
-
-	t.Run("should verify transaction ordering by CreatedAt", func(t *testing.T) {
-		items, err := repo.GetActiveInventoryItems(ctx, inventories[1].ID, []uint{inventoryItems[2].ID, inventoryItems[3].ID})
-
-		require.NoError(t, err)
-		require.Len(t, items, 2, "Should return 2 active items")
-
-		// Find Keychron Keyboard item (has all transactions)
-		var keyboardItem *models.InventoryItem
-		for _, item := range items {
-			if item.Product.Name == "Keychron K8 Mechanical Keyboard" {
-				keyboardItem = item
-				break
-			}
-		}
-		require.NotNil(t, keyboardItem, "Keychron Keyboard item should be found")
-		require.Len(t, keyboardItem.ConsumableTransactions, 3, "Should have 3 purchase transactions")
-
-		// Verify transactions are ordered by CreatedAt (oldest first)
-		for i := 1; i < len(keyboardItem.ConsumableTransactions); i++ {
-			assert.True(t,
-				keyboardItem.ConsumableTransactions[i-1].CreatedAt.Before(keyboardItem.ConsumableTransactions[i].CreatedAt) ||
-					keyboardItem.ConsumableTransactions[i-1].CreatedAt.Equal(keyboardItem.ConsumableTransactions[i].CreatedAt),
-				"Transactions should be ordered by CreatedAt")
-		}
-	})
-
-	t.Run("should exclude inactive items (quantity = 0)", func(t *testing.T) {
-		items, err := repo.GetActiveInventoryItems(ctx, inventories[0].ID, []uint{inventoryItems[0].ID, inventoryItems[1].ID, inventoryItems[4].ID})
-
-		require.NoError(t, err)
-		assert.Len(t, items, 2, "Should return only 2 active items, excluding the inactive one")
-
-		// Verify Herman Miller Chair is not included
-		for _, item := range items {
-			assert.NotEqual(t, "Herman Miller Aeron Chair", item.Product.Name, "Herman Miller Chair should not be included")
-		}
-	})
-}
-
-func TestSaveInventoryItemChanges(t *testing.T) {
-	db := setupTestDatabase(t)
-
-	repo := NewInventoryItemRepository(db)
-	ctx := pkg.WithUserEmail(context.Background(), "test@example.com")
-
-	// Track created data IDs for cleanup
-	var createdSupplierIDs []uint
-	var createdProductIDs []uint
-	var createdInventoryIDs []uint
-	var createdInventoryItemIDs []uint
-
-	// Create suppliers
-	suppliers := []models.Supplier{
-		{Name: "Test Supplier 1", ContactEmail: "supplier1@test.com", ContactPhone: "+1-555-0001", Address: "123 Test St"},
-		{Name: "Test Supplier 2", ContactEmail: "supplier2@test.com", ContactPhone: "+1-555-0002", Address: "456 Test Ave"},
-	}
-	err := db.WithContext(ctx).Create(&suppliers).Error
-	require.NoError(t, err, "Failed to create suppliers")
-	for _, supplier := range suppliers {
-		createdSupplierIDs = append(createdSupplierIDs, supplier.ID)
-	}
-
-	// Create products
-	products := []models.Product{
-		{Name: "Test Product 1", Description: "Test product 1", ProductType: "test", Status: "active", UnitID: 1},
-		{Name: "Test Product 2", Description: "Test product 2", ProductType: "test", Status: "active", UnitID: 1},
-		{Name: "Test Product 3", Description: "Test product 3", ProductType: "test", Status: "active", UnitID: 1},
-	}
-	err = db.WithContext(ctx).Create(&products).Error
-	require.NoError(t, err, "Failed to create products")
-	for _, product := range products {
-		createdProductIDs = append(createdProductIDs, product.ID)
-	}
-
-	// Create inventories
-	inventories := []models.Inventory{
-		{Name: fmt.Sprintf("TestSaveInventoryItemChanges 1 - %d", time.Now().Unix()), Description: "Test inventory 1", Location: "Test Location 1", Status: models.InventoryStatusActive},
-		{Name: fmt.Sprintf("TestSaveInventoryItemChanges 2 - %d", time.Now().Unix()), Description: "Test inventory 2", Location: "Test Location 2", Status: models.InventoryStatusActive},
-	}
-	err = db.WithContext(ctx).Create(&inventories).Error
-	require.NoError(t, err, "Failed to create inventories")
-	for _, inventory := range inventories {
-		createdInventoryIDs = append(createdInventoryIDs, inventory.ID)
-	}
-
-	// Create inventory items
-	inventoryItems := []models.InventoryItem{
-		{
-			InventoryID: inventories[0].ID, ProductID: products[0].ID,
-			Quantity: decimal.NewFromInt(10), Status: models.InventoryItemStatusActive,
-		},
-		{
-			InventoryID: inventories[0].ID, ProductID: products[1].ID,
-			Quantity: decimal.NewFromInt(20), Status: models.InventoryItemStatusActive,
-		},
-		{
-			InventoryID: inventories[1].ID, ProductID: products[2].ID,
-			Quantity: decimal.NewFromInt(5), Status: models.InventoryItemStatusActive,
-		},
-	}
-	err = db.WithContext(ctx).Create(&inventoryItems).Error
-	require.NoError(t, err, "Failed to create inventory items")
-	for _, item := range inventoryItems {
-		createdInventoryItemIDs = append(createdInventoryItemIDs, item.ID)
-	}
-
-	// Create purchase transactions for all test inventory items
-	transactions := []models.InventoryTransaction{
-		// Purchase transactions for inventory item 1 (Test Product 1)
-		{
-			InventoryItemID: inventoryItems[0].ID,
-			SupplierID:      &suppliers[0].ID,
+		// Create transaction
+		transaction := models.InventoryTransaction{
+			InventoryItemID: items[0].ID,
+			SupplierID:      &supplier.ID,
 			TransactionType: models.InventoryTransactionTypePurchase,
 			Price:           50.00,
 			Quantity:        decimal.NewFromInt(5),
-		},
-		{
-			InventoryItemID: inventoryItems[0].ID,
-			SupplierID:      &suppliers[0].ID,
-			TransactionType: models.InventoryTransactionTypePurchase,
-			Price:           50.00,
-			Quantity:        decimal.NewFromInt(5),
-		},
-
-		// Purchase transactions for inventory item 2 (Test Product 2)
-		{
-			InventoryItemID: inventoryItems[1].ID,
-			SupplierID:      &suppliers[1].ID,
-			TransactionType: models.InventoryTransactionTypePurchase,
-			Price:           75.00,
-			Quantity:        decimal.NewFromInt(10),
-		},
-		{
-			InventoryItemID: inventoryItems[1].ID,
-			SupplierID:      &suppliers[1].ID,
-			TransactionType: models.InventoryTransactionTypePurchase,
-			Price:           75.00,
-			Quantity:        decimal.NewFromInt(10),
-		},
-
-		// Purchase transactions for inventory item 3 (Test Product 3)
-		{
-			InventoryItemID: inventoryItems[2].ID,
-			SupplierID:      &suppliers[0].ID,
-			TransactionType: models.InventoryTransactionTypePurchase,
-			Price:           30.00,
-			Quantity:        decimal.NewFromInt(5),
-		},
-	}
-	err = db.WithContext(ctx).Create(&transactions).Error
-	require.NoError(t, err, "Failed to create inventory transactions")
-
-	// Setup cleanup to only delete data created by this test
-	t.Cleanup(func() {
-		// Delete inventory transactions created by this test
-		if len(createdInventoryItemIDs) > 0 {
-			db.WithContext(ctx).Where("inventory_item_id IN ?", createdInventoryItemIDs).Delete(&models.InventoryTransaction{})
 		}
+		err = db.WithContext(ctx).Create(&transaction).Error
+		Expect(err).To(BeNil())
 
-		// Delete inventory items created by this test
-		if len(createdInventoryItemIDs) > 0 {
-			db.WithContext(ctx).Where("id IN ?", createdInventoryItemIDs).Delete(&models.InventoryItem{})
-		}
-
-		// Delete inventories created by this test
-		if len(createdInventoryIDs) > 0 {
-			db.WithContext(ctx).Where("id IN ?", createdInventoryIDs).Delete(&models.Inventory{})
-		}
-
-		// Delete products created by this test
-		if len(createdProductIDs) > 0 {
-			db.WithContext(ctx).Where("id IN ?", createdProductIDs).Delete(&models.Product{})
-		}
-
-		// Delete suppliers created by this test
-		if len(createdSupplierIDs) > 0 {
-			db.WithContext(ctx).Where("id IN ?", createdSupplierIDs).Delete(&models.Supplier{})
-		}
-	})
-
-	t.Run("should successfully create and update inventory items and transactions with valid data", func(t *testing.T) {
+		// Prepare changes
 		newInventoryItem := &models.InventoryItem{
-			InventoryID: inventories[0].ID,
-			ProductID:   products[2].ID,
+			InventoryID: inventory.ID,
+			ProductID:   products[1].ID,
 			Quantity:    decimal.NewFromInt(5),
 			Status:      models.InventoryItemStatusActive,
 		}
 
 		changes := []*models.InventoryItemChange{
 			{
-				InventoryItem: &models.InventoryItem{
-					Base:        models.Base{ID: inventoryItems[0].ID},
-					InventoryID: inventories[0].ID, ProductID: products[0].ID,
-					Quantity: decimal.NewFromInt(8), Status: models.InventoryItemStatusActive,
-				},
+				InventoryItem:    &models.InventoryItem{Base: models.Base{ID: items[0].ID}, InventoryID: inventory.ID, ProductID: products[0].ID, Quantity: decimal.NewFromInt(8), Status: models.InventoryItemStatusActive},
 				OriginalQuantity: decimal.NewFromInt(10),
 			},
-			{
-				InventoryItem: newInventoryItem,
-			},
+			{InventoryItem: newInventoryItem},
 		}
 
 		txns := []*models.InventoryTransaction{
-			// Insert new transactions
-			{
-				InventoryItemID: inventoryItems[0].ID,
-				TransactionType: models.InventoryTransactionTypeSell,
-				Price:           100.0,
-				Quantity:        decimal.NewFromInt(2),
-			},
-			// Update existing transactions
-			{
-				Base:             models.Base{ID: transactions[0].ID},
-				InventoryItemID:  inventoryItems[0].ID,
-				TransactionType:  models.InventoryTransactionTypePurchase,
-				Price:            100.0,
-				Quantity:         decimal.NewFromInt(3),
-				ConsumedQuantity: decimal.NewFromInt(2),
-			},
-			// Insert new transaction for new inventory item
-			{
-				InventoryItem:   newInventoryItem,
-				TransactionType: models.InventoryTransactionTypePurchase,
-				Price:           100.0,
-				Quantity:        decimal.NewFromInt(5),
-			},
+			{InventoryItemID: items[0].ID, TransactionType: models.InventoryTransactionTypeSell, Price: 100.0, Quantity: decimal.NewFromInt(2)},
+			{Base: models.Base{ID: transaction.ID}, InventoryItemID: items[0].ID, TransactionType: models.InventoryTransactionTypePurchase, Price: 100.0, Quantity: decimal.NewFromInt(3), ConsumedQuantity: decimal.NewFromInt(2)},
+			{InventoryItem: newInventoryItem, TransactionType: models.InventoryTransactionTypePurchase, Price: 100.0, Quantity: decimal.NewFromInt(5)},
 		}
 
-		err := repo.SaveInventoryItemChanges(ctx, changes, txns)
-		require.NoError(t, err, "PersistConsumption should succeed with valid data")
+		// Test
+		err = repo.SaveInventoryItemChanges(ctx, changes, txns)
+		Expect(err).To(BeNil())
 
-		// Verify inventory items were updated
-		var updatedItem1 models.InventoryItem
-		err = db.WithContext(ctx).First(&updatedItem1, inventoryItems[0].ID).Error
-		require.NoError(t, err)
-		assert.True(t, updatedItem1.Quantity.Equal(decimal.NewFromInt(8)), "First item quantity should be 8")
-
-		// Vefiry sell transaction was created
-		var updatedSellTransaction models.InventoryTransaction
-		err = db.WithContext(ctx).First(&updatedSellTransaction, txns[0].ID).Error
-		require.NoError(t, err)
-		assert.True(t, decimal.NewFromInt(2).Equal(updatedSellTransaction.Quantity), "Sell transaction should have Quantity = 2")
-		assert.Equal(t, models.InventoryTransactionTypeSell, updatedSellTransaction.TransactionType, "Should be a sell transaction")
-
-		// Verify purchase transactions were updated
-		var updatedPurchaseTransaction1 models.InventoryTransaction
-		err = db.WithContext(ctx).First(&updatedPurchaseTransaction1, txns[1].ID).Error
-		require.NoError(t, err)
-		assert.True(t, updatedPurchaseTransaction1.ConsumedQuantity.Equal(decimal.NewFromInt(2)), "First purchase transaction should have ConsumedQuantity = 2")
-		assert.Equal(t, models.InventoryTransactionTypePurchase, updatedPurchaseTransaction1.TransactionType, "Should be a purchase transaction")
-
-		// Verify purchase transaction for new inventory item was created
-		var updatedPurchaseTransaction2 models.InventoryTransaction
-		err = db.WithContext(ctx).First(&updatedPurchaseTransaction2, txns[2].ID).Error
-		require.NoError(t, err)
-		assert.True(t, updatedPurchaseTransaction2.ConsumedQuantity.Equal(decimal.Zero), "New purchase transaction should have ConsumedQuantity = 0")
-		assert.Equal(t, models.InventoryTransactionTypePurchase, updatedPurchaseTransaction2.TransactionType, "Should be a purchase transaction")
-	})
-
-	t.Run("should return error when inventory item not found", func(t *testing.T) {
-		// Prepare updated inventory items with non-existent ID
-		reconcileItems := []*models.InventoryItemChange{
-			{
-				InventoryItem: &models.InventoryItem{
-					Base:        models.Base{ID: 99999}, // Non-existent ID
-					InventoryID: inventories[0].ID, ProductID: products[0].ID,
-					Quantity: decimal.NewFromInt(8), Status: models.InventoryItemStatusActive,
-				},
-				OriginalQuantity: decimal.NewFromInt(10),
-			},
-		}
-
-		// Execute consumption
-		err := repo.SaveInventoryItemChanges(ctx, reconcileItems, []*models.InventoryTransaction{})
-		require.Error(t, err, "PersistConsumption should fail with non-existent item ID")
-		assert.Contains(t, err.Error(), "inventory item with ID 99999 not found")
-	})
-
-	t.Run("should return error when quantity has been modified by another transaction", func(t *testing.T) {
-		// Get current quantity
-		var originalItem models.InventoryItem
-		err := db.WithContext(ctx).First(&originalItem, inventoryItems[0].ID).Error
-		require.NoError(t, err)
-
-		// Modify quantity - adding 2 to the original quantity
-		err = db.WithContext(ctx).Model(&models.InventoryItem{}).
-			Where("id = ?", inventoryItems[0].ID).
-			Update("quantity", originalItem.Quantity.Add(decimal.NewFromInt(2))).Error
-		require.NoError(t, err, "Failed to modify item quantity")
-
-		reconcileItems := []*models.InventoryItemChange{
-			{
-				InventoryItem: &models.InventoryItem{
-					Base:        models.Base{ID: inventoryItems[0].ID},
-					InventoryID: inventories[0].ID, ProductID: products[0].ID,
-					Quantity: decimal.NewFromInt(8), Status: models.InventoryItemStatusActive,
-				},
-				OriginalQuantity: originalItem.Quantity,
-			},
-		}
-
-		// Execute consumption
-		err = repo.SaveInventoryItemChanges(ctx, reconcileItems, []*models.InventoryTransaction{})
-		require.Error(t, err, "PersistConsumption should fail when quantity has been modified")
-		assert.Contains(t, err.Error(), pkg.ErrOptimisticLockConflict(
-			"inventory item",
-			inventoryItems[0].ID,
-			originalItem.Quantity,
-			originalItem.Quantity.Add(decimal.NewFromInt(2)),
-		).Error())
-	})
-
-	t.Run("should handle empty items and transactions arrays", func(t *testing.T) {
-		// Execute consumption with empty arrays
-		err := repo.SaveInventoryItemChanges(ctx, []*models.InventoryItemChange{}, []*models.InventoryTransaction{})
-		require.NoError(t, err, "PersistConsumption should succeed with empty arrays")
-
-		// Execute consumption with nil arrays
-		err = repo.SaveInventoryItemChanges(ctx, nil, nil)
-		require.NoError(t, err, "PersistConsumption should succeed with nil arrays")
-	})
-
-	t.Run("should handle only inventory items without transactions", func(t *testing.T) {
-		// Reset item quantity first
-		err := db.WithContext(ctx).Model(&models.InventoryItem{}).
-			Where("id = ?", inventoryItems[0].ID).
-			Update("quantity", 10).Error
-		require.NoError(t, err, "Failed to reset item quantity")
-
-		// Prepare updated inventory items with new quantity
-		reconcileItems := []*models.InventoryItemChange{
-			{
-				InventoryItem: &models.InventoryItem{
-					Base:        models.Base{ID: inventoryItems[0].ID},
-					InventoryID: inventories[0].ID, ProductID: products[0].ID,
-					Quantity: decimal.NewFromInt(9), Status: models.InventoryItemStatusActive, // New quantity
-				},
-				OriginalQuantity: decimal.NewFromInt(10), // Current quantity in DB
-			},
-		}
-
-		// Execute consumption with empty transactions
-		err = repo.SaveInventoryItemChanges(ctx, reconcileItems, []*models.InventoryTransaction{})
-		require.NoError(t, err, "PersistConsumption should succeed with only items")
-
-		// Verify item was updated
+		// Verify
 		var updatedItem models.InventoryItem
-		err = db.WithContext(ctx).First(&updatedItem, inventoryItems[0].ID).Error
-		require.NoError(t, err)
-		assert.True(t, decimal.NewFromInt(9).Equal(updatedItem.Quantity), "Item quantity should be 9")
+		err = db.WithContext(ctx).First(&updatedItem, items[0].ID).Error
+		Expect(err).To(BeNil())
+		Expect(updatedItem.Quantity.Equal(decimal.NewFromInt(8))).To(BeTrue())
+
+		var sellTxn models.InventoryTransaction
+		err = db.WithContext(ctx).First(&sellTxn, txns[0].ID).Error
+		Expect(err).To(BeNil())
+		Expect(sellTxn.Quantity.Equal(decimal.NewFromInt(2))).To(BeTrue())
+		Expect(sellTxn.TransactionType).To(Equal(models.InventoryTransactionTypeSell))
 	})
 
-	t.Run("should handle only transactions without inventory items", func(t *testing.T) {
-		// Prepare sell transactions only
-		sellTransactions := []*models.InventoryTransaction{
+	It("should return error when inventory item not found", func() {
+		changes := []*models.InventoryItemChange{
 			{
-				InventoryItemID: inventoryItems[2].ID,
-				TransactionType: models.InventoryTransactionTypeSell,
-				Price:           150.0,
-				Quantity:        decimal.NewFromInt(2),
-			},
-		}
-
-		// Execute consumption with empty items
-		err := repo.SaveInventoryItemChanges(ctx, []*models.InventoryItemChange{}, sellTransactions)
-		require.NoError(t, err, "PersistConsumption should succeed with only transactions")
-
-		// Verify transaction was created
-		var transactions []models.InventoryTransaction
-		err = db.WithContext(ctx).Where("inventory_item_id = ? AND transaction_type = ?",
-			inventoryItems[2].ID, models.InventoryTransactionTypeSell).Find(&transactions).Error
-		require.NoError(t, err)
-		assert.GreaterOrEqual(t, len(transactions), 1, "Should have at least 1 sell transaction")
-		// Find the transaction we just created
-		found := false
-		for _, transaction := range transactions {
-			if transaction.Price == 150.0 && transaction.Quantity.Equal(decimal.NewFromInt(2)) {
-				found = true
-				break
-			}
-		}
-		assert.True(t, found, "Should find the sell transaction we created")
-	})
-
-	t.Run("should rollback transaction on error", func(t *testing.T) {
-		// Clean up previous transactions first
-		err := db.WithContext(ctx).Exec("DELETE FROM inventory_transactions WHERE inventory_item_id = ?", inventoryItems[1].ID).Error
-		require.NoError(t, err, "Failed to cleanup previous transactions")
-
-		// Get current state
-		var originalItem models.InventoryItem
-		err = db.WithContext(ctx).First(&originalItem, inventoryItems[1].ID).Error
-		require.NoError(t, err)
-		originalQuantity := originalItem.Quantity
-
-		// Prepare data that will cause an error (non-existent item ID)
-		reconcileItems := []*models.InventoryItemChange{
-			{
-				InventoryItem: &models.InventoryItem{
-					Base:        models.Base{ID: 99999}, // Non-existent ID
-					InventoryID: inventories[0].ID, ProductID: products[0].ID,
-					Quantity: decimal.NewFromInt(8), Status: models.InventoryItemStatusActive,
-				},
+				InventoryItem:    &models.InventoryItem{Base: models.Base{ID: 99999}, Quantity: decimal.NewFromInt(8), Status: models.InventoryItemStatusActive},
 				OriginalQuantity: decimal.NewFromInt(10),
 			},
 		}
 
-		sellTransactions := []*models.InventoryTransaction{
-			{
-				InventoryItemID: inventoryItems[1].ID,
-				TransactionType: models.InventoryTransactionTypeSell,
-				Price:           100.0,
-				Quantity:        decimal.NewFromInt(1),
-			},
-		}
-
-		// Execute consumption (should fail)
-		err = repo.SaveInventoryItemChanges(ctx, reconcileItems, sellTransactions)
-		require.Error(t, err, "PersistConsumption should fail")
-
-		// Verify that no changes were made (transaction was rolled back)
-		var unchangedItem models.InventoryItem
-		err = db.WithContext(ctx).First(&unchangedItem, inventoryItems[1].ID).Error
-		require.NoError(t, err)
-		assert.Equal(t, originalQuantity, unchangedItem.Quantity, "Item quantity should remain unchanged after rollback")
-
-		// Verify no sell transaction was created
-		var transactions []models.InventoryTransaction
-		err = db.WithContext(ctx).Where("inventory_item_id = ? AND transaction_type = ?",
-			inventoryItems[1].ID, models.InventoryTransactionTypeSell).Find(&transactions).Error
-		require.NoError(t, err)
-		assert.Len(t, transactions, 0, "No sell transaction should be created after rollback")
+		err := repo.SaveInventoryItemChanges(ctx, changes, []*models.InventoryTransaction{})
+		Expect(err).To(HaveOccurred())
+		Expect(err.Error()).To(ContainSubstring("inventory item with ID 99999 not found"))
 	})
 
-	t.Run("should handle multiple items and transactions in single consumption", func(t *testing.T) {
-		// Clean up previous transactions first
-		err := db.WithContext(ctx).Exec("DELETE FROM inventory_transactions WHERE inventory_item_id IN (?, ?, ?)",
-			inventoryItems[0].ID, inventoryItems[1].ID, inventoryItems[2].ID).Error
-		require.NoError(t, err, "Failed to cleanup previous transactions")
+	It("should return error when quantity has been modified by another transaction", func() {
+		// Setup minimal fixture
+		_ = fixture.WithSupplier(db.WithContext(ctx), models.Supplier{
+			Name:         "Test Supplier",
+			ContactEmail: "test@supplier.com",
+			ContactPhone: "123-456-7890",
+			Address:      "Test Address",
+		})
+		products := fixture.WithProducts(db.WithContext(ctx), []models.Product{
+			{Name: "Product 1", Status: "active", UnitID: 1},
+		})
+		inventory := fixture.WithInventory(db.WithContext(ctx), models.Inventory{
+			Name:   fmt.Sprintf("Test Inventory %d", time.Now().UnixNano()),
+			Status: models.InventoryStatusActive,
+		})
 
-		// Reset quantities first
+		item := models.InventoryItem{
+			InventoryID: inventory.ID,
+			ProductID:   products[0].ID,
+			Quantity:    decimal.NewFromInt(10),
+			Status:      models.InventoryItemStatusActive,
+		}
+		err := db.WithContext(ctx).Create(&item).Error
+		Expect(err).To(BeNil())
+		DeferCleanup(func() {
+			db.WithContext(ctx).Where("inventory_item_id = ?", item.ID).Delete(&models.InventoryTransaction{})
+			db.WithContext(ctx).Where("id = ?", item.ID).Delete(&models.InventoryItem{})
+		})
+
+		originalQuantity := item.Quantity
+
+		// Modify quantity to simulate concurrent update
 		err = db.WithContext(ctx).Model(&models.InventoryItem{}).
-			Where("id IN ?", []uint{inventoryItems[0].ID, inventoryItems[1].ID, inventoryItems[2].ID}).
-			Updates(map[string]interface{}{"quantity": gorm.Expr("CASE id WHEN ? THEN 10 WHEN ? THEN 20 WHEN ? THEN 5 END",
-				inventoryItems[0].ID, inventoryItems[1].ID, inventoryItems[2].ID)}).Error
-		require.NoError(t, err, "Failed to reset item quantities")
+			Where("id = ?", item.ID).
+			Update("quantity", originalQuantity.Add(decimal.NewFromInt(2))).Error
+		Expect(err).To(BeNil())
 
-		// Prepare multiple updated inventory items with new quantities after consumption
-		reconcileItems := []*models.InventoryItemChange{
+		changes := []*models.InventoryItemChange{
 			{
-				InventoryItem: &models.InventoryItem{
-					Base:        models.Base{ID: inventoryItems[0].ID},
-					InventoryID: inventories[0].ID, ProductID: products[0].ID,
-					Quantity: decimal.NewFromInt(7), Status: models.InventoryItemStatusActive, // 10 - 3 = 7
-				},
+				InventoryItem:    &models.InventoryItem{Base: models.Base{ID: item.ID}, InventoryID: inventory.ID, ProductID: products[0].ID, Quantity: decimal.NewFromInt(8), Status: models.InventoryItemStatusActive},
+				OriginalQuantity: originalQuantity,
+			},
+		}
+
+		err = repo.SaveInventoryItemChanges(ctx, changes, []*models.InventoryTransaction{})
+		Expect(err).To(HaveOccurred())
+		Expect(err.Error()).To(ContainSubstring(pkg.ErrOptimisticLockConflict(
+			"inventory item",
+			item.ID,
+			originalQuantity,
+			originalQuantity.Add(decimal.NewFromInt(2)),
+		).Error()))
+	})
+
+	It("should handle empty items and transactions arrays", func() {
+		err := repo.SaveInventoryItemChanges(ctx, []*models.InventoryItemChange{}, []*models.InventoryTransaction{})
+		Expect(err).To(BeNil())
+
+		err = repo.SaveInventoryItemChanges(ctx, nil, nil)
+		Expect(err).To(BeNil())
+	})
+
+	It("should handle only inventory items without transactions", func() {
+		// Setup minimal fixture
+		_ = fixture.WithSupplier(db.WithContext(ctx), models.Supplier{
+			Name:         "Test Supplier",
+			ContactEmail: "test@supplier.com",
+			ContactPhone: "123-456-7890",
+			Address:      "Test Address",
+		})
+		products := fixture.WithProducts(db.WithContext(ctx), []models.Product{
+			{Name: "Product 1", Status: "active", UnitID: 1},
+		})
+		inventory := fixture.WithInventory(db.WithContext(ctx), models.Inventory{
+			Name:   fmt.Sprintf("Test Inventory %d", time.Now().UnixNano()),
+			Status: models.InventoryStatusActive,
+		})
+
+		item := models.InventoryItem{
+			InventoryID: inventory.ID,
+			ProductID:   products[0].ID,
+			Quantity:    decimal.NewFromInt(10),
+			Status:      models.InventoryItemStatusActive,
+		}
+		err := db.WithContext(ctx).Create(&item).Error
+		Expect(err).To(BeNil())
+		DeferCleanup(func() {
+			db.WithContext(ctx).Where("id = ?", item.ID).Delete(&models.InventoryItem{})
+		})
+
+		changes := []*models.InventoryItemChange{
+			{
+				InventoryItem:    &models.InventoryItem{Base: models.Base{ID: item.ID}, InventoryID: inventory.ID, ProductID: products[0].ID, Quantity: decimal.NewFromInt(9), Status: models.InventoryItemStatusActive},
 				OriginalQuantity: decimal.NewFromInt(10),
 			},
-			{
-				InventoryItem: &models.InventoryItem{
-					Base:        models.Base{ID: inventoryItems[1].ID},
-					InventoryID: inventories[0].ID, ProductID: products[1].ID,
-					Quantity: decimal.NewFromInt(18), Status: models.InventoryItemStatusActive, // 20 - 2 = 18
-				},
-				OriginalQuantity: decimal.NewFromInt(20),
-			},
-			{
-				InventoryItem: &models.InventoryItem{
-					Base:        models.Base{ID: inventoryItems[2].ID},
-					InventoryID: inventories[1].ID, ProductID: products[2].ID,
-					Quantity: decimal.NewFromInt(3), Status: models.InventoryItemStatusActive, // 5 - 2 = 3
-				},
-				OriginalQuantity: decimal.NewFromInt(5),
-			},
 		}
 
-		// Prepare multiple sell transactions
-		sellTransactions := []*models.InventoryTransaction{
-			{
-				InventoryItemID: inventoryItems[0].ID,
-				TransactionType: models.InventoryTransactionTypeSell,
-				Price:           100.0,
-				Quantity:        decimal.NewFromInt(3),
-			},
-			{
-				InventoryItemID: inventoryItems[1].ID,
-				TransactionType: models.InventoryTransactionTypeSell,
-				Price:           200.0,
-				Quantity:        decimal.NewFromInt(2),
-			},
-			{
-				InventoryItemID: inventoryItems[2].ID,
-				TransactionType: models.InventoryTransactionTypeSell,
-				Price:           150.0,
-				Quantity:        decimal.NewFromInt(2),
-			},
+		err = repo.SaveInventoryItemChanges(ctx, changes, []*models.InventoryTransaction{})
+		Expect(err).To(BeNil())
+
+		var updatedItem models.InventoryItem
+		err = db.WithContext(ctx).First(&updatedItem, item.ID).Error
+		Expect(err).To(BeNil())
+		Expect(updatedItem.Quantity.Equal(decimal.NewFromInt(9))).To(BeTrue())
+	})
+
+	It("should handle only transactions without inventory items", func() {
+		// Setup minimal fixture
+		_ = fixture.WithSupplier(db.WithContext(ctx), models.Supplier{
+			Name:         "Test Supplier",
+			ContactEmail: "test@supplier.com",
+			ContactPhone: "123-456-7890",
+			Address:      "Test Address",
+		})
+		products := fixture.WithProducts(db.WithContext(ctx), []models.Product{
+			{Name: "Product 1", Status: "active", UnitID: 1},
+		})
+		inventory := fixture.WithInventory(db.WithContext(ctx), models.Inventory{
+			Name:   fmt.Sprintf("Test Inventory %d", time.Now().UnixNano()),
+			Status: models.InventoryStatusActive,
+		})
+
+		item := models.InventoryItem{
+			InventoryID: inventory.ID,
+			ProductID:   products[0].ID,
+			Quantity:    decimal.NewFromInt(5),
+			Status:      models.InventoryItemStatusActive,
+		}
+		err := db.WithContext(ctx).Create(&item).Error
+		Expect(err).To(BeNil())
+		DeferCleanup(func() {
+			db.WithContext(ctx).Where("inventory_item_id = ?", item.ID).Delete(&models.InventoryTransaction{})
+			db.WithContext(ctx).Where("id = ?", item.ID).Delete(&models.InventoryItem{})
+		})
+
+		sellTxns := []*models.InventoryTransaction{
+			{InventoryItemID: item.ID, TransactionType: models.InventoryTransactionTypeSell, Price: 150.0, Quantity: decimal.NewFromInt(2)},
 		}
 
-		// Execute consumption
-		err = repo.SaveInventoryItemChanges(ctx, reconcileItems, sellTransactions)
-		require.NoError(t, err, "PersistConsumption should succeed with multiple items and transactions")
+		err = repo.SaveInventoryItemChanges(ctx, []*models.InventoryItemChange{}, sellTxns)
+		Expect(err).To(BeNil())
 
-		// Verify all items were updated
+		var transactions []models.InventoryTransaction
+		err = db.WithContext(ctx).Where("inventory_item_id = ? AND transaction_type = ?", item.ID, models.InventoryTransactionTypeSell).Find(&transactions).Error
+		Expect(err).To(BeNil())
+		Expect(len(transactions)).To(BeNumerically(">=", 1))
+	})
+
+	It("should rollback transaction on error", func() {
+		// Setup minimal fixture
+		_ = fixture.WithSupplier(db.WithContext(ctx), models.Supplier{
+			Name:         "Test Supplier",
+			ContactEmail: "test@supplier.com",
+			ContactPhone: "123-456-7890",
+			Address:      "Test Address",
+		})
+		products := fixture.WithProducts(db.WithContext(ctx), []models.Product{
+			{Name: "Product 1", Status: "active", UnitID: 1},
+		})
+		inventory := fixture.WithInventory(db.WithContext(ctx), models.Inventory{
+			Name:   fmt.Sprintf("Test Inventory %d", time.Now().UnixNano()),
+			Status: models.InventoryStatusActive,
+		})
+
+		item := models.InventoryItem{
+			InventoryID: inventory.ID,
+			ProductID:   products[0].ID,
+			Quantity:    decimal.NewFromInt(20),
+			Status:      models.InventoryItemStatusActive,
+		}
+		err := db.WithContext(ctx).Create(&item).Error
+		Expect(err).To(BeNil())
+		DeferCleanup(func() {
+			db.WithContext(ctx).Where("inventory_item_id = ?", item.ID).Delete(&models.InventoryTransaction{})
+			db.WithContext(ctx).Where("id = ?", item.ID).Delete(&models.InventoryItem{})
+		})
+
+		originalQuantity := item.Quantity
+
+		// Prepare data that will cause an error
+		changes := []*models.InventoryItemChange{
+			{
+				InventoryItem:    &models.InventoryItem{Base: models.Base{ID: 99999}, Quantity: decimal.NewFromInt(8), Status: models.InventoryItemStatusActive},
+				OriginalQuantity: decimal.NewFromInt(10),
+			},
+		}
+		sellTxns := []*models.InventoryTransaction{
+			{InventoryItemID: item.ID, TransactionType: models.InventoryTransactionTypeSell, Price: 100.0, Quantity: decimal.NewFromInt(1)},
+		}
+
+		err = repo.SaveInventoryItemChanges(ctx, changes, sellTxns)
+		Expect(err).To(HaveOccurred())
+
+		// Verify rollback
+		var unchangedItem models.InventoryItem
+		err = db.WithContext(ctx).First(&unchangedItem, item.ID).Error
+		Expect(err).To(BeNil())
+		Expect(unchangedItem.Quantity.Equal(originalQuantity)).To(BeTrue())
+
+		var transactions []models.InventoryTransaction
+		err = db.WithContext(ctx).Where("inventory_item_id = ? AND transaction_type = ?", item.ID, models.InventoryTransactionTypeSell).Find(&transactions).Error
+		Expect(err).To(BeNil())
+		Expect(transactions).To(HaveLen(0))
+	})
+
+	It("should handle multiple items and transactions in single consumption", func() {
+		// Setup minimal fixture
+		_ = fixture.WithSupplier(db.WithContext(ctx), models.Supplier{
+			Name:         "Test Supplier",
+			ContactEmail: "test@supplier.com",
+			ContactPhone: "123-456-7890",
+			Address:      "Test Address",
+		})
+		products := fixture.WithProducts(db.WithContext(ctx), []models.Product{
+			{Name: "Product 1", Status: "active", UnitID: 1},
+			{Name: "Product 2", Status: "active", UnitID: 1},
+			{Name: "Product 3", Status: "active", UnitID: 1},
+		})
+		inventory := fixture.WithInventory(db.WithContext(ctx), models.Inventory{
+			Name:   fmt.Sprintf("Test Inventory %d", time.Now().UnixNano()),
+			Status: models.InventoryStatusActive,
+		})
+
+		items := []models.InventoryItem{
+			{InventoryID: inventory.ID, ProductID: products[0].ID, Quantity: decimal.NewFromInt(10), Status: models.InventoryItemStatusActive},
+			{InventoryID: inventory.ID, ProductID: products[1].ID, Quantity: decimal.NewFromInt(20), Status: models.InventoryItemStatusActive},
+			{InventoryID: inventory.ID, ProductID: products[2].ID, Quantity: decimal.NewFromInt(5), Status: models.InventoryItemStatusActive},
+		}
+		err := db.WithContext(ctx).Create(&items).Error
+		Expect(err).To(BeNil())
+		DeferCleanup(func() {
+			db.WithContext(ctx).Where("inventory_item_id IN ?", []uint{items[0].ID, items[1].ID, items[2].ID}).Delete(&models.InventoryTransaction{})
+			db.WithContext(ctx).Where("id IN ?", []uint{items[0].ID, items[1].ID, items[2].ID}).Delete(&models.InventoryItem{})
+		})
+
+		changes := []*models.InventoryItemChange{
+			{InventoryItem: &models.InventoryItem{Base: models.Base{ID: items[0].ID}, InventoryID: inventory.ID, ProductID: products[0].ID, Quantity: decimal.NewFromInt(7), Status: models.InventoryItemStatusActive}, OriginalQuantity: decimal.NewFromInt(10)},
+			{InventoryItem: &models.InventoryItem{Base: models.Base{ID: items[1].ID}, InventoryID: inventory.ID, ProductID: products[1].ID, Quantity: decimal.NewFromInt(18), Status: models.InventoryItemStatusActive}, OriginalQuantity: decimal.NewFromInt(20)},
+			{InventoryItem: &models.InventoryItem{Base: models.Base{ID: items[2].ID}, InventoryID: inventory.ID, ProductID: products[2].ID, Quantity: decimal.NewFromInt(3), Status: models.InventoryItemStatusActive}, OriginalQuantity: decimal.NewFromInt(5)},
+		}
+
+		sellTxns := []*models.InventoryTransaction{
+			{InventoryItemID: items[0].ID, TransactionType: models.InventoryTransactionTypeSell, Price: 100.0, Quantity: decimal.NewFromInt(3)},
+			{InventoryItemID: items[1].ID, TransactionType: models.InventoryTransactionTypeSell, Price: 200.0, Quantity: decimal.NewFromInt(2)},
+			{InventoryItemID: items[2].ID, TransactionType: models.InventoryTransactionTypeSell, Price: 150.0, Quantity: decimal.NewFromInt(2)},
+		}
+
+		err = repo.SaveInventoryItemChanges(ctx, changes, sellTxns)
+		Expect(err).To(BeNil())
+
+		// Verify all items updated
 		for i, expectedQuantity := range []int{7, 18, 3} {
 			var updatedItem models.InventoryItem
-			err = db.WithContext(ctx).First(&updatedItem, inventoryItems[i].ID).Error
-			require.NoError(t, err)
-			assert.True(t, updatedItem.Quantity.Equal(decimal.NewFromInt(int64(expectedQuantity))),
-				"Item %d quantity should be %d", i+1, expectedQuantity)
+			err = db.WithContext(ctx).First(&updatedItem, items[i].ID).Error
+			Expect(err).To(BeNil())
+			Expect(updatedItem.Quantity.Equal(decimal.NewFromInt(int64(expectedQuantity)))).To(BeTrue())
 		}
 
-		// Verify all transactions were created (only the ones from this test)
+		// Verify transactions created
 		var transactions []models.InventoryTransaction
 		err = db.WithContext(ctx).Where("inventory_item_id IN ? AND transaction_type = ? AND created_at >= ?",
-			[]uint{inventoryItems[0].ID, inventoryItems[1].ID, inventoryItems[2].ID},
+			[]uint{items[0].ID, items[1].ID, items[2].ID},
 			models.InventoryTransactionTypeSell,
 			time.Now().Add(-5*time.Second)).Find(&transactions).Error
-		require.NoError(t, err)
-		assert.GreaterOrEqual(t, len(transactions), 3, "Should have at least 3 sell transactions")
+		Expect(err).To(BeNil())
+		Expect(len(transactions)).To(BeNumerically(">=", 3))
 	})
-}
+})

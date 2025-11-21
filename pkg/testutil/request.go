@@ -1,4 +1,4 @@
-package apptest
+package testutil
 
 import (
 	"bytes"
@@ -29,7 +29,7 @@ type Client struct {
 // NewClient creates a new test client for the API.
 // A fake auth token is generated and registered with the mock auth service.
 func NewClient(
-	tenv *TestEnv,
+	tenv *TestBox,
 	userRole models.UserRole,
 ) *Client {
 	client := &Client{

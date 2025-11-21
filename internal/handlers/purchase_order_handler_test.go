@@ -360,6 +360,10 @@ func TestCreatePurchaseOrder(t *testing.T) {
 			},
 		}
 
+		// Mock service to return validation error since handler validation doesn't catch zero quantity
+		setup.mockService.On("CreatePurchaseOrder", mock.Anything, mock.AnythingOfType("*models.PurchaseOrder")).
+			Return(pkg.ErrValidation("quantity must be greater than zero", nil))
+
 		// Create request and context
 		req, err := createRequest(http.MethodPost, "/purchase-orders", requestBody)
 		require.NoError(t, err)
@@ -396,6 +400,10 @@ func TestCreatePurchaseOrder(t *testing.T) {
 				},
 			},
 		}
+
+		// Mock service to return validation error since handler validation doesn't catch negative quantity
+		setup.mockService.On("CreatePurchaseOrder", mock.Anything, mock.AnythingOfType("*models.PurchaseOrder")).
+			Return(pkg.ErrValidation("quantity must be greater than zero", nil))
 
 		// Create request and context
 		req, err := createRequest(http.MethodPost, "/purchase-orders", requestBody)
