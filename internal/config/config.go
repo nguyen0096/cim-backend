@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/joho/godotenv"
+	"github.com/sirupsen/logrus"
 
 	"cim-backend/pkg/log"
 )
@@ -71,6 +72,12 @@ type CasbinConfig struct {
 func Load(filePath ...string) *Config {
 	godotenv.Load(filePath...)
 
+	logLever, err := logrus.ParseLevel(getEnv("LOG_LEVEL", "error"))
+	if err != nil {
+		log.Warnf("failed to parse log level: %v", err)
+		logLever = logrus.ErrorLevel
+	}
+
 	return &Config{
 		Environment: getEnv("ENV", "development"),
 		Database: DatabaseConfig{
@@ -103,6 +110,9 @@ func Load(filePath ...string) *Config {
 		Casbin: CasbinConfig{
 			ModelFile:  getEnv("CASBIN_MODEL_FILE", "rbac_model.conf"),
 			PolicyFile: getEnv("CASBIN_POLICY_FILE", "rbac_policy.csv"),
+		},
+		Log: log.Config{
+			LogLevel: logrus.Level(logLever),
 		},
 	}
 }

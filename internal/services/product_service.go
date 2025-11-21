@@ -4,6 +4,7 @@ import (
 	"cim-backend/internal/models"
 	"cim-backend/internal/repository"
 	"cim-backend/pkg"
+	"cim-backend/pkg/log"
 	"context"
 	"encoding/csv"
 	"encoding/json"
@@ -511,10 +512,12 @@ func (s *productService) ImportProductsFromExcel(ctx context.Context, excelReade
 	if err != nil {
 		return 0, pkg.ErrValidation("failed to read Excel rows", err)
 	}
+	log.Debugf("get %d rows from Excel file", len(rows))
 
 	if len(rows) == 0 {
 		return 0, pkg.ErrValidation("Excel file is empty", nil)
 	}
+
 	// Find the first row with at least 4 columns (minimum required: Name, ProductType, Unit, Suppliers)
 	headerInx := 0
 	for headerInx < len(rows) && len(rows[headerInx]) < 4 {
