@@ -11,11 +11,13 @@ import (
 	"cim-backend/internal/repository"
 	"cim-backend/internal/services"
 	"cim-backend/pkg"
+	"cim-backend/pkg/log"
 
 	_ "cim-backend/docs" // Import generated docs
 
 	"github.com/labstack/echo/v4"
 	echoMiddleware "github.com/labstack/echo/v4/middleware"
+	"github.com/sirupsen/logrus"
 	echoSwagger "github.com/swaggo/echo-swagger"
 	"gorm.io/gorm"
 )
@@ -77,7 +79,27 @@ func SetupServer(
 	e.HTTPErrorHandler = middleware.CustomErrorHandler
 
 	// Middleware
-	e.Use(echoMiddleware.Logger())
+	e.Use(echoMiddleware.RequestLoggerWithConfig(echoMiddleware.RequestLoggerConfig{
+		LogURI:    true,
+		LogStatus: true,
+		LogValuesFunc: func(c echo.Context, values echoMiddleware.RequestLoggerValues) error {
+			log.WithFields(logrus.Fields{
+				"time":         values.StartTime,
+				"uri":          values.URI,
+				"method":       values.Method,
+				"status":       values.Status,
+				"latency":      values.Latency,
+				"remote_ip":    values.RemoteIP,
+				"user_agent":   values.UserAgent,
+				"error":        values.Error,
+				"router_path":  values.RoutePath,
+				"headers":      values.Headers,
+				"query_params": values.QueryParams,
+				"request_id":   values.RequestID,
+			}).Info("request")
+			return nil
+		},
+	}))
 	e.Use(echoMiddleware.Recover())
 	e.Use(echoMiddleware.CORSWithConfig(echoMiddleware.CORSConfig{
 		AllowOrigins: cfg.Server.CORSAllowedOrigins,
