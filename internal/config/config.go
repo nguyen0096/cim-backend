@@ -30,6 +30,7 @@ type DatabaseConfig struct {
 	User     string
 	Password string
 	DBName   string
+	LogLevel string
 }
 
 type ServerConfig struct {
@@ -86,6 +87,7 @@ func Load(filePath ...string) *Config {
 			User:     getEnv("DB_USER", "postgres"),
 			Password: getEnv("DB_PASSWORD", "password"),
 			DBName:   getEnv("DB_NAME", "cim_db"),
+			LogLevel: getEnv("DB_LOG_LEVEL", "error"),
 		},
 		Server: ServerConfig{
 			Host:               getEnv("SERVER_HOST", "0.0.0.0"),

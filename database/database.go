@@ -17,8 +17,10 @@ func Initialize(cfg config.DatabaseConfig) (*gorm.DB, error) {
 	dsn := fmt.Sprintf("host=%s user=%s password=%s dbname=%s port=%s sslmode=disable TimeZone=UTC",
 		cfg.Host, cfg.User, cfg.Password, cfg.DBName, cfg.Port)
 
+	logLever := ParseGormLogLevel(cfg.LogLevel)
+
 	db, err := gorm.Open(postgres.Open(dsn), &gorm.Config{
-		Logger: logger.Default.LogMode(logger.Info),
+		Logger: logger.Default.LogMode(logLever),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to database: %w", err)
@@ -76,4 +78,18 @@ func runSQLMigration(db *gorm.DB, migrationDir, direction string) error {
 	}
 
 	return nil
+}
+
+func ParseGormLogLevel(logLevel string) logger.LogLevel {
+	switch logLevel {
+	case "silent":
+		return logger.Silent
+	case "error":
+		return logger.Error
+	case "warn":
+		return logger.Warn
+	case "info":
+		return logger.Info
+	}
+	return logger.Error
 }
