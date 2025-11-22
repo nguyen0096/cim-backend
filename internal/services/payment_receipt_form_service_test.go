@@ -230,7 +230,7 @@ func TestPaymentReceiptFormService_CreatePaymentReceiptForm(t *testing.T) {
 	}
 }
 
-func TestPaymentReceiptFormService_LatestPendingPaymentReceiptFormStream(t *testing.T) {
+func TestPaymentReceiptFormService_GetLatestPaymentReceiptForms(t *testing.T) {
 	tests := []struct {
 		name           string
 		expectedForms  []*models.PaymentReceiptForm
@@ -264,7 +264,7 @@ func TestPaymentReceiptFormService_LatestPendingPaymentReceiptFormStream(t *test
 
 			mockRepo.On("GetLatestPaymentReceiptForms", mock.Anything, uint(0), models.PaymentReceiptFormStatusPending, 5).Return(tt.expectedForms, nil)
 
-			result, err := service.LatestPendingPaymentReceiptFormStream(context.Background(), 0, 5)
+			result, err := service.GetLatestPaymentReceiptForms(context.Background(), 0, models.PaymentReceiptFormStatusPending, 5)
 
 			if tt.expectError {
 				assert.Error(t, err)

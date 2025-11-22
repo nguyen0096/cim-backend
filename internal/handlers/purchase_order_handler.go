@@ -20,15 +20,18 @@ import (
 type PurchaseOrderHandler struct {
 	purchaseOrderRepository repository.PurchaseOrderRepository
 	purchaseOrderService    services.PurchaseOrderService
+	paymentReceiptFormService services.PaymentReceiptFormService
 }
 
 func NewPurchaseOrderHandler(
 	purchaseOrderRepo repository.PurchaseOrderRepository,
 	purchaseOrderService services.PurchaseOrderService,
+	paymentReceiptFormService services.PaymentReceiptFormService,
 ) *PurchaseOrderHandler {
 	return &PurchaseOrderHandler{
 		purchaseOrderRepository: purchaseOrderRepo,
 		purchaseOrderService:    purchaseOrderService,
+		paymentReceiptFormService: paymentReceiptFormService,
 	}
 }
 
@@ -350,4 +353,60 @@ func (h *PurchaseOrderHandler) ReceiveInventory(c echo.Context) error {
 	}
 
 	return c.JSON(http.StatusOK, po)
+}
+
+// RetryQueueRevenueExpenseRequest godoc
+// @Summary Retry queue revenue expense request
+// @Description Retry queueing a revenue expense request for a payment receipt form
+// @Tags purchase-orders
+// @Accept json
+// @Produce json
+// @Param payment_receipt_form_id path int true "Payment Receipt Form ID"
+// @Success 200 {object} map[string]string "Successfully queued revenue expense request"
+// @Failure 400 {object} map[string]string "Invalid payment receipt form ID"
+// @Failure 404 {object} map[string]string "Payment receipt form not found"
+// @Failure 500 {object} map[string]string "Failed to queue revenue expense request"
+// @Router /api/v1/purchase-orders/revenue-expense/{payment_receipt_form_id}/retry [post]
+// @Security BearerAuth
+func (h *PurchaseOrderHandler) RetryQueueRevenueExpenseRequest(c echo.Context) error {
+	purchaseOrderID, err := pkg.ExtractIDParam(c)
+	if err != nil {
+		return err
+	}
+
+	forms, err := h.paymentReceiptFormService.GetLatestPaymentReceiptForms(c.Request().Context(), purchaseOrderID, models.PaymentReceiptFormStatusApproved, 0)
+	if err != nil {
+		log.WithFields(logrus.Fields{
+			"operation":         "UpdatePurchaseOrderStatus",
+			"purchase_order_id": purchaseOrderID,
+			"error":             err,
+		}).Error("Failed to get approved payment receipt forms")
+		return fmt.Errorf("failed to get approved payment receipt forms: %w", err)
+	}
+
+	if len(forms) == 0 {
+		log.WithFields(logrus.Fields{
+			"operation":         "UpdatePurchaseOrderStatus",
+			"purchase_order_id": purchaseOrderID,
+		}).Warn("Cannot complete purchase order: no approved payment receipt form found")
+		return pkg.ErrNoApprovedPaymentReceiptForm()
+	}
+
+	// Extract form IDs for queueing
+	formIDs := make([]uint, len(forms))
+	for i, form := range forms {
+		formIDs[i] = form.ID
+	}
+
+	if err := h.purchaseOrderService.RetryQueueRevenueExpenseRequest(c.Request().Context(), formIDs); err != nil {
+		var appErr *pkg.AppError
+		if errors.As(err, &appErr) {
+			return err
+		}
+		return pkg.ErrInternal("Failed to retry queue revenue expense request", err)
+	}
+
+	return c.JSON(http.StatusOK, map[string]string{
+		"message": "Revenue expense request queued successfully",
+	})
 }

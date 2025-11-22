@@ -35,6 +35,7 @@ type PurchaseOrderService interface {
 	// V1
 	UpdatePurchaseOrder(ctx context.Context, id uint, req dto.UpdatePurchaseOrderRequest) (*models.PurchaseOrder, error)
 	ReceiveInventory(ctx context.Context, req dto.UpdatePurchaseOrderDeliveryStatusRequest) (*models.PurchaseOrder, error)
+	RetryQueueRevenueExpenseRequest(ctx context.Context, paymentReceiptFormIDs []uint) error
 }
 
 type purchaseOrderService struct {
@@ -51,8 +52,7 @@ type purchaseOrderService struct {
 
 // revenueExpenseRequest represents a queued request to process revenue expense
 type revenueExpenseRequest struct {
-	ctx                  context.Context
-	paymentReceiptFormID uint
+	paymentReceiptFormIDs []uint
 }
 
 func NewPurchaseOrderService(
@@ -335,15 +335,15 @@ func (s *purchaseOrderService) UpdatePurchaseOrderStatus(ctx context.Context, id
 	}).Info("Updating purchase order status")
 
 	if status == models.PurchaseOrderStatusCompleted {
-		// Check if there is an approved payment receipt form before completing
-		forms, err := s.paymentReceiptFormRepo.GetLatestPaymentReceiptForms(ctx, id, models.PaymentReceiptFormStatusApproved, 1)
+		// Get all approved payment receipt forms for this purchase order
+		forms, err := s.paymentReceiptFormRepo.GetLatestPaymentReceiptForms(ctx, id, models.PaymentReceiptFormStatusApproved, 0)
 		if err != nil {
 			log.WithFields(logrus.Fields{
 				"operation":         "UpdatePurchaseOrderStatus",
 				"purchase_order_id": id,
 				"error":             err,
-			}).Error("Failed to check for approved payment receipt form")
-			return fmt.Errorf("failed to check for approved payment receipt form: %w", err)
+			}).Error("Failed to get approved payment receipt forms")
+			return fmt.Errorf("failed to get approved payment receipt forms: %w", err)
 		}
 
 		if len(forms) == 0 {
@@ -354,8 +354,13 @@ func (s *purchaseOrderService) UpdatePurchaseOrderStatus(ctx context.Context, id
 			return pkg.ErrNoApprovedPaymentReceiptForm()
 		}
 
-		approvedForm := forms[0]
-		go s.queueRevenueExpenseRequest(approvedForm.ID)
+		// Extract form IDs for queueing
+		formIDs := make([]uint, len(forms))
+		for i, form := range forms {
+			formIDs[i] = form.ID
+		}
+
+		go s.queueRevenueExpenseRequest(formIDs)
 	}
 
 	err := s.purchaseOrderRepo.UpdateStatus(ctx, id, status)
@@ -632,29 +637,61 @@ func (s *purchaseOrderService) revenueExpenseWorker() {
 
 	for req := range s.revenueExpenseRequestQueue {
 		log.WithFields(logrus.Fields{
-			"operation":               "revenueExpenseWorker",
-			"payment_receipt_form_id": req.paymentReceiptFormID,
-			"queue_length":            len(s.revenueExpenseRequestQueue),
+			"operation":                "revenueExpenseWorker",
+			"payment_receipt_form_ids": req.paymentReceiptFormIDs,
+			"forms_count":              len(req.paymentReceiptFormIDs),
+			"queue_length":             len(s.revenueExpenseRequestQueue),
 		}).Info("Processing revenue expense request from queue")
 
 		// Process the request with retry mechanism
-		s.handleRevenueExpenseAsyncBySettingsWithRetry(req.paymentReceiptFormID)
+		s.handleRevenueExpenseAsyncBySettingsWithRetry(req.paymentReceiptFormIDs)
 	}
 
 	log.Warn("Revenue expense worker stopped - channel closed")
 }
 
 // queueRevenueExpenseRequest queues a revenue expense request for serial processing
-func (s *purchaseOrderService) queueRevenueExpenseRequest(paymentReceiptFormID uint) {
+func (s *purchaseOrderService) queueRevenueExpenseRequest(paymentReceiptFormIDs []uint) {
+	if len(paymentReceiptFormIDs) == 0 {
+		log.WithFields(logrus.Fields{
+			"operation": "queueRevenueExpenseRequest",
+		}).Warn("No payment receipt form IDs provided, skipping queue")
+		return
+	}
+
 	req := revenueExpenseRequest{
-		paymentReceiptFormID: paymentReceiptFormID,
+		paymentReceiptFormIDs: paymentReceiptFormIDs,
 	}
 
 	s.revenueExpenseRequestQueue <- req
 }
 
+func (s *purchaseOrderService) GetLatestPaymentReceiptForms(ctx context.Context, purchaseOrderID uint) ([]*models.PaymentReceiptForm, error) {
+	return s.paymentReceiptFormRepo.GetLatestPaymentReceiptForms(ctx, purchaseOrderID, models.PaymentReceiptFormStatusApproved, 0)
+}
+
+// RetryQueueRevenueExpenseRequest retries queueing a revenue expense request for payment receipt forms
+func (s *purchaseOrderService) RetryQueueRevenueExpenseRequest(ctx context.Context, paymentReceiptFormIDs []uint) error {
+	s.queueRevenueExpenseRequest(paymentReceiptFormIDs)
+
+	log.WithFields(logrus.Fields{
+		"operation":                "RetryQueueRevenueExpenseRequest",
+		"payment_receipt_form_ids": paymentReceiptFormIDs,
+		"forms_count":              len(paymentReceiptFormIDs),
+	}).Info("Successfully queued revenue expense request")
+
+	return nil
+}
+
 // handleRevenueExpenseAsyncBySettingsWithRetry wraps the async handler with retry mechanism
-func (s *purchaseOrderService) handleRevenueExpenseAsyncBySettingsWithRetry(paymentReceiptFormID uint) {
+func (s *purchaseOrderService) handleRevenueExpenseAsyncBySettingsWithRetry(paymentReceiptFormIDs []uint) {
+	if len(paymentReceiptFormIDs) == 0 {
+		log.WithFields(logrus.Fields{
+			"operation": "handleRevenueExpenseAsyncBySettingsWithRetry",
+		}).Warn("No payment receipt form IDs provided")
+		return
+	}
+
 	const (
 		maxRetries    = 3
 		initialDelay  = 10 * time.Second
@@ -672,33 +709,35 @@ func (s *purchaseOrderService) handleRevenueExpenseAsyncBySettingsWithRetry(paym
 				if r := recover(); r != nil {
 					lastErr = fmt.Errorf("panic recovered: %v", r)
 					log.WithFields(logrus.Fields{
-						"operation":               "handleRevenueExpenseAsyncBySettingsWithRetry",
-						"payment_receipt_form_id": paymentReceiptFormID,
-						"attempt":                 attempt,
-						"max_retries":             maxRetries,
-						"panic":                   r,
-						"stack_trace":             string(debug.Stack()),
+						"operation":                "handleRevenueExpenseAsyncBySettingsWithRetry",
+						"payment_receipt_form_ids": paymentReceiptFormIDs,
+						"attempt":                  attempt,
+						"max_retries":              maxRetries,
+						"panic":                    r,
+						"stack_trace":              string(debug.Stack()),
 					}).Error("Panic occurred in revenue expense handler")
 				}
 			}()
 
 			log.WithFields(logrus.Fields{
-				"operation":               "handleRevenueExpenseAsyncBySettingsWithRetry",
-				"payment_receipt_form_id": paymentReceiptFormID,
-				"attempt":                 attempt,
-				"max_retries":             maxRetries,
+				"operation":                "handleRevenueExpenseAsyncBySettingsWithRetry",
+				"payment_receipt_form_ids": paymentReceiptFormIDs,
+				"forms_count":              len(paymentReceiptFormIDs),
+				"attempt":                  attempt,
+				"max_retries":              maxRetries,
 			}).Info("Attempting to process revenue expense")
 
-			s.handleRevenueExpenseAsyncBySettings(context.Background(), paymentReceiptFormID)
+			s.handleRevenueExpenseAsyncBySettings(context.Background(), paymentReceiptFormIDs)
 			lastErr = nil // Success - clear any previous error
 		}()
 
 		// If successful, exit
 		if lastErr == nil {
 			log.WithFields(logrus.Fields{
-				"operation":               "handleRevenueExpenseAsyncBySettingsWithRetry",
-				"payment_receipt_form_id": paymentReceiptFormID,
-				"attempt":                 attempt,
+				"operation":                "handleRevenueExpenseAsyncBySettingsWithRetry",
+				"payment_receipt_form_ids": paymentReceiptFormIDs,
+				"forms_count":              len(paymentReceiptFormIDs),
+				"attempt":                  attempt,
 			}).Info("Successfully processed revenue expense")
 			return
 		}
@@ -706,22 +745,24 @@ func (s *purchaseOrderService) handleRevenueExpenseAsyncBySettingsWithRetry(paym
 		// If this was the last attempt, log final failure
 		if attempt == maxRetries {
 			log.WithFields(logrus.Fields{
-				"operation":               "handleRevenueExpenseAsyncBySettingsWithRetry",
-				"payment_receipt_form_id": paymentReceiptFormID,
-				"attempts":                attempt,
-				"error":                   lastErr,
+				"operation":                "handleRevenueExpenseAsyncBySettingsWithRetry",
+				"payment_receipt_form_ids": paymentReceiptFormIDs,
+				"forms_count":              len(paymentReceiptFormIDs),
+				"attempts":                 attempt,
+				"error":                    lastErr,
 			}).Error("Failed to process revenue expense after all retry attempts")
 			return
 		}
 
 		// Log retry attempt with delay
 		log.WithFields(logrus.Fields{
-			"operation":               "handleRevenueExpenseAsyncBySettingsWithRetry",
-			"payment_receipt_form_id": paymentReceiptFormID,
-			"attempt":                 attempt,
-			"next_attempt":            attempt + 1,
-			"delay_seconds":           delay.Seconds(),
-			"error":                   lastErr,
+			"operation":                "handleRevenueExpenseAsyncBySettingsWithRetry",
+			"payment_receipt_form_ids": paymentReceiptFormIDs,
+			"forms_count":              len(paymentReceiptFormIDs),
+			"attempt":                  attempt,
+			"next_attempt":             attempt + 1,
+			"delay_seconds":            delay.Seconds(),
+			"error":                    lastErr,
 		}).Warn("Retrying revenue expense processing after failure")
 
 		// Wait before retrying with exponential backoff
@@ -736,22 +777,29 @@ func (s *purchaseOrderService) handleRevenueExpenseAsyncBySettingsWithRetry(paym
 }
 
 // handleRevenueExpenseAsyncBySettings determines the file type from settings and calls the appropriate async handler
-func (s *purchaseOrderService) handleRevenueExpenseAsyncBySettings(ctx context.Context, paymentReceiptFormID uint) {
+func (s *purchaseOrderService) handleRevenueExpenseAsyncBySettings(ctx context.Context, paymentReceiptFormIDs []uint) {
+	if len(paymentReceiptFormIDs) == 0 {
+		log.WithFields(logrus.Fields{
+			"operation": "handleRevenueExpenseAsyncBySettings",
+		}).Warn("No payment receipt form IDs provided")
+		return
+	}
+
 	// Get settings to determine file type
 	settings, err := s.settingsService.GetSetting(ctx, config.RevenueExpenseExcelSettingsKey)
 	if err != nil {
 		log.WithFields(logrus.Fields{
-			"operation":               "handleRevenueExpenseAsyncBySettings",
-			"payment_receipt_form_id": paymentReceiptFormID,
-			"error":                   err,
+			"operation":                "handleRevenueExpenseAsyncBySettings",
+			"payment_receipt_form_ids": paymentReceiptFormIDs,
+			"error":                    err,
 		}).Error("Failed to get revenue expense settings")
 		return
 	}
 
 	if settings == nil {
 		log.WithFields(logrus.Fields{
-			"operation":               "handleRevenueExpenseAsyncBySettings",
-			"payment_receipt_form_id": paymentReceiptFormID,
+			"operation":                "handleRevenueExpenseAsyncBySettings",
+			"payment_receipt_form_ids": paymentReceiptFormIDs,
 		}).Error("Revenue expense settings not configured")
 		return
 	}
@@ -759,9 +807,9 @@ func (s *purchaseOrderService) handleRevenueExpenseAsyncBySettings(ctx context.C
 	var settingsValue map[string]interface{}
 	if err := json.Unmarshal([]byte(settings.Value), &settingsValue); err != nil {
 		log.WithFields(logrus.Fields{
-			"operation":               "handleRevenueExpenseAsyncBySettings",
-			"payment_receipt_form_id": paymentReceiptFormID,
-			"error":                   err,
+			"operation":                "handleRevenueExpenseAsyncBySettings",
+			"payment_receipt_form_ids": paymentReceiptFormIDs,
+			"error":                    err,
 		}).Error("Failed to parse revenue expense settings")
 		return
 	}
@@ -769,8 +817,8 @@ func (s *purchaseOrderService) handleRevenueExpenseAsyncBySettings(ctx context.C
 	filePath, ok := settingsValue["filePath"].(string)
 	if !ok || filePath == "" {
 		log.WithFields(logrus.Fields{
-			"operation":               "handleRevenueExpenseAsyncBySettings",
-			"payment_receipt_form_id": paymentReceiptFormID,
+			"operation":                "handleRevenueExpenseAsyncBySettings",
+			"payment_receipt_form_ids": paymentReceiptFormIDs,
 		}).Error("filePath not found in revenue expense settings")
 		return
 	}
@@ -780,38 +828,59 @@ func (s *purchaseOrderService) handleRevenueExpenseAsyncBySettings(ctx context.C
 
 	if isGoogleSheets {
 		log.WithFields(logrus.Fields{
-			"operation":               "handleRevenueExpenseAsyncBySettings",
-			"payment_receipt_form_id": paymentReceiptFormID,
-			"file_type":               "google_sheets",
+			"operation":                "handleRevenueExpenseAsyncBySettings",
+			"payment_receipt_form_ids": paymentReceiptFormIDs,
+			"file_type":                "google_sheets",
 		}).Info("Detected Google Sheets, calling handleRevenueExpenseGoogleSheetsAsync")
-		s.handleRevenueExpenseGoogleSheetsAsync(ctx, paymentReceiptFormID, settingsValue)
+		s.handleRevenueExpenseGoogleSheetsAsync(ctx, paymentReceiptFormIDs, settingsValue)
 	} else {
 		log.WithFields(logrus.Fields{
-			"operation":               "handleRevenueExpenseAsyncBySettings",
-			"payment_receipt_form_id": paymentReceiptFormID,
-			"file_type":               "local_file",
+			"operation":                "handleRevenueExpenseAsyncBySettings",
+			"payment_receipt_form_ids": paymentReceiptFormIDs,
+			"file_type":                "local_file",
 		}).Info("Detected local file, calling handleRevenueExpenseAsync")
-		s.handleRevenueExpenseAsync(ctx, paymentReceiptFormID, settingsValue)
+		s.handleRevenueExpenseAsync(ctx, paymentReceiptFormIDs, settingsValue)
 	}
 }
 
 // handleRevenueExpenseAsync handles revenue expense excel file operations asynchronously
-func (s *purchaseOrderService) handleRevenueExpenseAsync(ctx context.Context, paymentReceiptFormID uint, settingsValue map[string]interface{}) {
+func (s *purchaseOrderService) handleRevenueExpenseAsync(ctx context.Context, paymentReceiptFormIDs []uint, settingsValue map[string]interface{}) {
 	startTime := time.Now()
 
-	paymentReceiptForm, err := s.paymentReceiptFormRepo.GetByIDFull(ctx, paymentReceiptFormID)
-	if err != nil {
+	if len(paymentReceiptFormIDs) == 0 {
 		log.WithFields(logrus.Fields{
-			"operation":               "handleRevenueExpenseAsync",
-			"payment_receipt_form_id": paymentReceiptFormID,
-			"error":                   err,
-		}).Error("Failed to get purchase order")
+			"operation": "handleRevenueExpenseAsync",
+		}).Warn("No payment receipt form IDs provided")
 		return
 	}
+
+	// Fetch all payment receipt forms
+	paymentReceiptForms := make([]*models.PaymentReceiptForm, 0, len(paymentReceiptFormIDs))
+	for _, paymentReceiptFormID := range paymentReceiptFormIDs {
+		paymentReceiptForm, err := s.paymentReceiptFormRepo.GetByIDFull(ctx, paymentReceiptFormID)
+		if err != nil {
+			log.WithFields(logrus.Fields{
+				"operation":               "handleRevenueExpenseAsync",
+				"payment_receipt_form_id": paymentReceiptFormID,
+				"error":                   err,
+			}).Error("Failed to get payment receipt form")
+			continue
+		}
+		paymentReceiptForms = append(paymentReceiptForms, paymentReceiptForm)
+	}
+
+	if len(paymentReceiptForms) == 0 {
+		log.WithFields(logrus.Fields{
+			"operation":                "handleRevenueExpenseAsync",
+			"payment_receipt_form_ids": paymentReceiptFormIDs,
+		}).Error("Failed to fetch any payment receipt forms")
+		return
+	}
+
 	logger := log.WithFields(logrus.Fields{
-		"operation":               "handleRevenueExpenseAsync",
-		"payment_receipt_form_id": paymentReceiptForm.ID,
-		"form_number":             paymentReceiptForm.FormNumber,
+		"operation":                "handleRevenueExpenseAsync",
+		"payment_receipt_form_ids": paymentReceiptFormIDs,
+		"forms_count":              len(paymentReceiptForms),
 	})
 	logger.Info("Starting async revenue expense processing")
 
@@ -819,16 +888,16 @@ func (s *purchaseOrderService) handleRevenueExpenseAsync(ctx context.Context, pa
 	filePath, ok := settingsValue["filePath"].(string)
 	if !ok || filePath == "" {
 		log.WithFields(logrus.Fields{
-			"operation":               "handleRevenueExpenseAsync",
-			"payment_receipt_form_id": paymentReceiptFormID,
+			"operation":                "handleRevenueExpenseAsync",
+			"payment_receipt_form_ids": paymentReceiptFormIDs,
 		}).Error("filePath not found in revenue expense settings")
 		return
 	}
 	sheetName, ok := settingsValue["sheetName"].(string)
 	if !ok || sheetName == "" {
 		log.WithFields(logrus.Fields{
-			"operation":               "handleRevenueExpenseAsync",
-			"payment_receipt_form_id": paymentReceiptFormID,
+			"operation":                "handleRevenueExpenseAsync",
+			"payment_receipt_form_ids": paymentReceiptFormIDs,
 		}).Error("sheetName not found in revenue expense settings")
 		return
 	}
@@ -846,7 +915,19 @@ func (s *purchaseOrderService) handleRevenueExpenseAsync(ctx context.Context, pa
 	}
 
 	// Create expense data and add to excel
-	expensesData, cellColors := s.createExpenseData(paymentReceiptForm)
+	logger.WithFields(logrus.Fields{
+		"file_path":                filePath,
+		"sheet_name":               sheetName,
+		"payment_receipt_form_ids": paymentReceiptFormIDs,
+		"forms_count":              len(paymentReceiptForms),
+	}).Info("Creating expense data from payment receipt forms")
+
+	expensesData, cellColors := s.createExpenseData(paymentReceiptForms)
+	if len(expensesData) == 0 {
+		logger.Warn("No expense data created from payment receipt forms")
+		return
+	}
+
 	if err := s.excelService.AddExpenses(ctx, sheetName, expensesData, cellColors); err != nil {
 		duration := time.Since(startTime)
 		logger.WithFields(logrus.Fields{
@@ -860,36 +941,57 @@ func (s *purchaseOrderService) handleRevenueExpenseAsync(ctx context.Context, pa
 
 	duration := time.Since(startTime)
 	logger.WithFields(logrus.Fields{
-		"duration_ms": duration.Milliseconds(),
+		"duration_ms":    duration.Milliseconds(),
+		"expenses_count": len(expensesData),
 	}).Info("Successfully added expense to revenue expense excel file")
 }
 
 // handleRevenueExpenseGoogleSheetsAsync handles revenue expense Google Sheets operations asynchronously
-func (s *purchaseOrderService) handleRevenueExpenseGoogleSheetsAsync(ctx context.Context, paymentReceiptFormID uint, settingsValue map[string]interface{}) {
+func (s *purchaseOrderService) handleRevenueExpenseGoogleSheetsAsync(ctx context.Context, paymentReceiptFormIDs []uint, settingsValue map[string]interface{}) {
 	startTime := time.Now()
 
-	paymentReceiptForm, err := s.paymentReceiptFormRepo.GetByIDFull(ctx, paymentReceiptFormID)
-	if err != nil {
+	if len(paymentReceiptFormIDs) == 0 {
 		log.WithFields(logrus.Fields{
-			"operation":               "handleRevenueExpenseGoogleSheetsAsync",
-			"payment_receipt_form_id": paymentReceiptFormID,
-			"error":                   err,
-		}).Error("Failed to get purchase order")
+			"operation": "handleRevenueExpenseGoogleSheetsAsync",
+		}).Warn("No payment receipt form IDs provided")
+		return
+	}
+
+	// Fetch all payment receipt forms
+	paymentReceiptForms := make([]*models.PaymentReceiptForm, 0, len(paymentReceiptFormIDs))
+	for _, paymentReceiptFormID := range paymentReceiptFormIDs {
+		paymentReceiptForm, err := s.paymentReceiptFormRepo.GetByIDFull(ctx, paymentReceiptFormID)
+		if err != nil {
+			log.WithFields(logrus.Fields{
+				"operation":               "handleRevenueExpenseGoogleSheetsAsync",
+				"payment_receipt_form_id": paymentReceiptFormID,
+				"error":                   err,
+			}).Error("Failed to get payment receipt form")
+			continue
+		}
+		paymentReceiptForms = append(paymentReceiptForms, paymentReceiptForm)
+	}
+
+	if len(paymentReceiptForms) == 0 {
+		log.WithFields(logrus.Fields{
+			"operation":                "handleRevenueExpenseGoogleSheetsAsync",
+			"payment_receipt_form_ids": paymentReceiptFormIDs,
+		}).Error("Failed to fetch any payment receipt forms")
 		return
 	}
 
 	logger := log.WithFields(logrus.Fields{
-		"operation":               "handleRevenueExpenseGoogleSheetsAsync",
-		"payment_receipt_form_id": paymentReceiptForm.ID,
-		"form_number":             paymentReceiptForm.FormNumber,
+		"operation":                "handleRevenueExpenseGoogleSheetsAsync",
+		"payment_receipt_form_ids": paymentReceiptFormIDs,
+		"forms_count":              len(paymentReceiptForms),
 	})
 	logger.Info("Starting async Google Sheets revenue expense processing")
 
 	filePath, ok := settingsValue["filePath"].(string)
 	if !ok || filePath == "" {
 		log.WithFields(logrus.Fields{
-			"operation":               "handleRevenueExpenseGoogleSheetsAsync",
-			"payment_receipt_form_id": paymentReceiptFormID,
+			"operation":                "handleRevenueExpenseGoogleSheetsAsync",
+			"payment_receipt_form_ids": paymentReceiptFormIDs,
 		}).Error("filePath not found in revenue expense settings")
 		return
 	}
@@ -897,8 +999,8 @@ func (s *purchaseOrderService) handleRevenueExpenseGoogleSheetsAsync(ctx context
 	spreadsheetID := extractSpreadsheetID(filePath)
 	if spreadsheetID == "" {
 		log.WithFields(logrus.Fields{
-			"operation":               "handleRevenueExpenseGoogleSheetsAsync",
-			"payment_receipt_form_id": paymentReceiptFormID,
+			"operation":                "handleRevenueExpenseGoogleSheetsAsync",
+			"payment_receipt_form_ids": paymentReceiptFormIDs,
 		}).Error("spreadsheetID not found in revenue expense settings")
 		return
 	}
@@ -906,8 +1008,8 @@ func (s *purchaseOrderService) handleRevenueExpenseGoogleSheetsAsync(ctx context
 	sheetName, ok := settingsValue["sheetName"].(string)
 	if !ok || sheetName == "" {
 		log.WithFields(logrus.Fields{
-			"operation":               "handleRevenueExpenseGoogleSheetsAsync",
-			"payment_receipt_form_id": paymentReceiptFormID,
+			"operation":                "handleRevenueExpenseGoogleSheetsAsync",
+			"payment_receipt_form_ids": paymentReceiptFormIDs,
 		}).Error("sheetName not found in revenue expense settings")
 		return
 	}
@@ -926,13 +1028,18 @@ func (s *purchaseOrderService) handleRevenueExpenseGoogleSheetsAsync(ctx context
 
 	// Create expense data and add to Google Sheets
 	logger.WithFields(logrus.Fields{
-		"items_count":             len(paymentReceiptForm.PurchaseOrder.Items),
-		"spreadsheet_id":          spreadsheetID,
-		"sheet_name":              sheetName,
-		"payment_receipt_form_id": paymentReceiptFormID,
-	}).Info("Creating expense data from purchase order items")
+		"spreadsheet_id":           spreadsheetID,
+		"sheet_name":               sheetName,
+		"payment_receipt_form_ids": paymentReceiptFormIDs,
+		"forms_count":              len(paymentReceiptForms),
+	}).Info("Creating expense data from payment receipt forms")
 
-	expensesData, cellColors := s.createExpenseData(paymentReceiptForm)
+	expensesData, cellColors := s.createExpenseData(paymentReceiptForms)
+	if len(expensesData) == 0 {
+		logger.Warn("No expense data created from payment receipt forms")
+		return
+	}
+
 	if err := s.excelService.AddExpensesToGoogleSheets(ctx, sheetName, expensesData, cellColors); err != nil {
 		duration := time.Since(startTime)
 		logger.WithFields(logrus.Fields{
@@ -949,6 +1056,7 @@ func (s *purchaseOrderService) handleRevenueExpenseGoogleSheetsAsync(ctx context
 		"duration_ms":    duration.Milliseconds(),
 		"spreadsheet_id": spreadsheetID,
 		"sheet_name":     sheetName,
+		"expenses_count": len(expensesData),
 	}).Info("Successfully added expense to revenue expense Google Sheets")
 }
 
@@ -973,70 +1081,95 @@ func extractSpreadsheetID(input string) string {
 	return ""
 }
 
-// createExpenseData creates expense data and cell colors from purchase order items
-func (s *purchaseOrderService) createExpenseData(paymentReceiptForm *models.PaymentReceiptForm) ([]map[string]interface{}, []string) {
-	expensesData := make([]map[string]interface{}, 1)
-	cellColors := make([]string, 1)
-
-	expensesData[0] = map[string]interface{}{
-		pkg.RevenueExpenseColumnName: paymentReceiptForm.PurchaseOrder.Items[0].Supplier.Name,
-	}
-	productType := paymentReceiptForm.PurchaseOrder.Items[0].Product.ProductType
-	header, color := s.getHeaderAndColorFromProductType(productType)
-	expensesData[0][header] = paymentReceiptForm.TotalAmount
-	cellColors[0] = color
-	ordinalNumber, err := strconv.Atoi(strings.Split(*paymentReceiptForm.FormNumber, "-")[2])
-	if err != nil {
+// createExpenseData creates expense data and cell colors from payment receipt forms
+func (s *purchaseOrderService) createExpenseData(paymentReceiptForms []*models.PaymentReceiptForm) ([]map[string]interface{}, []string) {
+	if len(paymentReceiptForms) == 0 {
 		log.WithFields(logrus.Fields{
 			"operation": "createExpenseData",
-			"error":     err,
-		}).Error("Failed to convert form number to ordinal number to int")
+		}).Warn("No payment receipt forms provided")
 		return nil, nil
 	}
 
-	expensesData[0][pkg.RevenueExpenseColumnOrdinalNumber] = ordinalNumber
+	expensesData := make([]map[string]interface{}, 0, len(paymentReceiptForms))
+	cellColors := make([]string, 0, len(paymentReceiptForms))
 
-	// for i, item := range items {
-	// 	// Add nil checks to prevent panics
-	// 	if item == nil {
-	// 		log.WithFields(logrus.Fields{
-	// 			"operation":  "createExpenseData",
-	// 			"item_index": i,
-	// 		}).Warn("Skipping nil purchase order item")
-	// 		continue
-	// 	}
+	for _, paymentReceiptForm := range paymentReceiptForms {
+		// Add nil checks to prevent panics
+		if paymentReceiptForm == nil {
+			log.WithFields(logrus.Fields{
+				"operation": "createExpenseData",
+			}).Warn("Skipping nil payment receipt form")
+			continue
+		}
 
-	// 	productName := "Unknown Product"
-	// 	productType := "Unknown"
+		// Validate required fields
+		if paymentReceiptForm.PurchaseOrder == nil {
+			log.WithFields(logrus.Fields{
+				"operation":               "createExpenseData",
+				"payment_receipt_form_id": paymentReceiptForm.ID,
+			}).Warn("Skipping payment receipt form: purchase order is nil")
+			continue
+		}
 
-	// 	if item.Product != nil {
-	// 		productName = item.Product.Name
-	// 		productType = item.Product.ProductType
-	// 	}
+		if len(paymentReceiptForm.PurchaseOrder.Items) == 0 {
+			log.WithFields(logrus.Fields{
+				"operation":               "createExpenseData",
+				"payment_receipt_form_id": paymentReceiptForm.ID,
+			}).Warn("Skipping payment receipt form: no purchase order items")
+			continue
+		}
 
-	// 	expensesData[i] = map[string]interface{}{
-	// 		pkg.RevenueExpenseColumnName: productName,
-	// 	}
+		if paymentReceiptForm.PurchaseOrder.Items[0].Product == nil {
+			log.WithFields(logrus.Fields{
+				"operation":               "createExpenseData",
+				"payment_receipt_form_id": paymentReceiptForm.ID,
+			}).Warn("Skipping payment receipt form: product is nil")
+			continue
+		}
 
-	// 	itemTotalPrice := item.CalculateTotalAmount()
-	// 	header, color := s.getHeaderAndColorFromProductType(productType)
-	// 	expensesData[i][header] = itemTotalPrice
-	// 	cellColors[i] = color
-	// }
+		supplierName := ""
+		if paymentReceiptForm.PurchaseOrder.Items[0].Supplier != nil {
+			supplierName = paymentReceiptForm.PurchaseOrder.Items[0].Supplier.Name
+		}
+
+		expenseData := map[string]interface{}{
+			pkg.RevenueExpenseColumnName: supplierName,
+		}
+
+		productType := paymentReceiptForm.PurchaseOrder.Items[0].Product.ProductType
+		header, color := s.getHeaderAndColorFromProductType(productType)
+		expenseData[header] = paymentReceiptForm.TotalAmount
+
+		ordinalNumber, err := strconv.Atoi(strings.Split(*paymentReceiptForm.FormNumber, "-")[2])
+		if err != nil {
+			log.WithFields(logrus.Fields{
+				"operation":               "createExpenseData",
+				"payment_receipt_form_id": paymentReceiptForm.ID,
+				"form_number":             paymentReceiptForm.FormNumber,
+				"error":                   err,
+			}).Error("Failed to convert form number to ordinal number to int")
+			continue
+		}
+
+		expenseData[pkg.RevenueExpenseColumnOrdinalNumber] = ordinalNumber
+
+		expensesData = append(expensesData, expenseData)
+		cellColors = append(cellColors, color)
+	}
 
 	return expensesData, cellColors
 }
 
 // mapProductTypeToExpense maps product type to expense category and color
 func (s *purchaseOrderService) getHeaderAndColorFromProductType(productType string) (header string, color string) {
-	switch productType {
-	case "Cơm":
+	switch strings.ToLower(productType) {
+	case "cơm":
 		header = pkg.RevenueExpenseColumnSnackAndRice
 		color = pkg.RevenueExpenseColumnSnackAndRiceColor
-	case "Ăn nhẹ":
+	case "ăn nhẹ":
 		header = pkg.RevenueExpenseColumnSnackAndRice
 		color = pkg.RevenueExpenseColumnSnackAndRiceColor
-	case "Nước":
+	case "nước":
 		header = pkg.RevenueExpenseColumnWater
 		color = pkg.RevenueExpenseColumnWaterColor
 	}

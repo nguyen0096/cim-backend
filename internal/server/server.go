@@ -67,7 +67,7 @@ func SetupServer(
 	productHandler := handlers.NewProductHandler(productService)
 	inventoryHandler := handlers.NewInventoryHandler(inventoryService)
 	inventoryItemHandler := handlers.NewInventoryItemHandler(inventoryItemService)
-	purchaseOrderHandler := handlers.NewPurchaseOrderHandler(purchaseOrderRepo, purchaseOrderService)
+	purchaseOrderHandler := handlers.NewPurchaseOrderHandler(purchaseOrderRepo, purchaseOrderService, paymentReceiptFormService)
 	excelHandler := handlers.NewExcelHandler(excelService)
 	settingsHandler := handlers.NewSettingsHandler(settingsService)
 	paymentReceiptFormHandler := handlers.NewPaymentReceiptFormHandler(paymentReceiptFormService, purchaseOrderService, settingsService)
@@ -248,6 +248,7 @@ func SetupServer(
 	purchaseOrders.PUT("/:id", purchaseOrderHandler.UpdatePurchaseOrder)
 	purchaseOrders.PUT("/:id/receive", purchaseOrderHandler.ReceiveInventory)
 	purchaseOrders.PUT("/:id/status", purchaseOrderHandler.UpdatePurchaseOrderStatus)
+	purchaseOrders.POST("/:id/revenue-expense/retry", purchaseOrderHandler.RetryQueueRevenueExpenseRequest)
 
 	// Payment Receipt Form routes
 	paymentReceiptForms := api.Group("/payment-receipt-forms")
@@ -260,7 +261,7 @@ func SetupServer(
 	paymentReceiptForms.PUT("/:id/reject", paymentReceiptFormHandler.RejectPaymentReceiptForm)
 	paymentReceiptForms.DELETE("/:id", paymentReceiptFormHandler.DeletePaymentReceiptForm)
 	paymentReceiptForms.GET("/pending", paymentReceiptFormHandler.LatestPendingPaymentReceiptFormStream)
-	paymentReceiptForms.POST("/notify", paymentReceiptFormHandler.NotifyPaymentReceiptForm)
+	paymentReceiptForms.POST("/:id/notify", paymentReceiptFormHandler.NotifyPaymentReceiptForm)
 
 	// Excel routes
 	excel := api.Group("/excel")

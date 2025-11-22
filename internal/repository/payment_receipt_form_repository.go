@@ -215,6 +215,7 @@ func (r *paymentReceiptFormRepository) GetLatestPaymentReceiptForms(ctx context.
 	var forms []*models.PaymentReceiptForm
 	query := r.db.WithContext(ctx).
 		Preload("PurchaseOrder").
+		Preload("PurchaseOrder.Inventory").
 		Omit("PurchaseOrder.TotalAmount").
 		Where("status = ?", status).
 		Order("created_at DESC")
@@ -222,7 +223,7 @@ func (r *paymentReceiptFormRepository) GetLatestPaymentReceiptForms(ctx context.
 	if limit > 0 {
 		query = query.Limit(limit)
 	}
-	
+
 	if purchaseOrderID != 0 {
 		query = query.Where("purchase_order_id = ?", purchaseOrderID)
 	}

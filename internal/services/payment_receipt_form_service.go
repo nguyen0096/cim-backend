@@ -23,7 +23,7 @@ type PaymentReceiptFormService interface {
 	RejectPaymentReceiptForm(ctx context.Context, id uint) error
 	DeletePaymentReceiptForm(ctx context.Context, id uint) error
 	SearchPaymentReceiptForms(ctx context.Context, query string, req *dto.PaymentReceiptFormListRequest) ([]models.PaymentReceiptForm, int64, error)
-	LatestPendingPaymentReceiptFormStream(ctx context.Context, purchaseOrderID uint, limit int) ([]*models.PaymentReceiptForm, error)
+	GetLatestPaymentReceiptForms(ctx context.Context, purchaseOrderID uint, status models.PaymentReceiptFormStatus, limit int) ([]*models.PaymentReceiptForm, error)
 }
 
 type paymentReceiptFormService struct {
@@ -111,7 +111,7 @@ func (s *paymentReceiptFormService) CreatePaymentReceiptForm(ctx context.Context
 
 // GetPaymentReceiptForm retrieves a payment receipt form by ID
 func (s *paymentReceiptFormService) GetPaymentReceiptForm(ctx context.Context, id uint) (*models.PaymentReceiptForm, error) {
-	form, err := s.paymentReceiptFormRepo.GetByID(ctx, id)
+	form, err := s.paymentReceiptFormRepo.GetByIDFull(ctx, id)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get payment receipt form: %w", err)
 	}
@@ -249,9 +249,9 @@ func (s *paymentReceiptFormService) SearchPaymentReceiptForms(ctx context.Contex
 	return forms, total, nil
 }
 
-// LatestPendingPaymentReceiptFormStream retrieves the latest payment receipt forms in pending status
-func (s *paymentReceiptFormService) LatestPendingPaymentReceiptFormStream(ctx context.Context, purchaseOrderID uint, limit int) ([]*models.PaymentReceiptForm, error) {
-	forms, err := s.paymentReceiptFormRepo.GetLatestPaymentReceiptForms(ctx, purchaseOrderID, models.PaymentReceiptFormStatusPending, limit)
+// GetLatestPaymentReceiptForms retrieves the latest payment receipt forms in pending status
+func (s *paymentReceiptFormService) GetLatestPaymentReceiptForms(ctx context.Context, purchaseOrderID uint, status models.PaymentReceiptFormStatus, limit int) ([]*models.PaymentReceiptForm, error) {
+	forms, err := s.paymentReceiptFormRepo.GetLatestPaymentReceiptForms(ctx, purchaseOrderID, status, limit)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get latest pending payment receipt forms: %w", err)
 	}
