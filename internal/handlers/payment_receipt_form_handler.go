@@ -535,6 +535,9 @@ func (h *PaymentReceiptFormHandler) DeletePaymentReceiptForm(c echo.Context) err
 //	event: pending_form_update
 //	data: {"status":"no_pending_form","message":"No pending payment receipt form found","timestamp":"2024-01-15T10:30:00Z"}
 //
+//	event: form_deleted
+//	data: {"id":1,"timestamp":"2024-01-15T10:30:00Z"}
+//
 //	event: keep_alive
 //	data: {"status":"keep_alive","timestamp":"2024-01-15T10:30:00Z"}
 //
