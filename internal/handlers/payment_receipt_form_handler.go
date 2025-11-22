@@ -663,3 +663,82 @@ func (h *PaymentReceiptFormHandler) sendInitialPendingForm(c echo.Context) error
 
 	return nil
 }
+
+// NotifyPaymentReceiptForm resends the initial pending form event to all connected SSE clients
+// @Summary Notify payment receipt form
+// @Description Resend the initial pending form event to all connected SSE clients
+// @Tags payment-receipt-forms
+// @Accept json
+// @Produce json
+// @Success 200 {object} map[string]string
+// @Failure 500 {object} map[string]string
+// @Security BearerAuth
+// @Router /payment-receipt-forms/notify [post]
+func (h *PaymentReceiptFormHandler) NotifyPaymentReceiptForm(c echo.Context) error {
+	// Get all pending forms
+	forms, err := h.paymentReceiptFormService.LatestPendingPaymentReceiptFormStream(c.Request().Context(), 0, 0)
+	if err != nil {
+		log.WithFields(logrus.Fields{
+			"error":   err.Error(),
+			"details": "Failed to get latest pending forms",
+		}).Error("Failed to get latest pending forms")
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to get latest pending forms"})
+	}
+
+	// Send to all connected clients
+	clients := h.getAllClients()
+	notifiedCount := 0
+
+	if len(forms) == 0 {
+		// Send "no pending form" message to all clients
+		notification := NotificationMessage{
+			Type: "pending_form_update",
+			Data: map[string]interface{}{
+				"message": "No pending payment receipt form found",
+			},
+			Timestamp: time.Now().UTC(),
+		}
+
+		for _, client := range clients {
+			select {
+			case client.SendChan <- notification:
+				notifiedCount++
+			default:
+				// Client channel is full, skip this client
+				log.WithField("client_id", client.ID).Warn("Client channel full, skipping notification")
+			}
+		}
+	} else {
+		// Send each pending form individually to all clients
+		for _, form := range forms {
+			notification := NotificationMessage{
+				Type:      "pending_form_update",
+				Data:      form,
+				Timestamp: time.Now().UTC(),
+			}
+
+			for _, client := range clients {
+				select {
+				case client.SendChan <- notification:
+					notifiedCount++
+				default:
+					// Client channel is full, skip this client
+					log.WithField("client_id", client.ID).Warn("Client channel full, skipping notification")
+				}
+			}
+		}
+	}
+
+	log.WithFields(logrus.Fields{
+		"total_clients":  len(clients),
+		"notified_count": notifiedCount,
+		"pending_forms":  len(forms),
+	}).Info("Notification sent to connected clients")
+
+	return c.JSON(http.StatusOK, map[string]interface{}{
+		"message":            "Notification sent successfully",
+		"notifications_sent": notifiedCount,
+		"total_clients":      len(clients),
+		"pending_forms":      len(forms),
+	})
+}

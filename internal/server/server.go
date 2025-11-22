@@ -260,6 +260,7 @@ func SetupServer(
 	paymentReceiptForms.PUT("/:id/reject", paymentReceiptFormHandler.RejectPaymentReceiptForm)
 	paymentReceiptForms.DELETE("/:id", paymentReceiptFormHandler.DeletePaymentReceiptForm)
 	paymentReceiptForms.GET("/pending", paymentReceiptFormHandler.LatestPendingPaymentReceiptFormStream)
+	paymentReceiptForms.POST("/notify", paymentReceiptFormHandler.NotifyPaymentReceiptForm)
 
 	// Excel routes
 	excel := api.Group("/excel")
