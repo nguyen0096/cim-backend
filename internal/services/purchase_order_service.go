@@ -875,18 +875,13 @@ func (s *purchaseOrderService) handleRevenueExpenseAsync(ctx context.Context, pa
 	}
 
 	// Fetch all payment receipt forms
-	paymentReceiptForms := make([]*models.PaymentReceiptForm, 0, len(paymentReceiptFormIDs))
-	for _, paymentReceiptFormID := range paymentReceiptFormIDs {
-		paymentReceiptForm, err := s.paymentReceiptFormRepo.GetByIDFull(ctx, paymentReceiptFormID)
-		if err != nil {
-			log.WithFields(logrus.Fields{
-				"operation":               "handleRevenueExpenseAsync",
-				"payment_receipt_form_id": paymentReceiptFormID,
-				"error":                   err,
-			}).Error("Failed to get payment receipt form")
-			continue
-		}
-		paymentReceiptForms = append(paymentReceiptForms, paymentReceiptForm)
+	paymentReceiptForms, err := s.paymentReceiptFormRepo.GetByIDsFull(ctx, paymentReceiptFormIDs)
+	if err != nil {
+		log.WithFields(logrus.Fields{
+			"operation": "handleRevenueExpenseAsync",
+			"error":     err,
+		}).Error("Failed to get payment receipt forms")
+		return
 	}
 
 	if len(paymentReceiptForms) == 0 {
@@ -978,18 +973,13 @@ func (s *purchaseOrderService) handleRevenueExpenseGoogleSheetsAsync(ctx context
 	}
 
 	// Fetch all payment receipt forms
-	paymentReceiptForms := make([]*models.PaymentReceiptForm, 0, len(paymentReceiptFormIDs))
-	for _, paymentReceiptFormID := range paymentReceiptFormIDs {
-		paymentReceiptForm, err := s.paymentReceiptFormRepo.GetByIDFull(ctx, paymentReceiptFormID)
-		if err != nil {
-			log.WithFields(logrus.Fields{
-				"operation":               "handleRevenueExpenseGoogleSheetsAsync",
-				"payment_receipt_form_id": paymentReceiptFormID,
-				"error":                   err,
-			}).Error("Failed to get payment receipt form")
-			continue
-		}
-		paymentReceiptForms = append(paymentReceiptForms, paymentReceiptForm)
+	paymentReceiptForms, err := s.paymentReceiptFormRepo.GetByIDsFull(ctx, paymentReceiptFormIDs)
+	if err != nil {
+		log.WithFields(logrus.Fields{
+			"operation": "handleRevenueExpenseGoogleSheetsAsync",
+			"error":     err,
+		}).Error("Failed to get payment receipt forms")
+		return
 	}
 
 	if len(paymentReceiptForms) == 0 {

@@ -18,6 +18,7 @@ type PaymentReceiptFormRepository interface {
 	Create(ctx context.Context, form *models.PaymentReceiptForm) error
 	GetByID(ctx context.Context, id uint) (*models.PaymentReceiptForm, error)
 	GetByIDFull(ctx context.Context, id uint) (*models.PaymentReceiptForm, error)
+	GetByIDsFull(ctx context.Context, ids []uint) ([]*models.PaymentReceiptForm, error)
 	List(ctx context.Context, req *dto.PaymentReceiptFormListRequest) ([]models.PaymentReceiptForm, int64, error)
 	Update(ctx context.Context, form *models.PaymentReceiptForm) error
 	Delete(ctx context.Context, id uint) error
@@ -72,6 +73,26 @@ func (r *paymentReceiptFormRepository) GetByIDFull(ctx context.Context, id uint)
 		return nil, fmt.Errorf("failed to get payment receipt form: %w", err)
 	}
 	return &form, nil
+}
+
+// GetByIDsFull retrieves multiple payment receipt forms by IDs with full relationships
+func (r *paymentReceiptFormRepository) GetByIDsFull(ctx context.Context, ids []uint) ([]*models.PaymentReceiptForm, error) {
+	if len(ids) == 0 {
+		return []*models.PaymentReceiptForm{}, nil
+	}
+
+	var forms []*models.PaymentReceiptForm
+	if err := r.db.WithContext(ctx).
+		Preload("PurchaseOrder").
+		Preload("PurchaseOrder.Inventory").
+		Preload("PurchaseOrder.Items").
+		Preload("PurchaseOrder.Items.Product").
+		Preload("PurchaseOrder.Items.Supplier").
+		Where("id IN ?", ids).
+		Find(&forms).Error; err != nil {
+		return nil, fmt.Errorf("failed to get payment receipt forms: %w", err)
+	}
+	return forms, nil
 }
 
 // List retrieves a paginated list of payment receipt forms
