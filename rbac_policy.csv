@@ -35,6 +35,7 @@ p, admin, purchase-orders, view_status_completed, allow
 p, admin, payment-receipt-forms, view, allow
 p, admin, payment-receipt-forms, create, allow
 p, admin, payment-receipt-forms, update, allow
+p, admin, payment-receipt-forms, delete, allow
 
 p, admin, revenue-expenses, create, allow
 
@@ -84,6 +85,7 @@ p, accountant, purchase-orders, view_status_completed, allow
 p, accountant, payment-receipt-forms, view, allow
 p, accountant, payment-receipt-forms, create, allow
 p, accountant, payment-receipt-forms, update, allow
+p, accountant, payment-receipt-forms, delete, allow
 p, accountant, units, view, allow
 p, accountant, units, create, allow
 p, accountant, units, update, allow

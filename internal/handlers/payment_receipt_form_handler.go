@@ -495,6 +495,24 @@ func (h *PaymentReceiptFormHandler) DeletePaymentReceiptForm(c echo.Context) err
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to delete payment receipt form"})
 	}
 
+	// Send notification to SSE clients if the deleted form was pending
+	notification := NotificationMessage{
+		Type:      "form_deleted",
+		Data:      models.Base{ID: uint(id)},
+		Timestamp: time.Now().UTC(),
+	}
+
+	// Broadcast to all connected clients
+	select {
+	case h.broadcast <- notification:
+		log.WithFields(logrus.Fields{
+			"form_id": id,
+		}).Info("Form deleted and notification queued for broadcast")
+	default:
+		// Broadcast channel is full, continue without blocking
+		log.Warn("Broadcast channel full, notification not sent")
+	}
+
 	return c.NoContent(http.StatusNoContent)
 }
 
