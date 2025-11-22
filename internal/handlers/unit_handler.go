@@ -36,7 +36,7 @@ type UnitListRequest struct {
 
 func (r *UnitListRequest) setDefaults() {
 	if r.Limit <= 0 {
-		r.Limit = 20
+		r.Limit = 1000
 	}
 	if r.Page <= 0 {
 		r.Page = 1
