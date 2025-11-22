@@ -241,9 +241,7 @@ func (h *UnitHandler) UpdateUnit(c echo.Context) error {
 	}
 
 	unit := &models.Unit{
-		Base: models.Base{
-			ID: id,
-		},
+		Base:             existingUnit.Base,
 		UnitType:         request.UnitType,
 		Name:             request.Name,
 		Symbol:           request.Symbol,
