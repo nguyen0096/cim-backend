@@ -90,6 +90,7 @@ type consumeHandler func(item *models.InventoryItem, consumeTxn *models.Inventor
 // It accepts a map of item IDs to quantities to consumeFIFO and a transaction creator function.
 // FIFO (First In, First Out) is used to consume inventory items.
 func (s *inventoryService) consumeFIFO(
+	ctx context.Context,
 	ps *processingState,
 	activeItems []*models.InventoryItem,
 	itemConsumeQuantity map[uint]decimal.Decimal,
@@ -109,7 +110,7 @@ func (s *inventoryService) consumeFIFO(
 			}
 		}
 		if item == nil {
-			ps.addError(pkg.ErrInventoryItemNotFound(itemID))
+			ps.addError(pkg.ErrInventoryItemNotFound(ctx, itemID))
 			continue
 		}
 
@@ -195,13 +196,13 @@ func (s *inventoryService) reconcileInventory(
 
 		item, exists := activeItemMap[reqItem.InventoryItemID]
 		if !exists {
-			ps.addError(pkg.ErrInventoryItemNotFound(reqItem.InventoryItemID))
+			ps.addError(pkg.ErrInventoryItemNotFound(ctx, reqItem.InventoryItemID))
 			continue
 		}
 
 		// for reconcile, actual quantity is an absolute value, so we need optimistic locking
 		if !item.Quantity.Equal(reqItem.PrevQuantity) {
-			ps.addError(pkg.ErrOptimisticLockConflict("inventory item", reqItem.InventoryItemID, reqItem.PrevQuantity, item.Quantity))
+			ps.addError(pkg.ErrOptimisticLockConflict(ctx, "inventory item", reqItem.InventoryItemID, reqItem.PrevQuantity, item.Quantity))
 			continue
 		}
 
@@ -223,7 +224,7 @@ func (s *inventoryService) reconcileInventory(
 		}
 	}
 
-	ivtrItemChanges, txns, err := s.consumeFIFO(ps, activeItems, itemConsumeQuantity, consumeHandler)
+	ivtrItemChanges, txns, err := s.consumeFIFO(ctx, ps, activeItems, itemConsumeQuantity, consumeHandler)
 	if err != nil {
 		return ps.addError(fmt.Errorf("failed to consume FIFO: %w", err))
 	}
@@ -249,12 +250,12 @@ func (s *inventoryService) CreateReconcileSubmission(ctx context.Context, req dt
 
 		item, exists := activeItemMap[reqItem.InventoryItemID]
 		if !exists {
-			return nil, pkg.ErrInventoryItemNotFound(reqItem.InventoryItemID)
+			return nil, pkg.ErrInventoryItemNotFound(ctx, reqItem.InventoryItemID)
 		}
 
 		// Optimistic locking: validate that current quantity matches what frontend saw
 		if !item.Quantity.Equal(reqItem.PrevQuantity) {
-			return nil, pkg.ErrOptimisticLockConflict("inventory item", reqItem.InventoryItemID, reqItem.PrevQuantity, item.Quantity)
+			return nil, pkg.ErrOptimisticLockConflict(ctx, "inventory item", reqItem.InventoryItemID, reqItem.PrevQuantity, item.Quantity)
 		}
 
 		// Validate that actual quantity doesn't exceed previous quantity
@@ -319,7 +320,7 @@ func (s *inventoryService) disposeInventory(
 		}
 	}
 
-	ivtrItemChanges, txns, err := s.consumeFIFO(ps, activeItems, itemConsumeQuantity, disposeTransactionCreator)
+	ivtrItemChanges, txns, err := s.consumeFIFO(ctx, ps, activeItems, itemConsumeQuantity, disposeTransactionCreator)
 	if err != nil {
 		return ps.addError(fmt.Errorf("failed to consume FIFO: %w", err))
 	}
@@ -686,7 +687,7 @@ func (s *inventoryService) transferInventory(
 
 		item, exists := srcItemMap[reqItem.InventoryItemID]
 		if !exists {
-			ps.addError(pkg.ErrInventoryItemNotFound(reqItem.InventoryItemID))
+			ps.addError(pkg.ErrInventoryItemNotFound(ctx, reqItem.InventoryItemID))
 			continue
 		}
 
@@ -758,7 +759,7 @@ func (s *inventoryService) transferInventory(
 		return txns
 	}
 
-	srcIvtrItemChanges, txns, err := s.consumeFIFO(ps, srcItems, itemConsumeQuantity, transferTransactionCreator)
+	srcIvtrItemChanges, txns, err := s.consumeFIFO(ctx, ps, srcItems, itemConsumeQuantity, transferTransactionCreator)
 	if err != nil {
 		return ps.addError(fmt.Errorf("failed to consume FIFO: %w", err))
 	}
@@ -1146,12 +1147,12 @@ func (s *inventoryService) validateReconcileUpdate(ctx context.Context, inventor
 
 		item, exists := activeItemMap[reqItem.InventoryItemID]
 		if !exists {
-			return pkg.ErrInventoryItemNotFound(reqItem.InventoryItemID)
+			return pkg.ErrInventoryItemNotFound(ctx, reqItem.InventoryItemID)
 		}
 
 		// Optimistic locking: validate that current quantity matches what frontend saw
 		if item.Quantity != reqItem.PrevQuantity {
-			return pkg.ErrOptimisticLockConflict("inventory item", reqItem.InventoryItemID, reqItem.PrevQuantity, item.Quantity)
+			return pkg.ErrOptimisticLockConflict(ctx, "inventory item", reqItem.InventoryItemID, reqItem.PrevQuantity, item.Quantity)
 		}
 
 		// Validate that actual quantity doesn't exceed previous quantity

@@ -468,6 +468,7 @@ var _ = Describe("SaveInventoryItemChanges", func() {
 		err = repo.SaveInventoryItemChanges(ctx, changes, []*models.InventoryTransaction{})
 		Expect(err).To(HaveOccurred())
 		Expect(err.Error()).To(ContainSubstring(pkg.ErrOptimisticLockConflict(
+			ctx,
 			"inventory item",
 			item.ID,
 			originalQuantity,

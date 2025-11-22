@@ -8,7 +8,6 @@ import (
 	"cim-backend/pkg"
 	"cim-backend/pkg/log"
 	"errors"
-	"fmt"
 	"net/http"
 	"path/filepath"
 	"time"
@@ -243,13 +242,15 @@ func (h *PurchaseOrderHandler) UpdatePurchaseOrderStatus(c echo.Context) error {
 	}
 
 	if !isAllowed {
-		return c.JSON(http.StatusForbidden, map[string]string{
-			"error": fmt.Sprintf("Access denied: %s role cannot change purchase order status to %s", userRole, req.Status),
-		})
+		return pkg.ErrPurchaseOrderStatusChangeDenied(reqCtx, userRole, req.Status)
 	}
 
 	if err := h.purchaseOrderService.UpdatePurchaseOrderStatus(reqCtx, id, models.PurchaseOrderStatus(req.Status)); err != nil {
-		return fmt.Errorf("failed to update purchase order status: %w", err)
+		var appErr *pkg.AppError
+		if errors.As(err, &appErr) {
+			return err
+		}
+		return pkg.ErrFailedToUpdatePurchaseOrderStatus(reqCtx, err)
 	}
 
 	return c.JSON(http.StatusOK, map[string]string{"message": "Purchase order status updated successfully"})
@@ -261,8 +262,13 @@ func (h *PurchaseOrderHandler) DeletePurchaseOrder(c echo.Context) error {
 		return err
 	}
 
+	reqCtx := c.Request().Context()
 	if err := h.purchaseOrderService.DeletePurchaseOrder(id); err != nil {
-		return fmt.Errorf("failed to delete purchase order: %w", err)
+		var appErr *pkg.AppError
+		if errors.As(err, &appErr) {
+			return err
+		}
+		return pkg.ErrFailedToDeletePurchaseOrder(reqCtx, err)
 	}
 
 	return c.JSON(http.StatusOK, map[string]string{"message": "Purchase order deleted successfully"})
@@ -347,14 +353,16 @@ func (h *PurchaseOrderHandler) ReceiveInventory(c echo.Context) error {
 	reqCtx := c.Request().Context()
 	userRole, _ := reqCtx.Value(pkg.AuthContextKeyUserRole).(string)
 	if !pkg.HasPermission(reqCtx, "purchase-orders", "confirm") && !pkg.HasPermission(reqCtx, "purchase-orders", "update") {
-		return c.JSON(http.StatusForbidden, map[string]string{
-			"error": fmt.Sprintf("Access denied: %s role cannot confirm or update purchase order delivery status", userRole),
-		})
+		return pkg.ErrPurchaseOrderDeliveryStatusChangeDenied(reqCtx, userRole)
 	}
 
 	po, err := h.purchaseOrderService.ReceiveInventory(reqCtx, req)
 	if err != nil {
-		return fmt.Errorf("failed to update purchase order delivery status: %w", err)
+		var appErr *pkg.AppError
+		if errors.As(err, &appErr) {
+			return err
+		}
+		return pkg.ErrFailedToUpdatePurchaseOrderDeliveryStatus(reqCtx, err)
 	}
 
 	return c.JSON(http.StatusOK, po)
@@ -379,14 +387,19 @@ func (h *PurchaseOrderHandler) RetryQueueRevenueExpenseRequest(c echo.Context) e
 		return err
 	}
 
-	forms, err := h.paymentReceiptFormService.GetLatestPaymentReceiptForms(c.Request().Context(), purchaseOrderID, models.PaymentReceiptFormStatusApproved, 0)
+	reqCtx := c.Request().Context()
+	forms, err := h.paymentReceiptFormService.GetLatestPaymentReceiptForms(reqCtx, purchaseOrderID, models.PaymentReceiptFormStatusApproved, 0)
 	if err != nil {
 		log.WithFields(logrus.Fields{
 			"operation":         "UpdatePurchaseOrderStatus",
 			"purchase_order_id": purchaseOrderID,
 			"error":             err,
 		}).Error("Failed to get approved payment receipt forms")
-		return fmt.Errorf("failed to get approved payment receipt forms: %w", err)
+		var appErr *pkg.AppError
+		if errors.As(err, &appErr) {
+			return err
+		}
+		return pkg.ErrFailedToGetApprovedPaymentReceiptForms(reqCtx, err)
 	}
 
 	if len(forms) == 0 {
@@ -394,7 +407,7 @@ func (h *PurchaseOrderHandler) RetryQueueRevenueExpenseRequest(c echo.Context) e
 			"operation":         "UpdatePurchaseOrderStatus",
 			"purchase_order_id": purchaseOrderID,
 		}).Warn("Cannot complete purchase order: no approved payment receipt form found")
-		return pkg.ErrNoApprovedPaymentReceiptForm()
+		return pkg.ErrNoApprovedPaymentReceiptForm(reqCtx)
 	}
 
 	// Extract form IDs for queueing

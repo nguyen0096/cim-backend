@@ -371,7 +371,7 @@ func (r *purchaseOrderRepository) ReceiveInventory(ctx context.Context, req dto.
 		now := time.Now()
 		po.ConfirmedAt = &now
 		po.ConfirmationNotes = req.ConfirmationNotes
-		err = po.UpdateStatus()
+		err = po.UpdateStatus(ctx)
 		if err != nil {
 			return fmt.Errorf("failed to calculate purchase order status: %w", err)
 		}
@@ -518,7 +518,7 @@ func (r *purchaseOrderRepository) UpdatePurchaseOrder(ctx context.Context, id ui
 				}
 			}
 
-			if err := po.UpdateStatus(); err != nil {
+			if err := po.UpdateStatus(ctx); err != nil {
 				return fmt.Errorf("failed to update purchase order status: %w", err)
 			}
 

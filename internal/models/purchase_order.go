@@ -2,6 +2,7 @@ package models
 
 import (
 	"cim-backend/pkg"
+	"context"
 	"time"
 
 	"github.com/shopspring/decimal"
@@ -60,9 +61,9 @@ func (po *PurchaseOrder) CalculateTotalAmount() decimal.Decimal {
 // If all items are delivered, the status of the purchase order is updated to fully delivered.
 // If some items are delivered, the status of the purchase order is updated to partially delivered.
 // If no items are delivered, the status of the purchase order is updated to order placed.
-func (po *PurchaseOrder) UpdateStatus() error {
+func (po *PurchaseOrder) UpdateStatus(ctx context.Context) error {
 	if len(po.Items) == 0 {
-		return pkg.ErrPurchaseOrderNoItems()
+		return pkg.ErrPurchaseOrderNoItems(ctx)
 	}
 
 	var hasAwaitingDeliveryItem = false

@@ -336,6 +336,7 @@ func (r *inventoryItemRepository) GetByIDs(ctx context.Context, ids []uint) ([]*
 
 // updateInventoryItems updates inventory items with optimistic locking.
 func (r *inventoryItemRepository) updateInventoryItems(
+	ctx context.Context,
 	db *gorm.DB,
 	changes []*models.InventoryItemChange,
 ) error {
@@ -363,7 +364,7 @@ func (r *inventoryItemRepository) updateInventoryItems(
 		}
 
 		if !existingItem.Quantity.Equal(change.OriginalQuantity) {
-			return pkg.ErrOptimisticLockConflict("inventory item", change.ID, change.OriginalQuantity, existingItem.Quantity)
+			return pkg.ErrOptimisticLockConflict(ctx, "inventory item", change.ID, change.OriginalQuantity, existingItem.Quantity)
 		}
 	}
 
@@ -398,7 +399,7 @@ func (r *inventoryItemRepository) SaveInventoryItemChanges(
 	txns []*models.InventoryTransaction,
 ) error {
 	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		err := r.updateInventoryItems(tx, changes)
+		err := r.updateInventoryItems(ctx, tx, changes)
 		if err != nil {
 			return fmt.Errorf("failed to update inventory items: %w", err)
 		}
