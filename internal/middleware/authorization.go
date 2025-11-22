@@ -179,6 +179,12 @@ var customRouteMappings = []RouteMapping{
 		Resource:    "purchase-orders",
 		Action:      "confirm",
 	},
+	{
+		Method:      "POST",
+		PathPattern: "/purchase-orders/*/revenue-expense/retry",
+		Resource:    "purchase-orders",
+		Action:      "retry_excel",
+	},
 }
 
 // matchPathPattern checks if a path matches a pattern (supports * as wildcard for path segments)

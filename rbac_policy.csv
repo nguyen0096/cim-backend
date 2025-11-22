@@ -30,6 +30,7 @@ p, admin, purchase-orders, create, allow
 p, admin, purchase-orders, update, allow
 p, admin, purchase-orders, confirm, allow
 p, admin, purchase-orders, cancel, allow
+p, admin, purchase-orders, retry_excel, allow
 
 p, admin, purchase-orders, view_status_completed, allow
 p, admin, payment-receipt-forms, view, allow

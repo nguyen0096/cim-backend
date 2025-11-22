@@ -18,8 +18,8 @@ import (
 )
 
 type PurchaseOrderHandler struct {
-	purchaseOrderRepository repository.PurchaseOrderRepository
-	purchaseOrderService    services.PurchaseOrderService
+	purchaseOrderRepository   repository.PurchaseOrderRepository
+	purchaseOrderService      services.PurchaseOrderService
 	paymentReceiptFormService services.PaymentReceiptFormService
 }
 
@@ -29,8 +29,8 @@ func NewPurchaseOrderHandler(
 	paymentReceiptFormService services.PaymentReceiptFormService,
 ) *PurchaseOrderHandler {
 	return &PurchaseOrderHandler{
-		purchaseOrderRepository: purchaseOrderRepo,
-		purchaseOrderService:    purchaseOrderService,
+		purchaseOrderRepository:   purchaseOrderRepo,
+		purchaseOrderService:      purchaseOrderService,
 		paymentReceiptFormService: paymentReceiptFormService,
 	}
 }
@@ -407,6 +407,6 @@ func (h *PurchaseOrderHandler) RetryQueueRevenueExpenseRequest(c echo.Context) e
 	}
 
 	return c.JSON(http.StatusOK, map[string]string{
-		"message": "Revenue expense request queued successfully",
+		"message": "Revenue expense request queued successfully. Please wait for minutes to complete the request.",
 	})
 }
