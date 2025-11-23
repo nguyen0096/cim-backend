@@ -254,6 +254,7 @@ func TestDeleteUnit(t *testing.T) {
 	productRepo := repositorymocks.NewProductRepository(t)
 	service := NewUnitService(unitRepo, productRepo)
 
+	productRepo.On("AnyProductUsingUnitID", ctx, uint(1)).Return(false, nil)
 	unitRepo.On("Delete", ctx, uint(1)).Return(nil)
 
 	err := service.DeleteUnit(ctx, 1)

@@ -25,7 +25,7 @@ type ProductRepository interface {
 	SearchWithPagination(ctx context.Context, query string, limit, offset int, sortBy, sortOrder, status, productType string, supplierID uint) ([]models.Product, error)
 	Count(ctx context.Context, status, productType string, supplierID uint) (int64, error)
 	CountSearch(ctx context.Context, query string, status, productType string, supplierID uint) (int64, error)
-	CheckProductExists(ctx context.Context, unitID uint) (bool, error)
+	AnyProductUsingUnitID(ctx context.Context, unitID uint) (bool, error)
 
 	// v1
 	List(ctx context.Context, limit, offset int, sortBy, sortOrder, status, productType string, supplierID uint) ([]models.Product, error)
@@ -291,7 +291,7 @@ func (r *productRepository) CountSearch(ctx context.Context, query string, statu
 	return count, err
 }
 
-func (r *productRepository) CheckProductExists(ctx context.Context, unitID uint) (bool, error) {
+func (r *productRepository) AnyProductUsingUnitID(ctx context.Context, unitID uint) (bool, error) {
 	var product models.Product
 	err := r.db.WithContext(ctx).
 		Model(&models.Product{}).

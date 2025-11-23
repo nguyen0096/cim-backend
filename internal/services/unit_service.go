@@ -119,7 +119,7 @@ func (s *unitService) DeleteUnit(ctx context.Context, id uint) error {
 	}
 
 	// Check if any products reference this unit
-	exists, err := s.productRepo.CheckProductExists(ctx, id)
+	exists, err := s.productRepo.AnyProductUsingUnitID(ctx, id)
 	if err != nil {
 		return pkg.ErrFailedToCheckProductReferences(ctx, id, err)
 	}
