@@ -1398,7 +1398,7 @@ func getRowCell(row []string, index int) string {
 
 // parseSheetData parses a specific sheet from an XLSX file at the given path
 // This function only validates file format (no database lookups)
-func (s *purchaseOrderService) parseSheetData(filePath string, sheetName string) (*importPurchaseOrderData, error) {
+func (s *purchaseOrderService) parseSheetData(ctx context.Context, filePath string, sheetName string) (*importPurchaseOrderData, error) {
 	log.WithFields(logrus.Fields{
 		"operation":  "parseSheetData",
 		"file_path":  filePath,
@@ -1545,7 +1545,7 @@ func (s *purchaseOrderService) parseSheetData(filePath string, sheetName string)
 	}
 
 	if len(items) == 0 {
-		return nil, pkg.ErrEmptyDataFile()
+		return nil, pkg.ErrEmptyDataFile(ctx)
 	}
 
 	log.WithFields(logrus.Fields{
@@ -1601,7 +1601,7 @@ func validateUploadPOQuantity(quantityStr string) (decimal.Decimal, error) {
 }
 
 // validateAllSheets validates all sheets in an XLSX file (format validation only, no DB lookups)
-func (s *purchaseOrderService) validateAllSheets(filePath string) ([]dto.SheetValidationResult, error) {
+func (s *purchaseOrderService) validateAllSheets(ctx context.Context, filePath string) ([]dto.SheetValidationResult, error) {
 	log.WithFields(logrus.Fields{
 		"operation": "validateAllSheets",
 		"file_path": filePath,
@@ -1629,7 +1629,7 @@ func (s *purchaseOrderService) validateAllSheets(filePath string) ([]dto.SheetVa
 		}
 
 		// Try to parse the sheet
-		data, err := s.parseSheetData(filePath, sheetName)
+		data, err := s.parseSheetData(ctx, filePath, sheetName)
 		if err != nil {
 			// Format validation failed
 			result.IsValid = false
@@ -1675,7 +1675,7 @@ func (s *purchaseOrderService) parseAndValidateSheet(ctx context.Context, filePa
 	}).Info("Parsing and validating sheet")
 
 	// Parse sheet data (format validation)
-	data, err := s.parseSheetData(filePath, sheetName)
+	data, err := s.parseSheetData(ctx, filePath, sheetName)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse sheet: %w", err)
 	}
@@ -1849,7 +1849,7 @@ func (s *purchaseOrderService) UploadAndValidatePurchaseOrderFile(ctx context.Co
 	}
 
 	// Validate all sheets
-	sheetResults, err := s.validateAllSheets(filePath)
+	sheetResults, err := s.validateAllSheets(ctx, filePath)
 	if err != nil {
 		// Clean up file if validation completely fails
 		fileStorageService.DeleteFile(ctx, fileUID, extension, pkg.FileCategoryPurchaseOrder)

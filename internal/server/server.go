@@ -51,8 +51,8 @@ func SetupServer(
 	// Initialize services
 	userService := services.NewUserService(userRepo, casbinService)
 	supplierService := services.NewSupplierService(supplierRepo)
-	unitService := services.NewUnitService(unitRepo)
 	settingsService := services.NewSettingsService(settingsRepo)
+	unitService := services.NewUnitService(unitRepo, productRepo)
 	productService := services.NewProductService(productRepo, supplierRepo, unitRepo, settingsService)
 	inventoryService := services.NewInventoryService(inventoryRepo, inventoryItemRepo, inventorySubmissionRepo, productRepo)
 	inventoryItemService := services.NewInventoryItemService(inventoryItemRepo, inventoryRepo, productRepo)
@@ -137,6 +137,8 @@ func SetupServer(
 		AllowMethods: []string{echo.GET, echo.POST, echo.PUT, echo.DELETE, echo.OPTIONS},
 		AllowHeaders: []string{echo.HeaderOrigin, echo.HeaderContentType, echo.HeaderAccept, echo.HeaderAuthorization},
 	}))
+
+	e.Use(middleware.LanguageMiddleware())
 
 	// Swagger documentation with persistent authorization
 	e.GET("/swagger/*", echoSwagger.EchoWrapHandler(func(c *echoSwagger.Config) {

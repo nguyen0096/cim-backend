@@ -28,6 +28,16 @@ const (
 	// Inventory Error Keys
 	ErrKeyInventoryItemNotFound  = "inventory_item_not_found"
 	ErrKeyOptimisticLockConflict = "optimistic_lock_conflict"
+
+	// Unit Error Keys
+	ErrKeyFailedToCheckProductReferences    = "failed_to_check_product_references"
+	ErrKeyUnitIDRequired                    = "unit_id_required"
+	ErrKeyCannotDeleteUnitProductsReference = "cannot_delete_unit_products_reference"
+	ErrKeyFailedToDeleteUnit                = "failed_to_delete_unit"
+
+	// File Error Keys
+	ErrKeyUnsupportedFileFormat = "unsupported_file_format"
+	ErrKeyEmptyDataFile         = "empty_data_file"
 )
 
 // ErrorMessages maps error keys to multilingual messages
@@ -73,6 +83,32 @@ var ErrorMessages = map[string]ErrorMessage{
 	ErrKeyOptimisticLockConflict: {
 		EN: "Quantity of %s %d has changed (previous: %s, current: %s)",
 		VI: "Số lượng của %s %d đã thay đổi (trước đó: %s, hiện tại: %s)",
+	},
+	// Unit Errors
+	ErrKeyFailedToCheckProductReferences: {
+		EN: "Failed to check product references for unit %d",
+		VI: "Không thể kiểm tra tham chiếu sản phẩm cho đơn vị %d",
+	},
+	ErrKeyUnitIDRequired: {
+		EN: "Unit ID is required",
+		VI: "ID đơn vị là bắt buộc",
+	},
+	ErrKeyCannotDeleteUnitProductsReference: {
+		EN: "Cannot delete unit: products reference this unit",
+		VI: "Không thể xóa đơn vị: có sản phẩm đang tham chiếu đơn vị này",
+	},
+	ErrKeyFailedToDeleteUnit: {
+		EN: "Failed to delete unit %d",
+		VI: "Không thể xóa đơn vị %d",
+	},
+	// File Errors
+	ErrKeyUnsupportedFileFormat: {
+		EN: "File format %s is not supported. Valid file formats: .csv, .xlsx, .xls",
+		VI: "Định dạng file %s không được hỗ trợ. Định dạng file hợp lệ: .csv, .xlsx, .xls",
+	},
+	ErrKeyEmptyDataFile: {
+		EN: "File has no data",
+		VI: "File không có dữ liệu",
 	},
 }
 
@@ -234,10 +270,39 @@ func ErrPurchaseOrderDeliveryStatusChangeDenied(ctx context.Context, userRole st
 	return NewAppError(ErrorCodeForbidden, message, nil)
 }
 
-func ErrUnsupportedFileFormat(fileType string) *AppError {
-	return NewAppError(ErrorCodeUnsupportedFileFormat, fmt.Sprintf("Định dạng file %s không được hỗ trợ. Định dạng file hợp lệ: .csv, .xlsx, .xls", fileType), nil)
+func ErrUnsupportedFileFormat(ctx context.Context, fileType string) *AppError {
+	template := getErrorMessage(ctx, ErrKeyUnsupportedFileFormat)
+	message := fmt.Sprintf(template, fileType)
+	return NewAppError(ErrorCodeUnsupportedFileFormat, message, nil)
 }
 
-func ErrEmptyDataFile() *AppError {
-	return NewAppError(ErrorCodeEmptyDataFile, "File không có dữ liệu", nil)
+func ErrEmptyDataFile(ctx context.Context) *AppError {
+	message := getErrorMessage(ctx, ErrKeyEmptyDataFile)
+	return NewAppError(ErrorCodeEmptyDataFile, message, nil)
+}
+
+// ErrFailedToCheckProductReferences creates an error for failed product reference check
+func ErrFailedToCheckProductReferences(ctx context.Context, unitID uint, cause error) *AppError {
+	template := getErrorMessage(ctx, ErrKeyFailedToCheckProductReferences)
+	message := fmt.Sprintf(template, unitID)
+	return NewAppError(ErrorCodeInternal, message, cause)
+}
+
+// ErrUnitIDRequired creates an error for missing unit ID
+func ErrUnitIDRequired(ctx context.Context) *AppError {
+	message := getErrorMessage(ctx, ErrKeyUnitIDRequired)
+	return NewAppError(ErrorCodeValidation, message, nil)
+}
+
+// ErrCannotDeleteUnitProductsReference creates an error when trying to delete a unit that has products
+func ErrCannotDeleteUnitProductsReference(ctx context.Context) *AppError {
+	message := getErrorMessage(ctx, ErrKeyCannotDeleteUnitProductsReference)
+	return NewAppError(ErrorCodeValidation, message, nil)
+}
+
+// ErrFailedToDeleteUnit creates an error for failed unit deletion
+func ErrFailedToDeleteUnit(ctx context.Context, unitID uint, cause error) *AppError {
+	template := getErrorMessage(ctx, ErrKeyFailedToDeleteUnit)
+	message := fmt.Sprintf(template, unitID)
+	return NewAppError(ErrorCodeInternal, message, cause)
 }

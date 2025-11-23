@@ -30,12 +30,14 @@ type UnitService interface {
 }
 
 type unitService struct {
-	unitRepo repository.UnitRepository
+	unitRepo    repository.UnitRepository
+	productRepo repository.ProductRepository
 }
 
-func NewUnitService(unitRepo repository.UnitRepository) UnitService {
+func NewUnitService(unitRepo repository.UnitRepository, productRepo repository.ProductRepository) UnitService {
 	return &unitService{
-		unitRepo: unitRepo,
+		unitRepo:    unitRepo,
+		productRepo: productRepo,
 	}
 }
 
@@ -113,10 +115,21 @@ func (s *unitService) UpdateUnit(ctx context.Context, unit *models.Unit) error {
 
 func (s *unitService) DeleteUnit(ctx context.Context, id uint) error {
 	if id == 0 {
-		return pkg.ErrValidation("unit ID is required", nil)
+		return pkg.ErrUnitIDRequired(ctx)
 	}
+
+	// Check if any products reference this unit
+	exists, err := s.productRepo.CheckProductExists(ctx, id)
+	if err != nil {
+		return pkg.ErrFailedToCheckProductReferences(ctx, id, err)
+	}
+
+	if exists {
+		return pkg.ErrCannotDeleteUnitProductsReference(ctx)
+	}
+
 	if err := s.unitRepo.Delete(ctx, id); err != nil {
-		return fmt.Errorf("failed to delete unit %d: %w", id, err)
+		return pkg.ErrFailedToDeleteUnit(ctx, id, err)
 	}
 	return nil
 }
@@ -231,24 +244,5 @@ func (s *unitService) checkCircularReference(ctx context.Context, unitID uint, b
 		currentID = *currentUnit.BaseUnitID
 	}
 
-	return nil
-}
-
-// checkMaxDepth checks if adding a unit with the given baseUnitID would exceed the maximum hierarchy depth
-// The maximum depth is 4 levels: Level 1 (root base unit) + 3 levels of derived units
-// This function is now deprecated in favor of using the Level field directly, but kept for backward compatibility
-func (s *unitService) checkMaxDepth(ctx context.Context, baseUnitID uint) error {
-	baseUnit, err := s.unitRepo.GetByID(ctx, baseUnitID)
-	if err != nil {
-		if err == gorm.ErrRecordNotFound {
-			return pkg.ErrValidation("base unit not found", err)
-		}
-		return fmt.Errorf("failed to load base unit %d: %w", baseUnitID, err)
-	}
-
-	expectedLevel := baseUnit.Level + 1
-	if expectedLevel > MaxUnitHierarchyDepth {
-		return pkg.ErrValidation(fmt.Sprintf("cannot create/update unit: base unit is at level %d, which would result in level %d. Maximum allowed hierarchy depth is %d levels", baseUnit.Level, expectedLevel, MaxUnitHierarchyDepth), nil)
-	}
 	return nil
 }
