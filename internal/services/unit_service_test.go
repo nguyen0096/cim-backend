@@ -15,8 +15,9 @@ func TestCreateUnit(t *testing.T) {
 	ctx := context.Background()
 
 	t.Run("should create unit successfully", func(t *testing.T) {
-		repo := new(repositorymocks.UnitRepository)
-		service := NewUnitService(repo)
+		unitRepo := repositorymocks.NewUnitRepository(t)
+		productRepo := repositorymocks.NewProductRepository(t)
+		service := NewUnitService(unitRepo, productRepo)
 
 		unit := &models.Unit{
 			UnitType:         "mass",
@@ -25,17 +26,18 @@ func TestCreateUnit(t *testing.T) {
 			ConversionFactor: 1,
 		}
 
-		repo.On("GetByTypeAndName", ctx, "mass", "kilogram").Return((*models.Unit)(nil), gorm.ErrRecordNotFound)
-		repo.On("Create", ctx, unit).Return(nil)
+		unitRepo.On("GetByTypeAndName", ctx, "mass", "kilogram").Return((*models.Unit)(nil), gorm.ErrRecordNotFound)
+		unitRepo.On("Create", ctx, unit).Return(nil)
 
 		err := service.CreateUnit(ctx, unit)
 		assert.NoError(t, err)
-		repo.AssertExpectations(t)
+		unitRepo.AssertExpectations(t)
 	})
 
 	t.Run("should create derived unit when base unit is valid", func(t *testing.T) {
-		repo := new(repositorymocks.UnitRepository)
-		service := NewUnitService(repo)
+		unitRepo := repositorymocks.NewUnitRepository(t)
+		productRepo := repositorymocks.NewProductRepository(t)
+		service := NewUnitService(unitRepo, productRepo)
 
 		baseUnitID := uint(2)
 		unit := &models.Unit{
@@ -46,23 +48,24 @@ func TestCreateUnit(t *testing.T) {
 			ConversionFactor: 0.001,
 		}
 
-		repo.On("GetByTypeAndName", ctx, "mass", "gram").Return((*models.Unit)(nil), gorm.ErrRecordNotFound)
-		repo.On("GetByID", ctx, baseUnitID).Return(&models.Unit{
+		unitRepo.On("GetByTypeAndName", ctx, "mass", "gram").Return((*models.Unit)(nil), gorm.ErrRecordNotFound)
+		unitRepo.On("GetByID", ctx, baseUnitID).Return(&models.Unit{
 			Base:       models.Base{ID: baseUnitID},
 			UnitType:   "mass",
 			Name:       "kilogram",
 			BaseUnitID: nil,
 		}, nil)
-		repo.On("Create", ctx, unit).Return(nil)
+		unitRepo.On("Create", ctx, unit).Return(nil)
 
 		err := service.CreateUnit(ctx, unit)
 		assert.NoError(t, err)
-		repo.AssertExpectations(t)
+		unitRepo.AssertExpectations(t)
 	})
 
 	t.Run("should return validation error when derived unit missing base reference", func(t *testing.T) {
-		repo := new(repositorymocks.UnitRepository)
-		service := NewUnitService(repo)
+		unitRepo := repositorymocks.NewUnitRepository(t)
+		productRepo := repositorymocks.NewProductRepository(t)
+		service := NewUnitService(unitRepo, productRepo)
 
 		err := service.CreateUnit(ctx, &models.Unit{
 			UnitType:         "mass",
@@ -74,8 +77,9 @@ func TestCreateUnit(t *testing.T) {
 	})
 
 	t.Run("should return validation error when base unit reference invalid", func(t *testing.T) {
-		repo := new(repositorymocks.UnitRepository)
-		service := NewUnitService(repo)
+		unitRepo := repositorymocks.NewUnitRepository(t)
+		productRepo := repositorymocks.NewProductRepository(t)
+		service := NewUnitService(unitRepo, productRepo)
 
 		baseUnitID := uint(2)
 		unit := &models.Unit{
@@ -86,7 +90,7 @@ func TestCreateUnit(t *testing.T) {
 			ConversionFactor: 0.001,
 		}
 
-		repo.On("GetByID", ctx, baseUnitID).Return(&models.Unit{
+		unitRepo.On("GetByID", ctx, baseUnitID).Return(&models.Unit{
 			Base:       models.Base{ID: baseUnitID},
 			UnitType:   "mass",
 			Name:       "kilogram",
@@ -95,12 +99,13 @@ func TestCreateUnit(t *testing.T) {
 
 		err := service.CreateUnit(ctx, unit)
 		assert.Error(t, err)
-		repo.AssertExpectations(t)
+		unitRepo.AssertExpectations(t)
 	})
 
 	t.Run("should return validation error when required fields missing", func(t *testing.T) {
-		repo := new(repositorymocks.UnitRepository)
-		service := NewUnitService(repo)
+		unitRepo := repositorymocks.NewUnitRepository(t)
+		productRepo := repositorymocks.NewProductRepository(t)
+		service := NewUnitService(unitRepo, productRepo)
 
 		err := service.CreateUnit(ctx, &models.Unit{
 			UnitType:         "",
@@ -112,8 +117,9 @@ func TestCreateUnit(t *testing.T) {
 	})
 
 	t.Run("should return duplicate error when unit exists", func(t *testing.T) {
-		repo := new(repositorymocks.UnitRepository)
-		service := NewUnitService(repo)
+		unitRepo := repositorymocks.NewUnitRepository(t)
+		productRepo := repositorymocks.NewProductRepository(t)
+		service := NewUnitService(unitRepo, productRepo)
 
 		existing := &models.Unit{
 			Base:     models.Base{ID: 1},
@@ -128,16 +134,17 @@ func TestCreateUnit(t *testing.T) {
 			ConversionFactor: 1,
 		}
 
-		repo.On("GetByTypeAndName", ctx, "mass", "kilogram").Return(existing, nil)
+		unitRepo.On("GetByTypeAndName", ctx, "mass", "kilogram").Return(existing, nil)
 
 		err := service.CreateUnit(ctx, unit)
 		assert.Error(t, err)
-		repo.AssertExpectations(t)
+		unitRepo.AssertExpectations(t)
 	})
 
 	t.Run("should return error when repository create fails", func(t *testing.T) {
-		repo := new(repositorymocks.UnitRepository)
-		service := NewUnitService(repo)
+		unitRepo := repositorymocks.NewUnitRepository(t)
+		productRepo := repositorymocks.NewProductRepository(t)
+		service := NewUnitService(unitRepo, productRepo)
 
 		unit := &models.Unit{
 			UnitType:         "mass",
@@ -145,12 +152,12 @@ func TestCreateUnit(t *testing.T) {
 			Symbol:           "kg",
 			ConversionFactor: 1,
 		}
-		repo.On("GetByTypeAndName", ctx, "mass", "kilogram").Return((*models.Unit)(nil), gorm.ErrRecordNotFound)
-		repo.On("Create", ctx, unit).Return(errors.New("db error"))
+		unitRepo.On("GetByTypeAndName", ctx, "mass", "kilogram").Return((*models.Unit)(nil), gorm.ErrRecordNotFound)
+		unitRepo.On("Create", ctx, unit).Return(errors.New("db error"))
 
 		err := service.CreateUnit(ctx, unit)
 		assert.Error(t, err)
-		repo.AssertExpectations(t)
+		unitRepo.AssertExpectations(t)
 	})
 }
 
@@ -158,8 +165,9 @@ func TestUpdateUnit(t *testing.T) {
 	ctx := context.Background()
 
 	t.Run("should update unit successfully", func(t *testing.T) {
-		repo := new(repositorymocks.UnitRepository)
-		service := NewUnitService(repo)
+		unitRepo := repositorymocks.NewUnitRepository(t)
+		productRepo := repositorymocks.NewProductRepository(t)
+		service := NewUnitService(unitRepo, productRepo)
 
 		unit := &models.Unit{
 			Base:             models.Base{ID: 1},
@@ -169,23 +177,24 @@ func TestUpdateUnit(t *testing.T) {
 			ConversionFactor: 1,
 		}
 
-		repo.On("GetByID", ctx, uint(1)).Return(&models.Unit{
+		unitRepo.On("GetByID", ctx, uint(1)).Return(&models.Unit{
 			Base:       models.Base{ID: 1},
 			UnitType:   "volume",
 			Name:       "liter",
 			Symbol:     "L",
 			BaseUnitID: nil,
 		}, nil)
-		repo.On("Update", ctx, unit).Return(nil)
+		unitRepo.On("Update", ctx, unit).Return(nil)
 
 		err := service.UpdateUnit(ctx, unit)
 		assert.NoError(t, err)
-		repo.AssertExpectations(t)
+		unitRepo.AssertExpectations(t)
 	})
 
 	t.Run("should error when unit not found", func(t *testing.T) {
-		repo := new(repositorymocks.UnitRepository)
-		service := NewUnitService(repo)
+		unitRepo := repositorymocks.NewUnitRepository(t)
+		productRepo := repositorymocks.NewProductRepository(t)
+		service := NewUnitService(unitRepo, productRepo)
 
 		unit := &models.Unit{
 			Base:             models.Base{ID: 99},
@@ -195,16 +204,17 @@ func TestUpdateUnit(t *testing.T) {
 			ConversionFactor: 1,
 		}
 
-		repo.On("GetByID", ctx, uint(99)).Return((*models.Unit)(nil), gorm.ErrRecordNotFound)
+		unitRepo.On("GetByID", ctx, uint(99)).Return((*models.Unit)(nil), gorm.ErrRecordNotFound)
 
 		err := service.UpdateUnit(ctx, unit)
 		assert.Error(t, err)
-		repo.AssertExpectations(t)
+		unitRepo.AssertExpectations(t)
 	})
 
 	t.Run("should validate derived unit base reference on update", func(t *testing.T) {
-		repo := new(repositorymocks.UnitRepository)
-		service := NewUnitService(repo)
+		unitRepo := repositorymocks.NewUnitRepository(t)
+		productRepo := repositorymocks.NewProductRepository(t)
+		service := NewUnitService(unitRepo, productRepo)
 
 		baseUnitID := uint(3)
 		unit := &models.Unit{
@@ -216,36 +226,37 @@ func TestUpdateUnit(t *testing.T) {
 			ConversionFactor: 0.001,
 		}
 
-		repo.On("GetByID", ctx, uint(4)).Return(&models.Unit{
+		unitRepo.On("GetByID", ctx, uint(4)).Return(&models.Unit{
 			Base:       models.Base{ID: 4},
 			UnitType:   "mass",
 			Name:       "gram",
 			Symbol:     "g",
 			BaseUnitID: &baseUnitID,
 		}, nil)
-		repo.On("GetByID", ctx, baseUnitID).Return(&models.Unit{
+		unitRepo.On("GetByID", ctx, baseUnitID).Return(&models.Unit{
 			Base:       models.Base{ID: baseUnitID},
 			UnitType:   "mass",
 			Name:       "kilogram",
 			BaseUnitID: nil,
 		}, nil)
-		repo.On("Update", ctx, unit).Return(nil)
+		unitRepo.On("Update", ctx, unit).Return(nil)
 
 		err := service.UpdateUnit(ctx, unit)
 		assert.NoError(t, err)
-		repo.AssertExpectations(t)
+		unitRepo.AssertExpectations(t)
 	})
 }
 
 func TestDeleteUnit(t *testing.T) {
 	ctx := context.Background()
 
-	repo := new(repositorymocks.UnitRepository)
-	service := NewUnitService(repo)
+	unitRepo := repositorymocks.NewUnitRepository(t)
+	productRepo := repositorymocks.NewProductRepository(t)
+	service := NewUnitService(unitRepo, productRepo)
 
-	repo.On("Delete", ctx, uint(1)).Return(nil)
+	unitRepo.On("Delete", ctx, uint(1)).Return(nil)
 
 	err := service.DeleteUnit(ctx, 1)
 	assert.NoError(t, err)
-	repo.AssertExpectations(t)
+	unitRepo.AssertExpectations(t)
 }

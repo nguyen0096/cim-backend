@@ -3,7 +3,6 @@ package services
 import (
 	"cim-backend/internal/mocks/repositorymocks"
 	"cim-backend/internal/models"
-	"cim-backend/internal/services/dto"
 	"cim-backend/pkg"
 	"context"
 	"errors"
@@ -156,12 +155,11 @@ func TestUpdatePurchaseOrderStatus_WithApprovalCheck(t *testing.T) {
 	t.Run("should return error when trying to complete purchase order without approved payment receipt form", func(t *testing.T) {
 		// Setup
 		mockRepo := repositorymocks.NewPurchaseOrderRepository(t)
-		mockPaymentRepo := &mockPaymentReceiptFormRepository{}
+		mockPaymentRepo := repositorymocks.NewPaymentReceiptFormRepository(t)
 		service := NewPurchaseOrderService(mockRepo, mockPaymentRepo, nil, nil, nil, nil, nil, nil, nil, nil)
 
-		// Mock payment receipt form repository to return nil (no approved form found)
-		mockPaymentRepo.approvedForm = nil
-		mockPaymentRepo.err = nil
+		// Mock payment receipt form repository to return empty slice (no approved form found)
+		mockPaymentRepo.On("GetLatestPaymentReceiptForms", mock.Anything, uint(1), models.PaymentReceiptFormStatusApproved, 0).Return([]*models.PaymentReceiptForm{}, nil)
 
 		// Execute
 		err := service.UpdatePurchaseOrderStatus(context.Background(), 1, models.PurchaseOrderStatusCompleted)
@@ -177,68 +175,24 @@ func TestUpdatePurchaseOrderStatus_WithApprovalCheck(t *testing.T) {
 	t.Run("should complete purchase order when approved payment receipt form exists", func(t *testing.T) {
 		// Setup
 		mockRepo := repositorymocks.NewPurchaseOrderRepository(t)
-		mockPaymentRepo := &mockPaymentReceiptFormRepository{}
+		mockPaymentRepo := repositorymocks.NewPaymentReceiptFormRepository(t)
 		service := NewPurchaseOrderService(mockRepo, mockPaymentRepo, nil, nil, nil, nil, nil, nil, nil, nil)
 
-		// Mock the repository to return success for status update
-		mockRepo.On("UpdateStatus", mock.Anything, uint(1), models.PurchaseOrderStatusCompleted).Return(nil)
-
 		// Mock payment receipt form repository to return an approved form
-		mockPaymentRepo.approvedForm = &models.PaymentReceiptForm{
+		approvedForm := &models.PaymentReceiptForm{
 			Base:            models.Base{ID: 1},
 			PurchaseOrderID: 1,
 			Status:          models.PaymentReceiptFormStatusApproved,
 		}
-		mockPaymentRepo.err = nil
+		mockPaymentRepo.On("GetLatestPaymentReceiptForms", mock.Anything, uint(1), models.PaymentReceiptFormStatusApproved, 0).Return([]*models.PaymentReceiptForm{approvedForm}, nil)
+
+		// Mock the repository to return success for status update
+		mockRepo.On("UpdateStatus", mock.Anything, uint(1), models.PurchaseOrderStatusCompleted).Return(nil)
 
 		// Execute
 		err := service.UpdatePurchaseOrderStatus(context.Background(), 1, models.PurchaseOrderStatusCompleted)
 
 		// Assert
 		assert.NoError(t, err)
-		mockRepo.AssertExpectations(t)
 	})
-}
-
-// mockPaymentReceiptFormRepository is a simple mock for testing
-type mockPaymentReceiptFormRepository struct {
-	approvedForm *models.PaymentReceiptForm
-	err          error
-}
-
-func (m *mockPaymentReceiptFormRepository) DeletePermanently(ctx context.Context, id uint) error {
-	return nil
-}
-func (m *mockPaymentReceiptFormRepository) GetByIDFull(ctx context.Context, id uint) (*models.PaymentReceiptForm, error) {
-	return nil, nil
-}
-func (m *mockPaymentReceiptFormRepository) GetLatestPaymentReceiptForms(ctx context.Context, purchaseOrderID uint, status models.PaymentReceiptFormStatus, limit int) ([]*models.PaymentReceiptForm, error) {
-	if m.err != nil {
-		return nil, m.err
-	}
-	if m.approvedForm == nil {
-		return []*models.PaymentReceiptForm{}, nil
-	}
-	return []*models.PaymentReceiptForm{m.approvedForm}, nil
-}
-
-// Implement other required methods as no-ops for this test
-func (m *mockPaymentReceiptFormRepository) Create(ctx context.Context, form *models.PaymentReceiptForm) error {
-	return nil
-}
-func (m *mockPaymentReceiptFormRepository) GetByID(ctx context.Context, id uint) (*models.PaymentReceiptForm, error) {
-	return nil, nil
-}
-func (m *mockPaymentReceiptFormRepository) List(ctx context.Context, req *dto.PaymentReceiptFormListRequest) ([]models.PaymentReceiptForm, int64, error) {
-	return nil, 0, nil
-}
-func (m *mockPaymentReceiptFormRepository) Update(ctx context.Context, form *models.PaymentReceiptForm) error {
-	return nil
-}
-func (m *mockPaymentReceiptFormRepository) UpdateStatus(ctx context.Context, id uint, status models.PaymentReceiptFormStatus) error {
-	return nil
-}
-func (m *mockPaymentReceiptFormRepository) Delete(ctx context.Context, id uint) error { return nil }
-func (m *mockPaymentReceiptFormRepository) Search(ctx context.Context, query string, req *dto.PaymentReceiptFormListRequest) ([]models.PaymentReceiptForm, int64, error) {
-	return nil, 0, nil
 }

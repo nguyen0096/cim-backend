@@ -52,6 +52,7 @@ func Test_consumeFIFO(t *testing.T) {
 
 		// Execute
 		ivtrItemChanges, txns, err := service.consumeFIFO(
+			ctx,
 			newProcessingState(nil, nil),
 			activeItems,
 			itemConsumeQuantity,
@@ -109,6 +110,7 @@ func Test_consumeFIFO(t *testing.T) {
 
 		// Execute
 		ivtrItemChanges, txns, err := service.consumeFIFO(
+			ctx,
 			newProcessingState(nil, nil),
 			activeItems,
 			itemConsumeQuantity,
@@ -183,6 +185,7 @@ func Test_consumeFIFO(t *testing.T) {
 
 		// Execute
 		ivtrItemChanges, txns, err := service.consumeFIFO(
+			ctx,
 			newProcessingState(nil, nil),
 			activeItems,
 			itemConsumeQuantity,
@@ -244,6 +247,7 @@ func Test_consumeFIFO(t *testing.T) {
 
 		// Execute
 		ivtrItemChanges, txns, err := service.consumeFIFO(
+			ctx,
 			newProcessingState(nil, nil),
 			activeItems,
 			itemConsumeQuantity,
@@ -302,6 +306,7 @@ func Test_consumeFIFO(t *testing.T) {
 
 		// Execute
 		ivtrItemChanges, _, err := service.consumeFIFO(
+			ctx,
 			newProcessingState(nil, nil),
 			activeItems,
 			itemConsumeQuantity,
@@ -353,6 +358,7 @@ func Test_consumeFIFO(t *testing.T) {
 
 		// Execute
 		ivtrItemChanges, txns, err := service.consumeFIFO(
+			ctx,
 			newProcessingState(nil, nil),
 			activeItems,
 			itemConsumeQuantity,
@@ -394,6 +400,7 @@ func Test_consumeFIFO(t *testing.T) {
 
 		// Execute
 		ivtrItemChanges, txns, err := service.consumeFIFO(
+			ctx,
 			newProcessingState(nil, nil),
 			activeItems,
 			itemConsumeQuantity,
@@ -432,6 +439,7 @@ func Test_consumeFIFO(t *testing.T) {
 
 		// Execute
 		ivtrItemChanges, txns, err := service.consumeFIFO(
+			ctx,
 			newProcessingState(nil, nil),
 			activeItems,
 			itemConsumeQuantity,
@@ -478,6 +486,7 @@ func Test_consumeFIFO(t *testing.T) {
 
 		// Execute
 		ivtrItemChanges, txns, err := service.consumeFIFO(
+			ctx,
 			newProcessingState(nil, nil),
 			activeItems,
 			itemConsumeQuantity,
@@ -501,6 +510,7 @@ func Test_consumeFIFO(t *testing.T) {
 
 		// Execute
 		ivtrItemChanges, txns, err := service.consumeFIFO(
+			ctx,
 			newProcessingState(nil, nil),
 			activeItems,
 			itemConsumeQuantity,
