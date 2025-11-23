@@ -909,5 +909,54 @@ var _ = Describe("Unit API", func() {
 				Expect(errorResp["error"]).To(Equal(fmt.Sprintf("Access denied: %s role cannot delete units", models.RoleBotForm)))
 			})
 		})
+
+		Context("when unit ID is 0", func() {
+			It("should return error", func() {
+				client := testutil.NewClient(tenv, models.RoleAdmin)
+
+				resp, err := client.MakeRequest("DELETE", "/api/v1/units/0", nil, testutil.WithAuth())
+				Expect(err).NotTo(HaveOccurred())
+				Expect(resp.StatusCode).To(Equal(400))
+
+				errorResp := testutil.ParseResponse(resp)
+				Expect(errorResp["error"]).To(ContainSubstring("Unit ID is required"))
+			})
+		})
+
+		Context("when products reference the unit", func() {
+			It("should return error", func(ctx SpecContext) {
+				client := testutil.NewClient(tenv, models.RoleAdmin)
+
+				// Create a product that references the unit
+				testProduct := fixture.WithProduct(tenv.ContextfulDB(), models.Product{
+					Name:        fmt.Sprintf("Test Product for Unit %s", uuid.New().String()),
+					Description: "Test Description",
+					ProductType: "test",
+					UnitID:      testUnit.ID,
+					Status:      "active",
+				})
+
+				// Try to delete the unit
+				urlPath := fmt.Sprintf("/api/v1/units/%d", testUnit.ID)
+				resp, err := client.MakeRequest("DELETE", urlPath, nil, testutil.WithAuth())
+				Expect(err).NotTo(HaveOccurred())
+				Expect(resp.StatusCode).To(Equal(400))
+
+				errorResp := testutil.ParseResponse(resp)
+				Expect(errorResp["error"]).To(ContainSubstring("Cannot delete unit: products reference this unit"))
+
+				// Verify unit is not deleted
+				var unit models.Unit
+				err = tenv.DB.WithContext(ctx).First(&unit, "id = ?", testUnit.ID).Error
+				Expect(err).NotTo(HaveOccurred())
+				Expect(unit.ID).To(Equal(testUnit.ID))
+
+				// Verify product still exists
+				var product models.Product
+				err = tenv.DB.WithContext(ctx).First(&product, "id = ?", testProduct.ID).Error
+				Expect(err).NotTo(HaveOccurred())
+				Expect(product.ID).To(Equal(testProduct.ID))
+			})
+		})
 	})
 })
