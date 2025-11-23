@@ -32,7 +32,10 @@ type paymentReceiptFormService struct {
 }
 
 // NewPaymentReceiptFormService creates a new payment receipt form service
-func NewPaymentReceiptFormService(paymentReceiptFormRepo repository.PaymentReceiptFormRepository, db *gorm.DB) PaymentReceiptFormService {
+func NewPaymentReceiptFormService(
+	paymentReceiptFormRepo repository.PaymentReceiptFormRepository,
+	db *gorm.DB,
+) PaymentReceiptFormService {
 	return &paymentReceiptFormService{
 		paymentReceiptFormRepo: paymentReceiptFormRepo,
 		db:                     db,

@@ -268,8 +268,8 @@ func TestBatchError_MarshalJSON(t *testing.T) {
 
 		locations := result["locations"].([]interface{})
 		loc1 := locations[0].(map[string]interface{})
-		assert.Equal(t, "row \"1\"", loc1["Location"])
-		assert.Equal(t, "value contains: \n\t special chars", loc1["Message"])
+		assert.Equal(t, "row \"1\"", loc1["location"])
+		assert.Equal(t, "value contains: \n\t special chars", loc1["message"])
 	})
 }
 

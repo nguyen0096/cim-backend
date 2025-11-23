@@ -30,7 +30,7 @@ func TestCreatePurchaseOrder(t *testing.T) {
 	setupTest := func(t *testing.T) *testSetup {
 		mockRepo := repositorymocks.NewPurchaseOrderRepository(t)
 		mockService := servicemocks.NewPurchaseOrderService(t)
-		handler := NewPurchaseOrderHandler(mockRepo, mockService)
+		handler := NewPurchaseOrderHandler(mockRepo, mockService, nil, nil)
 		e := echo.New()
 
 		// Set up the custom error handler to properly handle validation errors
@@ -174,7 +174,7 @@ func TestCreatePurchaseOrder(t *testing.T) {
 		assertErrorResponse(t, rec, http.StatusInternalServerError, "Failed to create purchase order")
 	})
 
-	t.Run("should return bad request when request body is invalid data types", func(t *testing.T) {
+	t.Run("should return bad request when request body has invalid data types", func(t *testing.T) {
 		// Setup
 		setup := setupTest(t)
 

@@ -3,6 +3,7 @@ package handlers
 import (
 	"bytes"
 	"cim-backend/internal/models"
+	"cim-backend/pkg"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -47,7 +48,7 @@ func assertValidationErrorResponse(t *testing.T, rec *httptest.ResponseRecorder)
 	// Check that it's a validation error
 	errorMsg, ok := responseBody["error"].(string)
 	require.True(t, ok, "error field should be a string")
-	assert.Contains(t, errorMsg, "Validation failed")
+	assert.Contains(t, errorMsg, pkg.MsgErrValidation)
 	assert.Equal(t, "validation", responseBody["code"])
 }
 

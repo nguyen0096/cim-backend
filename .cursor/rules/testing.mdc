@@ -4,7 +4,13 @@ globs: *_test.go
 alwaysApply: false
 ---
 
-### General testing pattern
+3 types of tests are available in this repository:
+
+- Unit test: for service (package `internal/services`) and handler (package `internal/handlers`). This test uses Go testing framework.
+- DB integration test: for repository (package `internal/repository`). This uses Ginko testing framework.
+- BDD full integration test: defined in directory `test`, used to fully test the user flows. This uses Ginko testing framework.
+
+## Go Testing Framework Rules
 
 **Test function structure**: multiple test cases are implemented as sub test. ONLY has 1 level of sub test. For example:
 

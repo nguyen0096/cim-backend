@@ -166,11 +166,13 @@ func ErrForbidden(message string, cause error) *AppError {
 	return NewAppError(ErrorCodeForbidden, message, cause)
 }
 
+const MsgErrValidation = "Dữ liệu không hợp lệ"
+
 // ErrValidation creates an error for validation failures
 func ErrValidation(message string, cause error) *AppError {
 	err := NewAppError(
 		ErrorCodeValidation,
-		"Dữ liệu không hợp lệ",
+		MsgErrValidation,
 		cause,
 	)
 	if message != "" {
