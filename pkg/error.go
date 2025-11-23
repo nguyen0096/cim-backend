@@ -47,6 +47,13 @@ const (
 	ErrorCodeTransferValidationFailed ErrorCode = 12 // transfer-validation-failed
 	// ErrorCodeConsumeFIFOFailed is used when consume FIFO fails
 	ErrorCodeConsumeFIFOFailed ErrorCode = 13 // consume-fifo-failed
+
+	// File Upload Error Codes
+
+	// ErrorCodeUnsupportedFileFormat is used when an unsupported file format is uploaded.
+	ErrorCodeUnsupportedFileFormat ErrorCode = 15 // unsupported-file-format
+	// ErrorCodeEmptyDataFile is used when a data row is not found.
+	ErrorCodeEmptyDataFile ErrorCode = 16 // data-row-not-found
 )
 
 // AppError represents an application error with code, cause, and display message
@@ -76,10 +83,16 @@ func (e *AppError) MarshalJSON() ([]byte, error) {
 	return json.Marshal(obj)
 }
 
-// HTTPStatus returns the appropriate HTTP status code for the error
+// HTTPStatus returns the appropriate HTTP status code for the error.
+// This method is used by the error handler to return correct HTTP status code.
+// Using this in app layer is not recommended.
 func (e *AppError) HTTPStatus() int {
 	switch e.Code {
-	case ErrorCodeInvalidRequestBody, ErrorCodeValidation:
+	case ErrorCodeInvalidRequestBody,
+		ErrorCodeValidation,
+		ErrorCodeEmptyDataFile,
+		ErrorCodePurchaseOrderNoItems,
+		ErrorCodePurchaseOrderNoApprovedPaymentReceipt:
 		return http.StatusBadRequest
 	case ErrorCodeNotFound:
 		return http.StatusNotFound
@@ -89,8 +102,6 @@ func (e *AppError) HTTPStatus() int {
 		return http.StatusForbidden
 	case ErrorCodeDuplicate, ErrorCodeConflict:
 		return http.StatusConflict
-	case ErrorCodePurchaseOrderNoItems, ErrorCodePurchaseOrderNoApprovedPaymentReceipt:
-		return http.StatusBadRequest
 	case ErrorCodeInternal:
 		fallthrough
 	default:
@@ -113,4 +124,71 @@ func IsErrorCode(err error, code ErrorCode) bool {
 		return appErr.Code == code
 	}
 	return false
+}
+
+func NewBatchError(
+	code ErrorCode,
+	message string,
+	cause error,
+) *BatchError {
+	return &BatchError{
+		AppError: AppError{
+			Code:    code,
+			Message: message,
+			Cause:   cause,
+		},
+		Locations: []BatchErrorLocation{},
+	}
+}
+
+func (e *BatchError) AddLocation(location string, message string) {
+	e.Locations = append(e.Locations, BatchErrorLocation{Location: location, Message: message})
+}
+
+// BatchError represents a batch error with code, message, cause, and locations.
+// This error is usually used by data import to return multiple errors in a single error.
+type BatchError struct {
+	AppError
+	Locations []BatchErrorLocation `json:"locations,omitempty"`
+}
+
+type BatchErrorLocation struct {
+	Location string `json:"location"`
+	Message  string `json:"message"`
+}
+
+// Error implements the error interface
+func (e *BatchError) Error() string {
+	result := e.Message
+
+	if e.Cause != nil {
+		result += fmt.Sprintf(": %v", e.Cause)
+	}
+
+	if len(e.Locations) > 0 {
+		result += "\nLocations:\n"
+		for _, location := range e.Locations {
+			result += fmt.Sprintf("\n- %s: %s", location.Location, location.Message)
+		}
+	}
+	return result
+}
+
+// MarshalJSON implements json.Marshaler interface
+func (e *BatchError) MarshalJSON() ([]byte, error) {
+	obj := map[string]interface{}{
+		"code":    e.Code.String(),
+		"message": e.Message,
+	}
+	if e.Cause != nil {
+		obj["cause"] = e.Cause.Error()
+	}
+	if len(e.Locations) > 0 {
+		obj["locations"] = e.Locations
+	}
+	return json.Marshal(obj)
+}
+
+func (e *BatchError) HasErrors() bool {
+	return len(e.Locations) > 0
 }

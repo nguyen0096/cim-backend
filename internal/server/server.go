@@ -57,7 +57,8 @@ func SetupServer(
 	inventoryService := services.NewInventoryService(inventoryRepo, inventoryItemRepo, inventorySubmissionRepo, productRepo)
 	inventoryItemService := services.NewInventoryItemService(inventoryItemRepo, inventoryRepo, productRepo)
 	excelService := services.NewExcelService(productRepo, inventoryRepo, settingsService)
-	purchaseOrderService := services.NewPurchaseOrderService(purchaseOrderRepo, paymentReceiptFormRepo, unitRepo, productRepo, inventoryService, excelService, settingsService, db)
+	fileStorageService := services.NewFileStorageService(cfg)
+	purchaseOrderService := services.NewPurchaseOrderService(purchaseOrderRepo, paymentReceiptFormRepo, unitRepo, productRepo, inventoryService, excelService, settingsService, db, supplierRepo, inventoryRepo)
 	paymentReceiptFormService := services.NewPaymentReceiptFormService(paymentReceiptFormRepo, db)
 
 	// Initialize handlers
@@ -67,7 +68,7 @@ func SetupServer(
 	productHandler := handlers.NewProductHandler(productService)
 	inventoryHandler := handlers.NewInventoryHandler(inventoryService)
 	inventoryItemHandler := handlers.NewInventoryItemHandler(inventoryItemService)
-	purchaseOrderHandler := handlers.NewPurchaseOrderHandler(purchaseOrderRepo, purchaseOrderService, paymentReceiptFormService)
+	purchaseOrderHandler := handlers.NewPurchaseOrderHandler(purchaseOrderRepo, purchaseOrderService, paymentReceiptFormService, fileStorageService)
 	excelHandler := handlers.NewExcelHandler(excelService)
 	settingsHandler := handlers.NewSettingsHandler(settingsService)
 	paymentReceiptFormHandler := handlers.NewPaymentReceiptFormHandler(paymentReceiptFormService, purchaseOrderService, settingsService)
@@ -249,7 +250,8 @@ func SetupServer(
 	purchaseOrders.PUT("/:id/receive", purchaseOrderHandler.ReceiveInventory)
 	purchaseOrders.PUT("/:id/status", purchaseOrderHandler.UpdatePurchaseOrderStatus)
 	purchaseOrders.POST("/:id/revenue-expense/retry", purchaseOrderHandler.RetryQueueRevenueExpenseRequest)
-
+	purchaseOrders.POST("/upload", purchaseOrderHandler.UploadPurchaseOrderFile)
+	purchaseOrders.POST("/upload-files/:uid/process", purchaseOrderHandler.ProcessImportPurchaseOrder)
 	// Payment Receipt Form routes
 	paymentReceiptForms := api.Group("/payment-receipt-forms")
 	paymentReceiptForms.GET("", paymentReceiptFormHandler.ListPaymentReceiptForms)

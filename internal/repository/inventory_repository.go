@@ -20,6 +20,7 @@ type InventoryRepository interface {
 
 	// v1
 	GetByID(ctx context.Context, id uint) (*models.Inventory, error)
+	GetByName(ctx context.Context, name string) (*models.Inventory, error)
 	GetTransactionsByInventoryItemIDs(ctx context.Context, inventoryItemIDs []uint) ([]models.InventoryTransaction, error)
 	GetLastPurchasePrices(ctx context.Context, supplierID uint, limit uint) ([]*dto.LastPurchasePriceResponse, error)
 }
@@ -39,6 +40,18 @@ func (r *inventoryRepository) Create(ctx context.Context, inventory *models.Inve
 func (r *inventoryRepository) GetByID(ctx context.Context, id uint) (*models.Inventory, error) {
 	var inventory models.Inventory
 	err := r.db.WithContext(ctx).Preload("Items").Preload("Items.Product").First(&inventory, "id = ?", id).Error
+	if err != nil {
+		return nil, err
+	}
+	return &inventory, nil
+}
+
+// GetByName retrieves an inventory by name (case-insensitive)
+func (r *inventoryRepository) GetByName(ctx context.Context, name string) (*models.Inventory, error) {
+	var inventory models.Inventory
+	err := r.db.WithContext(ctx).
+		Where("LOWER(name) = LOWER(?)", name).
+		First(&inventory).Error
 	if err != nil {
 		return nil, err
 	}

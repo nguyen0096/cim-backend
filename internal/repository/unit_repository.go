@@ -14,6 +14,7 @@ type UnitRepository interface {
 	Create(ctx context.Context, unit *models.Unit) error
 	GetByID(ctx context.Context, id uint) (*models.Unit, error)
 	GetByTypeAndName(ctx context.Context, unitType, name string) (*models.Unit, error)
+	GetByNames(ctx context.Context, names []string) (map[string]*models.Unit, error)
 	Update(ctx context.Context, unit *models.Unit) error
 	Delete(ctx context.Context, id uint) error
 	Restore(ctx context.Context, id uint) error
@@ -319,6 +320,32 @@ func (r *unitRepository) GetByTypeAndName(ctx context.Context, unitType, name st
 	}
 
 	return &unit, nil
+}
+
+// GetByNames retrieves multiple units by their names (matches both name and symbol)
+func (r *unitRepository) GetByNames(ctx context.Context, names []string) (map[string]*models.Unit, error) {
+	result := make(map[string]*models.Unit)
+	if len(names) == 0 {
+		return result, nil
+	}
+
+	units := []models.Unit{}
+	if err := r.db.WithContext(ctx).
+		Where("name IN (?) OR symbol IN (?)", names, names).
+		Find(&units).Error; err != nil {
+		return nil, fmt.Errorf("failed to fetch units by names: %w", err)
+	}
+
+	// Build map by both name and symbol for O(1) lookup
+	for i := range units {
+		unit := &units[i]
+		result[unit.Name] = unit
+		if unit.Symbol != "" {
+			result[unit.Symbol] = unit
+		}
+	}
+
+	return result, nil
 }
 
 func (r *unitRepository) Update(ctx context.Context, unit *models.Unit) error {

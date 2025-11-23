@@ -33,6 +33,20 @@ func HandleError(c echo.Context, err error) error {
 		return httpErr
 	}
 
+	// Check if it's a BatchError first (before AppError, since BatchError embeds AppError)
+	var batchErr *pkg.BatchError
+	if errors.As(err, &batchErr) {
+		// Log the batch error with context
+		log.Printf("BatchError [%s] in %s %s: %d location(s)",
+			batchErr.Code.String(),
+			c.Request().Method,
+			c.Request().URL.Path,
+			len(batchErr.Locations))
+
+		// Return structured JSON response with locations
+		return c.JSON(batchErr.HTTPStatus(), batchErr)
+	}
+
 	// Check if it's our custom AppError
 	var appErr *pkg.AppError
 	if errors.As(err, &appErr) {

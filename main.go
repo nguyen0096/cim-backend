@@ -5,7 +5,11 @@ import (
 	"cim-backend/internal/auth"
 	"cim-backend/internal/config"
 	"cim-backend/internal/server"
+	"cim-backend/pkg"
 	"cim-backend/pkg/log"
+	"context"
+	"os"
+	"os/signal"
 )
 
 // @title Import Export Backend API
@@ -29,11 +33,25 @@ import (
 // @description Type "Bearer" followed by a space and JWT token.
 
 func main() {
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
+	defer stop()
+
 	// Load configuration
 	cfg := config.Load()
 
 	// Initialize logger
 	log.MustInit(cfg.Log)
+
+	// Initialize OpenTelemetry
+	otelShutdown, err := pkg.SetupOTelSDK(ctx)
+	if err != nil {
+		log.Fatal("Failed to initialize OpenTelemetry:", err)
+	}
+	defer func() {
+		if err := otelShutdown(context.Background()); err != nil {
+			log.Error("Failed to shutdown OpenTelemetry:", err)
+		}
+	}()
 
 	log.Infof("Starting application in %s environment", cfg.Environment)
 
@@ -54,10 +72,26 @@ func main() {
 	if err != nil {
 		log.Fatal("Failed to setup server:", err)
 	}
+	defer func() {
+		if err := e.Shutdown(context.Background()); err != nil {
+			log.Error("Failed to shutdown server:", err)
+		}
+	}()
 
 	// Start server
-	log.Infof("Server starting on %s:%s", cfg.Server.Host, cfg.Server.Port)
-	if err := e.Start(cfg.Server.Host + ":" + cfg.Server.Port); err != nil {
+	srvErr := make(chan error, 1)
+	go func() {
+		log.Infof("Server starting on %s:%s", cfg.Server.Host, cfg.Server.Port)
+		if err := e.Start(cfg.Server.Host + ":" + cfg.Server.Port); err != nil {
+			srvErr <- err
+		}
+	}()
+
+	// Wait for interrupt signal to gracefully shutdown the server.
+	select {
+	case <-ctx.Done():
+		log.Info("Shutting down server...")
+	case err := <-srvErr:
 		log.Fatal("Failed to start server:", err)
 	}
 }

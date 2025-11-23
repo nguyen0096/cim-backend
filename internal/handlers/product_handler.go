@@ -604,7 +604,7 @@ func (h *ProductHandler) ImportProductsCSV(c echo.Context) error {
 	}).Info("Processing file upload")
 
 	// Validate file type
-	if !pkg.IsProductImportFile(file.Filename) {
+	if !pkg.IsAllowedFileTypes(file.Filename) {
 		logger.WithField("filename", file.Filename).Warn("Invalid file type")
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "File must be a CSV or Excel file (.csv, .xlsx, .xls)"})
 	}

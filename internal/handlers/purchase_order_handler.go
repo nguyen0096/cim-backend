@@ -10,6 +10,8 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"path/filepath"
+	"time"
 
 	"github.com/go-playground/validator/v10"
 	"github.com/google/uuid"
@@ -21,17 +23,20 @@ type PurchaseOrderHandler struct {
 	purchaseOrderRepository   repository.PurchaseOrderRepository
 	purchaseOrderService      services.PurchaseOrderService
 	paymentReceiptFormService services.PaymentReceiptFormService
+	fileStorageService        services.FileStorageService
 }
 
 func NewPurchaseOrderHandler(
 	purchaseOrderRepo repository.PurchaseOrderRepository,
 	purchaseOrderService services.PurchaseOrderService,
 	paymentReceiptFormService services.PaymentReceiptFormService,
+	fileStorageService services.FileStorageService,
 ) *PurchaseOrderHandler {
 	return &PurchaseOrderHandler{
 		purchaseOrderRepository:   purchaseOrderRepo,
 		purchaseOrderService:      purchaseOrderService,
 		paymentReceiptFormService: paymentReceiptFormService,
+		fileStorageService:        fileStorageService,
 	}
 }
 
@@ -409,4 +414,145 @@ func (h *PurchaseOrderHandler) RetryQueueRevenueExpenseRequest(c echo.Context) e
 	return c.JSON(http.StatusOK, map[string]string{
 		"message": "Revenue expense request queued successfully. Please wait for minutes to complete the request.",
 	})
+}
+
+// UploadPurchaseOrderFile godoc
+// @Summary Upload and validate purchase order file
+// @Description Upload an XLSX file and validate all sheets. Returns validation results for each sheet.
+// @Tags purchase-orders
+// @Accept multipart/form-data
+// @Produce json
+// @Param file formData file true "Purchase order XLSX file"
+// @Success 200 {object} dto.UploadPurchaseOrderFileResponse
+// @Failure 400 {object} pkg.AppError
+// @Failure 500 {object} pkg.AppError
+// @Router /purchase-orders/upload [post]
+func (h *PurchaseOrderHandler) UploadPurchaseOrderFile(c echo.Context) error {
+	startTime := time.Now()
+	logger := h.getRequestLogger(c, "UploadPurchaseOrderFile")
+
+	logger.Info("Uploading purchase order file")
+
+	// Get uploaded file
+	file, err := c.FormFile("file")
+	if err != nil {
+		logger.WithFields(logrus.Fields{
+			"error": err,
+		}).Error("Failed to get uploaded file")
+		return pkg.ErrValidation("file is required", err)
+	}
+
+	// Validate file extension
+	ext := filepath.Ext(file.Filename)
+	if ext != ".xlsx" && ext != ".xls" {
+		logger.WithFields(logrus.Fields{
+			"filename":  file.Filename,
+			"extension": ext,
+		}).Error("Invalid file extension")
+		return pkg.ErrValidation("only .xlsx and .xls files are allowed", nil)
+	}
+
+	// Open file
+	src, err := file.Open()
+	if err != nil {
+		logger.WithFields(logrus.Fields{
+			"error": err,
+		}).Error("Failed to open uploaded file")
+		return fmt.Errorf("failed to open file: %w", err)
+	}
+	defer src.Close()
+
+	// Upload and validate file
+	response, err := h.purchaseOrderService.UploadAndValidatePurchaseOrderFile(c.Request().Context(), src, file.Filename, h.fileStorageService)
+	if err != nil {
+		logger.WithFields(logrus.Fields{
+			"error": err,
+		}).Error("Failed to upload and validate file")
+		return fmt.Errorf("failed to upload and validate file: %w", err)
+	}
+
+	duration := time.Since(startTime)
+	logger.WithFields(logrus.Fields{
+		"file_uid":     response.FileUID,
+		"sheets_count": len(response.Sheets),
+		"duration_ms":  duration.Milliseconds(),
+	}).Info("File uploaded and validated successfully")
+
+	return c.JSON(http.StatusOK, response)
+}
+
+// ProcessImportPurchaseOrder godoc
+// @Summary Process import purchase order from uploaded file
+// @Description Process a specific sheet from an uploaded file and create a purchase order. File is deleted after processing.
+// @Tags purchase-orders
+// @Accept json
+// @Produce json
+// @Param uid path string true "File UID from upload response"
+// @Param request body dto.ProcessImportRequest true "Sheet selection request"
+// @Success 201 {object} models.PurchaseOrder
+// @Failure 400 {object} pkg.AppError
+// @Failure 404 {object} pkg.AppError
+// @Failure 500 {object} pkg.AppError
+// @Router /purchase-orders/upload-files/{uid}/process [post]
+func (h *PurchaseOrderHandler) ProcessImportPurchaseOrder(c echo.Context) error {
+	startTime := time.Now()
+	logger := h.getRequestLogger(c, "ProcessImportPurchaseOrder")
+
+	// Get file UID from path
+	fileUID := c.Param("uid")
+	if fileUID == "" {
+		return pkg.ErrValidation("file UID is required", nil)
+	}
+
+	logger = logger.WithFields(logrus.Fields{
+		"file_uid": fileUID,
+	})
+	logger.Info("Processing purchase order import")
+
+	// Parse request body
+	var req dto.ProcessImportRequest
+	if err := c.Bind(&req); err != nil {
+		logger.WithFields(logrus.Fields{
+			"error": err,
+		}).Error("Failed to bind request")
+		return pkg.ErrValidation("invalid request body", err)
+	}
+
+	// Validate request
+	validate := validator.New()
+	if err := validate.Struct(&req); err != nil {
+		logger.WithFields(logrus.Fields{
+			"error": err,
+		}).Error("Request validation failed")
+		return pkg.ErrValidation("validation failed", err)
+	}
+
+	// Get file extension from query param (passed from frontend)
+	extension := c.QueryParam("extension")
+	if extension == "" {
+		extension = "xlsx" // default
+	}
+
+	logger = logger.WithFields(logrus.Fields{
+		"sheet_name": req.SheetName,
+		"extension":  extension,
+	})
+
+	// Process import
+	po, err := h.purchaseOrderService.ProcessImportPurchaseOrder(c.Request().Context(), fileUID, extension, req.SheetName, h.fileStorageService)
+	if err != nil {
+		logger.WithFields(logrus.Fields{
+			"error": err,
+		}).Error("Failed to process import")
+		return fmt.Errorf("failed to process import: %w", err)
+	}
+
+	duration := time.Since(startTime)
+	logger.WithFields(logrus.Fields{
+		"purchase_order_id": po.ID,
+		"order_number":      po.OrderNumber,
+		"duration_ms":       duration.Milliseconds(),
+	}).Info("Purchase order imported successfully")
+
+	return c.JSON(http.StatusCreated, po)
 }

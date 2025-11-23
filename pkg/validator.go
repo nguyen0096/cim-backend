@@ -37,8 +37,8 @@ func IsExcelFile(filename string) bool {
 	return ext == ".xlsx" || ext == ".xls"
 }
 
-// IsProductImportFile checks if the filename is a valid product import file (CSV or Excel)
-func IsProductImportFile(filename string) bool {
+// IsAllowedFileTypes checks if the filename is a valid allowed file types (CSV or Excel)
+func IsAllowedFileTypes(filename string) bool {
 	return IsCSVFile(filename) || IsExcelFile(filename)
 }
 

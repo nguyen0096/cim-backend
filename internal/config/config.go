@@ -12,16 +12,17 @@ import (
 )
 
 type Config struct {
-	Environment  string
-	Log          log.Config
-	Database     DatabaseConfig
-	Server       ServerConfig
-	JWT          JWTConfig
-	Firebase     FirebaseConfig
-	Excel        ExcelConfig
-	Migration    MigrationConfig
-	GoogleSheets GoogleSheetsConfig
-	Casbin       CasbinConfig
+	Environment     string
+	Log             log.Config
+	Database        DatabaseConfig
+	Server          ServerConfig
+	JWT             JWTConfig
+	Firebase        FirebaseConfig
+	Excel           ExcelConfig
+	Migration       MigrationConfig
+	GoogleSheets    GoogleSheetsConfig
+	Casbin          CasbinConfig
+	UploadsBasePath string
 }
 
 type DatabaseConfig struct {
@@ -113,6 +114,7 @@ func Load(filePath ...string) *Config {
 			ModelFile:  getEnv("CASBIN_MODEL_FILE", "rbac_model.conf"),
 			PolicyFile: getEnv("CASBIN_POLICY_FILE", "rbac_policy.csv"),
 		},
+		UploadsBasePath: getEnv("UPLOADS_BASE_PATH", "./uploads/"),
 		Log: log.Config{
 			LogLevel: logrus.Level(logLever),
 		},

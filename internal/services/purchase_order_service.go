@@ -10,7 +10,9 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"mime/multipart"
 	"runtime/debug"
 	"strconv"
 	"strings"
@@ -18,6 +20,7 @@ import (
 
 	"github.com/shopspring/decimal"
 	"github.com/sirupsen/logrus"
+	"github.com/xuri/excelize/v2"
 	"gorm.io/gorm"
 )
 
@@ -36,6 +39,8 @@ type PurchaseOrderService interface {
 	UpdatePurchaseOrder(ctx context.Context, id uint, req dto.UpdatePurchaseOrderRequest) (*models.PurchaseOrder, error)
 	ReceiveInventory(ctx context.Context, req dto.UpdatePurchaseOrderDeliveryStatusRequest) (*models.PurchaseOrder, error)
 	RetryQueueRevenueExpenseRequest(ctx context.Context, paymentReceiptFormIDs []uint) error
+	UploadAndValidatePurchaseOrderFile(ctx context.Context, file multipart.File, filename string, fileStorageService FileStorageService) (*dto.UploadPurchaseOrderFileResponse, error)
+	ProcessImportPurchaseOrder(ctx context.Context, fileUID string, extension string, sheetName string, fileStorageService FileStorageService) (*models.PurchaseOrder, error)
 }
 
 type purchaseOrderService struct {
@@ -48,6 +53,8 @@ type purchaseOrderService struct {
 	settingsService            SettingsService
 	db                         *gorm.DB
 	revenueExpenseRequestQueue chan revenueExpenseRequest
+	supplierRepo               repository.SupplierRepository
+	inventoryRepo              repository.InventoryRepository
 }
 
 // revenueExpenseRequest represents a queued request to process revenue expense
@@ -64,6 +71,8 @@ func NewPurchaseOrderService(
 	excelService ExcelService,
 	settingsService SettingsService,
 	db *gorm.DB,
+	supplierRepo repository.SupplierRepository,
+	inventoryRepo repository.InventoryRepository,
 ) PurchaseOrderService {
 	// Create a buffered channel to queue revenue expense requests
 	// Buffer size of 100 allows queuing up to 100 requests without blocking
@@ -79,6 +88,8 @@ func NewPurchaseOrderService(
 		settingsService:            settingsService,
 		db:                         db,
 		revenueExpenseRequestQueue: requestQueue,
+		supplierRepo:               supplierRepo,
+		inventoryRepo:              inventoryRepo,
 	}
 
 	// Start the worker goroutine to process revenue expense requests serially
@@ -160,6 +171,15 @@ func (s *purchaseOrderService) CreatePurchaseOrder(ctx context.Context, purchase
 		"operation":    "CreatePurchaseOrder",
 		"order_number": purchaseOrder.OrderNumber,
 	}).Info("Creating new purchase order")
+
+	// Validate purchase order struct
+	if err := pkg.Validator.Struct(purchaseOrder); err != nil {
+		log.WithFields(logrus.Fields{
+			"operation": "CreatePurchaseOrder",
+			"error":     err,
+		}).Error("Purchase order validation failed")
+		return pkg.ErrValidation("invalid purchase order", err)
+	}
 
 	// Generate order number if not provided
 	if purchaseOrder.OrderNumber == "" {
@@ -1353,4 +1373,582 @@ func (s *purchaseOrderService) convertQuantityBetweenUnits(
 	}
 
 	return targetQuantity, nil
+}
+
+// importPurchaseOrderItem represents a single item row in the import file
+type importPurchaseOrderItem struct {
+	rowNumber   int
+	productName string
+	unitName    string
+	quantity    decimal.Decimal
+	unitPrice   float64
+	// Validated entities (populated after validation)
+	product *models.Product
+	unit    *models.Unit
+}
+
+// importPurchaseOrderData represents the parsed and validated data from the import file
+type importPurchaseOrderData struct {
+	inventoryName string
+	orderDate     time.Time
+	supplierName  string
+	items         []importPurchaseOrderItem
+	// Validated entities (populated after validation)
+	inventory *models.Inventory
+	supplier  *models.Supplier
+}
+
+// getRowCell safely retrieves a cell value from a row, returning empty string if index is out of bounds
+func getRowCell(row []string, index int) string {
+	if index >= 0 && index < len(row) {
+		return strings.TrimSpace(row[index])
+	}
+	return ""
+}
+
+// parseSheetData parses a specific sheet from an XLSX file at the given path
+// This function only validates file format (no database lookups)
+func (s *purchaseOrderService) parseSheetData(filePath string, sheetName string) (*importPurchaseOrderData, error) {
+	log.WithFields(logrus.Fields{
+		"operation":  "parseSheetData",
+		"file_path":  filePath,
+		"sheet_name": sheetName,
+	}).Debug("Parsing sheet data")
+
+	// Open Excel file
+	f, err := excelize.OpenFile(filePath)
+	if err != nil {
+		return nil, pkg.ErrValidation("failed to open Excel file", err)
+	}
+	defer func() {
+		if err := f.Close(); err != nil {
+			log.WithFields(logrus.Fields{
+				"operation": "parseSheetData",
+				"error":     err,
+			}).Warn("Failed to close Excel file")
+		}
+	}()
+
+	// Verify sheet exists
+	sheets := f.GetSheetList()
+	sheetExists := false
+	for _, s := range sheets {
+		if s == sheetName {
+			sheetExists = true
+			break
+		}
+	}
+	if !sheetExists {
+		return nil, pkg.ErrValidation(fmt.Sprintf("sheet '%s' not found in file", sheetName), nil)
+	}
+
+	// Read inventory name
+	inventoryName, err := f.GetCellValue(sheetName, POImportInventoryNameCell)
+	if err != nil {
+		return nil, pkg.ErrValidation(fmt.Sprintf("failed to read inventory name from cell %s", POImportInventoryNameCell), err)
+	}
+	inventoryName = strings.TrimSpace(inventoryName)
+	if inventoryName == "" {
+		return nil, pkg.ErrValidation("inventory name is empty in cell A1", nil)
+	}
+
+	// Read and parse date
+	dateStr, err := f.GetCellValue(sheetName, POImportDateCell)
+	if err != nil {
+		return nil, pkg.ErrValidation(fmt.Sprintf("failed to read date from cell %s", POImportDateCell), err)
+	}
+	dateStr = strings.TrimSpace(dateStr)
+	dateStr = strings.TrimPrefix(dateStr, POImportDatePrefix)
+	dateStr = strings.TrimSpace(dateStr)
+	orderDate, err := time.Parse(POImportDateFormat, dateStr)
+	if err != nil {
+		return nil, pkg.ErrValidation(fmt.Sprintf("invalid date format in cell %s (expected DD/MM/YYYY): %s", POImportDateCell, dateStr), err)
+	}
+
+	// Read supplier name
+	supplierName, err := f.GetCellValue(sheetName, POImportSupplierNameCell)
+	if err != nil {
+		return nil, pkg.ErrValidation(fmt.Sprintf("failed to read supplier name from cell %s", POImportSupplierNameCell), err)
+	}
+	supplierName = strings.TrimSpace(supplierName)
+	if supplierName == "" {
+		return nil, pkg.ErrValidation("supplier name is empty in cell A3", nil)
+	}
+
+	// Read all rows from the sheet
+	rows, err := f.GetRows(sheetName)
+	if err != nil {
+		return nil, pkg.ErrValidation("failed to read Excel rows", err)
+	}
+
+	// Parse data rows
+	batchError := pkg.ErrValidationBatchError()
+	var items []importPurchaseOrderItem
+	for i := POImportDataStartRow - 1; i < len(rows); i++ {
+		var foundRowError bool
+		row := rows[i]
+		rowNumber := i + 1
+
+		// Check if this is the last row by checking first cell for end marker
+		firstCell := getRowCell(row, POImportColNumber)
+		if strings.Contains(firstCell, POImportEndMarker) {
+			log.WithFields(logrus.Fields{
+				"operation":  "parseSheetData",
+				"sheet_name": sheetName,
+				"row_number": rowNumber,
+			}).Debug("Reached end marker, stopping data parsing")
+			break
+		}
+
+		// Parse values from exact cell positions
+		productName := getRowCell(row, POImportColProductName)
+		unitName := getRowCell(row, POImportColUnit)
+		quantityStr := getRowCell(row, POImportColQuantity)
+		unitPriceStr := getRowCell(row, POImportColUnitPrice)
+
+		// Skip completely empty rows (all required fields are empty)
+		if productName == "" &&
+			unitName == "" &&
+			quantityStr == "" &&
+			unitPriceStr == "" {
+			continue
+		}
+
+		// Validate required fields
+		if productName == "" {
+			batchError.AddLocation(fmt.Sprintf("row %d", rowNumber), "Product name is required")
+			foundRowError = true
+		}
+		if unitName == "" {
+			batchError.AddLocation(fmt.Sprintf("row %d", rowNumber), "Unit is required")
+			foundRowError = true
+		}
+
+		quantity, err := validateUploadPOQuantity(quantityStr)
+		if err != nil {
+			batchError.AddLocation(fmt.Sprintf("row %d", rowNumber), err.Error())
+			foundRowError = true
+		}
+
+		unitPrice, err := validateUploadPOUnitPrice(unitPriceStr)
+		if err != nil {
+			batchError.AddLocation(fmt.Sprintf("row %d", rowNumber), err.Error())
+			foundRowError = true
+		}
+
+		if foundRowError {
+			continue
+		}
+
+		// Add valid item
+		items = append(items, importPurchaseOrderItem{
+			rowNumber:   rowNumber,
+			productName: productName,
+			unitName:    unitName,
+			quantity:    quantity,
+			unitPrice:   unitPrice,
+		})
+	}
+
+	if batchError.HasErrors() {
+		return nil, batchError
+	}
+
+	if len(items) == 0 {
+		return nil, pkg.ErrEmptyDataFile()
+	}
+
+	log.WithFields(logrus.Fields{
+		"operation":      "parseSheetData",
+		"sheet_name":     sheetName,
+		"inventory_name": inventoryName,
+		"supplier_name":  supplierName,
+		"order_date":     orderDate,
+		"items_count":    len(items),
+	}).Debug("Successfully parsed sheet data")
+
+	return &importPurchaseOrderData{
+		inventoryName: inventoryName,
+		orderDate:     orderDate,
+		supplierName:  supplierName,
+		items:         items,
+	}, nil
+}
+
+// validateUploadPOUnitPrice validates the unit price of a row in the upload purchase order file
+func validateUploadPOUnitPrice(unitPriceStr string) (float64, error) {
+	if unitPriceStr == "" {
+		return 0, fmt.Errorf("Unit price is required")
+	}
+
+	unitPrice, err := strconv.ParseFloat(unitPriceStr, 64)
+	if err != nil {
+		return 0, fmt.Errorf("Invalid unit price format: %s", unitPriceStr)
+	}
+
+	if unitPrice < 0 {
+		return 0, fmt.Errorf("Unit price cannot be negative")
+	}
+
+	return unitPrice, nil
+}
+
+func validateUploadPOQuantity(quantityStr string) (decimal.Decimal, error) {
+	if quantityStr == "" {
+		return decimal.Zero, fmt.Errorf("Quantity is required")
+	}
+
+	quantity, err := decimal.NewFromString(quantityStr)
+	if err != nil {
+		return decimal.Zero, fmt.Errorf("Invalid quantity format: %s", quantityStr)
+	}
+
+	if quantity.LessThanOrEqual(decimal.Zero) {
+		return decimal.Zero, fmt.Errorf("Quantity must be greater than zero")
+	}
+
+	return quantity, nil
+}
+
+// validateAllSheets validates all sheets in an XLSX file (format validation only, no DB lookups)
+func (s *purchaseOrderService) validateAllSheets(filePath string) ([]dto.SheetValidationResult, error) {
+	log.WithFields(logrus.Fields{
+		"operation": "validateAllSheets",
+		"file_path": filePath,
+	}).Info("Validating all sheets in file")
+
+	// Open Excel file
+	f, err := excelize.OpenFile(filePath)
+	if err != nil {
+		return nil, pkg.ErrValidation("failed to open Excel file", err)
+	}
+	defer f.Close()
+
+	// Get all sheet names
+	sheets := f.GetSheetList()
+	if len(sheets) == 0 {
+		return nil, pkg.ErrValidation("Excel file has no sheets", nil)
+	}
+
+	results := make([]dto.SheetValidationResult, 0, len(sheets))
+
+	// Validate each sheet
+	for _, sheetName := range sheets {
+		result := dto.SheetValidationResult{
+			SheetName: sheetName,
+		}
+
+		// Try to parse the sheet
+		data, err := s.parseSheetData(filePath, sheetName)
+		if err != nil {
+			// Format validation failed
+			result.IsValid = false
+
+			// Check if it's a BatchError with structured errors
+			var batchErr *pkg.BatchError
+			if errors.As(err, &batchErr) {
+				// Use the BatchError directly
+				result.Error = batchErr
+			} else {
+				// Single error - wrap in BatchError
+				batchError := pkg.NewBatchError(pkg.ErrorCodeValidation, "Sheet validation failed", err)
+				batchError.AddLocation("sheet", err.Error())
+				result.Error = batchError
+			}
+		} else {
+			// Format validation succeeded - extract preview
+			result.IsValid = true
+			result.Preview = &dto.SheetPreview{
+				InventoryName: data.inventoryName,
+				OrderDate:     data.orderDate.Format("2006-01-02"),
+				SupplierName:  data.supplierName,
+				ItemsCount:    len(data.items),
+			}
+		}
+
+		results = append(results, result)
+	}
+
+	log.WithFields(logrus.Fields{
+		"operation":    "validateAllSheets",
+		"sheets_count": len(results),
+	}).Info("Completed validation of all sheets")
+
+	return results, nil
+}
+
+// parseAndValidateSheet parses and validates a specific sheet (both format and DB validation)
+func (s *purchaseOrderService) parseAndValidateSheet(ctx context.Context, filePath string, sheetName string) (*importPurchaseOrderData, error) {
+	log.WithFields(logrus.Fields{
+		"operation":  "parseAndValidateSheet",
+		"sheet_name": sheetName,
+	}).Info("Parsing and validating sheet")
+
+	// Parse sheet data (format validation)
+	data, err := s.parseSheetData(filePath, sheetName)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse sheet: %w", err)
+	}
+
+	// Validate entities exist in database (populates validated fields in data)
+	err = s.validateImportPurchaseOrderData(ctx, data)
+	if err != nil {
+		return nil, fmt.Errorf("failed to validate entities: %w", err)
+	}
+
+	log.WithFields(logrus.Fields{
+		"operation":       "parseAndValidateSheet",
+		"sheet_name":      sheetName,
+		"validated_items": len(data.items),
+	}).Info("Successfully parsed and validated sheet")
+
+	return data, nil
+}
+
+// validateImportPurchaseOrderData validates that all entities in import data exist in the database.
+func (s *purchaseOrderService) validateImportPurchaseOrderData(
+	ctx context.Context,
+	data *importPurchaseOrderData,
+) error {
+	log.WithFields(logrus.Fields{
+		"operation": "validateImportDataEntities",
+	}).Info("Validating import data entities")
+
+	batchError := pkg.ErrValidationBatchError()
+
+	// Validate inventory exists
+	inventory, err := s.inventoryRepo.GetByName(ctx, data.inventoryName)
+	if err != nil {
+		if err == gorm.ErrRecordNotFound {
+			batchError.AddLocation("inventory", fmt.Sprintf("Inventory not found: %s", data.inventoryName))
+		} else {
+			return fmt.Errorf("failed to lookup inventory: %w", err)
+		}
+	} else {
+		data.inventory = inventory
+	}
+
+	// Validate supplier exists
+	supplier, err := s.supplierRepo.GetByName(ctx, data.supplierName)
+	if err != nil {
+		if err == gorm.ErrRecordNotFound {
+			batchError.AddLocation("supplier", fmt.Sprintf("Supplier not found: %s", data.supplierName))
+		} else {
+			return fmt.Errorf("failed to lookup supplier: %w", err)
+		}
+	} else {
+		data.supplier = supplier
+	}
+
+	// Collect all unique product names and unit names
+	productNamesSet := make(map[string]bool)
+	unitNamesSet := make(map[string]bool)
+	for _, item := range data.items {
+		productNamesSet[item.productName] = true
+		unitNamesSet[item.unitName] = true
+	}
+
+	// Convert sets to slices
+	productNames := make([]string, 0, len(productNamesSet))
+	for name := range productNamesSet {
+		productNames = append(productNames, name)
+	}
+	unitNames := make([]string, 0, len(unitNamesSet))
+	for name := range unitNamesSet {
+		unitNames = append(unitNames, name)
+	}
+
+	// Bulk fetch all products by names (returns map[string]*models.Product)
+	productMap, err := s.productRepo.GetByNames(ctx, productNames)
+	if err != nil {
+		return fmt.Errorf("failed to bulk fetch products: %w", err)
+	}
+
+	// Bulk fetch all units by names (returns map[string]*models.Unit)
+	unitMap, err := s.unitRepo.GetByNames(ctx, unitNames)
+	if err != nil {
+		return fmt.Errorf("failed to bulk fetch units: %w", err)
+	}
+
+	// Validate each item and populate validated entities
+	itemsToRemove := make(map[int]bool) // Track items that failed validation
+	for i := range data.items {
+		item := &data.items[i]
+
+		// Validate product exists
+		product, exists := productMap[strings.ToLower(item.productName)]
+		if !exists {
+			batchError.AddLocation(fmt.Sprintf("row %d", item.rowNumber), fmt.Sprintf("Product not found: %s", item.productName))
+			itemsToRemove[i] = true
+			continue
+		}
+
+		// Validate unit exists
+		unit, exists := unitMap[strings.ToLower(item.unitName)]
+		if !exists {
+			batchError.AddLocation(fmt.Sprintf("row %d", item.rowNumber), fmt.Sprintf("Unit not found: %s", item.unitName))
+			itemsToRemove[i] = true
+			continue
+		}
+
+		// Validate unit compatibility with product
+		productBaseUnitID, err := s.getBaseUnitID(ctx, product.UnitID)
+		if err != nil {
+			return fmt.Errorf("row %d: failed to get product base unit: %w", item.rowNumber, err)
+		}
+
+		itemBaseUnitID, err := s.getBaseUnitID(ctx, unit.ID)
+		if err != nil {
+			return fmt.Errorf("row %d: failed to get item base unit: %w", item.rowNumber, err)
+		}
+
+		if itemBaseUnitID != productBaseUnitID {
+			batchError.AddLocation(fmt.Sprintf("row %d", item.rowNumber),
+				fmt.Sprintf("Unit %s is not compatible with product %s (different base units)",
+					item.unitName, item.productName))
+			itemsToRemove[i] = true
+			continue
+		}
+
+		// Populate validated entities
+		item.product = product
+		item.unit = unit
+	}
+
+	// If there are validation errors, return them all
+	if batchError.HasErrors() {
+		log.WithFields(logrus.Fields{
+			"operation":   "validateImportDataEntities",
+			"error_count": len(batchError.Locations),
+			"errors":      batchError.Locations,
+		}).Error("Entity validation failed")
+		return batchError
+	}
+
+	// Ensure we have at least one valid item after validation
+	validItemCount := len(data.items) - len(itemsToRemove)
+	if validItemCount == 0 {
+		return pkg.ErrValidation("no valid items found after validation", nil)
+	}
+
+	log.WithFields(logrus.Fields{
+		"operation":       "validateImportDataEntities",
+		"validated_items": validItemCount,
+	}).Info("Successfully validated import data entities")
+
+	return nil
+}
+
+// UploadAndValidatePurchaseOrderFile handles file upload and validation
+func (s *purchaseOrderService) UploadAndValidatePurchaseOrderFile(ctx context.Context, file multipart.File, filename string, fileStorageService FileStorageService) (*dto.UploadPurchaseOrderFileResponse, error) {
+	log.WithFields(logrus.Fields{
+		"operation": "UploadAndValidatePurchaseOrderFile",
+		"filename":  filename,
+	}).Info("Uploading and validating purchase order file")
+
+	// Save file
+	fileUID, extension, err := fileStorageService.SaveFile(ctx, file, filename, pkg.FileCategoryPurchaseOrder)
+	if err != nil {
+		return nil, fmt.Errorf("failed to save file: %w", err)
+	}
+
+	// Get file path for validation
+	filePath, err := fileStorageService.GetFilePath(ctx, fileUID, extension, pkg.FileCategoryPurchaseOrder)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get file path: %w", err)
+	}
+
+	// Validate all sheets
+	sheetResults, err := s.validateAllSheets(filePath)
+	if err != nil {
+		// Clean up file if validation completely fails
+		fileStorageService.DeleteFile(ctx, fileUID, extension, pkg.FileCategoryPurchaseOrder)
+		return nil, fmt.Errorf("failed to validate sheets: %w", err)
+	}
+
+	response := &dto.UploadPurchaseOrderFileResponse{
+		FileUID:       fileUID,
+		FileName:      filename,
+		FileExtension: extension,
+		UploadedAt:    time.Now(),
+		Sheets:        sheetResults,
+	}
+
+	log.WithFields(logrus.Fields{
+		"operation":    "UploadAndValidatePurchaseOrderFile",
+		"file_uid":     fileUID,
+		"sheets_count": len(sheetResults),
+	}).Info("Successfully uploaded and validated file")
+
+	return response, nil
+}
+
+// ProcessImportPurchaseOrder processes an uploaded file and creates a purchase order
+func (s *purchaseOrderService) ProcessImportPurchaseOrder(ctx context.Context, fileUID string, extension string, sheetName string, fileStorageService FileStorageService) (*models.PurchaseOrder, error) {
+	ctx, span := pkg.Tracer.Start(ctx, "purchaseOrderService.ProcessImportPurchaseOrder")
+	defer span.End()
+
+	log.WithFields(logrus.Fields{
+		"operation":  "ProcessImportPurchaseOrder",
+		"file_uid":   fileUID,
+		"sheet_name": sheetName,
+	}).Info("Processing purchase order import")
+
+	// Get file path
+	filePath, err := fileStorageService.GetFilePath(ctx, fileUID, extension, pkg.FileCategoryPurchaseOrder)
+	if err != nil {
+		return nil, err
+	}
+
+	// Parse and validate the specific sheet
+	validated, err := s.parseAndValidateSheet(ctx, filePath, sheetName)
+	if err != nil {
+		log.WithFields(logrus.Fields{
+			"operation":  "ProcessImportPurchaseOrder",
+			"sheet_name": sheetName,
+			"error":      err,
+		}).Error("Failed to parse and validate sheet")
+		return nil, err
+	}
+
+	// Map validated data to PurchaseOrder model
+	purchaseOrder := &models.PurchaseOrder{
+		InventoryID: &validated.inventory.ID,
+		Items:       make([]*models.PurchaseOrderItem, 0, len(validated.items)),
+	}
+
+	// Add items
+	for _, item := range validated.items {
+		productID := item.product.ID
+		supplierID := validated.supplier.ID
+		unitID := item.unit.ID
+
+		purchaseOrder.Items = append(purchaseOrder.Items, &models.PurchaseOrderItem{
+			ProductID:  &productID,
+			SupplierID: &supplierID,
+			UnitID:     &unitID,
+			Quantity:   item.quantity,
+			UnitPrice:  item.unitPrice,
+		})
+	}
+
+	// Create the purchase order using existing CreatePurchaseOrder method
+	err = s.CreatePurchaseOrder(ctx, purchaseOrder)
+	if err != nil {
+		log.WithFields(logrus.Fields{
+			"operation": "ProcessImportPurchaseOrder",
+			"error":     err,
+		}).Error("Failed to create purchase order from import")
+		return nil, fmt.Errorf("failed to create purchase order: %w", err)
+	}
+
+	log.WithFields(logrus.Fields{
+		"operation":         "ProcessImportPurchaseOrder",
+		"purchase_order_id": purchaseOrder.ID,
+		"order_number":      purchaseOrder.OrderNumber,
+		"items_count":       len(purchaseOrder.Items),
+		"total_amount":      purchaseOrder.TotalAmount,
+	}).Info("Successfully processed purchase order import")
+
+	return purchaseOrder, nil
 }

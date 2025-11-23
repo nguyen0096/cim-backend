@@ -39,11 +39,20 @@ func ErrForbidden(message string, cause error) *AppError {
 
 // ErrValidation creates an error for validation failures
 func ErrValidation(message string, cause error) *AppError {
-	return NewAppError(
+	err := NewAppError(
 		ErrorCodeValidation,
-		fmt.Sprintf("Validation failed: %s", message),
+		"Dữ liệu không hợp lệ",
 		cause,
 	)
+	if message != "" {
+		err.Message += fmt.Sprintf(": %s", message)
+	}
+	return err
+}
+
+func ErrValidationBatchError() *BatchError {
+	err := NewBatchError(ErrorCodeValidation, "Dữ liệu không hợp lệ", nil)
+	return err
 }
 
 // ErrDuplicate creates an error for duplicate resources
@@ -92,4 +101,12 @@ func ErrConsumeFIFOFailed(message string) *AppError {
 // ErrNoApprovedPaymentReceiptForm creates an error for missing approved payment receipt form
 func ErrNoApprovedPaymentReceiptForm() *AppError {
 	return NewAppError(ErrorCodePurchaseOrderNoApprovedPaymentReceipt, "Không thể hoàn thành đơn hàng: không tìm thấy phiếu thu chi đã được duyệt", nil)
+}
+
+func ErrUnsupportedFileFormat(fileType string) *AppError {
+	return NewAppError(ErrorCodeUnsupportedFileFormat, fmt.Sprintf("Định dạng file %s không được hỗ trợ. Định dạng file hợp lệ: .csv, .xlsx, .xls", fileType), nil)
+}
+
+func ErrEmptyDataFile() *AppError {
+	return NewAppError(ErrorCodeEmptyDataFile, "File không có dữ liệu", nil)
 }
