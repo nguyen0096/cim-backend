@@ -3,6 +3,7 @@ package repository
 import (
 	"cim-backend/internal/models"
 	"context"
+	"fmt"
 	"strings"
 
 	"gorm.io/gorm"
@@ -93,7 +94,31 @@ func (r *productRepository) GetByNames(ctx context.Context, names []string) (map
 }
 
 func (r *productRepository) Update(ctx context.Context, product *models.Product) error {
-	return r.db.WithContext(ctx).Save(product).Error
+	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		// Load the existing product into transaction context
+		var existingProduct models.Product
+		if err := tx.First(&existingProduct, product.ID).Error; err != nil {
+			return fmt.Errorf("failed to find product: %w", err)
+		}
+
+		// Update product fields (excluding Suppliers)
+		if err := tx.Model(&existingProduct).Omit("Suppliers").Updates(map[string]interface{}{
+			"name":         product.Name,
+			"description":  product.Description,
+			"product_type": product.ProductType,
+			"unit_id":      product.UnitID,
+			"status":       product.Status,
+		}).Error; err != nil {
+			return fmt.Errorf("failed to update product: %w", err)
+		}
+
+		// Replace suppliers association
+		if err := tx.Model(&existingProduct).Association("Suppliers").Replace(product.Suppliers); err != nil {
+			return fmt.Errorf("failed to update product suppliers: %w", err)
+		}
+
+		return nil
+	})
 }
 
 // UpdateStatus updates the status of a product

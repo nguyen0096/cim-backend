@@ -391,7 +391,6 @@ func (h *ProductHandler) UpdateProduct(c echo.Context) error {
 		Status      string `json:"status" validate:"required,oneof=active inactive"`
 		SupplierIDs []uint `json:"supplier_ids"`
 	}
-
 	if err := c.Bind(&request); err != nil {
 		logger.WithError(err).WithField("product_id", id).Error("Failed to bind request body")
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid request body"})
@@ -410,14 +409,12 @@ func (h *ProductHandler) UpdateProduct(c echo.Context) error {
 		Status:      request.Status,
 	}
 
-	// Add suppliers if IDs provided
-	if len(request.SupplierIDs) > 0 {
-		suppliers := make([]*models.Supplier, len(request.SupplierIDs))
-		for i, sid := range request.SupplierIDs {
-			suppliers[i] = &models.Supplier{Base: models.Base{ID: sid}}
-		}
-		product.Suppliers = suppliers
+	// Always set suppliers (even if empty array, to remove all suppliers)
+	suppliers := make([]*models.Supplier, len(request.SupplierIDs))
+	for i, sid := range request.SupplierIDs {
+		suppliers[i] = &models.Supplier{Base: models.Base{ID: sid}}
 	}
+	product.Suppliers = suppliers
 
 	logger.WithFields(logrus.Fields{
 		"product_id":   id,
