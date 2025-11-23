@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"strings"
 	"time"
 
 	firebaseAuth "firebase.google.com/go/v4/auth"
@@ -114,12 +115,30 @@ func (c *Client) MakeRequest(
 		bodyReader = bytes.NewBuffer(jsonData)
 	}
 
-	url, err := url.JoinPath(c.BaseURL, path)
-	if err != nil {
-		Fail("failed to join path: " + err.Error())
+	// Parse path to separate actual path from query string
+	pathOnly := path
+	var rawQuery string
+	if idx := strings.Index(path, "?"); idx != -1 {
+		pathOnly = path[:idx]
+		rawQuery = path[idx+1:]
 	}
 
-	req, err := http.NewRequest(method, url, bodyReader)
+	baseURL, err := url.Parse(c.BaseURL)
+	if err != nil {
+		Fail("failed to parse base URL: " + err.Error())
+	}
+
+	pathURL, err := url.Parse(pathOnly)
+	if err != nil {
+		Fail("failed to parse path: " + err.Error())
+	}
+
+	fullURL := baseURL.ResolveReference(pathURL)
+	if rawQuery != "" {
+		fullURL.RawQuery = rawQuery
+	}
+
+	req, err := http.NewRequest(method, fullURL.String(), bodyReader)
 	if err != nil {
 		Fail("failed to create request: " + err.Error())
 	}
