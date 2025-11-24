@@ -1,6 +1,7 @@
 package apptest
 
 import (
+	"cim-backend/internal/config"
 	"cim-backend/internal/models"
 	"cim-backend/pkg"
 	"cim-backend/pkg/testutil"
@@ -15,6 +16,7 @@ import (
 	. "github.com/onsi/gomega"
 	"github.com/r3labs/sse/v2"
 	"github.com/shopspring/decimal"
+	"gorm.io/datatypes"
 )
 
 // Helper functions for SSE testing
@@ -332,6 +334,75 @@ var _ = Describe("Payment Receipt Form API", func() {
 				expectedFormNumber := fmt.Sprintf("%s-%d-%d", expectedDatePrefix, expectedInventoryID, i+1)
 				Expect(formNumber).To(Equal(expectedFormNumber), "Form number should be incremental")
 			}
+		})
+
+		It("should use finalized date from settings when generating form number", func() {
+			ctx := pkg.WithUserEmail(context.Background(), "test@cim.local")
+			tenv.DB.WithContext(ctx).Exec("DELETE FROM payment_receipt_forms")
+
+			adminClient := testutil.NewClient(tenv, models.RoleAdmin)
+
+			// Set finalized date in settings (different from form date)
+			finalizedDate := time.Now().AddDate(0, 0, -5) // 5 days ago
+			finalizedDateJSON, err := json.Marshal(finalizedDate)
+			Expect(err).NotTo(HaveOccurred())
+
+			setting := models.Settings{
+				Key:   config.LastFinalizedDateSettingsKey,
+				Value: datatypes.JSON(finalizedDateJSON),
+			}
+			err = tenv.DB.WithContext(ctx).Save(&setting).Error
+			Expect(err).NotTo(HaveOccurred())
+			DeferCleanup(func() {
+				cleanupCtx := pkg.WithUserEmail(context.Background(), "test@cim.local")
+				tenv.DB.WithContext(cleanupCtx).Where("key = ?", config.LastFinalizedDateSettingsKey).Delete(&models.Settings{})
+			})
+
+			// Create a form with a different date (today)
+			formDate := time.Now()
+			form := models.PaymentReceiptForm{
+				PurchaseOrderID: testPurchaseOrder.ID,
+				FullName:        "Test Form",
+				Date:            formDate,
+				Department:      "Test Department",
+				Details:         "Test form with finalized date",
+				TotalAmount:     1000,
+				Status:          models.PaymentReceiptFormStatusPending,
+			}
+			err = tenv.DB.WithContext(ctx).Create(&form).Error
+			Expect(err).NotTo(HaveOccurred())
+			DeferCleanup(func() {
+				cleanupCtx := pkg.WithUserEmail(context.Background(), "test@cim.local")
+				tenv.DB.WithContext(cleanupCtx).Delete(&models.PaymentReceiptForm{}, form.ID)
+			})
+
+			// Approve the form
+			approveURL := fmt.Sprintf("/api/v1/payment-receipt-forms/%d/approve", form.ID)
+			approveResp, err := adminClient.MakeRequest("PUT", approveURL, nil, testutil.WithAuth())
+			Expect(err).NotTo(HaveOccurred())
+			Expect(approveResp.StatusCode).To(Equal(200))
+
+			// Fetch the approved form to verify form number
+			getURL := fmt.Sprintf("/api/v1/payment-receipt-forms/%d", form.ID)
+			getResp, err := adminClient.MakeRequest("GET", getURL, nil, testutil.WithAuth())
+			Expect(err).NotTo(HaveOccurred())
+			Expect(getResp.StatusCode).To(Equal(200))
+
+			formResp := testutil.ParseResponse(getResp)
+			formNumber, ok := formResp["form_number"].(string)
+			Expect(ok).To(BeTrue(), "form_number should be a string")
+			Expect(formNumber).NotTo(BeEmpty(), "form_number should not be empty")
+
+			// Verify form number uses finalized date from settings, not form.Date
+			expectedDatePrefix := finalizedDate.Format("20060102")
+			expectedInventoryID := *testPurchaseOrder.InventoryID
+			expectedFormNumber := fmt.Sprintf("%s-%d-1", expectedDatePrefix, expectedInventoryID)
+			Expect(formNumber).To(Equal(expectedFormNumber), "Form number should use finalized date from settings, not form date")
+
+			// Verify it's NOT using form.Date
+			formDatePrefix := formDate.Format("20060102")
+			unexpectedFormNumber := fmt.Sprintf("%s-%d-1", formDatePrefix, expectedInventoryID)
+			Expect(formNumber).NotTo(Equal(unexpectedFormNumber), "Form number should NOT use form.Date")
 		})
 	})
 })

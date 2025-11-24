@@ -19,7 +19,7 @@ type PaymentReceiptFormRepository interface {
 	GetByID(ctx context.Context, id uint) (*models.PaymentReceiptForm, error)
 	GetByIDFull(ctx context.Context, id uint) (*models.PaymentReceiptForm, error)
 	GetByIDsFull(ctx context.Context, ids []uint) ([]*models.PaymentReceiptForm, error)
-	List(ctx context.Context, req *dto.PaymentReceiptFormListRequest) ([]models.PaymentReceiptForm, int64, error)
+	List(ctx context.Context, req *dto.PaymentReceiptFormListRequest, preloads ...string) ([]models.PaymentReceiptForm, int64, error)
 	Update(ctx context.Context, form *models.PaymentReceiptForm) error
 	Delete(ctx context.Context, id uint) error
 	DeletePermanently(ctx context.Context, id uint) error
@@ -96,12 +96,14 @@ func (r *paymentReceiptFormRepository) GetByIDsFull(ctx context.Context, ids []u
 }
 
 // List retrieves a paginated list of payment receipt forms
-func (r *paymentReceiptFormRepository) List(ctx context.Context, req *dto.PaymentReceiptFormListRequest) ([]models.PaymentReceiptForm, int64, error) {
+func (r *paymentReceiptFormRepository) List(ctx context.Context, req *dto.PaymentReceiptFormListRequest, preloads ...string) ([]models.PaymentReceiptForm, int64, error) {
 	var forms []models.PaymentReceiptForm
 	var total int64
 
 	query := r.db.WithContext(ctx).Model(&models.PaymentReceiptForm{}).Preload("PurchaseOrder").Preload("PurchaseOrder.Inventory")
-
+	for _, preload := range preloads {
+		query = query.Preload(preload)
+	}
 	// Apply purchase order filter if provided
 	if req.PurchaseOrderID != 0 {
 		query = query.Where("payment_receipt_forms.purchase_order_id = ?", req.PurchaseOrderID)

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"time"
 
+	"cim-backend/internal/config"
 	"cim-backend/internal/models"
 	"cim-backend/internal/repository"
 	"cim-backend/internal/services/dto"
@@ -29,16 +30,19 @@ type PaymentReceiptFormService interface {
 type paymentReceiptFormService struct {
 	paymentReceiptFormRepo repository.PaymentReceiptFormRepository
 	db                     *gorm.DB
+	settingsService        SettingsService
 }
 
 // NewPaymentReceiptFormService creates a new payment receipt form service
 func NewPaymentReceiptFormService(
 	paymentReceiptFormRepo repository.PaymentReceiptFormRepository,
 	db *gorm.DB,
+	settingsService SettingsService,
 ) PaymentReceiptFormService {
 	return &paymentReceiptFormService{
 		paymentReceiptFormRepo: paymentReceiptFormRepo,
 		db:                     db,
+		settingsService:        settingsService,
 	}
 }
 
@@ -204,7 +208,19 @@ func (s *paymentReceiptFormService) ApprovePaymentReceiptForm(ctx context.Contex
 	}
 
 	form.Status = models.PaymentReceiptFormStatusApproved
-	formNumber, err := s.generateNextFormNumber(ctx, form.Date, *form.PurchaseOrder.InventoryID)
+
+	// Get finalized date from settings
+	var finalizedDate time.Time
+	if err := s.settingsService.GetSettingValue(ctx, config.LastFinalizedDateSettingsKey, &finalizedDate); err != nil {
+		// If no finalized date is set, use form.Date as fallback
+		finalizedDate = form.Date
+	}
+
+	if finalizedDate.IsZero() {
+		finalizedDate = form.Date
+	}
+
+	formNumber, err := s.generateNextFormNumber(ctx, finalizedDate, *form.PurchaseOrder.InventoryID)
 	if err != nil {
 		return fmt.Errorf("failed to generate form number: %w", err)
 	}

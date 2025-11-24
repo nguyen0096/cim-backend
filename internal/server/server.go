@@ -59,7 +59,7 @@ func SetupServer(
 	excelService := services.NewExcelService(productRepo, inventoryRepo, settingsService)
 	fileStorageService := services.NewFileStorageService(cfg)
 	purchaseOrderService := services.NewPurchaseOrderService(purchaseOrderRepo, paymentReceiptFormRepo, unitRepo, productRepo, inventoryService, excelService, settingsService, db, supplierRepo, inventoryRepo, unitService, productService)
-	paymentReceiptFormService := services.NewPaymentReceiptFormService(paymentReceiptFormRepo, db)
+	paymentReceiptFormService := services.NewPaymentReceiptFormService(paymentReceiptFormRepo, db, settingsService)
 
 	// Initialize handlers
 	userHandler := handlers.NewUserHandler(userService, firebaseAuth)
