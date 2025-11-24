@@ -379,14 +379,6 @@ func (s *purchaseOrderService) UpdatePurchaseOrderStatus(ctx context.Context, id
 			}).Warn("Cannot complete purchase order: no approved payment receipt form found")
 			return pkg.ErrNoApprovedPaymentReceiptForm(ctx)
 		}
-
-		// Extract form IDs for queueing
-		formIDs := make([]uint, len(forms))
-		for i, form := range forms {
-			formIDs[i] = form.ID
-		}
-
-		go s.queueRevenueExpenseRequest(formIDs)
 	}
 
 	err := s.purchaseOrderRepo.UpdateStatus(ctx, id, status)
@@ -1153,7 +1145,7 @@ func (s *purchaseOrderService) createExpenseData(paymentReceiptForms []*models.P
 		}
 
 		productType := paymentReceiptForm.PurchaseOrder.Items[0].Product.ProductType
-		header, color := s.getHeaderAndColorFromProductType(productType)
+		header, color := s.excelService.GetHeaderAndColorFromProductType(productType)
 		expenseData[header] = paymentReceiptForm.TotalAmount
 
 		ordinalNumber, err := strconv.Atoi(strings.Split(*paymentReceiptForm.FormNumber, "-")[2])
@@ -1174,23 +1166,6 @@ func (s *purchaseOrderService) createExpenseData(paymentReceiptForms []*models.P
 	}
 
 	return expensesData, cellColors
-}
-
-// mapProductTypeToExpense maps product type to expense category and color
-func (s *purchaseOrderService) getHeaderAndColorFromProductType(productType string) (header string, color string) {
-	switch strings.ToLower(productType) {
-	case "cơm":
-		header = pkg.RevenueExpenseColumnSnackAndRice
-		color = pkg.RevenueExpenseColumnSnackAndRiceColor
-	case "ăn nhẹ":
-		header = pkg.RevenueExpenseColumnSnackAndRice
-		color = pkg.RevenueExpenseColumnSnackAndRiceColor
-	case "nước":
-		header = pkg.RevenueExpenseColumnWater
-		color = pkg.RevenueExpenseColumnWaterColor
-	}
-
-	return
 }
 
 // UpdatePurchaseOrder updates a purchase order while preserving ReceivedQuantity

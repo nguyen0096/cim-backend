@@ -238,13 +238,10 @@ func (r *revenueExpenseGoogleSheetsRepository) AddNewDateRow(ctx context.Context
 
 	// Get the date format from the last date row
 	_, detectedDateFormat := FindLastTransactionDateInfo(rows, headerRow, date)
-	lastRow, lastRowIndex, err := r.FindLastTransactionRow(rows)
+	_, lastRowIndex, err := r.FindLastTransactionRow(rows)
 	if err != nil {
 		return fmt.Errorf("failed to find last transaction row: %w", err)
 	}
-
-	fmt.Printf("lastRow: %v\n", lastRow)
-	fmt.Printf("lastRowIndex: %v\n", lastRowIndex)
 
 	// Calculate the target row (append at the end)
 	targetRow := lastRowIndex + 1

@@ -39,6 +39,27 @@ const (
 	// File Error Keys
 	ErrKeyUnsupportedFileFormat = "unsupported_file_format"
 	ErrKeyEmptyDataFile         = "empty_data_file"
+
+	// Revenue Expense Error Keys
+	ErrKeyInvalidRequestBody                  = "invalid_request_body"
+	ErrKeyValidationFailed                    = "validation_failed"
+	ErrKeyFailedToFinalizeRevenueExpense      = "failed_to_finalize_revenue_expense"
+	ErrKeyFailedToSetLastFinalizedDate        = "failed_to_set_last_finalized_date"
+	ErrKeyFailedToGetRevenueExpenseSettings   = "failed_to_get_revenue_expense_settings"
+	ErrKeyRevenueExpenseSettingsNotConfigured = "revenue_expense_settings_not_configured"
+	ErrKeyFailedToParseRevenueExpenseSettings = "failed_to_parse_revenue_expense_settings"
+	ErrKeyFilePathNotFoundInSettings          = "file_path_not_found_in_settings"
+	ErrKeySheetNameNotFoundInSettings         = "sheet_name_not_found_in_settings"
+	ErrKeyFailedToQueryPaymentReceiptForms    = "failed_to_query_payment_receipt_forms"
+	ErrKeyInvalidGoogleSheetsURL              = "invalid_google_sheets_url"
+	ErrKeyServiceAccountNotConfigured         = "service_account_not_configured"
+	ErrKeyFailedToInitializeGoogleSheetsRepo  = "failed_to_initialize_google_sheets_repo"
+	ErrKeyFailedToGetLastTransactionDate      = "failed_to_get_last_transaction_date"
+	ErrKeyFailedToAddNewDateRowGoogleSheets   = "failed_to_add_new_date_row_google_sheets"
+	ErrKeyFailedToAddExpensesToGoogleSheets   = "failed_to_add_expenses_to_google_sheets"
+	ErrKeyFailedToInitializeExcelRepo         = "failed_to_initialize_excel_repo"
+	ErrKeyFailedToAddNewDateRowExcel          = "failed_to_add_new_date_row_excel"
+	ErrKeyFailedToAddExpensesToExcel          = "failed_to_add_expenses_to_excel"
 )
 
 // ErrorMessages maps error keys to multilingual messages
@@ -114,6 +135,83 @@ var ErrorMessages = map[string]ErrorMessage{
 	ErrKeyEmptyDataFile: {
 		EN: "File has no data",
 		VI: "File không có dữ liệu",
+	},
+	// Revenue Expense Errors
+	ErrKeyInvalidRequestBody: {
+		EN: "Invalid request format",
+		VI: "Định dạng yêu cầu không hợp lệ",
+	},
+	ErrKeyValidationFailed: {
+		EN: "Validation failed",
+		VI: "Dữ liệu không hợp lệ",
+	},
+	ErrKeyFailedToFinalizeRevenueExpense: {
+		EN: "Failed to finalize revenue expense",
+		VI: "Không thể hoàn tất thu chi",
+	},
+	ErrKeyFailedToSetLastFinalizedDate: {
+		EN: "Failed to set last finalized date",
+		VI: "Không thể cập nhật ngày hoàn tất cuối cùng",
+	},
+	ErrKeyFailedToGetRevenueExpenseSettings: {
+		EN: "Failed to get revenue expense settings",
+		VI: "Không thể lấy cài đặt thu chi",
+	},
+	ErrKeyRevenueExpenseSettingsNotConfigured: {
+		EN: "Revenue expense settings not configured",
+		VI: "Cài đặt thu chi chưa được cấu hình",
+	},
+	ErrKeyFailedToParseRevenueExpenseSettings: {
+		EN: "Failed to parse revenue expense settings",
+		VI: "Không thể phân tích cài đặt thu chi",
+	},
+	ErrKeyFilePathNotFoundInSettings: {
+		EN: "File path not found in revenue expense settings",
+		VI: "Không tìm thấy đường dẫn file trong cài đặt thu chi",
+	},
+	ErrKeySheetNameNotFoundInSettings: {
+		EN: "Sheet name not found in revenue expense settings",
+		VI: "Không tìm thấy tên sheet trong cài đặt thu chi",
+	},
+	ErrKeyFailedToQueryPaymentReceiptForms: {
+		EN: "Failed to query payment receipt forms for date %s",
+		VI: "Không thể truy vấn phiếu thu chi cho ngày %s",
+	},
+	ErrKeyInvalidGoogleSheetsURL: {
+		EN: "Invalid Google Sheets URL",
+		VI: "URL Google Sheets không hợp lệ",
+	},
+	ErrKeyServiceAccountNotConfigured: {
+		EN: "Service account file path not configured",
+		VI: "Đường dẫn file service account chưa được cấu hình",
+	},
+	ErrKeyFailedToInitializeGoogleSheetsRepo: {
+		EN: "Failed to initialize Google Sheets repository",
+		VI: "Không thể khởi tạo repository Google Sheets",
+	},
+	ErrKeyFailedToGetLastTransactionDate: {
+		EN: "Failed to get last transaction date",
+		VI: "Không thể lấy ngày giao dịch cuối cùng",
+	},
+	ErrKeyFailedToAddNewDateRowGoogleSheets: {
+		EN: "Failed to add new date row to Google Sheets",
+		VI: "Không thể thêm dòng ngày mới vào Google Sheets",
+	},
+	ErrKeyFailedToAddExpensesToGoogleSheets: {
+		EN: "Failed to add expenses to Google Sheets",
+		VI: "Không thể thêm chi phí vào Google Sheets",
+	},
+	ErrKeyFailedToInitializeExcelRepo: {
+		EN: "Failed to initialize Excel repository",
+		VI: "Không thể khởi tạo repository Excel",
+	},
+	ErrKeyFailedToAddNewDateRowExcel: {
+		EN: "Failed to add new date row to Excel",
+		VI: "Không thể thêm dòng ngày mới vào Excel",
+	},
+	ErrKeyFailedToAddExpensesToExcel: {
+		EN: "Failed to add expenses to Excel",
+		VI: "Không thể thêm chi phí vào Excel",
 	},
 }
 
@@ -318,4 +416,121 @@ func ErrUnitAlreadyExists(ctx context.Context, unitName, unitType string) *AppEr
 	template := getErrorMessage(ctx, ErrKeyUnitAlreadyExists)
 	message := fmt.Sprintf(template, unitName, unitType)
 	return NewAppError(ErrorCodeDuplicate, message, nil)
+}
+
+// Revenue Expense Error Helpers
+
+// ErrInvalidRequestBodyI18n creates an i18n-aware error for invalid request body
+func ErrInvalidRequestBodyI18n(ctx context.Context, cause error) *AppError {
+	message := getErrorMessage(ctx, ErrKeyInvalidRequestBody)
+	return NewAppError(ErrorCodeInvalidRequestBody, message, cause)
+}
+
+// ErrValidationI18n creates an i18n-aware error for validation failures
+func ErrValidationI18n(ctx context.Context, cause error) *AppError {
+	message := getErrorMessage(ctx, ErrKeyValidationFailed)
+	return NewAppError(ErrorCodeValidation, message, cause)
+}
+
+// ErrFailedToFinalizeRevenueExpense creates an error for failed revenue expense finalization
+func ErrFailedToFinalizeRevenueExpense(ctx context.Context, cause error) *AppError {
+	message := getErrorMessage(ctx, ErrKeyFailedToFinalizeRevenueExpense)
+	return NewAppError(ErrorCodeInternal, message, cause)
+}
+
+// ErrFailedToSetLastFinalizedDate creates an error for failed to set last finalized date
+func ErrFailedToSetLastFinalizedDate(ctx context.Context, cause error) *AppError {
+	message := getErrorMessage(ctx, ErrKeyFailedToSetLastFinalizedDate)
+	return NewAppError(ErrorCodeInternal, message, cause)
+}
+
+// ErrFailedToGetRevenueExpenseSettings creates an error for failed to get revenue expense settings
+func ErrFailedToGetRevenueExpenseSettings(ctx context.Context, cause error) *AppError {
+	message := getErrorMessage(ctx, ErrKeyFailedToGetRevenueExpenseSettings)
+	return NewAppError(ErrorCodeInternal, message, cause)
+}
+
+// ErrRevenueExpenseSettingsNotConfigured creates an error for revenue expense settings not configured
+func ErrRevenueExpenseSettingsNotConfigured(ctx context.Context) *AppError {
+	message := getErrorMessage(ctx, ErrKeyRevenueExpenseSettingsNotConfigured)
+	return NewAppError(ErrorCodeInternal, message, nil)
+}
+
+// ErrFailedToParseRevenueExpenseSettings creates an error for failed to parse revenue expense settings
+func ErrFailedToParseRevenueExpenseSettings(ctx context.Context, cause error) *AppError {
+	message := getErrorMessage(ctx, ErrKeyFailedToParseRevenueExpenseSettings)
+	return NewAppError(ErrorCodeInternal, message, cause)
+}
+
+// ErrFilePathNotFoundInSettings creates an error for file path not found in settings
+func ErrFilePathNotFoundInSettings(ctx context.Context) *AppError {
+	message := getErrorMessage(ctx, ErrKeyFilePathNotFoundInSettings)
+	return NewAppError(ErrorCodeInternal, message, nil)
+}
+
+// ErrSheetNameNotFoundInSettings creates an error for sheet name not found in settings
+func ErrSheetNameNotFoundInSettings(ctx context.Context) *AppError {
+	message := getErrorMessage(ctx, ErrKeySheetNameNotFoundInSettings)
+	return NewAppError(ErrorCodeInternal, message, nil)
+}
+
+// ErrFailedToQueryPaymentReceiptForms creates an error for failed to query payment receipt forms
+func ErrFailedToQueryPaymentReceiptForms(ctx context.Context, date string, cause error) *AppError {
+	template := getErrorMessage(ctx, ErrKeyFailedToQueryPaymentReceiptForms)
+	message := fmt.Sprintf(template, date)
+	return NewAppError(ErrorCodeInternal, message, cause)
+}
+
+// ErrInvalidGoogleSheetsURL creates an error for invalid Google Sheets URL
+func ErrInvalidGoogleSheetsURL(ctx context.Context, cause error) *AppError {
+	message := getErrorMessage(ctx, ErrKeyInvalidGoogleSheetsURL)
+	return NewAppError(ErrorCodeInternal, message, cause)
+}
+
+// ErrServiceAccountNotConfigured creates an error for service account not configured
+func ErrServiceAccountNotConfigured(ctx context.Context) *AppError {
+	message := getErrorMessage(ctx, ErrKeyServiceAccountNotConfigured)
+	return NewAppError(ErrorCodeInternal, message, nil)
+}
+
+// ErrFailedToInitializeGoogleSheetsRepo creates an error for failed to initialize Google Sheets repository
+func ErrFailedToInitializeGoogleSheetsRepo(ctx context.Context, cause error) *AppError {
+	message := getErrorMessage(ctx, ErrKeyFailedToInitializeGoogleSheetsRepo)
+	return NewAppError(ErrorCodeInternal, message, cause)
+}
+
+// ErrFailedToGetLastTransactionDate creates an error for failed to get last transaction date
+func ErrFailedToGetLastTransactionDate(ctx context.Context, cause error) *AppError {
+	message := getErrorMessage(ctx, ErrKeyFailedToGetLastTransactionDate)
+	return NewAppError(ErrorCodeInternal, message, cause)
+}
+
+// ErrFailedToAddNewDateRowGoogleSheets creates an error for failed to add new date row to Google Sheets
+func ErrFailedToAddNewDateRowGoogleSheets(ctx context.Context, cause error) *AppError {
+	message := getErrorMessage(ctx, ErrKeyFailedToAddNewDateRowGoogleSheets)
+	return NewAppError(ErrorCodeInternal, message, cause)
+}
+
+// ErrFailedToAddExpensesToGoogleSheets creates an error for failed to add expenses to Google Sheets
+func ErrFailedToAddExpensesToGoogleSheets(ctx context.Context, cause error) *AppError {
+	message := getErrorMessage(ctx, ErrKeyFailedToAddExpensesToGoogleSheets)
+	return NewAppError(ErrorCodeInternal, message, cause)
+}
+
+// ErrFailedToInitializeExcelRepo creates an error for failed to initialize Excel repository
+func ErrFailedToInitializeExcelRepo(ctx context.Context, cause error) *AppError {
+	message := getErrorMessage(ctx, ErrKeyFailedToInitializeExcelRepo)
+	return NewAppError(ErrorCodeInternal, message, cause)
+}
+
+// ErrFailedToAddNewDateRowExcel creates an error for failed to add new date row to Excel
+func ErrFailedToAddNewDateRowExcel(ctx context.Context, cause error) *AppError {
+	message := getErrorMessage(ctx, ErrKeyFailedToAddNewDateRowExcel)
+	return NewAppError(ErrorCodeInternal, message, cause)
+}
+
+// ErrFailedToAddExpensesToExcel creates an error for failed to add expenses to Excel
+func ErrFailedToAddExpensesToExcel(ctx context.Context, cause error) *AppError {
+	message := getErrorMessage(ctx, ErrKeyFailedToAddExpensesToExcel)
+	return NewAppError(ErrorCodeInternal, message, cause)
 }

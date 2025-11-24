@@ -5,6 +5,7 @@ import (
 	"cim-backend/internal/services"
 	"cim-backend/pkg"
 	"cim-backend/pkg/log"
+	"errors"
 	"net/http"
 	"time"
 
@@ -50,24 +51,20 @@ type FinalizeRevenueExpenseResponse struct {
 // @Security BearerAuth
 // @Router /revenue-expenses/finalize [post]
 func (h *RevenueExpenseHandler) FinalizeRevenueExpense(c echo.Context) error {
+	ctx := c.Request().Context()
 	var req FinalizeRevenueExpenseRequest
 
 	if err := c.Bind(&req); err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]string{
-			"error": "Invalid request format",
-		})
+		return pkg.ErrInvalidRequestBodyI18n(ctx, err)
 	}
 
 	// Validate request
 	if err := pkg.Validator.Struct(&req); err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]string{
-			"error":   "Validation failed",
-			"details": err.Error(),
-		})
+		return pkg.ErrValidationI18n(ctx, err)
 	}
 
 	var lastFinalizedDate time.Time
-	if err := h.settingsService.GetSettingValue(c.Request().Context(), config.LastFinalizedDateSettingsKey, &lastFinalizedDate); err != nil {
+	if err := h.settingsService.GetSettingValue(ctx, config.LastFinalizedDateSettingsKey, &lastFinalizedDate); err != nil {
 		log.WithFields(logrus.Fields{
 			"error":   err.Error(),
 			"details": "Failed to get last finalized date",
@@ -80,26 +77,19 @@ func (h *RevenueExpenseHandler) FinalizeRevenueExpense(c echo.Context) error {
 	}
 
 	// Call service to finalize
-	finalizedDate, err := h.excelService.FinalizeRevenueExpense(c.Request().Context(), lastFinalizedDate)
+	finalizedDate, err := h.excelService.FinalizeRevenueExpense(ctx, lastFinalizedDate, time.Now())
 	if err != nil {
-		if appErr, ok := err.(*pkg.AppError); ok {
-			return c.JSON(appErr.HTTPStatus(), map[string]string{
-				"error": appErr.Message,
-			})
+		// Check if error is already an AppError, return it directly
+		var appErr *pkg.AppError
+		if errors.As(err, &appErr) {
+			return err
 		}
-
-		return c.JSON(http.StatusInternalServerError, map[string]string{
-			"error":   "Failed to finalize revenue expense",
-			"details": err.Error(),
-		})
+		return pkg.ErrFailedToFinalizeRevenueExpense(ctx, err)
 	}
 
-	if err := h.settingsService.SetSetting(c.Request().Context(), config.LastFinalizedDateSettingsKey, *finalizedDate); err != nil {
-		return c.JSON(http.StatusInternalServerError, map[string]string{
-			"error":   "Failed to set last finalized date",
-			"details": err.Error(),
-		})
-	}
+	// if err := h.settingsService.SetSetting(ctx, config.LastFinalizedDateSettingsKey, *finalizedDate); err != nil {
+	// 	return pkg.ErrFailedToSetLastFinalizedDate(ctx, err)
+	// }
 
 	response := FinalizeRevenueExpenseResponse{
 		Message: "Revenue expense finalized successfully",

@@ -6,13 +6,18 @@ import (
 	"cim-backend/internal/repository"
 	"cim-backend/internal/repository/excel"
 	"cim-backend/internal/repository/googlesheets"
+	"cim-backend/internal/services/dto"
 	"cim-backend/pkg"
+	"cim-backend/pkg/log"
 	"context"
 	"encoding/json"
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
 	"time"
+
+	"github.com/sirupsen/logrus"
 )
 
 // FontConfig represents font styling configuration for Excel cells
@@ -151,26 +156,29 @@ type ExcelService interface {
 	AddExpenses(ctx context.Context, sheetName string, expensesData []map[string]interface{}, cellColors []string) error
 	GetRevenueExpenseSchema(ctx context.Context) *models.FileMetadata
 	VerifyFileAndSheet(ctx context.Context, filePath string, sheetName string) error
-	FinalizeRevenueExpense(ctx context.Context, date time.Time) (*time.Time, error)
+	FinalizeRevenueExpense(ctx context.Context, date time.Time, today time.Time) (*time.Time, error)
 	// Revenue/Expense Google Sheets operations
 	InitializeRevenueExpenseGoogleSheets(ctx context.Context, spreadsheetID string) error
 	AddExpensesToGoogleSheets(ctx context.Context, sheetName string, expensesData []map[string]interface{}, cellColors []string) error
 	VerifyGoogleSheetAndSheet(ctx context.Context, spreadsheetID string, sheetName string) error
+	GetHeaderAndColorFromProductType(productType string) (header string, color string)
 }
 
 type excelService struct {
 	productRepo                    repository.ProductRepository
 	inventoryRepo                  repository.InventoryRepository
+	paymentReceiptFormRepo         repository.PaymentReceiptFormRepository
 	revenueExpenseExcelRepo        excel.RevenueExpenseExcelRepository
 	revenueExpenseGoogleSheetsRepo googlesheets.RevenueExpenseGoogleSheetsRepository
 	settingsService                SettingsService
 	googleServiceAccount           string
 }
 
-func NewExcelService(productRepo repository.ProductRepository, inventoryRepo repository.InventoryRepository, settingsService SettingsService) ExcelService {
+func NewExcelService(productRepo repository.ProductRepository, inventoryRepo repository.InventoryRepository, paymentReceiptFormRepo repository.PaymentReceiptFormRepository, settingsService SettingsService) ExcelService {
 	return &excelService{
 		productRepo:                    productRepo,
 		inventoryRepo:                  inventoryRepo,
+		paymentReceiptFormRepo:         paymentReceiptFormRepo,
 		revenueExpenseExcelRepo:        excel.NewRevenueExpenseExcelRepository(),
 		revenueExpenseGoogleSheetsRepo: googlesheets.NewRevenueExpenseGoogleSheetsRepository(),
 		settingsService:                settingsService,
@@ -198,35 +206,155 @@ func (s *excelService) VerifyFileAndSheet(ctx context.Context, filePath string, 
 	return s.revenueExpenseExcelRepo.VerifyFileAndSheet(ctx, filePath, sheetName)
 }
 
-// FinalizeRevenueExpense adds a new date row to the revenue expense file/sheet
-func (s *excelService) FinalizeRevenueExpense(ctx context.Context, date time.Time) (*time.Time, error) {
+// GetHeaderAndColorFromProductType maps product type to expense category and color
+func (s *excelService) GetHeaderAndColorFromProductType(productType string) (header string, color string) {
+	switch strings.ToLower(productType) {
+	case "nước":
+		header = pkg.RevenueExpenseColumnWater
+		color = pkg.RevenueExpenseColumnWaterColor
+	default:
+		header = pkg.RevenueExpenseColumnSnackAndRice
+		color = pkg.RevenueExpenseColumnSnackAndRiceColor
+	}
+	return
+}
+
+// createExpenseDataFromForms creates expense data and cell colors from payment receipt forms
+func (s *excelService) createExpenseDataFromForms(paymentReceiptForms []models.PaymentReceiptForm) ([]map[string]interface{}, []string) {
+	if len(paymentReceiptForms) == 0 {
+		log.WithFields(logrus.Fields{
+			"operation": "createExpenseDataFromForms",
+		}).Warn("No payment receipt forms provided")
+		return nil, nil
+	}
+
+	expensesData := make([]map[string]interface{}, 0, len(paymentReceiptForms))
+	cellColors := make([]string, 0, len(paymentReceiptForms))
+
+	for _, paymentReceiptForm := range paymentReceiptForms {
+		// Validate required fields
+		if paymentReceiptForm.PurchaseOrder == nil {
+			log.WithFields(logrus.Fields{
+				"operation":               "createExpenseDataFromForms",
+				"payment_receipt_form_id": paymentReceiptForm.ID,
+			}).Warn("Skipping payment receipt form: purchase order is nil")
+			continue
+		}
+
+		if len(paymentReceiptForm.PurchaseOrder.Items) == 0 {
+			log.WithFields(logrus.Fields{
+				"operation":               "createExpenseDataFromForms",
+				"payment_receipt_form_id": paymentReceiptForm.ID,
+			}).Warn("Skipping payment receipt form: no purchase order items")
+			continue
+		}
+
+		if paymentReceiptForm.PurchaseOrder.Items[0].Product == nil {
+			log.WithFields(logrus.Fields{
+				"operation":               "createExpenseDataFromForms",
+				"payment_receipt_form_id": paymentReceiptForm.ID,
+			}).Warn("Skipping payment receipt form: product is nil")
+			continue
+		}
+
+		if paymentReceiptForm.FormNumber == nil {
+			log.WithFields(logrus.Fields{
+				"operation":               "createExpenseDataFromForms",
+				"payment_receipt_form_id": paymentReceiptForm.ID,
+			}).Warn("Skipping payment receipt form: form number is nil")
+			continue
+		}
+
+		supplierName := ""
+		if paymentReceiptForm.PurchaseOrder.Items[0].Supplier != nil {
+			supplierName = paymentReceiptForm.PurchaseOrder.Items[0].Supplier.Name
+		}
+
+		expenseData := map[string]interface{}{
+			pkg.RevenueExpenseColumnName: supplierName,
+		}
+
+		productType := paymentReceiptForm.PurchaseOrder.Items[0].Product.ProductType
+		header, color := s.GetHeaderAndColorFromProductType(productType)
+		expenseData[header] = paymentReceiptForm.TotalAmount
+
+		formNumberParts := strings.Split(*paymentReceiptForm.FormNumber, "-")
+		if len(formNumberParts) < 3 {
+			log.WithFields(logrus.Fields{
+				"operation":               "createExpenseDataFromForms",
+				"payment_receipt_form_id": paymentReceiptForm.ID,
+				"form_number":             paymentReceiptForm.FormNumber,
+			}).Warn("Skipping payment receipt form: invalid form number format")
+			continue
+		}
+
+		ordinalNumber, err := strconv.Atoi(formNumberParts[2])
+		if err != nil {
+			log.WithFields(logrus.Fields{
+				"operation":               "createExpenseDataFromForms",
+				"payment_receipt_form_id": paymentReceiptForm.ID,
+				"form_number":             paymentReceiptForm.FormNumber,
+				"error":                   err,
+			}).Error("Failed to convert form number to ordinal number to int")
+			continue
+		}
+
+		expenseData[pkg.RevenueExpenseColumnOrdinalNumber] = ordinalNumber
+
+		expensesData = append(expensesData, expenseData)
+		cellColors = append(cellColors, color)
+	}
+
+	return expensesData, cellColors
+}
+
+// FinalizeRevenueExpense adds a new date row to the revenue expense file/sheet and writes payment receipt forms
+func (s *excelService) FinalizeRevenueExpense(ctx context.Context, date time.Time, today time.Time) (*time.Time, error) {
 	// Get settings to determine file type and sheet name
 	settings, err := s.settingsService.GetSetting(ctx, config.RevenueExpenseExcelSettingsKey)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get revenue expense settings: %w", err)
+		return nil, pkg.ErrFailedToGetRevenueExpenseSettings(ctx, err)
 	}
 
 	if settings == nil {
-		return nil, fmt.Errorf("revenue expense settings not configured")
+		return nil, pkg.ErrRevenueExpenseSettingsNotConfigured(ctx)
 	}
 
 	var settingsValue map[string]interface{}
 	if err := json.Unmarshal([]byte(settings.Value), &settingsValue); err != nil {
-		return nil, fmt.Errorf("failed to parse revenue expense settings: %w", err)
+		return nil, pkg.ErrFailedToParseRevenueExpenseSettings(ctx, err)
 	}
 
 	filePath, ok := settingsValue["filePath"].(string)
 	if !ok || filePath == "" {
-		return nil, fmt.Errorf("filePath not found in revenue expense settings")
+		return nil, pkg.ErrFilePathNotFoundInSettings(ctx)
 	}
 
 	sheetName, ok := settingsValue["sheetName"].(string)
 	if !ok || sheetName == "" {
-		return nil, fmt.Errorf("sheetName not found in revenue expense settings")
+		return nil, pkg.ErrSheetNameNotFoundInSettings(ctx)
 	}
 
 	// Calculate next day
 	nextDay := date.AddDate(0, 0, 1)
+
+	// Query payment receipt forms from lastFinalizedDate to today
+	lastFinalizedDate := date.Truncate(24 * time.Hour)
+	req := &dto.PaymentReceiptFormListRequest{
+		ListParams: models.ListParams{
+			Page:  1,
+			Limit: 1000, // Large limit to get all forms for the day
+			Sort:  "form_number",
+			Order: "asc",
+		},
+		Date: lastFinalizedDate.Format("2006-01-02"),
+	}
+	req.ValidateAndSetDefaults()
+
+	forms, _, err := s.paymentReceiptFormRepo.List(ctx, req, "PurchaseOrder.Items", "PurchaseOrder.Items.Supplier", "PurchaseOrder.Items.Product")
+	if err != nil {
+		return nil, pkg.ErrFailedToQueryPaymentReceiptForms(ctx, lastFinalizedDate.Format("2006-01-02"), err)
+	}
 
 	// Detect if filePath is a Google Sheets URL or local file path
 	isGoogleSheets := strings.Contains(filePath, "docs.google.com/spreadsheets")
@@ -235,39 +363,45 @@ func (s *excelService) FinalizeRevenueExpense(ctx context.Context, date time.Tim
 		// Handle Google Sheets
 		spreadsheetID, err := pkg.ExtractSpreadsheetID(filePath)
 		if err != nil {
-			return nil, fmt.Errorf("invalid Google Sheets URL: %w", err)
+			return nil, pkg.ErrInvalidGoogleSheetsURL(ctx, err)
 		}
 
 		// Initialize repository
 		if s.googleServiceAccount == "" {
-			return nil, fmt.Errorf("service account file path not configured")
+			return nil, pkg.ErrServiceAccountNotConfigured(ctx)
 		}
 		if err := s.revenueExpenseGoogleSheetsRepo.InitializeWithSpreadsheet(ctx, s.googleServiceAccount, spreadsheetID, sheetName); err != nil {
-			return nil, fmt.Errorf("failed to initialize Google Sheets repository: %w", err)
-		}
-
-		lastTransactionDate, err := s.revenueExpenseGoogleSheetsRepo.GetLastTransactionDate(ctx, sheetName)
-		if err != nil {
-			return nil, fmt.Errorf("failed to get last transaction date: %w", err)
-		}
-		if lastTransactionDate.After(nextDay) {
-			nextDay = lastTransactionDate.AddDate(0, 0, 1)
+			return nil, pkg.ErrFailedToInitializeGoogleSheetsRepo(ctx, err)
 		}
 
 		// Add new date row
 		if err := s.revenueExpenseGoogleSheetsRepo.AddNewDateRow(ctx, sheetName, nextDay); err != nil {
-			return nil, fmt.Errorf("failed to add new date row to Google Sheets: %w", err)
+			return nil, pkg.ErrFailedToAddNewDateRowGoogleSheets(ctx, err)
+		}
+
+		expensesData, cellColors := s.createExpenseDataFromForms(forms)
+		if len(expensesData) > 0 {
+			if err := s.AddExpensesToGoogleSheets(ctx, sheetName, expensesData, cellColors); err != nil {
+				return nil, pkg.ErrFailedToAddExpensesToGoogleSheets(ctx, err)
+			}
 		}
 	} else {
 		// Handle local file
 		// Initialize repository
 		if err := s.revenueExpenseExcelRepo.InitializeWithFile(ctx, filePath, sheetName); err != nil {
-			return nil, fmt.Errorf("failed to initialize Excel repository: %w", err)
+			return nil, pkg.ErrFailedToInitializeExcelRepo(ctx, err)
 		}
 
 		// Add new date row
 		if err := s.revenueExpenseExcelRepo.AddNewDateRow(ctx, sheetName, nextDay); err != nil {
-			return nil, fmt.Errorf("failed to add new date row to Excel: %w", err)
+			return nil, pkg.ErrFailedToAddNewDateRowExcel(ctx, err)
+		}
+
+		expensesData, cellColors := s.createExpenseDataFromForms(forms)
+		if len(expensesData) > 0 {
+			if err := s.AddExpenses(ctx, sheetName, expensesData, cellColors); err != nil {
+				return nil, pkg.ErrFailedToAddExpensesToExcel(ctx, err)
+			}
 		}
 	}
 
