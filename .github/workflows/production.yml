@@ -178,6 +178,12 @@ jobs:
             ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.version.outputs.new_version }}
             ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:stable
 
+      - name: Print Docker images
+        run: |
+          echo "🐳 Docker images built and pushed:"
+          echo "  📦 ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.version.outputs.new_version }}"
+          echo "  📦 ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:stable"
+
       - name: Create and push Git tag
         run: |
           git config user.name "github-actions[bot]"

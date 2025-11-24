@@ -88,6 +88,22 @@ var _ = Describe("Supplier API", func() {
 			errorResp := testutil.ParseResponse(resp)
 			Expect(errorResp["error"]).To(Equal("Access denied: " + string(models.RoleBotForm) + " role cannot create suppliers"))
 		})
+
+		It("should create supplier with only name field", func() {
+			client := testutil.NewClient(tenv, models.RoleAdmin)
+
+			minimalSupplierData := map[string]interface{}{
+				"name": "Minimal Supplier",
+			}
+
+			resp, err := client.MakeRequest("POST", "/api/v1/suppliers", minimalSupplierData, testutil.WithAuth())
+			Expect(err).NotTo(HaveOccurred())
+			Expect(resp.StatusCode).To(Equal(201))
+
+			supplierResp := testutil.ParseResponse(resp)
+			Expect(supplierResp["id"]).NotTo(BeNil())
+			Expect(supplierResp["name"]).To(Equal("Minimal Supplier"))
+		})
 	})
 
 	Describe("Update Supplier", func() {
