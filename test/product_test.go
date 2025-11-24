@@ -544,9 +544,6 @@ var _ = Describe("Product API", func() {
 					}
 					Expect(p.Unit).NotTo(BeNil(), "Product %s should have unit", name)
 					Expect(p.Unit.Name).To(Equal(expectedUnit))
-					if checkCreatedBy {
-						// Note: CreatedBy/UpdatedBy verification would need user email from client
-					}
 					if len(expectedSupplierNames) > 0 {
 						Expect(p.Suppliers).To(HaveLen(len(expectedSupplierNames)), "Product %s should have %d suppliers", name, len(expectedSupplierNames))
 						supplierNames := make(map[string]bool)

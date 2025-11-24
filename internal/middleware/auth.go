@@ -35,8 +35,8 @@ func AuthMiddleware(firebaseAuth *auth.FirebaseAuthService) echo.MiddlewareFunc 
 			}
 
 			// Extract user information from Firebase token and set in both echo and request context
-			c.Set(pkg.AuthContextKeyUserID, token.UID)
-			c.Set(pkg.AuthContextKeyUserEmail, token.Claims["email"])
+			c.Set(pkg.AuthContextKeyUserID.String(), token.UID)
+			c.Set(pkg.AuthContextKeyUserEmail.String(), token.Claims["email"])
 
 			// Add user information to the request context for GORM hooks and other services
 			reqCtx := c.Request().Context()

@@ -28,7 +28,7 @@ func TestRevenueExpenseGoogleSheetsRepositorySuite(t *testing.T) {
 		t.Cleanup(func() {
 			t.Log("Cleaning up...")
 			// Delete two last rows
-			revenueExpenseGoogleSheetsRepo.DeleteLastNthRows(ctx, sheetName, 2)
+			_ = revenueExpenseGoogleSheetsRepo.DeleteLastNthRows(ctx, sheetName, 2)
 			revenueExpenseGoogleSheetsRepo.Close()
 			t.Log("✅ Cleanup completed")
 		})
@@ -149,7 +149,7 @@ func TestRevenueExpenseGoogleSheetsRepositorySuite(t *testing.T) {
 
 		t.Cleanup(func() {
 			t.Log("Cleaning up after AddNewDateRow test...")
-			revenueExpenseGoogleSheetsRepo.DeleteLastNthRows(ctx, sheetName, 1)
+			_ = revenueExpenseGoogleSheetsRepo.DeleteLastNthRows(ctx, sheetName, 1)
 			revenueExpenseGoogleSheetsRepo.Close()
 		})
 

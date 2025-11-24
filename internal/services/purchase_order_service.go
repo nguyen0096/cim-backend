@@ -1086,8 +1086,8 @@ func extractSpreadsheetID(input string) string {
 	// Check if input contains Google Sheets URL pattern
 	if strings.Contains(input, "docs.google.com/spreadsheets") {
 		// Extract ID from URL pattern: https://docs.google.com/spreadsheets/d/{SPREADSHEET_ID}/...
-		input = strings.TrimLeft(input, "https://")
-		input = strings.TrimLeft(input, "docs.google.com/spreadsheets/d/")
+		input = strings.TrimPrefix(input, "https://")
+		input = strings.TrimPrefix(input, "docs.google.com/spreadsheets/d/")
 		parts := strings.Split(input, "/")
 		if len(parts) >= 1 && parts[0] != "" {
 			return parts[0]
@@ -1302,36 +1302,6 @@ func (s *purchaseOrderService) ReceiveInventory(
 }
 
 // convertQuantityFromBaseUnit converts a quantity from base unit to the given target unit
-// This function works by traversing from the target unit down to the base unit,
-// applying inverse conversion factors along the way
-func (s *purchaseOrderService) convertQuantityFromBaseUnit(
-	ctx context.Context,
-	quantity decimal.Decimal,
-	targetUnitID uint,
-) (decimal.Decimal, error) {
-	unit, err := s.unitRepo.GetByID(ctx, targetUnitID)
-	if err != nil {
-		return decimal.Zero, fmt.Errorf("failed to get unit %d: %w", targetUnitID, err)
-	}
-
-	// If unit is a base unit (no BaseUnitID), return quantity as-is
-	if unit.BaseUnitID == nil {
-		return quantity, nil
-	}
-
-	// If unit is a derived unit, we need to convert from base unit to this unit
-	// First, convert from base unit to the immediate base unit of this unit
-	immediateBaseQuantity, err := s.convertQuantityFromBaseUnit(ctx, quantity, *unit.BaseUnitID)
-	if err != nil {
-		return decimal.Zero, err
-	}
-
-	// Then convert from immediate base unit to target unit
-	// Since conversion_factor means: 1 target_unit = conversion_factor * base_unit
-	// To convert from base to target: divide by conversion_factor
-	return immediateBaseQuantity.Div(decimal.NewFromFloat(unit.ConversionFactor)), nil
-}
-
 // importPurchaseOrderItem represents a single item row in the import file
 type importPurchaseOrderItem struct {
 	rowNumber   int
@@ -1819,7 +1789,7 @@ func (s *purchaseOrderService) UploadAndValidatePurchaseOrderFile(ctx context.Co
 	sheetResults, err := s.validateAllSheets(ctx, filePath)
 	if err != nil {
 		// Clean up file if validation completely fails
-		fileStorageService.DeleteFile(ctx, fileUID, extension, pkg.FileCategoryPurchaseOrder)
+		_ = fileStorageService.DeleteFile(ctx, fileUID, extension, pkg.FileCategoryPurchaseOrder)
 		return nil, fmt.Errorf("failed to validate sheets: %w", err)
 	}
 

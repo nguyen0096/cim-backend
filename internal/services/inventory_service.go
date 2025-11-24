@@ -110,12 +110,12 @@ func (s *inventoryService) consumeFIFO(
 			}
 		}
 		if item == nil {
-			ps.addError(pkg.ErrInventoryItemNotFound(ctx, itemID))
+			_ = ps.addError(pkg.ErrInventoryItemNotFound(ctx, itemID))
 			continue
 		}
 
 		if consumeQty.GreaterThan(item.Quantity) {
-			ps.addError(pkg.ErrConsumeFIFOFailed(
+			_ = ps.addError(pkg.ErrConsumeFIFOFailed(
 				fmt.Sprintf("quantity to consume %s exceeds available quantity %s for inventory item %d",
 					consumeQty.String(), item.Quantity.String(), itemID)))
 			continue
@@ -190,19 +190,19 @@ func (s *inventoryService) reconcileInventory(
 	itemConsumeQuantity := make(map[uint]decimal.Decimal)
 	for _, reqItem := range req.Items {
 		if reqItem.Quantity == nil {
-			ps.addError(pkg.ErrInvalidRequestBody(fmt.Errorf("actual quantity is required for inventory item %d", reqItem.InventoryItemID)))
+			_ = ps.addError(pkg.ErrInvalidRequestBody(fmt.Errorf("actual quantity is required for inventory item %d", reqItem.InventoryItemID)))
 			continue
 		}
 
 		item, exists := activeItemMap[reqItem.InventoryItemID]
 		if !exists {
-			ps.addError(pkg.ErrInventoryItemNotFound(ctx, reqItem.InventoryItemID))
+			_ = ps.addError(pkg.ErrInventoryItemNotFound(ctx, reqItem.InventoryItemID))
 			continue
 		}
 
 		// for reconcile, actual quantity is an absolute value, so we need optimistic locking
 		if !item.Quantity.Equal(reqItem.PrevQuantity) {
-			ps.addError(pkg.ErrOptimisticLockConflict(ctx, "inventory item", reqItem.InventoryItemID, reqItem.PrevQuantity, item.Quantity))
+			_ = ps.addError(pkg.ErrOptimisticLockConflict(ctx, "inventory item", reqItem.InventoryItemID, reqItem.PrevQuantity, item.Quantity))
 			continue
 		}
 
@@ -298,7 +298,7 @@ func (s *inventoryService) disposeInventory(
 	itemConsumeQuantity := make(map[uint]decimal.Decimal)
 	for _, reqItem := range req.Items {
 		if reqItem.Quantity == nil {
-			ps.addError(pkg.ErrInvalidRequestBody(fmt.Errorf("quantity is required for inventory item %d", reqItem.InventoryItemID)))
+			_ = ps.addError(pkg.ErrInvalidRequestBody(fmt.Errorf("quantity is required for inventory item %d", reqItem.InventoryItemID)))
 			continue
 		}
 		itemConsumeQuantity[reqItem.InventoryItemID] = *reqItem.Quantity
@@ -375,18 +375,6 @@ func (s *inventoryService) CreateDisposeSubmission(ctx context.Context, req dto.
 		return nil, fmt.Errorf("failed to create dispose submission: %w", err)
 	}
 	return submission, nil
-}
-
-// extractInventoryItemIDsFromPayload extracts inventory item IDs from a payload's items array
-func extractInventoryItemIDsFromPayload(payload json.RawMessage) []uint {
-	var genericPayload struct {
-		Items []dto.QuantityItem `json:"items"`
-	}
-
-	if err := json.Unmarshal(payload, &genericPayload); err != nil {
-		return nil
-	}
-	return models.GetIDs(genericPayload.Items)
 }
 
 // formatSubmissionItems builds simplified item summaries from payload
@@ -547,26 +535,26 @@ func (s *inventoryService) processSubmission(ctx context.Context, submission *mo
 	case models.InventorySubmissionTypeReconcile:
 		var req dto.ReconcileInventoryRequest
 		if err := json.Unmarshal(submission.Payload, &req); err != nil {
-			ps.addError(fmt.Errorf("failed to unmarshal reconcile payload: %w", err))
+			_ = ps.addError(fmt.Errorf("failed to unmarshal reconcile payload: %w", err))
 			return
 		}
-		s.reconcileInventory(ctx, ps, req)
+		_ = s.reconcileInventory(ctx, ps, req)
 	case models.InventorySubmissionTypeDispose:
 		var req dto.DisposeInventoryRequest
 		if err := json.Unmarshal(submission.Payload, &req); err != nil {
-			ps.addError(fmt.Errorf("failed to unmarshal dispose payload: %w", err))
+			_ = ps.addError(fmt.Errorf("failed to unmarshal dispose payload: %w", err))
 			return
 		}
-		s.disposeInventory(ctx, ps, req)
+		_ = s.disposeInventory(ctx, ps, req)
 	case models.InventorySubmissionTypeTransfer:
 		var req dto.TransferInventoryRequest
 		if err := json.Unmarshal(submission.Payload, &req); err != nil {
-			ps.addError(fmt.Errorf("failed to unmarshal transfer payload: %w", err))
+			_ = ps.addError(fmt.Errorf("failed to unmarshal transfer payload: %w", err))
 			return
 		}
-		s.transferInventory(ctx, ps, req)
+		_ = s.transferInventory(ctx, ps, req)
 	default:
-		ps.addError(pkg.NewAppError(pkg.ErrorCodeValidation,
+		_ = ps.addError(pkg.NewAppError(pkg.ErrorCodeValidation,
 			fmt.Sprintf("unknown submission type: %s", submission.SubmissionType), nil))
 		return
 	}
@@ -681,18 +669,18 @@ func (s *inventoryService) transferInventory(
 	productIDs := make([]uint, 0, len(req.Items))
 	for _, reqItem := range req.Items {
 		if reqItem.Quantity == nil {
-			ps.addError(pkg.ErrInvalidRequestBody(fmt.Errorf("actual quantity is required for inventory item %d", reqItem.InventoryItemID)))
+			_ = ps.addError(pkg.ErrInvalidRequestBody(fmt.Errorf("actual quantity is required for inventory item %d", reqItem.InventoryItemID)))
 			continue
 		}
 
 		item, exists := srcItemMap[reqItem.InventoryItemID]
 		if !exists {
-			ps.addError(pkg.ErrInventoryItemNotFound(ctx, reqItem.InventoryItemID))
+			_ = ps.addError(pkg.ErrInventoryItemNotFound(ctx, reqItem.InventoryItemID))
 			continue
 		}
 
 		if reqItem.Quantity.GreaterThan(item.Quantity) {
-			ps.addError(pkg.ErrTransferValidationFailed(fmt.Sprintf("transfer quantity %d exceeds available quantity %d for inventory item %d",
+			_ = ps.addError(pkg.ErrTransferValidationFailed(fmt.Sprintf("transfer quantity %d exceeds available quantity %d for inventory item %d",
 				reqItem.Quantity, item.Quantity, reqItem.InventoryItemID)))
 			continue
 		}

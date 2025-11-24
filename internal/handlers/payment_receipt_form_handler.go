@@ -32,7 +32,7 @@ type ClientConnection struct {
 }
 
 func (c *ClientConnection) Close() {
-	c.Context.NoContent(http.StatusGone)
+	_ = c.Context.NoContent(http.StatusGone)
 }
 
 type PaymentReceiptFormHandler struct {
@@ -96,15 +96,6 @@ func (h *PaymentReceiptFormHandler) getConnectionCount() int {
 	return count
 }
 
-// getAllClients returns all active client connections
-func (h *PaymentReceiptFormHandler) getAllClients() []*ClientConnection {
-	var clients []*ClientConnection
-	h.clients.Range(func(key, value interface{}) bool {
-		clients = append(clients, value.(*ClientConnection))
-		return true
-	})
-	return clients
-}
 
 // runNotificationHub manages client connections and broadcasts messages
 func (h *PaymentReceiptFormHandler) runNotificationHub() {

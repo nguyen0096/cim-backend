@@ -6,13 +6,18 @@ import (
 	"time"
 )
 
-const (
-	AuthContextKeyUserID          = "user_id"
-	AuthContextKeyUserEmail       = "user_email"
-	AuthContextKeyUserName        = "user_name"
-	AuthContextKeyUserRole        = "user_role"
-	AuthContextKeyUserPermissions = "user_permissions"
+//go:generate stringer -type=AuthContextKey
+type AuthContextKey int
 
+const (
+	AuthContextKeyUserID AuthContextKey = iota
+	AuthContextKeyUserEmail
+	AuthContextKeyUserName
+	AuthContextKeyUserRole
+	AuthContextKeyUserPermissions
+)
+
+const (
 	// RBAC resources
 	RBACResourceInventorySubmissions = "inventory-submissions"
 

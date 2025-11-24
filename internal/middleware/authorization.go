@@ -17,7 +17,7 @@ func AuthorizationMiddleware(casbinService *auth.CasbinService, userService *ser
 	return func(next echo.HandlerFunc) echo.HandlerFunc {
 		return func(c echo.Context) error {
 			// Get user ID from context (set by AuthMiddleware)
-			userUID, _ := c.Get(pkg.AuthContextKeyUserID).(string)
+			userUID, _ := c.Get(pkg.AuthContextKeyUserID.String()).(string)
 			if userUID == "" {
 				return c.JSON(http.StatusUnauthorized, map[string]string{
 					"error": "User ID not found",
@@ -25,10 +25,10 @@ func AuthorizationMiddleware(casbinService *auth.CasbinService, userService *ser
 			}
 
 			// Check if user role already exists in context (skip database query if available)
-			userRole, exists := c.Get(pkg.AuthContextKeyUserRole).(string)
+			userRole, exists := c.Get(pkg.AuthContextKeyUserRole.String()).(string)
 			if !exists || userRole == "" {
 				// Get user email from context
-				userEmail, exists := c.Get(pkg.AuthContextKeyUserEmail).(string)
+				userEmail, exists := c.Get(pkg.AuthContextKeyUserEmail.String()).(string)
 				if !exists || userEmail == "" {
 					return c.JSON(http.StatusUnauthorized, map[string]string{
 						"error": "User email not found in token",

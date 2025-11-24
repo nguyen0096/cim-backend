@@ -20,7 +20,7 @@ func CustomErrorHandler(err error, c echo.Context) {
 	if handlerErr := HandleError(c, err); handlerErr != nil {
 		// If HandleError itself returns an error, fall back to basic error handling
 		log.Printf("Error in error handler: %v", handlerErr)
-		c.JSON(http.StatusInternalServerError, map[string]string{
+		_ = c.JSON(http.StatusInternalServerError, map[string]string{
 			"error": "Internal server error",
 		})
 	}

@@ -67,13 +67,13 @@ func (t *TestBox) GetTestContainerDBConfig(ctx context.Context) (config.Database
 
 	host, err := t.DBContainer.Host(ctx)
 	if err != nil {
-		t.DBContainer.Terminate(ctx)
+		_ = t.DBContainer.Terminate(ctx)
 		return result, fmt.Errorf("failed to get container host: %w", err)
 	}
 
 	port, err := t.DBContainer.MappedPort(ctx, "5432")
 	if err != nil {
-		t.DBContainer.Terminate(ctx)
+		_ = t.DBContainer.Terminate(ctx)
 		return result, fmt.Errorf("failed to get container port: %w", err)
 	}
 

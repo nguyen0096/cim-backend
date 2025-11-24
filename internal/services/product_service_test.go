@@ -17,82 +17,6 @@ import (
 	"cim-backend/pkg"
 )
 
-type stubUnitRepository struct {
-	unitsByID    map[uint]*models.Unit
-	unitsByLabel map[string]*models.Unit
-	nextID       uint
-}
-
-func newStubUnitRepository() *stubUnitRepository {
-	return &stubUnitRepository{
-		unitsByID:    make(map[uint]*models.Unit),
-		unitsByLabel: make(map[string]*models.Unit),
-		nextID:       1,
-	}
-}
-
-func (s *stubUnitRepository) labelKey(unitType, name string) string {
-	return strings.ToLower(unitType) + "::" + strings.ToLower(name)
-}
-
-func (s *stubUnitRepository) Create(_ context.Context, unit *models.Unit) error {
-	if unit.ID == 0 {
-		unit.ID = s.nextID
-		s.nextID++
-	}
-	cloned := *unit
-	s.unitsByID[unit.ID] = &cloned
-	s.unitsByLabel[s.labelKey(unit.UnitType, unit.Name)] = &cloned
-	return nil
-}
-
-func (s *stubUnitRepository) GetByID(_ context.Context, id uint) (*models.Unit, error) {
-	if unit, ok := s.unitsByID[id]; ok {
-		cloned := *unit
-		return &cloned, nil
-	}
-	return nil, gorm.ErrRecordNotFound
-}
-
-func (s *stubUnitRepository) GetByTypeAndName(_ context.Context, unitType, name string) (*models.Unit, error) {
-	if unit, ok := s.unitsByLabel[s.labelKey(unitType, name)]; ok {
-		cloned := *unit
-		return &cloned, nil
-	}
-	return nil, gorm.ErrRecordNotFound
-}
-
-func (s *stubUnitRepository) Update(ctx context.Context, unit *models.Unit) error {
-	if _, err := s.GetByID(ctx, unit.ID); err != nil {
-		return err
-	}
-	return s.Create(ctx, unit)
-}
-
-func (s *stubUnitRepository) Delete(context.Context, uint) error {
-	return nil
-}
-
-func (s *stubUnitRepository) Restore(context.Context, uint) error {
-	return nil
-}
-
-func (s *stubUnitRepository) List(context.Context, int, int, string, string, string) ([]models.Unit, error) {
-	return nil, nil
-}
-
-func (s *stubUnitRepository) Search(context.Context, string, int, int, string, string, string) ([]models.Unit, error) {
-	return nil, nil
-}
-
-func (s *stubUnitRepository) Count(context.Context, string) (int64, error) {
-	return 0, nil
-}
-
-func (s *stubUnitRepository) CountSearch(context.Context, string, string) (int64, error) {
-	return 0, nil
-}
-
 type stubSettingsService struct {
 	settings map[string]*models.Settings
 }
@@ -786,14 +710,14 @@ func TestImportProductsFromExcel(t *testing.T) {
 		// Write headers
 		for i, header := range headers {
 			cell, _ := excelize.CoordinatesToCellName(i+1, 1)
-			f.SetCellValue(sheetName, cell, header)
+			_ = f.SetCellValue(sheetName, cell, header)
 		}
 
 		// Write data rows
 		for rowIdx, row := range rows {
 			for colIdx, value := range row {
 				cell, _ := excelize.CoordinatesToCellName(colIdx+1, rowIdx+2)
-				f.SetCellValue(sheetName, cell, value)
+				_ = f.SetCellValue(sheetName, cell, value)
 			}
 		}
 
@@ -898,7 +822,7 @@ func TestImportProductsFromExcel(t *testing.T) {
 
 		// Create empty Excel file (no sheets)
 		f := excelize.NewFile()
-		f.DeleteSheet("Sheet1")
+		_ = f.DeleteSheet("Sheet1")
 
 		buffer, err := f.WriteToBuffer()
 		require.NoError(t, err)

@@ -27,7 +27,7 @@ func NewUserHandler(userService *services.UserService, firebaseAuth auth.Firebas
 
 // GetProfile retrieves the current user's profile
 func (h *UserHandler) GetProfile(c echo.Context) error {
-	userID, _ := c.Get(pkg.AuthContextKeyUserID).(string)
+	userID, _ := c.Get(pkg.AuthContextKeyUserID.String()).(string)
 	if userID == "" {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid user ID"})
 	}
@@ -67,7 +67,7 @@ func (h *UserHandler) ListUsers(c echo.Context) error {
 	offset := (page - 1) * limit
 
 	// Get current user ID to exclude from results
-	currentUserID, _ := c.Get(pkg.AuthContextKeyUserID).(string)
+	currentUserID, _ := c.Get(pkg.AuthContextKeyUserID.String()).(string)
 
 	users, total, err := h.userService.ListUsers(c.Request().Context(), limit, offset, currentUserID)
 	if err != nil {
@@ -175,7 +175,7 @@ func (h *UserHandler) GetUsersByRole(c echo.Context) error {
 // @Security BearerAuth
 // @Router /users/permissions [get]
 func (h *UserHandler) GetUserPermissions(c echo.Context) error {
-	userEmail, _ := c.Get(pkg.AuthContextKeyUserEmail).(string)
+	userEmail, _ := c.Get(pkg.AuthContextKeyUserEmail.String()).(string)
 	if userEmail == "" {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid user email"})
 	}
@@ -290,7 +290,7 @@ func (h *UserHandler) SearchUsers(c echo.Context) error {
 	offset := (page - 1) * limit
 
 	// Get current user ID to exclude from results
-	currentUserID, _ := c.Get(pkg.AuthContextKeyUserID).(string)
+	currentUserID, _ := c.Get(pkg.AuthContextKeyUserID.String()).(string)
 
 	users, total, err := h.userService.SearchUsers(c.Request().Context(), query, limit, offset, currentUserID)
 	if err != nil {

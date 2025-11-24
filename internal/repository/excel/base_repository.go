@@ -293,8 +293,12 @@ func (r *BaseExcelRepository) AddTransactionDateRow(file *excelize.File, sheetNa
 	firstColumn := sheetMetadata.Headers[0]
 	cellName, _ := excelize.CoordinatesToCellName(firstColumn.ColumnIndex, targetRow)
 
-	file.SetCellStyle(sheetName, cellName, cellName, styleID)
-	file.SetCellValue(sheetName, cellName, today)
+	if err := file.SetCellStyle(sheetName, cellName, cellName, styleID); err != nil {
+		return fmt.Errorf("failed to set cell style: %w", err)
+	}
+	if err := file.SetCellValue(sheetName, cellName, today); err != nil {
+		return fmt.Errorf("failed to set cell value: %w", err)
+	}
 
 	return nil
 }
@@ -314,13 +318,17 @@ func (r *BaseExcelRepository) AddDataRow(file *excelize.File, sheetName string, 
 
 	for _, column := range sheetMetadata.Headers {
 		cellName, _ := excelize.CoordinatesToCellName(column.ColumnIndex+1, targetRow)
-		file.SetCellStyle(sheetName, cellName, cellName, styleID)
+		if err := file.SetCellStyle(sheetName, cellName, cellName, styleID); err != nil {
+			return fmt.Errorf("failed to set cell style: %w", err)
+		}
 
 		if value, exists := data[column.ColumnName]; exists {
 			// Convert value to uppercase string
 			valueStr := fmt.Sprintf("%v", value)
 			uppercaseValue := strings.ToUpper(valueStr)
-			file.SetCellValue(sheetName, cellName, uppercaseValue)
+			if err := file.SetCellValue(sheetName, cellName, uppercaseValue); err != nil {
+				return fmt.Errorf("failed to set cell value: %w", err)
+			}
 		}
 	}
 
@@ -353,16 +361,21 @@ func (r *BaseExcelRepository) AddDataRowWithColor(file *excelize.File, sheetName
 			continue
 		}
 		if column.ColumnName == pkg.RevenueExpenseColumnWater || column.ColumnName == pkg.RevenueExpenseColumnSnackAndRice {
-			file.SetCellStyle(sheetName, cellName, cellName, thousandStyleID)
+			if err := file.SetCellStyle(sheetName, cellName, cellName, thousandStyleID); err != nil {
+				return fmt.Errorf("failed to set cell style: %w", err)
+			}
 		} else {
-			file.SetCellStyle(sheetName, cellName, cellName, styleID)
+			if err := file.SetCellStyle(sheetName, cellName, cellName, styleID); err != nil {
+				return fmt.Errorf("failed to set cell style: %w", err)
+			}
 		}
-		file.SetCellStyle(sheetName, cellName, cellName, styleID)
 
 		// Convert value to uppercase string
 		valueStr := fmt.Sprintf("%v", value)
 		uppercaseValue := strings.ToUpper(valueStr)
-		file.SetCellValue(sheetName, cellName, uppercaseValue)
+		if err := file.SetCellValue(sheetName, cellName, uppercaseValue); err != nil {
+			return fmt.Errorf("failed to set cell value: %w", err)
+		}
 	}
 
 	if cellColor != "" {
@@ -372,7 +385,9 @@ func (r *BaseExcelRepository) AddDataRowWithColor(file *excelize.File, sheetName
 		}
 		firstColumn := sheetMetadata.Headers[0]
 		sttCellName, _ := excelize.CoordinatesToCellName(firstColumn.ColumnIndex+1, targetRow)
-		file.SetCellStyle(sheetName, sttCellName, sttCellName, colorStyleID)
+		if err := file.SetCellStyle(sheetName, sttCellName, sttCellName, colorStyleID); err != nil {
+			return fmt.Errorf("failed to set cell style: %w", err)
+		}
 	}
 
 	return nil

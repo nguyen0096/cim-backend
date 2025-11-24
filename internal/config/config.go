@@ -72,7 +72,7 @@ type CasbinConfig struct {
 // Optional filePath parameter can be provided to load a specific .env file.
 // If no filePath is provided, it attempts to load .env from the current directory.
 func Load(filePath ...string) *Config {
-	godotenv.Load(filePath...)
+	_ = godotenv.Load(filePath...)
 
 	logLever, err := logrus.ParseLevel(getEnv("LOG_LEVEL", "error"))
 	if err != nil {

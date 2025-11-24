@@ -315,8 +315,8 @@ func createAuthMiddleware(firebaseAuth auth.FirebaseAuthInterface) echo.Middlewa
 			}
 
 			// Extract user information from token and set in context
-			c.Set(pkg.AuthContextKeyUserID, token.UID)
-			c.Set(pkg.AuthContextKeyUserEmail, token.Claims["email"])
+			c.Set(pkg.AuthContextKeyUserID.String(), token.UID)
+			c.Set(pkg.AuthContextKeyUserEmail.String(), token.Claims["email"])
 
 			reqCtx := c.Request().Context()
 			reqCtx = context.WithValue(reqCtx, pkg.AuthContextKeyUserID, token.UID)

@@ -148,8 +148,8 @@ func (f *File) Close(ctx context.Context) error {
 // Connect connects to the file and parses the sheets.
 func (f *File) Connect(ctx context.Context) (err error) {
 	defer func() {
-		if err := recover(); err != nil {
-			err = fmt.Errorf("failed to load file: %v", err)
+		if r := recover(); r != nil {
+			err = fmt.Errorf("failed to load file: %v", r)
 		}
 	}()
 	f.Lock()

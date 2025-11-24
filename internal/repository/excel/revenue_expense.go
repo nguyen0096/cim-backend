@@ -75,7 +75,7 @@ func (r *revenueExpenseExcelRepository) AddExpenses(ctx context.Context, sheetNa
 
 	// Prepare date and row information
 	targetRow := len(rows) + 1
-	ordinalNumber := 1
+	var ordinalNumber int
 
 	// Add transaction date row if needed
 	// today := pkg.GetTodayDate()
