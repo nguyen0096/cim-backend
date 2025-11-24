@@ -40,6 +40,7 @@ var _ = AfterSuite(func(ctx SpecContext) {
 	By("Shutdown test server", tenv.ShutdownServer)
 	By("Close database connection", tenv.CloseDBConn)
 	By("Deprovision database", tenv.DeprovisionDB)
+	By("Clean upload files", tenv.CleanUploadFiles)
 })
 
 func TestApplication(t *testing.T) {
