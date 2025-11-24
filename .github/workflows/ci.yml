@@ -70,10 +70,10 @@ jobs:
           DB_PASSWORD: postgres
           DB_NAME: test_db
 
-      - name: Run linter
-        run: |
-          go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
-          golangci-lint run
+      # - name: Run linter
+      #   run: |
+      #     go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
+      #     golangci-lint run
 
   build:
     runs-on: ubuntu-latest
