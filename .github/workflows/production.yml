@@ -1,0 +1,202 @@
+name: Production Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version_bump:
+        description: 'Version bump type'
+        required: true
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
+        default: 'patch'
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: hn-corp/cim-backend
+
+jobs:
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: "1.25"
+
+      - name: Run golangci-lint
+        uses: golangci/golangci-lint-action@v6
+        with:
+          version: latest
+          args: --timeout=5m
+
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: test_db
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: "1.25"
+
+      - name: Cache Go modules
+        uses: actions/cache@v3
+        with:
+          path: ~/go/pkg/mod
+          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-go-
+
+      - name: Install dependencies
+        run: go mod download
+
+      - name: Install code generation tools
+        run: |
+          go install golang.org/x/tools/cmd/stringer@latest
+          go install github.com/vektra/mockery/v2@latest
+
+      - name: Generate mocks
+        run: make generate
+
+      - name: Run migrations
+        run: make migrate-up
+        env:
+          DB_HOST: localhost
+          DB_PORT: 5432
+          DB_USER: postgres
+          DB_PASSWORD: postgres
+          DB_NAME: test_db
+          MIGRATION_DIR: database/migrations
+
+      - name: Run tests
+        run: make test
+        env:
+          DB_HOST: localhost
+          DB_PORT: 5432
+          DB_USER: postgres
+          DB_PASSWORD: postgres
+          DB_NAME: test_db
+
+  build-and-release:
+    name: Build and Release
+    runs-on: ubuntu-latest
+    needs: [lint, test]  # Only runs if both lint and test pass
+    permissions:
+      contents: write
+      packages: write
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Calculate new version
+        id: version
+        run: |
+          # Fetch all tags
+          git fetch --tags
+          
+          # Get the latest tag matching semantic versioning pattern
+          LATEST_TAG=$(git tag -l "v*.*.*" | sort -V | tail -n 1)
+          
+          # If no tags exist, start with v0.1.0
+          if [ -z "$LATEST_TAG" ]; then
+            if [ "${{ github.event.inputs.version_bump }}" == "major" ]; then
+              NEW_VERSION="v1.0.0"
+            else
+              NEW_VERSION="v0.1.0"
+            fi
+          else
+            # Remove 'v' prefix and split version
+            VERSION=${LATEST_TAG#v}
+            IFS='.' read -r MAJOR MINOR PATCH <<< "$VERSION"
+            
+            # Increment based on input
+            case "${{ github.event.inputs.version_bump }}" in
+              major)
+                MAJOR=$((MAJOR + 1))
+                MINOR=0
+                PATCH=0
+                ;;
+              minor)
+                MINOR=$((MINOR + 1))
+                PATCH=0
+                ;;
+              patch)
+                PATCH=$((PATCH + 1))
+                ;;
+            esac
+            
+            NEW_VERSION="v${MAJOR}.${MINOR}.${PATCH}"
+          fi
+          
+          echo "new_version=$NEW_VERSION" >> $GITHUB_OUTPUT
+          echo "New version will be: $NEW_VERSION"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.DOCKER_REGISTRY_TOKEN }}
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          platforms: linux/amd64
+          push: true
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.version.outputs.new_version }}
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:stable
+
+      - name: Create and push Git tag
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag -a ${{ steps.version.outputs.new_version }} -m "Release ${{ steps.version.outputs.new_version }}"
+          git push origin ${{ steps.version.outputs.new_version }}
+
+      - name: Create GitHub Release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ steps.version.outputs.new_version }}
+          release_name: Release ${{ steps.version.outputs.new_version }}
+          body: |
+            Production release ${{ steps.version.outputs.new_version }}
+            
+            **Version bump type:** ${{ github.event.inputs.version_bump }}
+            **Docker image:** ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.version.outputs.new_version }}
+          draft: false
+          prerelease: false
+
