@@ -96,7 +96,6 @@ func (h *PaymentReceiptFormHandler) getConnectionCount() int {
 	return count
 }
 
-
 // runNotificationHub manages client connections and broadcasts messages
 func (h *PaymentReceiptFormHandler) runNotificationHub() {
 	for message := range h.broadcast {

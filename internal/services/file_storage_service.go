@@ -189,4 +189,3 @@ func (s *fileStorageService) EnsureUploadDirectories() error {
 	log.Info("Successfully ensured all upload directories exist")
 	return nil
 }
-

@@ -84,8 +84,8 @@ func TestRevenueExpenseExcelRepository(t *testing.T) {
 	t.Log("\n=== Test Add First Expense ===")
 	// Attempt to add expense using detected columns - test what actually works
 	sampleExpense := map[string]interface{}{
-		pkg.RevenueExpenseColumnName:  "Test expense",
-		pkg.RevenueExpenseColumnWater: 15000,
+		pkg.RevenueExpenseColumnName:          "Test expense",
+		pkg.RevenueExpenseColumnWater:         15000,
 		pkg.RevenueExpenseColumnOrdinalNumber: 10,
 	}
 

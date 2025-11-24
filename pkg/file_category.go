@@ -27,4 +27,3 @@ func (fc FileCategory) GetSubdirectory() (string, error) {
 	}
 	return subdir, nil
 }
-
