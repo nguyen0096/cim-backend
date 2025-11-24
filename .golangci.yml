@@ -1,0 +1,82 @@
+version: "2"
+
+run:
+  go: '1.24'
+  modules-download-mode: readonly
+  allow-parallel-runners: true
+
+linters:
+  default: none
+  enable:
+    - govet
+    - ineffassign
+    # - revive
+    # - gocritic
+    - unused
+    - misspell
+    # - unparam
+    # - err113
+    - makezero
+
+  exclusions:
+    paths:
+      - vendor
+      - bin
+      - scripts
+      - docker
+      - test/coverage
+      - .github
+      - ".*\\.pb\\.go$"
+      - ".*_string\\.go$"
+      - ".*mock.*\\.go$"
+      - "docs/.*"
+      - "database/migrations/.*"
+    
+  settings:
+    govet:
+      enable-all: true
+      disable:
+        - shadow
+        - fieldalignment
+    
+    errcheck:
+      check-type-assertions: false
+      check-blank: false
+      exclude-functions:
+        - io/ioutil.ReadFile
+        - io.Copy(*bytes.Buffer)
+        - io.Copy(os.Stdout)
+    
+    staticcheck:
+      checks: ["all"]
+
+formatters:
+  # enable:
+    # - gofmt
+    # - goimports
+    # - gofumpt
+  exclusions:
+    paths:
+      - vendor
+      - bin
+      - scripts
+      - docker
+      - test/coverage
+      - .github
+      - ".*\\.pb\\.go$"
+      - ".*_string\\.go$"
+      - ".*mock.*\\.go$"
+      - "docs/.*"
+      - "database/migrations/.*"
+
+issues:
+  max-same-issues: 0
+  uniq-by-line: true
+
+output:
+  formats:
+    text:
+      path: stdout
+      colors: true
+      print-issued-lines: true
+      print-linter-name: true
