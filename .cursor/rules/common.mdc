@@ -10,6 +10,7 @@ alwaysApply: true
 - **Scope control**: ONLY implement what the user explicitly asked. If related changes are needed, pause and ask the user before proceeding.
 - **NEVER CHANGE EXISTING CODE IF IT'S NOT RELATED**
 - **Task completion**: A task is not “done” until the user explicitly confirms. Always ask: “Please review the changes and confirm if the task is complete.”
+- Do not being too verbose and put massive redundant comments in the code. It's only encouraged to put Go doc comments for functions, structs and methods. Comments must be short, concise and easy to understand.
 
 ### Task Summary Rule
 

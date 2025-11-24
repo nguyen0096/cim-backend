@@ -195,11 +195,12 @@ func (h *UnitHandler) CreateUnit(c echo.Context) error {
 		unit.DecimalPlaces = 0 // Default value
 	}
 
-	if err := h.unitService.CreateUnit(c.Request().Context(), unit); err != nil {
+	createdUnit, err := h.unitService.CreateUnit(c.Request().Context(), unit)
+	if err != nil {
 		return err
 	}
 
-	return c.JSON(http.StatusCreated, unit)
+	return c.JSON(http.StatusCreated, createdUnit)
 }
 
 // UpdateUnit godoc

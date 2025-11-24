@@ -1,11 +1,6 @@
 package handlers
 
 import (
-	"cim-backend/internal/middleware"
-	"cim-backend/internal/models"
-	"cim-backend/internal/services"
-	"cim-backend/pkg"
-	"context"
 	"errors"
 	"net/http"
 	"net/http/httptest"
@@ -14,60 +9,18 @@ import (
 	"github.com/labstack/echo/v4"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
+
+	"cim-backend/internal/middleware"
+	"cim-backend/internal/mocks/servicemocks"
+	"cim-backend/internal/models"
+	"cim-backend/pkg"
 )
-
-type mockUnitService struct {
-	mock.Mock
-}
-
-func (m *mockUnitService) CreateUnit(ctx context.Context, unit *models.Unit) error {
-	args := m.Called(ctx, unit)
-	return args.Error(0)
-}
-
-func (m *mockUnitService) GetUnitByID(ctx context.Context, id uint) (*models.Unit, error) {
-	args := m.Called(ctx, id)
-	unit, _ := args.Get(0).(*models.Unit)
-	return unit, args.Error(1)
-}
-
-func (m *mockUnitService) UpdateUnit(ctx context.Context, unit *models.Unit) error {
-	args := m.Called(ctx, unit)
-	return args.Error(0)
-}
-
-func (m *mockUnitService) DeleteUnit(ctx context.Context, id uint) error {
-	args := m.Called(ctx, id)
-	return args.Error(0)
-}
-
-func (m *mockUnitService) ListUnits(ctx context.Context, limit, offset int, sortBy, sortOrder, unitType string, baseOnly bool) ([]models.Unit, error) {
-	args := m.Called(ctx, limit, offset, sortBy, sortOrder, unitType, baseOnly)
-	units, _ := args.Get(0).([]models.Unit)
-	return units, args.Error(1)
-}
-
-func (m *mockUnitService) SearchUnits(ctx context.Context, query string, limit, offset int, sortBy, sortOrder, unitType string, baseOnly bool) ([]models.Unit, error) {
-	args := m.Called(ctx, query, limit, offset, sortBy, sortOrder, unitType, baseOnly)
-	units, _ := args.Get(0).([]models.Unit)
-	return units, args.Error(1)
-}
-
-func (m *mockUnitService) CountUnits(ctx context.Context, unitType string, baseOnly bool) (int64, error) {
-	args := m.Called(ctx, unitType, baseOnly)
-	return args.Get(0).(int64), args.Error(1)
-}
-
-func (m *mockUnitService) CountSearchUnits(ctx context.Context, query string, unitType string, baseOnly bool) (int64, error) {
-	args := m.Called(ctx, query, unitType, baseOnly)
-	return args.Get(0).(int64), args.Error(1)
-}
 
 func TestUnitHandler_ListUnits(t *testing.T) {
 	e := echo.New()
 	e.HTTPErrorHandler = middleware.CustomErrorHandler
 
-	mockService := new(mockUnitService)
+	mockService := servicemocks.NewUnitService(t)
 	handler := NewUnitHandler(mockService)
 
 	req := httptest.NewRequest(http.MethodGet, "/units?limit=10&page=2&sort=name&order=asc", nil)
@@ -90,14 +43,13 @@ func TestUnitHandler_ListUnits(t *testing.T) {
 	err := handler.ListUnits(c)
 	assert.NoError(t, err)
 	assert.Equal(t, http.StatusOK, rec.Code)
-	mockService.AssertExpectations(t)
 }
 
 func TestUnitHandler_ListUnits_WithSearch(t *testing.T) {
 	e := echo.New()
 	e.HTTPErrorHandler = middleware.CustomErrorHandler
 
-	mockService := new(mockUnitService)
+	mockService := servicemocks.NewUnitService(t)
 	handler := NewUnitHandler(mockService)
 
 	req := httptest.NewRequest(http.MethodGet, "/units?q=kg&limit=10&page=1", nil)
@@ -120,14 +72,13 @@ func TestUnitHandler_ListUnits_WithSearch(t *testing.T) {
 	err := handler.ListUnits(c)
 	assert.NoError(t, err)
 	assert.Equal(t, http.StatusOK, rec.Code)
-	mockService.AssertExpectations(t)
 }
 
 func TestUnitHandler_CreateUnit(t *testing.T) {
 	e := echo.New()
 	e.HTTPErrorHandler = middleware.CustomErrorHandler
 
-	mockService := new(mockUnitService)
+	mockService := servicemocks.NewUnitService(t)
 	handler := NewUnitHandler(mockService)
 
 	requestBody := createUnitRequest{
@@ -137,11 +88,19 @@ func TestUnitHandler_CreateUnit(t *testing.T) {
 		ConversionFactor: 1,
 	}
 
+	createdUnit := &models.Unit{
+		Base:             models.Base{ID: 1},
+		UnitType:         "volume",
+		Name:             "LITER",
+		Symbol:           "L",
+		ConversionFactor: 1,
+	}
+
 	mockService.
 		On("CreateUnit", mock.Anything, mock.MatchedBy(func(unit *models.Unit) bool {
 			return unit.UnitType == "volume" && unit.Name == "liter" && unit.Symbol == "L"
 		})).
-		Return(nil)
+		Return(createdUnit, nil)
 
 	req, err := createRequest(http.MethodPost, "/units", requestBody)
 	assert.NoError(t, err)
@@ -151,14 +110,13 @@ func TestUnitHandler_CreateUnit(t *testing.T) {
 	err = handler.CreateUnit(c)
 	assert.NoError(t, err)
 	assert.Equal(t, http.StatusCreated, rec.Code)
-	mockService.AssertExpectations(t)
 }
 
 func TestUnitHandler_CreateUnit_DerivedUnit(t *testing.T) {
 	e := echo.New()
 	e.HTTPErrorHandler = middleware.CustomErrorHandler
 
-	mockService := new(mockUnitService)
+	mockService := servicemocks.NewUnitService(t)
 	handler := NewUnitHandler(mockService)
 
 	baseUnitID := uint(10)
@@ -170,11 +128,20 @@ func TestUnitHandler_CreateUnit_DerivedUnit(t *testing.T) {
 		ConversionFactor: 0.001,
 	}
 
+	createdUnit := &models.Unit{
+		Base:             models.Base{ID: 1},
+		UnitType:         "mass",
+		Name:             "GRAM",
+		Symbol:           "g",
+		BaseUnitID:       &baseUnitID,
+		ConversionFactor: 0.001,
+	}
+
 	mockService.
 		On("CreateUnit", mock.Anything, mock.MatchedBy(func(unit *models.Unit) bool {
 			return unit.BaseUnitID != nil && *unit.BaseUnitID == baseUnitID && unit.ConversionFactor == 0.001
 		})).
-		Return(nil)
+		Return(createdUnit, nil)
 
 	req, err := createRequest(http.MethodPost, "/units", requestBody)
 	assert.NoError(t, err)
@@ -184,14 +151,13 @@ func TestUnitHandler_CreateUnit_DerivedUnit(t *testing.T) {
 	err = handler.CreateUnit(c)
 	assert.NoError(t, err)
 	assert.Equal(t, http.StatusCreated, rec.Code)
-	mockService.AssertExpectations(t)
 }
 
 func TestUnitHandler_CreateUnit_ValidationError(t *testing.T) {
 	e := echo.New()
 	e.HTTPErrorHandler = middleware.CustomErrorHandler
 
-	mockService := new(mockUnitService)
+	mockService := servicemocks.NewUnitService(t)
 	handler := NewUnitHandler(mockService)
 
 	requestBody := createUnitRequest{}
@@ -211,7 +177,7 @@ func TestUnitHandler_GetUnit_NotFound(t *testing.T) {
 	e := echo.New()
 	e.HTTPErrorHandler = middleware.CustomErrorHandler
 
-	mockService := new(mockUnitService)
+	mockService := servicemocks.NewUnitService(t)
 	handler := NewUnitHandler(mockService)
 
 	req := httptest.NewRequest(http.MethodGet, "/units/999", nil)
@@ -226,14 +192,13 @@ func TestUnitHandler_GetUnit_NotFound(t *testing.T) {
 	assert.Error(t, err)
 	e.HTTPErrorHandler(err, c)
 	assert.Equal(t, http.StatusNotFound, rec.Code)
-	mockService.AssertExpectations(t)
 }
 
 func TestUnitHandler_DeleteUnit(t *testing.T) {
 	e := echo.New()
 	e.HTTPErrorHandler = middleware.CustomErrorHandler
 
-	mockService := new(mockUnitService)
+	mockService := servicemocks.NewUnitService(t)
 	handler := NewUnitHandler(mockService)
 
 	req := httptest.NewRequest(http.MethodDelete, "/units/1", nil)
@@ -247,7 +212,4 @@ func TestUnitHandler_DeleteUnit(t *testing.T) {
 	err := handler.DeleteUnit(c)
 	assert.NoError(t, err)
 	assert.Equal(t, http.StatusNoContent, rec.Code)
-	mockService.AssertExpectations(t)
 }
-
-var _ services.UnitService = (*mockUnitService)(nil)

@@ -32,6 +32,7 @@ type ProductService interface {
 
 	// v1
 	ListProducts(ctx context.Context, limit, offset int, sortBy, sortOrder, status, productType string, supplierID uint) ([]models.Product, error)
+	GetMapByNames(ctx context.Context, names []string) (map[string]*models.Product, error)
 	ImportProductsFromCSV(ctx context.Context, csvReader io.Reader) (int, error)
 	ImportProductsFromExcel(ctx context.Context, excelReader io.Reader) (int, error)
 	ExportProductsToCSV(ctx context.Context, writer io.Writer, status, productType string, supplierID uint) error
@@ -42,14 +43,16 @@ type productService struct {
 	productRepo     repository.ProductRepository
 	supplierRepo    repository.SupplierRepository
 	unitRepo        repository.UnitRepository
+	unitService     UnitService
 	settingsService SettingsService
 }
 
-func NewProductService(productRepo repository.ProductRepository, supplierRepo repository.SupplierRepository, unitRepo repository.UnitRepository, settingsService SettingsService) ProductService {
+func NewProductService(productRepo repository.ProductRepository, supplierRepo repository.SupplierRepository, unitRepo repository.UnitRepository, unitService UnitService, settingsService SettingsService) ProductService {
 	return &productService{
 		productRepo:     productRepo,
 		supplierRepo:    supplierRepo,
 		unitRepo:        unitRepo,
+		unitService:     unitService,
 		settingsService: settingsService,
 	}
 }
@@ -129,34 +132,6 @@ func (s *productService) CountProducts(ctx context.Context, status, productType 
 
 func (s *productService) CountSearchProducts(ctx context.Context, query string, status, productType string, supplierID uint) (int64, error) {
 	return s.productRepo.CountSearch(ctx, query, status, productType, supplierID)
-}
-
-func (s *productService) ensureUnit(ctx context.Context, label string) (*models.Unit, error) {
-	unitLabel := strings.TrimSpace(label)
-	if unitLabel == "" {
-		return nil, pkg.ErrValidation("unit label cannot be empty", nil)
-	}
-
-	unit, err := s.unitRepo.GetByTypeAndName(ctx, "general", unitLabel)
-	if err == nil {
-		return unit, nil
-	}
-
-	if err != gorm.ErrRecordNotFound {
-		return nil, fmt.Errorf("failed to look up unit '%s': %w", unitLabel, err)
-	}
-
-	newUnit := &models.Unit{
-		UnitType:         "general",
-		Name:             unitLabel,
-		Symbol:           unitLabel,
-		ConversionFactor: 1,
-	}
-	if createErr := s.unitRepo.Create(ctx, newUnit); createErr != nil {
-		return nil, fmt.Errorf("failed to create unit '%s': %w", unitLabel, createErr)
-	}
-
-	return newUnit, nil
 }
 
 // updateProductTypesInSettings updates the product_types setting with new product types from import
@@ -426,7 +401,7 @@ func (s *productService) ImportProductsFromCSV(ctx context.Context, csvReader io
 	for _, product := range productsMap {
 		productNames = append(productNames, product.Name)
 	}
-	existingProducts, err := s.productRepo.GetByNames(ctx, productNames)
+	existingProducts, err := s.GetMapByNames(ctx, productNames)
 	if err != nil {
 		return 0, fmt.Errorf("failed to check for existing products: %w", err)
 	}
@@ -435,7 +410,7 @@ func (s *productService) ImportProductsFromCSV(ctx context.Context, csvReader io
 	createdCount := 0
 	for productKey, product := range productsMap {
 		// Check if product already exists in database (case-insensitive lookup)
-		productKeyLower := strings.ToLower(product.Name)
+		productKeyLower := strings.ToUpper(product.Name)
 		if _, exists := existingProducts[productKeyLower]; exists {
 			// Product already exists, skip it
 			continue
@@ -446,9 +421,16 @@ func (s *productService) ImportProductsFromCSV(ctx context.Context, csvReader io
 			return 0, pkg.ErrValidation(fmt.Sprintf("unit is required for product '%s'", product.Name), nil)
 		}
 
-		unit, err := s.ensureUnit(ctx, unitLabel)
+		unit, err := s.unitService.CreateUnit(ctx, &models.Unit{
+			UnitType:         "general",
+			Name:             unitLabel,
+			Symbol:           unitLabel,
+			ConversionFactor: 1,
+		})
 		if err != nil {
-			return 0, fmt.Errorf("failed to resolve unit for product '%s': %w", product.Name, err)
+			if !pkg.IsErrorCode(err, pkg.ErrorCodeDuplicate) {
+				return 0, fmt.Errorf("failed to resolve unit for product '%s': %w", product.Name, err)
+			}
 		}
 		product.UnitID = unit.ID
 		product.Unit = unit
@@ -720,7 +702,8 @@ func (s *productService) ImportProductsFromExcel(ctx context.Context, excelReade
 	for _, product := range productsMap {
 		productNames = append(productNames, product.Name)
 	}
-	existingProducts, err := s.productRepo.GetByNames(ctx, productNames)
+
+	existingProducts, err := s.GetMapByNames(ctx, productNames)
 	if err != nil {
 		return 0, fmt.Errorf("failed to check for existing products: %w", err)
 	}
@@ -729,7 +712,7 @@ func (s *productService) ImportProductsFromExcel(ctx context.Context, excelReade
 	createdCount := 0
 	for productKey, product := range productsMap {
 		// Check if product already exists in database (case-insensitive lookup)
-		productKeyLower := strings.ToLower(product.Name)
+		productKeyLower := strings.ToUpper(product.Name)
 		if _, exists := existingProducts[productKeyLower]; exists {
 			// Product already exists, skip it
 			continue
@@ -740,9 +723,16 @@ func (s *productService) ImportProductsFromExcel(ctx context.Context, excelReade
 			return 0, pkg.ErrValidation(fmt.Sprintf("unit is required for product '%s'", product.Name), nil)
 		}
 
-		unit, err := s.ensureUnit(ctx, unitLabel)
+		unit, err := s.unitService.CreateUnit(ctx, &models.Unit{
+			UnitType:         "general",
+			Name:             unitLabel,
+			Symbol:           unitLabel,
+			ConversionFactor: 1,
+		})
 		if err != nil {
-			return 0, fmt.Errorf("failed to resolve unit for product '%s': %w", product.Name, err)
+			if !pkg.IsErrorCode(err, pkg.ErrorCodeDuplicate) {
+				return 0, fmt.Errorf("failed to resolve unit for product '%s': %w", product.Name, err)
+			}
 		}
 		product.UnitID = unit.ID
 		product.Unit = unit
@@ -950,4 +940,19 @@ func (s *productService) ExportProductsToExcel(ctx context.Context, writer io.Wr
 	}
 
 	return nil
+}
+
+func (s *productService) GetMapByNames(ctx context.Context, names []string) (map[string]*models.Product, error) {
+	products, err := s.productRepo.GetByNames(ctx, names)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get product map by names: %w", err)
+	}
+
+	// Build map by name for O(1) lookup (using lowercase keys for case-insensitive matching)
+	result := make(map[string]*models.Product)
+	for _, product := range products {
+		result[strings.ToUpper(product.Name)] = &product
+	}
+
+	return result, nil
 }

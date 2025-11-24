@@ -5,6 +5,7 @@ import (
 	"cim-backend/internal/repository"
 	"cim-backend/pkg"
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -17,10 +18,11 @@ const (
 	MaxUnitHierarchyDepth = 4
 )
 
-//go:generate mockery --name=UnitService --structname=UnitService --output=./servicemocks --outpkg=servicemocks
+//go:generate mockery --name=UnitService --structname=UnitService --output=../mocks/servicemocks --outpkg=servicemocks
 type UnitService interface {
-	CreateUnit(ctx context.Context, unit *models.Unit) error
+	CreateUnit(ctx context.Context, unit *models.Unit) (*models.Unit, error)
 	GetUnitByID(ctx context.Context, id uint) (*models.Unit, error)
+	GetMapByNames(ctx context.Context, names []string) (map[string]*models.Unit, error)
 	UpdateUnit(ctx context.Context, unit *models.Unit) error
 	DeleteUnit(ctx context.Context, id uint) error
 	ListUnits(ctx context.Context, limit, offset int, sortBy, sortOrder, unitType string, baseOnly bool) ([]models.Unit, error)
@@ -41,28 +43,40 @@ func NewUnitService(unitRepo repository.UnitRepository, productRepo repository.P
 	}
 }
 
-func (s *unitService) CreateUnit(ctx context.Context, unit *models.Unit) error {
+// CreateUnit creates a new unit or returns existing unit if one with the same name and type already exists
+// Unit names are automatically uppercased for consistency
+func (s *unitService) CreateUnit(ctx context.Context, unit *models.Unit) (*models.Unit, error) {
+	// Validate base unit relationship for new units
 	if err := s.ensureBaseUnitRelationship(ctx, unit); err != nil {
-		return err
+		return nil, err
 	}
 
+	// Uppercase and trim the unit name for consistency
+	unit.Name = strings.ToUpper(strings.TrimSpace(unit.Name))
+
+	// Check if unit already exists (get-or-create pattern)
+	existing, err := s.unitRepo.GetByTypeAndName(ctx, unit.UnitType, unit.Name)
+	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, fmt.Errorf("failed to check existing unit: %w", err)
+	}
+	if err == nil && existing != nil {
+		// Unit already exists, return it
+		// (this supports get-or-create behavior)
+		return existing, pkg.ErrUnitAlreadyExists(ctx, unit.Name, unit.UnitType)
+	}
+
+	// Set defaults for base units
 	if unit.BaseUnitID == nil {
 		unit.Level = 1
 		unit.ConversionFactor = 1
 	}
 
-	existing, err := s.unitRepo.GetByTypeAndName(ctx, unit.UnitType, unit.Name)
-	if err != nil && err != gorm.ErrRecordNotFound {
-		return fmt.Errorf("failed to check existing unit: %w", err)
-	}
-	if existing != nil && err == nil {
-		return pkg.ErrDuplicate(fmt.Sprintf("unit '%s' already exists for type '%s'", unit.Name, unit.UnitType), nil)
+	// Create the unit
+	if err := s.unitRepo.Create(ctx, unit); err != nil {
+		return nil, fmt.Errorf("failed to create unit: %w", err)
 	}
 
-	if err := s.unitRepo.Create(ctx, unit); err != nil {
-		return fmt.Errorf("failed to create unit: %w", err)
-	}
-	return nil
+	return unit, nil
 }
 
 func (s *unitService) GetUnitByID(ctx context.Context, id uint) (*models.Unit, error) {
@@ -245,4 +259,22 @@ func (s *unitService) checkCircularReference(ctx context.Context, unitID uint, b
 	}
 
 	return nil
+}
+
+// GetUnitMapByNames returns a map of units by their names (matches both name and symbol)
+func (s *unitService) GetMapByNames(ctx context.Context, names []string) (map[string]*models.Unit, error) {
+	units, err := s.unitRepo.GetByNames(ctx, names)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get unit map by names: %w", err)
+	}
+
+	// Build map by both name and symbol for O(1) lookup
+	result := make(map[string]*models.Unit)
+	for _, u := range units {
+		result[u.Name] = &u
+		if u.Symbol != "" {
+			result[u.Symbol] = &u
+		}
+	}
+	return result, nil
 }

@@ -11,7 +11,7 @@ import (
 	"github.com/shopspring/decimal"
 )
 
-//go:generate mockery --name=InventoryItemService --structname=InventoryItemService --output=./servicemocks --outpkg=servicemocks
+//go:generate mockery --name=InventoryItemService --structname=InventoryItemService --output=../mocks/servicemocks --outpkg=servicemocks
 type InventoryItemService interface {
 	CreateInventoryItem(ctx context.Context, item *models.InventoryItem) error
 	GetInventoryItemByID(ctx context.Context, id uint) (*models.InventoryItem, error)

@@ -2,10 +2,6 @@ package apptest
 
 import (
 	"bytes"
-	"cim-backend/internal/models"
-	"cim-backend/pkg"
-	"cim-backend/pkg/testutil"
-	"cim-backend/pkg/testutil/fixture"
 	"context"
 	"encoding/csv"
 	"encoding/json"
@@ -18,6 +14,11 @@ import (
 	. "github.com/onsi/gomega"
 	"github.com/xuri/excelize/v2"
 	"gorm.io/gorm"
+
+	"cim-backend/internal/models"
+	"cim-backend/pkg"
+	"cim-backend/pkg/testutil"
+	"cim-backend/pkg/testutil/fixture"
 )
 
 var _ = Describe("Product API", func() {
@@ -414,13 +415,89 @@ var _ = Describe("Product API", func() {
 		})
 	})
 
-	Describe("Import Products from CSV and Excel", func() {
+	Describe("Import Products from CSV and Excel", Ordered, func() {
 		files := []string{
-			"test/data/excel/Products_template.csv",
-			"test/data/excel/Products_template.xlsx",
+			pkg.TranslateCallerRelativePath("data/excel/Products_template.csv"),
+			pkg.TranslateCallerRelativePath("data/excel/Products_template.xlsx"),
 		}
 
-		for _, file := range files {
+		BeforeAll(func() {
+			// Create units required by the import test
+			fixture.WithUnits(tenv.ContextfulDB(), []models.Unit{
+				{
+					UnitType:         "general",
+					Name:             "CHAI",
+					Symbol:           "CHAI",
+					ConversionFactor: 1,
+				},
+				{
+					UnitType:         "general",
+					Name:             "THÙNG",
+					Symbol:           "THÙNG",
+					ConversionFactor: 1,
+				},
+				{
+					UnitType:         "general",
+					Name:             "LỐC",
+					Symbol:           "LỐC",
+					ConversionFactor: 1,
+				},
+				{
+					UnitType:         "general",
+					Name:             "PHẦN",
+					Symbol:           "PHẦN",
+					ConversionFactor: 1,
+				},
+			})
+
+			// Create suppliers required by the import test
+			fixture.WithSupplier(tenv.ContextfulDB(), models.Supplier{
+				Name: "SỮA THÁI SƠN",
+			})
+
+			fixture.WithSupplier(tenv.ContextfulDB(), models.Supplier{
+				Name: "TH TRUE MILK",
+			})
+
+			fixture.WithSupplier(tenv.ContextfulDB(), models.Supplier{
+				Name:         "NHÀ HÀNG 5 SAO",
+				ContactEmail: "5stars@example.com",
+				ContactPhone: "028-3896100",
+				Address:      "1, Tân Kỳ Tân Quý, TPHCM",
+			})
+
+			fixture.WithSupplier(tenv.ContextfulDB(), models.Supplier{
+				Name:         "PEPSI",
+				ContactPhone: "098-7513328",
+				Address:      "202,QUỐC LỘ 13,PHƯỜNG HIỆP BÌNH THÀNH PHỐ HỒ CHÍ MINH VIỆT NAM",
+			})
+
+			fixture.WithSupplier(tenv.ContextfulDB(), models.Supplier{
+				Name:         "COCACOLA",
+				ContactPhone: "028-3896100",
+				Address:      "LÔ C 12,ĐƯỜNG DỌC 2,KHU CÔNG NGHIỆP PHÚ AN,XÃ BẾN LỨC,TỈNH TÂY NINH,VIỆT NAM",
+			})
+
+			fixture.WithSupplier(tenv.ContextfulDB(), models.Supplier{
+				Name:    "SỮA MILO",
+				Address: "415/4 A HOÀNG VĂN THỤ, PHƯỜNG TÂN SƠN HÒA, THÀNH PH",
+			})
+		})
+
+		DescribeTableSubtree("should import products from CSV and Excel", func(file string) {
+			var importedProductIDs []uint
+
+			AfterEach(func() {
+				// Clean up imported products and their associations before units are cleaned up
+				if len(importedProductIDs) > 0 {
+					// Delete product-supplier associations first
+					tenv.DB.Exec("DELETE FROM product_suppliers WHERE product_id IN ?", importedProductIDs)
+					// Delete products
+					tenv.DB.Exec("DELETE FROM products WHERE id IN ?", importedProductIDs)
+					importedProductIDs = nil
+				}
+			})
+
 			It(fmt.Sprintf("should import products from %s", file), func(ctx SpecContext) {
 				client := testutil.NewClient(tenv, models.RoleAdmin)
 
@@ -443,6 +520,14 @@ var _ = Describe("Product API", func() {
 				Expect(resp.StatusCode).To(Equal(200))
 				Expect(importProductsResp["count"]).To(Equal(float64(12))) // CSV contains 12 unique products
 				Expect(importProductsResp["message"]).To(Equal("Products imported successfully"))
+
+				// Collect all imported product IDs for cleanup
+				var allProducts []models.Product
+				err = tenv.DB.WithContext(testCtx).Select("id").Where("created_by = ?", user.Email).Find(&allProducts).Error
+				Expect(err).NotTo(HaveOccurred())
+				for _, p := range allProducts {
+					importedProductIDs = append(importedProductIDs, p.ID)
+				}
 
 				// verifyProduct verifies a product by name
 				verifyProduct := func(name string, expectedType, expectedUnit, expectedStatus string, expectedSupplierNames []string, checkCreatedBy bool) *models.Product {
@@ -478,18 +563,18 @@ var _ = Describe("Product API", func() {
 				}
 
 				// Verify first product: PEPSI 390 ml (has multiple suppliers)
-				verifyProduct("PEPSI 390 ml", "NƯỚC", "lốc", "active", []string{"PEPSI", "COCACOLA"}, false)
+				verifyProduct("PEPSI 390 ml", "NƯỚC", "LỐC", "active", []string{"PEPSI", "COCACOLA"}, false)
 
 				// Verify other products
-				verifyProduct("PEPSI LON 320 ML", "NƯỚC", "thùng", "", []string{"PEPSI"}, false)
-				verifyProduct("FANTA LON XÁ XỊ  320 ML", "NƯỚC", "lốc", "", []string{"COCACOLA"}, false)
-				verifyProduct("MILO NẮP VẬN 210 ML", "NƯỚC", "thùng", "", []string{"SỮA MILO"}, false)
-				verifyProduct("SỮA BẮP THÁI SƠN", "ĂN NHẸ", "chai", "", []string{"SỮA THÁI SƠN"}, false)
-				verifyProduct("COCA COLA 500ML", "NƯỚC", "thùng", "", nil, false)
+				verifyProduct("PEPSI LON 320 ML", "NƯỚC", "THÙNG", "", []string{"PEPSI"}, false)
+				verifyProduct("FANTA LON XÁ XỊ  320 ML", "NƯỚC", "LỐC", "", []string{"COCACOLA"}, false)
+				verifyProduct("MILO NẮP VẬN 210 ML", "NƯỚC", "THÙNG", "", []string{"SỮA MILO"}, false)
+				verifyProduct("SỮA BẮP THÁI SƠN", "ĂN NHẸ", "CHAI", "", []string{"SỮA THÁI SƠN"}, false)
+				verifyProduct("COCA COLA 500ML", "NƯỚC", "THÙNG", "", nil, false)
 
 				// Verify product with full supplier details
-				p7 := verifyProduct("CƠM THỊT KHO TRỨNG", "CƠM", "phần", "active", []string{"NHÀ HÀNG 5 SAO"}, false)
-				Expect(p7.Unit.Name).To(Equal("phần"))
+				p7 := verifyProduct("CƠM THỊT KHO TRỨNG", "CƠM", "PHẦN", "active", []string{"NHÀ HÀNG 5 SAO"}, false)
+				Expect(p7.Unit.Name).To(Equal("PHẦN"))
 				Expect(p7.Suppliers[0].ContactEmail).To(Equal("5stars@example.com"))
 				Expect(p7.Suppliers[0].ContactPhone).To(Equal("028-3896100"))
 				Expect(p7.Suppliers[0].Address).To(Equal("1, Tân Kỳ Tân Quý, TPHCM"))
@@ -582,7 +667,10 @@ var _ = Describe("Product API", func() {
 				Expect(err).NotTo(HaveOccurred())
 				Expect(productTypes).To(Equal([]string{"CƠM", "NƯỚC", "ĂN NHẸ"}))
 			})
-		}
+		},
+			Entry("CSV", files[0]),
+			Entry("Excel", files[1]),
+		)
 	})
 
 	Describe("Export Products to CSV", func() {

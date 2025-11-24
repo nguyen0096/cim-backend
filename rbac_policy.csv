@@ -27,6 +27,7 @@ p, admin, inventory-items, update, allow
 p, admin, inventory-items, delete, allow
 p, admin, purchase-orders, view, allow
 p, admin, purchase-orders, create, allow
+p, admin, purchase-orders, import, allow
 p, admin, purchase-orders, update, allow
 p, admin, purchase-orders, confirm, allow
 p, admin, purchase-orders, cancel, allow
@@ -73,6 +74,7 @@ p, accountant, inventory-submissions, approve, allow
 
 p, accountant, purchase-orders, view, allow
 p, accountant, purchase-orders, create, allow
+p, accountant, purchase-orders, import, allow
 p, accountant, purchase-orders, update, allow
 p, accountant, purchase-orders, confirm, allow
 p, accountant, purchase-orders, cancel, allow

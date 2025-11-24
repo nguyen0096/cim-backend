@@ -7,7 +7,7 @@ import (
 	"gorm.io/gorm"
 )
 
-//go:generate mockery --name=SupplierRepository --structname=SupplierRepository --output=../mocks/repositories --outpkg=repositorymocks
+//go:generate mockery --name=SupplierRepository --structname=SupplierRepository --output=../mocks/repositorymocks --outpkg=repositorymocks
 type SupplierRepository interface {
 	Create(ctx context.Context, supplier *models.Supplier) error
 	GetByID(ctx context.Context, id uint) (*models.Supplier, error)

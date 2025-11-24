@@ -1,9 +1,6 @@
 package services
 
 import (
-	"cim-backend/internal/mocks/repositorymocks"
-	"cim-backend/internal/models"
-	"cim-backend/pkg"
 	"context"
 	"errors"
 	"regexp"
@@ -13,13 +10,18 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
+
+	"cim-backend/internal/mocks/repositorymocks"
+	"cim-backend/internal/models"
+	"cim-backend/pkg"
+	"cim-backend/pkg/testutil/fixture"
 )
 
 func Test_generatePurchaseOrderNumber(t *testing.T) {
 	// Setup
 	mockRepo := repositorymocks.NewPurchaseOrderRepository(t)
 	// Note: Service mocks are not used in this test as it's not needed for generatePurchaseOrderNumber
-	service := NewPurchaseOrderService(mockRepo, nil, nil, nil, nil, nil, nil, nil, nil, nil).(*purchaseOrderService)
+	service := NewPurchaseOrderService(mockRepo, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil).(*purchaseOrderService)
 
 	t.Run("should generate valid purchase order number format", func(t *testing.T) {
 		// Execute
@@ -53,40 +55,42 @@ func Test_generatePurchaseOrderNumber(t *testing.T) {
 }
 
 func TestCreatePurchaseOrder(t *testing.T) {
-
 	t.Run("should create purchase order with auto-generated order number when empty", func(t *testing.T) {
 		// Setup
 		mockRepo := repositorymocks.NewPurchaseOrderRepository(t)
-		service := NewPurchaseOrderService(mockRepo, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+		mockProductRepo := repositorymocks.NewProductRepository(t)
+		mockUnitRepo := repositorymocks.NewUnitRepository(t)
+		service := NewPurchaseOrderService(mockRepo, nil, mockUnitRepo, mockProductRepo, nil, nil, nil, nil, nil, nil, nil, nil)
 
-		purchaseOrder := &models.PurchaseOrder{
-			// OrderNumber is empty - should be auto-generated
-			Status:      models.PurchaseOrderStatusOrderPlaced,
-			TotalAmount: decimal.NewFromFloat(1500.50),
-			Notes:       "Test purchase order",
-			// No items - this test focuses on order number generation only
-		}
+		inventory := fixture.ValidInventory()
+		unit := fixture.ValidBaseUnit()
+		product := fixture.ValidProduct(unit.ID)
+		supplier := fixture.ValidSupplier()
+		po := fixture.ValidPurchaseOrder(inventory.ID, product.ID, supplier.ID, unit.ID)
 
 		// Setup mock - expect Create to be called with purchase order that has generated order number
+		mockProductRepo.On("GetByID", mock.Anything, product.ID).Return(&product, nil)
+		mockUnitRepo.On("GetByID", mock.Anything, unit.ID).Return(&unit, nil)
+
 		mockRepo.On("Create", mock.Anything, mock.MatchedBy(func(po *models.PurchaseOrder) bool {
 			// Check that order number was generated and follows the expected pattern
 			pattern := `^PO-\d{6}-\d{6}-[A-Z0-9]{2}$`
 			matched, _ := regexp.MatchString(pattern, po.OrderNumber)
 			return matched && po.OrderNumber != ""
-		})).Return(nil).Once()
+		})).Return(nil)
 
-		mockRepo.On("GetByID", mock.AnythingOfType("uint")).Return(purchaseOrder, nil).Once()
+		mockRepo.On("GetByID", mock.AnythingOfType("uint")).Return(&po, nil)
 
 		// Execute
-		err := service.CreatePurchaseOrder(context.Background(), purchaseOrder)
+		err := service.CreatePurchaseOrder(context.Background(), &po)
 
 		// Assertions
 		require.NoError(t, err)
-		assert.NotEmpty(t, purchaseOrder.OrderNumber, "Order number should be generated")
+		assert.NotEmpty(t, po.OrderNumber, "Order number should be generated")
 
 		// Verify the generated order number format
 		pattern := `^PO-\d{6}-\d{6}-[A-Z0-9]{2}$`
-		matched, err := regexp.MatchString(pattern, purchaseOrder.OrderNumber)
+		matched, err := regexp.MatchString(pattern, po.OrderNumber)
 		require.NoError(t, err)
 		assert.True(t, matched, "Generated order number should match expected format")
 
@@ -96,48 +100,78 @@ func TestCreatePurchaseOrder(t *testing.T) {
 	t.Run("should create purchase order without changing provided order number", func(t *testing.T) {
 		// Setup
 		mockRepo := repositorymocks.NewPurchaseOrderRepository(t)
-		service := NewPurchaseOrderService(mockRepo, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+		mockProductRepo := repositorymocks.NewProductRepository(t)
+		mockUnitRepo := repositorymocks.NewUnitRepository(t)
+		service := NewPurchaseOrderService(mockRepo, nil, mockUnitRepo, mockProductRepo, nil, nil, nil, nil, nil, nil, nil, nil)
 
+		inventory := fixture.ValidInventory()
+		unit := fixture.ValidBaseUnit()
+		product := fixture.ValidProduct(unit.ID)
+		supplier := fixture.ValidSupplier()
+		po := fixture.ValidPurchaseOrder(inventory.ID, product.ID, supplier.ID, unit.ID)
 		existingOrderNumber := "CUSTOM-PO-123"
-		purchaseOrder := &models.PurchaseOrder{
-			OrderNumber: existingOrderNumber,
-			Status:      models.PurchaseOrderStatusOrderPlaced,
-			TotalAmount: decimal.NewFromFloat(1500.50),
-			Notes:       "Test purchase order with existing order number",
-			// No items - this test focuses on order number handling only
-		}
+		po.OrderNumber = existingOrderNumber
 
 		// Setup mock
+		mockProductRepo.On("GetByID", mock.Anything, product.ID).Return(&product, nil)
+		mockUnitRepo.On("GetByID", mock.Anything, unit.ID).Return(&unit, nil)
 		mockRepo.On("Create", mock.Anything, mock.MatchedBy(func(po *models.PurchaseOrder) bool {
 			return po.OrderNumber == existingOrderNumber
 		})).Return(nil).Once()
-
-		mockRepo.On("GetByID", mock.AnythingOfType("uint")).Return(purchaseOrder, nil).Once()
+		mockRepo.On("GetByID", mock.AnythingOfType("uint")).Return(&po, nil).Once()
 
 		// Execute
-		err := service.CreatePurchaseOrder(context.Background(), purchaseOrder)
+		err := service.CreatePurchaseOrder(context.Background(), &po)
 
 		// Assertions
 		require.NoError(t, err)
-		assert.Equal(t, existingOrderNumber, purchaseOrder.OrderNumber, "Existing order number should not be changed")
+		assert.Equal(t, existingOrderNumber, po.OrderNumber, "Existing order number should not be changed")
 
 		mockRepo.AssertExpectations(t)
 	})
 
 	t.Run("should return error when repository fails", func(t *testing.T) {
+		unit := &models.Unit{
+			Base:             models.Base{ID: 1},
+			Name:             "unit",
+			Symbol:           "unit",
+			UnitType:         "general",
+			ConversionFactor: 1,
+		}
+
+		product := &models.Product{
+			Base:   models.Base{ID: 1},
+			Name:   "product",
+			UnitID: unit.ID,
+		}
+
 		// Setup
 		mockRepo := repositorymocks.NewPurchaseOrderRepository(t)
-		service := NewPurchaseOrderService(mockRepo, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+		mockProductRepo := repositorymocks.NewProductRepository(t)
+		mockUnitRepo := repositorymocks.NewUnitRepository(t)
+		service := NewPurchaseOrderService(mockRepo, nil, mockUnitRepo, mockProductRepo, nil, nil, nil, nil, nil, nil, nil, nil)
 
 		purchaseOrder := &models.PurchaseOrder{
+			InventoryID: pkg.Ptr(uint(1)),
 			Status:      models.PurchaseOrderStatusOrderPlaced,
 			TotalAmount: decimal.NewFromFloat(1500.50),
-			// No items - this test focuses on repository error handling only
+			Notes:       "Test purchase order",
+			Items: []*models.PurchaseOrderItem{
+				{
+					ProductID:  pkg.Ptr(product.ID),
+					SupplierID: pkg.Ptr(uint(1)),
+					UnitID:     pkg.Ptr(unit.ID),
+				},
+			},
 		}
 
 		// Setup mock - repository returns error
 		expectedError := errors.New("database connection failed")
 		mockRepo.On("Create", mock.Anything, mock.AnythingOfType("*models.PurchaseOrder")).Return(expectedError).Once()
+
+		mockProductRepo.On("GetByID", mock.Anything, mock.AnythingOfType("uint")).Return(product, nil).Once()
+
+		mockUnitRepo.On("GetByID", mock.Anything, mock.AnythingOfType("uint")).Return(unit, nil)
 
 		// Execute
 		err := service.CreatePurchaseOrder(context.Background(), purchaseOrder)
@@ -156,7 +190,7 @@ func TestUpdatePurchaseOrderStatus_WithApprovalCheck(t *testing.T) {
 		// Setup
 		mockRepo := repositorymocks.NewPurchaseOrderRepository(t)
 		mockPaymentRepo := repositorymocks.NewPaymentReceiptFormRepository(t)
-		service := NewPurchaseOrderService(mockRepo, mockPaymentRepo, nil, nil, nil, nil, nil, nil, nil, nil)
+		service := NewPurchaseOrderService(mockRepo, mockPaymentRepo, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 
 		// Mock payment receipt form repository to return empty slice (no approved form found)
 		mockPaymentRepo.On("GetLatestPaymentReceiptForms", mock.Anything, uint(1), models.PaymentReceiptFormStatusApproved, 0).Return([]*models.PaymentReceiptForm{}, nil)
@@ -176,7 +210,7 @@ func TestUpdatePurchaseOrderStatus_WithApprovalCheck(t *testing.T) {
 		// Setup
 		mockRepo := repositorymocks.NewPurchaseOrderRepository(t)
 		mockPaymentRepo := repositorymocks.NewPaymentReceiptFormRepository(t)
-		service := NewPurchaseOrderService(mockRepo, mockPaymentRepo, nil, nil, nil, nil, nil, nil, nil, nil)
+		service := NewPurchaseOrderService(mockRepo, mockPaymentRepo, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 
 		// Mock payment receipt form repository to return an approved form
 		approvedForm := &models.PaymentReceiptForm{

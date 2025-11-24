@@ -50,6 +50,8 @@ type purchaseOrderService struct {
 	productRepo                repository.ProductRepository
 	inventoryService           InventoryService
 	excelService               ExcelService
+	unitService                UnitService
+	productService             ProductService
 	settingsService            SettingsService
 	db                         *gorm.DB
 	revenueExpenseRequestQueue chan revenueExpenseRequest
@@ -73,23 +75,27 @@ func NewPurchaseOrderService(
 	db *gorm.DB,
 	supplierRepo repository.SupplierRepository,
 	inventoryRepo repository.InventoryRepository,
+	unitService UnitService,
+	productService ProductService,
 ) PurchaseOrderService {
 	// Create a buffered channel to queue revenue expense requests
 	// Buffer size of 100 allows queuing up to 100 requests without blocking
 	requestQueue := make(chan revenueExpenseRequest, 100)
 
 	service := &purchaseOrderService{
+		db:                         db,
 		purchaseOrderRepo:          purchaseOrderRepo,
 		paymentReceiptFormRepo:     paymentReceiptFormRepo,
 		unitRepo:                   unitRepo,
 		productRepo:                productRepo,
-		inventoryService:           inventoryService,
-		excelService:               excelService,
-		settingsService:            settingsService,
-		db:                         db,
-		revenueExpenseRequestQueue: requestQueue,
 		supplierRepo:               supplierRepo,
 		inventoryRepo:              inventoryRepo,
+		excelService:               excelService,
+		settingsService:            settingsService,
+		unitService:                unitService,
+		inventoryService:           inventoryService,
+		productService:             productService,
+		revenueExpenseRequestQueue: requestQueue,
 	}
 
 	// Start the worker goroutine to process revenue expense requests serially
@@ -1326,45 +1332,6 @@ func (s *purchaseOrderService) convertQuantityFromBaseUnit(
 	return immediateBaseQuantity.Div(decimal.NewFromFloat(unit.ConversionFactor)), nil
 }
 
-// convertQuantityBetweenUnits converts a quantity from source unit to target unit
-// Both units must have the same base unit (be compatible)
-func (s *purchaseOrderService) convertQuantityBetweenUnits(
-	ctx context.Context,
-	quantity decimal.Decimal,
-	sourceUnitID, targetUnitID uint,
-) (decimal.Decimal, error) {
-	// Get base unit IDs for both units
-	sourceBaseUnitID, err := s.getBaseUnitID(ctx, sourceUnitID)
-	if err != nil {
-		return decimal.Zero, fmt.Errorf("failed to get source unit base unit: %w", err)
-	}
-
-	targetBaseUnitID, err := s.getBaseUnitID(ctx, targetUnitID)
-	if err != nil {
-		return decimal.Zero, fmt.Errorf("failed to get target unit base unit: %w", err)
-	}
-
-	// Validate that both units are compatible (have the same base unit)
-	if sourceBaseUnitID != targetBaseUnitID {
-		return decimal.Zero, pkg.NewAppError(pkg.ErrorCodeValidation,
-			fmt.Sprintf("units %d and %d are not compatible (different base units)", sourceUnitID, targetUnitID), nil)
-	}
-
-	// Convert source unit to base unit
-	baseQuantity, _, _, err := s.convertQuantityToBaseUnit(ctx, quantity, 0, sourceUnitID)
-	if err != nil {
-		return decimal.Zero, fmt.Errorf("failed to convert to base unit: %w", err)
-	}
-
-	// Convert from base unit to target unit
-	targetQuantity, err := s.convertQuantityFromBaseUnit(ctx, baseQuantity, targetUnitID)
-	if err != nil {
-		return decimal.Zero, fmt.Errorf("failed to convert from base unit: %w", err)
-	}
-
-	return targetQuantity, nil
-}
-
 // importPurchaseOrderItem represents a single item row in the import file
 type importPurchaseOrderItem struct {
 	rowNumber   int
@@ -1735,7 +1702,7 @@ func (s *purchaseOrderService) validateImportPurchaseOrderData(
 	unitNamesSet := make(map[string]bool)
 	for _, item := range data.items {
 		productNamesSet[item.productName] = true
-		unitNamesSet[item.unitName] = true
+		unitNamesSet[strings.ToUpper(item.unitName)] = true
 	}
 
 	// Convert sets to slices
@@ -1749,13 +1716,13 @@ func (s *purchaseOrderService) validateImportPurchaseOrderData(
 	}
 
 	// Bulk fetch all products by names (returns map[string]*models.Product)
-	productMap, err := s.productRepo.GetByNames(ctx, productNames)
+	productMap, err := s.productService.GetMapByNames(ctx, productNames)
 	if err != nil {
 		return fmt.Errorf("failed to bulk fetch products: %w", err)
 	}
 
 	// Bulk fetch all units by names (returns map[string]*models.Unit)
-	unitMap, err := s.unitRepo.GetByNames(ctx, unitNames)
+	unitMap, err := s.unitService.GetMapByNames(ctx, unitNames)
 	if err != nil {
 		return fmt.Errorf("failed to bulk fetch units: %w", err)
 	}
@@ -1766,15 +1733,15 @@ func (s *purchaseOrderService) validateImportPurchaseOrderData(
 		item := &data.items[i]
 
 		// Validate product exists
-		product, exists := productMap[strings.ToLower(item.productName)]
+		product, exists := productMap[strings.ToUpper(item.productName)]
 		if !exists {
 			batchError.AddLocation(fmt.Sprintf("row %d", item.rowNumber), fmt.Sprintf("Product not found: %s", item.productName))
 			itemsToRemove[i] = true
 			continue
 		}
 
-		// Validate unit exists
-		unit, exists := unitMap[strings.ToLower(item.unitName)]
+		// Validate unit exists (lookup by uppercased name for consistency)
+		unit, exists := unitMap[strings.ToUpper(item.unitName)]
 		if !exists {
 			batchError.AddLocation(fmt.Sprintf("row %d", item.rowNumber), fmt.Sprintf("Unit not found: %s", item.unitName))
 			itemsToRemove[i] = true

@@ -142,6 +142,19 @@ type RouteMapping struct {
 //	    Action:      "create",                   // Custom action (or "" to use HTTP method mapping)
 //	}
 var customRouteMappings = []RouteMapping{
+	// Purchase Order Import
+	{
+		Method:      "POST",
+		PathPattern: "/purchase-orders/upload",
+		Resource:    "purchase-orders",
+		Action:      "import",
+	},
+	{
+		Method:      "POST",
+		PathPattern: "/purchase-orders/upload-files/*/process",
+		Resource:    "purchase-orders",
+		Action:      "import",
+	},
 	// Payment receipt form submissions
 	{
 		Method:      "POST",

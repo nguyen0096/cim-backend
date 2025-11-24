@@ -100,6 +100,13 @@ func WithParams(params map[string]string) RequestOptions {
 	}
 }
 
+// WithContentType adds a custom content type header to the request.
+func WithContentType(contentType string) RequestOptions {
+	return func(client *Client, req *http.Request) {
+		req.Header.Set("Content-Type", contentType)
+	}
+}
+
 // MakeRequest makes an HTTP request to the test server with auth headers
 func (c *Client) MakeRequest(
 	method, path string,
@@ -108,11 +115,17 @@ func (c *Client) MakeRequest(
 ) (*http.Response, error) {
 	var bodyReader io.Reader
 	if body != nil {
-		jsonData, err := json.Marshal(body)
-		if err != nil {
-			Fail("failed to marshal request body: " + err.Error())
+		// Check if body is already an io.Reader (e.g., bytes.Buffer for multipart)
+		if reader, ok := body.(io.Reader); ok {
+			bodyReader = reader
+		} else {
+			// Marshal to JSON for regular requests
+			jsonData, err := json.Marshal(body)
+			if err != nil {
+				Fail("failed to marshal request body: " + err.Error())
+			}
+			bodyReader = bytes.NewBuffer(jsonData)
 		}
-		bodyReader = bytes.NewBuffer(jsonData)
 	}
 
 	// Parse path to separate actual path from query string

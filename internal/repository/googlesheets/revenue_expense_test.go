@@ -15,13 +15,9 @@ func TestRevenueExpenseGoogleSheetsRepositorySuite(t *testing.T) {
 	t.Skip("Skipping Google Sheets test on CI/CD")
 
 	t.Run("TestRevenueExpenseGoogleSheetsRepository", func(t *testing.T) {
-		if err := godotenv.Load("../../../../.env"); err != nil {
-			t.Logf("Warning: Could not load .env file: %v", err)
-		}
-
 		// Check if test environment variables are set
-		spreadsheetID := os.Getenv("TEST_REVENUE_EXPENSE_SPREADSHEET_ID")
-		serviceAccountFilePath := os.Getenv("GOOGLE_SERVICE_ACCOUNT")
+		spreadsheetID := TEST_REVENUE_EXPENSE_SPREADSHEET_ID
+		serviceAccountFilePath := GOOGLE_SERVICE_ACCOUNT_FILE_PATH
 
 		t.Log("=== Google Sheets test: handling with THU CHI Google Sheets ===")
 		t.Logf("Spreadsheet ID: %s", spreadsheetID)
@@ -130,6 +126,7 @@ func TestRevenueExpenseGoogleSheetsRepositorySuite(t *testing.T) {
 
 		t.Log("✅ Thu chi Google Sheets repository test completed successfully")
 	})
+
 	t.Run("TestAddNewDateRow_GoogleSheets", func(t *testing.T) {
 		t.Log("=== Google Sheets test: Add New Date Row (Thu Chi) ===")
 

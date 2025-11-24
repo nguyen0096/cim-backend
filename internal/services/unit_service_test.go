@@ -1,14 +1,15 @@
 package services
 
 import (
-	repositorymocks "cim-backend/internal/mocks/repositories"
-	"cim-backend/internal/models"
 	"context"
 	"errors"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"gorm.io/gorm"
+
+	"cim-backend/internal/mocks/repositorymocks"
+	"cim-backend/internal/models"
 )
 
 func TestCreateUnit(t *testing.T) {
@@ -26,11 +27,12 @@ func TestCreateUnit(t *testing.T) {
 			ConversionFactor: 1,
 		}
 
-		unitRepo.On("GetByTypeAndName", ctx, "mass", "kilogram").Return((*models.Unit)(nil), gorm.ErrRecordNotFound)
+		unitRepo.On("GetByTypeAndName", ctx, "mass", "KILOGRAM").Return((*models.Unit)(nil), gorm.ErrRecordNotFound)
 		unitRepo.On("Create", ctx, unit).Return(nil)
 
-		err := service.CreateUnit(ctx, unit)
+		createdUnit, err := service.CreateUnit(ctx, unit)
 		assert.NoError(t, err)
+		assert.Equal(t, unit.ID, createdUnit.ID)
 		unitRepo.AssertExpectations(t)
 	})
 
@@ -48,7 +50,7 @@ func TestCreateUnit(t *testing.T) {
 			ConversionFactor: 0.001,
 		}
 
-		unitRepo.On("GetByTypeAndName", ctx, "mass", "gram").Return((*models.Unit)(nil), gorm.ErrRecordNotFound)
+		unitRepo.On("GetByTypeAndName", ctx, "mass", "GRAM").Return((*models.Unit)(nil), gorm.ErrRecordNotFound)
 		unitRepo.On("GetByID", ctx, baseUnitID).Return(&models.Unit{
 			Base:       models.Base{ID: baseUnitID},
 			UnitType:   "mass",
@@ -57,8 +59,9 @@ func TestCreateUnit(t *testing.T) {
 		}, nil)
 		unitRepo.On("Create", ctx, unit).Return(nil)
 
-		err := service.CreateUnit(ctx, unit)
+		createdUnit, err := service.CreateUnit(ctx, unit)
 		assert.NoError(t, err)
+		assert.Equal(t, unit.ID, createdUnit.ID)
 		unitRepo.AssertExpectations(t)
 	})
 
@@ -67,13 +70,14 @@ func TestCreateUnit(t *testing.T) {
 		productRepo := repositorymocks.NewProductRepository(t)
 		service := NewUnitService(unitRepo, productRepo)
 
-		err := service.CreateUnit(ctx, &models.Unit{
+		createdUnit, err := service.CreateUnit(ctx, &models.Unit{
 			UnitType:         "mass",
 			Name:             "gram",
 			Symbol:           "g",
 			ConversionFactor: 0.001,
 		})
 		assert.Error(t, err)
+		assert.Nil(t, createdUnit)
 	})
 
 	t.Run("should return validation error when base unit reference invalid", func(t *testing.T) {
@@ -97,9 +101,10 @@ func TestCreateUnit(t *testing.T) {
 			BaseUnitID: &baseUnitID,
 		}, nil)
 
-		err := service.CreateUnit(ctx, unit)
+		createdUnit, err := service.CreateUnit(ctx, unit)
 		assert.Error(t, err)
 		unitRepo.AssertExpectations(t)
+		assert.Nil(t, createdUnit)
 	})
 
 	t.Run("should return validation error when required fields missing", func(t *testing.T) {
@@ -107,13 +112,14 @@ func TestCreateUnit(t *testing.T) {
 		productRepo := repositorymocks.NewProductRepository(t)
 		service := NewUnitService(unitRepo, productRepo)
 
-		err := service.CreateUnit(ctx, &models.Unit{
+		createdUnit, err := service.CreateUnit(ctx, &models.Unit{
 			UnitType:         "",
 			Name:             "",
 			Symbol:           "",
 			ConversionFactor: 0,
 		})
 		assert.Error(t, err)
+		assert.Nil(t, createdUnit)
 	})
 
 	t.Run("should return duplicate error when unit exists", func(t *testing.T) {
@@ -134,9 +140,9 @@ func TestCreateUnit(t *testing.T) {
 			ConversionFactor: 1,
 		}
 
-		unitRepo.On("GetByTypeAndName", ctx, "mass", "kilogram").Return(existing, nil)
+		unitRepo.On("GetByTypeAndName", ctx, "mass", "KILOGRAM").Return(existing, nil)
 
-		err := service.CreateUnit(ctx, unit)
+		_, err := service.CreateUnit(ctx, unit)
 		assert.Error(t, err)
 		unitRepo.AssertExpectations(t)
 	})
@@ -152,12 +158,14 @@ func TestCreateUnit(t *testing.T) {
 			Symbol:           "kg",
 			ConversionFactor: 1,
 		}
-		unitRepo.On("GetByTypeAndName", ctx, "mass", "kilogram").Return((*models.Unit)(nil), gorm.ErrRecordNotFound)
+		unitRepo.On("GetByTypeAndName", ctx, "mass", "KILOGRAM").Return((*models.Unit)(nil), gorm.ErrRecordNotFound)
 		unitRepo.On("Create", ctx, unit).Return(errors.New("db error"))
 
-		err := service.CreateUnit(ctx, unit)
+		createdUnit, err := service.CreateUnit(ctx, unit)
+		assert.Nil(t, createdUnit)
 		assert.Error(t, err)
 		unitRepo.AssertExpectations(t)
+		assert.Nil(t, createdUnit)
 	})
 }
 

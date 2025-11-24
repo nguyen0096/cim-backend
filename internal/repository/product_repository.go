@@ -4,18 +4,17 @@ import (
 	"cim-backend/internal/models"
 	"context"
 	"fmt"
-	"strings"
 
 	"gorm.io/gorm"
 )
 
-//go:generate mockery --name=ProductRepository --structname=ProductRepository --output=../mocks/repositories --outpkg=repositorymocks
+//go:generate mockery --name=ProductRepository --structname=ProductRepository --output=../mocks/repositorymocks --outpkg=repositorymocks
 type ProductRepository interface {
 	Create(ctx context.Context, product *models.Product) error
 	BulkCreate(ctx context.Context, products []models.Product) error
 	GetByID(ctx context.Context, id uint) (*models.Product, error)
 	GetByName(ctx context.Context, name string) (*models.Product, error)
-	GetByNames(ctx context.Context, names []string) (map[string]*models.Product, error)
+	GetByNames(ctx context.Context, names []string) ([]models.Product, error)
 	Update(ctx context.Context, product *models.Product) error
 	UpdateStatus(ctx context.Context, id uint, status string) error
 	Delete(ctx context.Context, id uint) error
@@ -76,22 +75,15 @@ func (r *productRepository) GetByName(ctx context.Context, name string) (*models
 	return &product, nil
 }
 
-func (r *productRepository) GetByNames(ctx context.Context, names []string) (map[string]*models.Product, error) {
-	result := make(map[string]*models.Product)
+func (r *productRepository) GetByNames(ctx context.Context, names []string) ([]models.Product, error) {
 	if len(names) == 0 {
-		return result, nil
+		return nil, nil
 	}
-
 	products := []models.Product{}
-	if err := r.db.WithContext(ctx).Where("name IN (?)", names).Find(&products).Error; err != nil {
+	if err := r.db.WithContext(ctx).Where("name IN ?", names).Find(&products).Error; err != nil {
 		return nil, err
 	}
-
-	for i := range products {
-		result[strings.ToLower(products[i].Name)] = &products[i]
-	}
-
-	return result, nil
+	return products, nil
 }
 
 func (r *productRepository) Update(ctx context.Context, product *models.Product) error {

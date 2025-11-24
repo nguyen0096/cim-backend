@@ -30,6 +30,7 @@ const (
 	ErrKeyOptimisticLockConflict = "optimistic_lock_conflict"
 
 	// Unit Error Keys
+	ErrKeyUnitAlreadyExists                 = "unit_already_exists"
 	ErrKeyFailedToCheckProductReferences    = "failed_to_check_product_references"
 	ErrKeyUnitIDRequired                    = "unit_id_required"
 	ErrKeyCannotDeleteUnitProductsReference = "cannot_delete_unit_products_reference"
@@ -85,6 +86,10 @@ var ErrorMessages = map[string]ErrorMessage{
 		VI: "Số lượng của %s %d đã thay đổi (trước đó: %s, hiện tại: %s)",
 	},
 	// Unit Errors
+	ErrKeyUnitAlreadyExists: {
+		EN: "Unit '%s' already exists for type '%s'",
+		VI: "Đơn vị '%s' đã tồn tại cho loại '%s'",
+	},
 	ErrKeyFailedToCheckProductReferences: {
 		EN: "Failed to check product references for unit %d",
 		VI: "Không thể kiểm tra tham chiếu sản phẩm cho đơn vị %d",
@@ -307,4 +312,10 @@ func ErrFailedToDeleteUnit(ctx context.Context, unitID uint, cause error) *AppEr
 	template := getErrorMessage(ctx, ErrKeyFailedToDeleteUnit)
 	message := fmt.Sprintf(template, unitID)
 	return NewAppError(ErrorCodeInternal, message, cause)
+}
+
+func ErrUnitAlreadyExists(ctx context.Context, unitName, unitType string) *AppError {
+	template := getErrorMessage(ctx, ErrKeyUnitAlreadyExists)
+	message := fmt.Sprintf(template, unitName, unitType)
+	return NewAppError(ErrorCodeDuplicate, message, nil)
 }

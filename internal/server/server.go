@@ -53,12 +53,12 @@ func SetupServer(
 	supplierService := services.NewSupplierService(supplierRepo)
 	settingsService := services.NewSettingsService(settingsRepo)
 	unitService := services.NewUnitService(unitRepo, productRepo)
-	productService := services.NewProductService(productRepo, supplierRepo, unitRepo, settingsService)
+	productService := services.NewProductService(productRepo, supplierRepo, unitRepo, unitService, settingsService)
 	inventoryService := services.NewInventoryService(inventoryRepo, inventoryItemRepo, inventorySubmissionRepo, productRepo)
 	inventoryItemService := services.NewInventoryItemService(inventoryItemRepo, inventoryRepo, productRepo)
 	excelService := services.NewExcelService(productRepo, inventoryRepo, settingsService)
 	fileStorageService := services.NewFileStorageService(cfg)
-	purchaseOrderService := services.NewPurchaseOrderService(purchaseOrderRepo, paymentReceiptFormRepo, unitRepo, productRepo, inventoryService, excelService, settingsService, db, supplierRepo, inventoryRepo)
+	purchaseOrderService := services.NewPurchaseOrderService(purchaseOrderRepo, paymentReceiptFormRepo, unitRepo, productRepo, inventoryService, excelService, settingsService, db, supplierRepo, inventoryRepo, unitService, productService)
 	paymentReceiptFormService := services.NewPaymentReceiptFormService(paymentReceiptFormRepo, db)
 
 	// Initialize handlers
@@ -254,6 +254,7 @@ func SetupServer(
 	purchaseOrders.POST("/:id/revenue-expense/retry", purchaseOrderHandler.RetryQueueRevenueExpenseRequest)
 	purchaseOrders.POST("/upload", purchaseOrderHandler.UploadPurchaseOrderFile)
 	purchaseOrders.POST("/upload-files/:uid/process", purchaseOrderHandler.ProcessImportPurchaseOrder)
+
 	// Payment Receipt Form routes
 	paymentReceiptForms := api.Group("/payment-receipt-forms")
 	paymentReceiptForms.GET("", paymentReceiptFormHandler.ListPaymentReceiptForms)

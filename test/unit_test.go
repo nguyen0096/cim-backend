@@ -6,6 +6,7 @@ import (
 	"cim-backend/pkg/testutil"
 	"cim-backend/pkg/testutil/fixture"
 	"fmt"
+	"strings"
 
 	"github.com/google/uuid"
 	. "github.com/onsi/ginkgo/v2"
@@ -77,7 +78,7 @@ var _ = Describe("Unit API", func() {
 				Expect(resp.StatusCode).To(Equal(201))
 
 				unitResp := testutil.ParseResponse(resp)
-				Expect(unitResp["name"]).To(Equal(name))
+				Expect(unitResp["name"]).To(Equal(strings.ToUpper(name)))
 				Expect(unitResp["symbol"]).To(Equal("test"))
 				Expect(unitResp["unit_type"]).To(Equal("general"))
 				Expect(unitResp["base_unit_id"]).To(Equal(float64(testUnits[0].ID)))
@@ -103,7 +104,7 @@ var _ = Describe("Unit API", func() {
 				Expect(resp.StatusCode).To(Equal(201))
 
 				unitResp := testutil.ParseResponse(resp)
-				Expect(unitResp["name"]).To(Equal(name))
+				Expect(unitResp["name"]).To(Equal(strings.ToUpper(name)))
 			})
 		})
 
@@ -400,7 +401,7 @@ var _ = Describe("Unit API", func() {
 			found := false
 			for _, item := range data {
 				unitMap := item.(map[string]interface{})
-				if unitMap["name"] == "Kilogram Search" {
+				if unitMap["name"] == strings.ToUpper("Kilogram Search") {
 					found = true
 					break
 				}
@@ -442,7 +443,7 @@ var _ = Describe("Unit API", func() {
 			found := false
 			for _, item := range data {
 				unitMap := item.(map[string]interface{})
-				if unitMap["name"] == "Liter Search" {
+				if unitMap["name"] == strings.ToUpper("Liter Search") {
 					found = true
 					break
 				}

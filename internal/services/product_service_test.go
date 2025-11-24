@@ -1,9 +1,6 @@
 package services
 
 import (
-	repositorymocks "cim-backend/internal/mocks/repositories"
-	"cim-backend/internal/models"
-	"cim-backend/pkg"
 	"context"
 	"errors"
 	"strings"
@@ -14,6 +11,10 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/xuri/excelize/v2"
 	"gorm.io/gorm"
+
+	"cim-backend/internal/mocks/repositorymocks"
+	"cim-backend/internal/models"
+	"cim-backend/pkg"
 )
 
 type stubUnitRepository struct {
@@ -164,9 +165,10 @@ func newProductServiceWithRepos(productRepo *repositorymocks.ProductRepository, 
 	// Set up mock for Create to support unit creation during import
 	unitRepo.On("Create", mock.Anything, mock.AnythingOfType("*models.Unit")).Return(nil).Maybe()
 	// Set up mock for GetByNames to return empty map (no duplicates) by default
-	productRepo.On("GetByNames", mock.Anything, mock.Anything).Return(make(map[string]*models.Product), nil).Maybe()
+	productRepo.On("GetByNames", mock.Anything, mock.Anything).Return([]models.Product{}, nil).Maybe()
 	settingsService := newStubSettingsService()
-	return NewProductService(productRepo, supplierRepo, unitRepo, settingsService), unitRepo
+	unitService := NewUnitService(unitRepo, productRepo)
+	return NewProductService(productRepo, supplierRepo, unitRepo, unitService, settingsService), unitRepo
 }
 
 func TestCreateProduct(t *testing.T) {
