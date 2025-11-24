@@ -53,6 +53,13 @@ jobs:
 
       - name: Run migrations
         run: make migrate-up
+        env:
+          DB_HOST: localhost
+          DB_PORT: 5432
+          DB_USER: postgres
+          DB_PASSWORD: postgres
+          DB_NAME: test_db
+          MIGRATION_DIR: database/migrations
 
       - name: Run tests
         run: make test
