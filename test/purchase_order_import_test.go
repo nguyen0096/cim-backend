@@ -24,12 +24,15 @@ var _ = Describe("Purchase Order Import API", func() {
 		var testInventory *models.Inventory
 		var excelFilePath string
 
+		tempDir, err := os.MkdirTemp("", "test-purchase-order-import")
+		Expect(err).NotTo(HaveOccurred())
+
 		BeforeEach(func() {
 			testSupplier = fixture.WithSupplier(tenv.ContextfulDB(), fixture.ValidSupplier())
 			testUnit = fixture.WithUnit(tenv.ContextfulDB(), fixture.ValidBaseUnit())
 			testProduct = fixture.WithProduct(tenv.ContextfulDB(), fixture.ValidProduct(testUnit.ID))
 			testInventory = fixture.WithInventory(tenv.ContextfulDB(), fixture.ValidInventory())
-			excelFilePath = fixture.CreatePurchaseOrderExcelFile(testSupplier, testProduct, testUnit, testInventory)
+			excelFilePath = fixture.CreatePurchaseOrderExcelFile(tempDir, testSupplier, testProduct, testUnit, testInventory)
 		})
 
 		Context("when user has authorized role", func() {
@@ -184,12 +187,15 @@ var _ = Describe("Purchase Order Import API", func() {
 		var testInventory *models.Inventory
 		var excelFilePath string
 
+		tempDir, err := os.MkdirTemp("", "test-purchase-order-import")
+		Expect(err).NotTo(HaveOccurred())
+
 		BeforeEach(func() {
 			testSupplier = fixture.WithSupplier(tenv.ContextfulDB(), fixture.ValidSupplier())
 			testUnit = fixture.WithUnit(tenv.ContextfulDB(), fixture.ValidBaseUnit())
 			testProduct = fixture.WithProduct(tenv.ContextfulDB(), fixture.ValidProduct(testUnit.ID))
 			testInventory = fixture.WithInventory(tenv.ContextfulDB(), fixture.ValidInventory())
-			excelFilePath = fixture.CreatePurchaseOrderExcelFile(testSupplier, testProduct, testUnit, testInventory)
+			excelFilePath = fixture.CreatePurchaseOrderExcelFile(tempDir, testSupplier, testProduct, testUnit, testInventory)
 		})
 
 		// Helper function to upload file and get file_uid

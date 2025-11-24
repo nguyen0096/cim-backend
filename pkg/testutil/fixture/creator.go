@@ -3,6 +3,7 @@ package fixture
 import (
 	"fmt"
 	"os"
+	"path"
 	"strings"
 	"time"
 
@@ -142,7 +143,13 @@ func WithPurchaseOrder(db *gorm.DB, purchaseOrder models.PurchaseOrder) *models.
 
 // CreatePurchaseOrderExcelFile creates a test Excel file for purchase order import
 // The file is saved to the repository root and will be automatically cleaned up after the test
-func CreatePurchaseOrderExcelFile(supplier *models.Supplier, product *models.Product, unit *models.Unit, inventory *models.Inventory) string {
+func CreatePurchaseOrderExcelFile(
+	tempDir string,
+	supplier *models.Supplier,
+	product *models.Product,
+	unit *models.Unit,
+	inventory *models.Inventory,
+) string {
 	// Create new Excel file
 	f := excelize.NewFile()
 	sheetName := "Sheet1"
@@ -196,9 +203,8 @@ func CreatePurchaseOrderExcelFile(supplier *models.Supplier, product *models.Pro
 		}
 	}
 
-	// Generate unique filename
 	filename := fmt.Sprintf("test-po-import-%s.xlsx", uuid.New().String())
-	filepath := fmt.Sprintf("/Users/nguyendn/Desktop/cim/import-export-backend/%s", filename)
+	filepath := path.Join(tempDir, filename)
 
 	// Save file
 	if err := f.SaveAs(filepath); err != nil {
