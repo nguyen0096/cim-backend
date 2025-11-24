@@ -21,6 +21,7 @@ import (
 	"cim-backend/internal/auth/authmocks"
 	"cim-backend/internal/config"
 	"cim-backend/internal/server"
+	"cim-backend/pkg"
 	"cim-backend/pkg/log"
 )
 
@@ -96,6 +97,10 @@ func (t *TestBox) GetConfig() {
 
 	t.Config = *cfg
 	t.Config.Database = dbConfig
+	t.Config.Migration.Directory = pkg.TranslateCallerRelativePath("../../database/migrations")
+
+	t.Config.Casbin.ModelFile = pkg.TranslateCallerRelativePath("../../rbac_model.conf")
+	t.Config.Casbin.PolicyFile = pkg.TranslateCallerRelativePath("../../rbac_policy.csv")
 }
 
 func (t *TestBox) ProvisionDB() {
