@@ -134,7 +134,8 @@ func WithPurchaseOrder(db *gorm.DB, purchaseOrder models.PurchaseOrder) *models.
 		panic(fmt.Sprintf("failed to create test purchase order: %v", err))
 	}
 	DeferCleanup(func() {
-		// Delete items first due to foreign key constraints
+		// Delete children first due to foreign key constraints
+		db.Exec("DELETE FROM payment_receipt_forms WHERE purchase_order_id = ?", purchaseOrder.ID)
 		db.Exec("DELETE FROM purchase_order_items WHERE purchase_order_id = ?", purchaseOrder.ID)
 		db.Exec("DELETE FROM purchase_orders WHERE id = ?", purchaseOrder.ID)
 	})

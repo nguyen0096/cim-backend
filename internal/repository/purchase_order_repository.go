@@ -123,10 +123,8 @@ func (r *purchaseOrderRepository) List(ctx context.Context, params models.ListPa
 		}
 	}
 
-	// Create a copy of all statuses to avoid modifying the global slice
-	statuses := make([]models.PurchaseOrderStatus, len(models.AllPurchaseOrderStatuses))
-	copy(statuses, models.AllPurchaseOrderStatuses)
-
+	// Handle status filtering
+	var statuses []models.PurchaseOrderStatus
 	if params.Status != "" {
 		// Parse comma-separated status values
 		statusStrings := strings.Split(params.Status, ",")
@@ -137,6 +135,10 @@ func (r *purchaseOrderRepository) List(ctx context.Context, params models.ListPa
 				statuses = append(statuses, models.PurchaseOrderStatus(trimmedStatus))
 			}
 		}
+	} else {
+		// Create a copy of all statuses to avoid modifying the global slice
+		statuses = make([]models.PurchaseOrderStatus, len(models.AllPurchaseOrderStatuses))
+		copy(statuses, models.AllPurchaseOrderStatuses)
 	}
 
 	if !pkg.HasPermission(ctx, "purchase-orders", "view_status_completed") {
