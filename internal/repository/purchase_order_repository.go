@@ -128,7 +128,15 @@ func (r *purchaseOrderRepository) List(ctx context.Context, params models.ListPa
 	copy(statuses, models.AllPurchaseOrderStatuses)
 
 	if params.Status != "" {
-		statuses = []models.PurchaseOrderStatus{models.PurchaseOrderStatus(params.Status)}
+		// Parse comma-separated status values
+		statusStrings := strings.Split(params.Status, ",")
+		statuses = make([]models.PurchaseOrderStatus, 0, len(statusStrings))
+		for _, statusStr := range statusStrings {
+			trimmedStatus := strings.TrimSpace(statusStr)
+			if trimmedStatus != "" {
+				statuses = append(statuses, models.PurchaseOrderStatus(trimmedStatus))
+			}
+		}
 	}
 
 	if !pkg.HasPermission(ctx, "purchase-orders", "view_status_completed") {

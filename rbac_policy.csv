@@ -72,6 +72,8 @@ p, accountant, inventory-submissions, update, allow
 p, accountant, inventory-submissions, delete, allow
 p, accountant, inventory-submissions, approve, allow
 
+p, accountant, revenue-expenses, create, allow
+
 p, accountant, purchase-orders, view, allow
 p, accountant, purchase-orders, create, allow
 p, accountant, purchase-orders, import, allow

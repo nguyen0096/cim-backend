@@ -1474,8 +1474,12 @@ var _ = Describe("Purchase Order API", func() {
 				It(fmt.Sprintf("should return all purchase orders with %s role", role), func() {
 					client := testutil.NewClient(tenv, role)
 
-					urlPath := fmt.Sprintf("/api/v1/purchase-orders?q=%s", uniqueSearchPrefix)
-					resp, err := client.MakeRequest("GET", urlPath, nil, testutil.WithAuth())
+					resp, err := client.MakeRequest("GET", "/api/v1/purchase-orders", nil,
+						testutil.WithAuth(),
+						testutil.WithParams(map[string]string{
+							"q": uniqueSearchPrefix,
+						}),
+					)
 					Expect(err).NotTo(HaveOccurred())
 					Expect(resp.StatusCode).To(Equal(200))
 
@@ -1488,8 +1492,12 @@ var _ = Describe("Purchase Order API", func() {
 			It("should not return completed/cancelled purchase order when user has staff role", func() {
 				client := testutil.NewClient(tenv, models.RoleStaff)
 
-				urlPath := fmt.Sprintf("/api/v1/purchase-orders?q=%s", uniqueSearchPrefix)
-				resp, err := client.MakeRequest("GET", urlPath, nil, testutil.WithAuth())
+				resp, err := client.MakeRequest("GET", "/api/v1/purchase-orders", nil,
+					testutil.WithAuth(),
+					testutil.WithParams(map[string]string{
+						"q": uniqueSearchPrefix,
+					}),
+				)
 				Expect(err).NotTo(HaveOccurred())
 				Expect(resp.StatusCode).To(Equal(200))
 
@@ -1500,6 +1508,81 @@ var _ = Describe("Purchase Order API", func() {
 					purchaseOrderMap := purchaseOrder.(map[string]interface{})
 					Expect(purchaseOrderMap["status"]).NotTo(Equal(string(models.PurchaseOrderStatusCompleted)))
 					Expect(purchaseOrderMap["status"]).NotTo(Equal(string(models.PurchaseOrderStatusCancelled)))
+				}
+			})
+
+			It("should filter by single status", func() {
+				client := testutil.NewClient(tenv, models.RoleAdmin)
+
+				resp, err := client.MakeRequest("GET", "/api/v1/purchase-orders", nil,
+					testutil.WithAuth(),
+					testutil.WithParams(map[string]string{
+						"q":      uniqueSearchPrefix,
+						"status": "order_placed",
+					}),
+				)
+				Expect(err).NotTo(HaveOccurred())
+				Expect(resp.StatusCode).To(Equal(200))
+
+				purchaseOrderResp := testutil.ParseResponse(resp)
+				purchaseOrders := purchaseOrderResp["data"].([]interface{})
+				Expect(purchaseOrders).To(HaveLen(1))
+				for _, purchaseOrder := range purchaseOrders {
+					purchaseOrderMap := purchaseOrder.(map[string]interface{})
+					Expect(purchaseOrderMap["status"]).To(Equal(string(models.PurchaseOrderStatusOrderPlaced)))
+				}
+			})
+
+			It("should filter by multiple statuses (comma-separated)", func() {
+				client := testutil.NewClient(tenv, models.RoleAdmin)
+
+				resp, err := client.MakeRequest("GET", "/api/v1/purchase-orders", nil,
+					testutil.WithAuth(),
+					testutil.WithParams(map[string]string{
+						"q":      uniqueSearchPrefix,
+						"status": "order_placed,partially_delivered",
+					}),
+				)
+				Expect(err).NotTo(HaveOccurred())
+				Expect(resp.StatusCode).To(Equal(200))
+
+				purchaseOrderResp := testutil.ParseResponse(resp)
+				purchaseOrders := purchaseOrderResp["data"].([]interface{})
+				Expect(purchaseOrders).To(HaveLen(2))
+				for _, purchaseOrder := range purchaseOrders {
+					purchaseOrderMap := purchaseOrder.(map[string]interface{})
+					status := purchaseOrderMap["status"].(string)
+					Expect(status).To(Or(
+						Equal(string(models.PurchaseOrderStatusOrderPlaced)),
+						Equal(string(models.PurchaseOrderStatusPartiallyDelivered)),
+					))
+				}
+			})
+
+			It("should filter by multiple statuses (comma-separated) - three statuses", func() {
+				client := testutil.NewClient(tenv, models.RoleAdmin)
+
+				resp, err := client.MakeRequest("GET", "/api/v1/purchase-orders", nil,
+					testutil.WithAuth(),
+					testutil.WithParams(map[string]string{
+						"q":      uniqueSearchPrefix,
+						"status": "fully_delivered,completed,cancelled",
+					}),
+				)
+				Expect(err).NotTo(HaveOccurred())
+				Expect(resp.StatusCode).To(Equal(200))
+
+				purchaseOrderResp := testutil.ParseResponse(resp)
+				purchaseOrders := purchaseOrderResp["data"].([]interface{})
+				Expect(purchaseOrders).To(HaveLen(3))
+				for _, purchaseOrder := range purchaseOrders {
+					purchaseOrderMap := purchaseOrder.(map[string]interface{})
+					status := purchaseOrderMap["status"].(string)
+					Expect(status).To(Or(
+						Equal(string(models.PurchaseOrderStatusFullyDelivered)),
+						Equal(string(models.PurchaseOrderStatusCompleted)),
+						Equal(string(models.PurchaseOrderStatusCancelled)),
+					))
 				}
 			})
 		})
