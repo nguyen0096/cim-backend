@@ -335,9 +335,6 @@ func (s *excelService) FinalizeRevenueExpense(ctx context.Context, date time.Tim
 		return nil, pkg.ErrSheetNameNotFoundInSettings(ctx)
 	}
 
-	// Calculate next day
-	nextDay := date.AddDate(0, 0, 1)
-
 	// Query payment receipt forms from lastFinalizedDate to today
 	lastFinalizedDate := date.Truncate(24 * time.Hour)
 	req := &dto.PaymentReceiptFormListRequest{
@@ -375,7 +372,7 @@ func (s *excelService) FinalizeRevenueExpense(ctx context.Context, date time.Tim
 		}
 
 		// Add new date row
-		if err := s.revenueExpenseGoogleSheetsRepo.AddNewDateRow(ctx, sheetName, nextDay); err != nil {
+		if err := s.revenueExpenseGoogleSheetsRepo.AddNewDateRow(ctx, sheetName, lastFinalizedDate); err != nil {
 			return nil, pkg.ErrFailedToAddNewDateRowGoogleSheets(ctx, err)
 		}
 
@@ -393,7 +390,7 @@ func (s *excelService) FinalizeRevenueExpense(ctx context.Context, date time.Tim
 		}
 
 		// Add new date row
-		if err := s.revenueExpenseExcelRepo.AddNewDateRow(ctx, sheetName, nextDay); err != nil {
+		if err := s.revenueExpenseExcelRepo.AddNewDateRow(ctx, sheetName, lastFinalizedDate); err != nil {
 			return nil, pkg.ErrFailedToAddNewDateRowExcel(ctx, err)
 		}
 
@@ -405,7 +402,7 @@ func (s *excelService) FinalizeRevenueExpense(ctx context.Context, date time.Tim
 		}
 	}
 
-	return &nextDay, nil
+	return &today, nil
 }
 
 // InitializeRevenueExpenseGoogleSheets initializes the Google Sheets repository for revenue/expense tracking

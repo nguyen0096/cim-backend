@@ -87,9 +87,9 @@ func (h *RevenueExpenseHandler) FinalizeRevenueExpense(c echo.Context) error {
 		return pkg.ErrFailedToFinalizeRevenueExpense(ctx, err)
 	}
 
-	// if err := h.settingsService.SetSetting(ctx, config.LastFinalizedDateSettingsKey, *finalizedDate); err != nil {
-	// 	return pkg.ErrFailedToSetLastFinalizedDate(ctx, err)
-	// }
+	if err := h.settingsService.SetSetting(ctx, config.LastFinalizedDateSettingsKey, *finalizedDate); err != nil {
+		return pkg.ErrFailedToSetLastFinalizedDate(ctx, err)
+	}
 
 	response := FinalizeRevenueExpenseResponse{
 		Message: "Revenue expense finalized successfully",
