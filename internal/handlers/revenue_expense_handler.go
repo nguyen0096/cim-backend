@@ -76,6 +76,15 @@ func (h *RevenueExpenseHandler) FinalizeRevenueExpense(c echo.Context) error {
 		lastFinalizedDate = time.Now()
 	}
 
+	defer func() {
+		if err := h.settingsService.SetSetting(ctx, config.LastFinalizedDateSettingsKey, time.Now()); err != nil {
+			log.WithFields(logrus.Fields{
+				"error":   err.Error(),
+				"details": "Failed to set last finalized date to now",
+			}).Error("Failed to set last finalized date")
+		}
+	}()
+
 	// Call service to finalize
 	finalizedDate, err := h.excelService.FinalizeRevenueExpense(ctx, lastFinalizedDate, time.Now())
 	if err != nil {
@@ -85,10 +94,6 @@ func (h *RevenueExpenseHandler) FinalizeRevenueExpense(c echo.Context) error {
 			return err
 		}
 		return pkg.ErrFailedToFinalizeRevenueExpense(ctx, err)
-	}
-
-	if err := h.settingsService.SetSetting(ctx, config.LastFinalizedDateSettingsKey, *finalizedDate); err != nil {
-		return pkg.ErrFailedToSetLastFinalizedDate(ctx, err)
 	}
 
 	response := FinalizeRevenueExpenseResponse{
