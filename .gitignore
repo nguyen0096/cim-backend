@@ -53,3 +53,5 @@ firebase-service-account.json
 google-service-account.json
 
 **/secret/*
+
+**/uploads/*

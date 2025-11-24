@@ -14,7 +14,7 @@ run:
 
 # Run tests
 test:
-	go test -v ./internal/...
+	go test ./...
 
 # Run tests with coverage
 test-coverage:

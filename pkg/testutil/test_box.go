@@ -5,13 +5,13 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"os"
 	"time"
 
 	"github.com/docker/go-connections/nat"
 	"github.com/labstack/echo/v4"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
-	"github.com/sirupsen/logrus"
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/modules/postgres"
 	"github.com/testcontainers/testcontainers-go/wait"
@@ -92,31 +92,10 @@ func (t *TestBox) GetConfig() {
 	dbConfig, err := t.GetTestContainerDBConfig(ctx)
 	Expect(err).NotTo(HaveOccurred(), "Failed to get database config")
 
-	t.Config = config.Config{
-		Environment: "test",
-		Log:         log.Config{LogLevel: logrus.ErrorLevel},
-		Database:    dbConfig,
-		Server: config.ServerConfig{
-			Host:               "127.0.0.1",
-			Port:               testServerPort, // Use 0 to get random port
-			CORSAllowedOrigins: []string{"*"},
-		},
-		Firebase: config.FirebaseConfig{
-			ServiceAccountPath: "",
-			ProjectID:          "test-project",
-		},
-		Excel: config.ExcelConfig{
-			MaxRows: 10000,
-			MaxCols: 50,
-		},
-		Migration: config.MigrationConfig{
-			Directory: "../database/migrations",
-		},
-		Casbin: config.CasbinConfig{
-			ModelFile:  "../rbac_model.conf",
-			PolicyFile: "../rbac_policy.csv",
-		},
-	}
+	cfg := config.Load()
+
+	t.Config = *cfg
+	t.Config.Database = dbConfig
 }
 
 func (t *TestBox) ProvisionDB() {
@@ -266,4 +245,8 @@ func (t *TestBox) ShutdownServer() {
 func (t *TestBox) ContextfulDB() *gorm.DB {
 	ctx := t.DefaultContext
 	return t.DB.WithContext(ctx)
+}
+
+func (t *TestBox) CleanUploadFiles() {
+	os.RemoveAll(t.Config.UploadsBasePath)
 }
