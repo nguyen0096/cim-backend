@@ -90,7 +90,7 @@ func (s *paymentReceiptFormService) generateNextFormNumber(ctx context.Context, 
 
 		// If we reach here, there's a race condition, retry
 		if attempt == maxRetries-1 {
-			return "", fmt.Errorf("failed to generate unique form number after %d attempts", maxRetries)
+			return "", fmt.Errorf("failed to generate unique form number after %d attempts for formNumber %s", maxRetries, formNumber)
 		}
 
 		// Small delay before retry
