@@ -420,9 +420,9 @@ func (h *PaymentReceiptFormHandler) ApprovePaymentReceiptForm(c echo.Context) er
 
 	if err := h.paymentReceiptFormService.ApprovePaymentReceiptForm(c.Request().Context(), uint(id)); err != nil {
 		if appErr, ok := err.(*pkg.AppError); ok {
-			return c.JSON(appErr.HTTPStatus(), map[string]string{"error": appErr.Message})
+			return c.JSON(appErr.HTTPStatus(), map[string]string{"error": appErr.Message, "details": appErr.Cause.Error()})
 		}
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to approve payment receipt form"})
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to approve payment receipt form", "details": err.Error()})
 	}
 
 	return c.JSON(http.StatusOK, map[string]string{"message": "Payment receipt form approved successfully"})
