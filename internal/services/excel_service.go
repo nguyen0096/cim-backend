@@ -402,7 +402,9 @@ func (s *excelService) FinalizeRevenueExpense(ctx context.Context, date time.Tim
 		}
 	}
 
-	return &today, nil
+	nextDay := today.AddDate(0, 0, 1)
+
+	return &nextDay, nil
 }
 
 // InitializeRevenueExpenseGoogleSheets initializes the Google Sheets repository for revenue/expense tracking

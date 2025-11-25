@@ -46,10 +46,6 @@ func NewPaymentReceiptFormService(
 	}
 }
 
-func (s *paymentReceiptFormService) buildFormNumber(date time.Time, inventoryID uint, number int64) string {
-	return fmt.Sprintf("%s-%d-%d", date.Format("20060102"), inventoryID, number)
-}
-
 // generateNextFormNumber generates the next available form number in date-increment format
 func (s *paymentReceiptFormService) generateNextFormNumber(ctx context.Context, date time.Time, inventoryID uint) (string, error) {
 	dateString := date.Format("20060102")
@@ -73,7 +69,7 @@ func (s *paymentReceiptFormService) generateNextFormNumber(ctx context.Context, 
 
 		// Generate form number with next increment
 		increment := count + 1
-		formNumber = s.buildFormNumber(date, inventoryID, increment)
+		formNumber := fmt.Sprintf("%s-%d-%d", dateString, inventoryID, increment)
 
 		// Verify this form number doesn't exist
 		var existingCount int64
