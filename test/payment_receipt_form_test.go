@@ -9,6 +9,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -403,6 +405,160 @@ var _ = Describe("Payment Receipt Form API", func() {
 			formDatePrefix := formDate.Format("20060102")
 			unexpectedFormNumber := fmt.Sprintf("%s-%d-1", formDatePrefix, expectedInventoryID)
 			Expect(formNumber).NotTo(Equal(unexpectedFormNumber), "Form number should NOT use form.Date")
+		})
+
+		It("should create form number with incremental order when there are many concurrent approval", func() {
+			ctx := pkg.WithUserEmail(context.Background(), "test@cim.local")
+			tenv.DB.WithContext(ctx).Exec("DELETE FROM payment_receipt_forms")
+
+			adminClient := testutil.NewClient(tenv, models.RoleAdmin)
+
+			// Create multiple forms with the same date and purchase order (same inventory ID)
+			formDate := time.Now()
+			numForms := 20
+			var createdForms []models.PaymentReceiptForm
+			for i := 0; i < numForms; i++ {
+				form := models.PaymentReceiptForm{
+					PurchaseOrderID: testPurchaseOrder.ID,
+					FullName:        fmt.Sprintf("Concurrent Form %d", i+1),
+					Date:            formDate,
+					Department:      "Test Department",
+					Details:         fmt.Sprintf("Concurrent test form %d", i+1),
+					TotalAmount:     float64(1000 + i*100),
+					Status:          models.PaymentReceiptFormStatusPending,
+				}
+				err := tenv.DB.WithContext(ctx).Create(&form).Error
+				Expect(err).NotTo(HaveOccurred())
+				createdForms = append(createdForms, form)
+
+				formID := form.ID
+				DeferCleanup(func() {
+					cleanupCtx := pkg.WithUserEmail(context.Background(), "test@cim.local")
+					tenv.DB.WithContext(cleanupCtx).Delete(&models.PaymentReceiptForm{}, formID)
+				})
+			}
+
+			// Approve all forms concurrently
+			expectedDatePrefix := formDate.Format("20060102")
+			expectedInventoryID := *testPurchaseOrder.InventoryID
+
+			var wg sync.WaitGroup
+			var mu sync.Mutex
+			formNumbers := &sync.Map{} // form_number -> form ID
+			errors := make([]error, 0)
+
+			for _, form := range createdForms {
+				wg.Add(1)
+				go func(formID uint) {
+					defer wg.Done()
+
+					approveURL := fmt.Sprintf("/api/v1/payment-receipt-forms/%d/approve", formID)
+					approveResp, err := adminClient.MakeRequest("PUT", approveURL, nil, testutil.WithAuth())
+					if err != nil {
+						mu.Lock()
+						errors = append(errors, fmt.Errorf("failed to approve form %d: %w", formID, err))
+						mu.Unlock()
+						return
+					}
+					if approveResp.StatusCode != 200 {
+						mu.Lock()
+						errors = append(errors, fmt.Errorf("approve form %d returned status %d", formID, approveResp.StatusCode))
+						mu.Unlock()
+						return
+					}
+
+					// Fetch the approved form to get form number
+					getURL := fmt.Sprintf("/api/v1/payment-receipt-forms/%d", formID)
+					getResp, err := adminClient.MakeRequest("GET", getURL, nil, testutil.WithAuth())
+					if err != nil {
+						mu.Lock()
+						errors = append(errors, fmt.Errorf("failed to get form %d: %w", formID, err))
+						mu.Unlock()
+						return
+					}
+					if getResp.StatusCode != 200 {
+						mu.Lock()
+						errors = append(errors, fmt.Errorf("get form %d returned status %d", formID, getResp.StatusCode))
+						mu.Unlock()
+						return
+					}
+
+					formResp := testutil.ParseResponse(getResp)
+					formNumber, ok := formResp["form_number"].(string)
+					if !ok || formNumber == "" {
+						mu.Lock()
+						errors = append(errors, fmt.Errorf("form %d has invalid form_number", formID))
+						mu.Unlock()
+						return
+					}
+
+					formNumbers.Store(formNumber, formID)
+				}(form.ID)
+			}
+
+			// Wait for all approvals to complete
+			wg.Wait()
+
+			// Verify no errors occurred
+			Expect(errors).To(BeEmpty(), "No errors should occur during concurrent approvals")
+
+			// Verify all forms got form numbers
+			formNumberCount := 0
+			formNumbers.Range(func(key, value interface{}) bool {
+				formNumberCount++
+				return true
+			})
+			Expect(formNumberCount).To(Equal(numForms), "All forms should have form numbers")
+
+			// Verify all form numbers are unique (no duplicates)
+			formNumberSet := make(map[string]bool)
+			formNumbers.Range(func(key, value interface{}) bool {
+				formNumber := key.(string)
+				Expect(formNumberSet[formNumber]).To(BeFalse(), "Form number %s should be unique", formNumber)
+				formNumberSet[formNumber] = true
+				return true
+			})
+
+			// Extract increment numbers and verify they are sequential (1, 2, 3, ..., numForms)
+			increments := make([]int, 0, numForms)
+			formNumbers.Range(func(key, value interface{}) bool {
+				formNumber := key.(string)
+				// Parse form number format: YYYYMMDD-inventoryID-increment
+				// Use a more robust parsing approach
+				parts := strings.Split(formNumber, "-")
+				Expect(len(parts)).To(Equal(3), "Form number %s should have 3 parts separated by '-'", formNumber)
+
+				datePrefix := parts[0]
+				Expect(datePrefix).To(Equal(expectedDatePrefix), "Form number should use correct date prefix")
+
+				var inventoryID uint
+				_, err := fmt.Sscanf(parts[1], "%d", &inventoryID)
+				Expect(err).NotTo(HaveOccurred(), "Form number %s should have valid inventory ID", formNumber)
+				Expect(inventoryID).To(Equal(expectedInventoryID), "Form number should use correct inventory ID")
+
+				var increment int
+				_, err = fmt.Sscanf(parts[2], "%d", &increment)
+				Expect(err).NotTo(HaveOccurred(), "Form number %s should have valid increment", formNumber)
+				increments = append(increments, increment)
+				return true
+			})
+
+			// Verify increments are sequential (1 to numForms)
+			Expect(len(increments)).To(Equal(numForms), "Should have %d increments", numForms)
+
+			// Check that all increments from 1 to numForms are present
+			incrementSet := make(map[int]bool)
+			for _, inc := range increments {
+				Expect(inc).To(BeNumerically(">=", 1), "Increment should be at least 1")
+				Expect(inc).To(BeNumerically("<=", numForms), "Increment should not exceed %d", numForms)
+				Expect(incrementSet[inc]).To(BeFalse(), "Increment %d should be unique", inc)
+				incrementSet[inc] = true
+			}
+
+			// Verify all increments from 1 to numForms are present
+			for i := 1; i <= numForms; i++ {
+				Expect(incrementSet[i]).To(BeTrue(), "Increment %d should be present", i)
+			}
 		})
 	})
 })

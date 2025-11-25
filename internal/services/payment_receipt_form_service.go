@@ -2,7 +2,11 @@ package services
 
 import (
 	"context"
+	"database/sql"
+	"errors"
 	"fmt"
+	"math/rand"
+	"strings"
 	"time"
 
 	"cim-backend/internal/config"
@@ -10,7 +14,9 @@ import (
 	"cim-backend/internal/repository"
 	"cim-backend/internal/services/dto"
 	"cim-backend/pkg"
+	"cim-backend/pkg/log"
 
+	"github.com/sirupsen/logrus"
 	"gorm.io/gorm"
 )
 
@@ -50,26 +56,57 @@ func NewPaymentReceiptFormService(
 func (s *paymentReceiptFormService) generateNextFormNumber(ctx context.Context, date time.Time, inventoryID uint) (string, error) {
 	dateString := date.Format("20060102")
 
-	// Use a transaction with retry logic to handle race conditions
-	var formNumber string
-	maxRetries := 3
+	// Use retry logic to handle race conditions
+	maxRetries := 10
 
 	for attempt := 0; attempt < maxRetries; attempt++ {
-		// Count all existing forms (including soft-deleted) to get the next increment number
-		var count int64
+		// Find the maximum increment number for this date and inventory
+		// Using MAX(SPLIT_PART) is more reliable than COUNT because it handles gaps correctly
+		// If a form is deleted or a number is skipped, MAX will still find the highest number
+		var maxIncrement sql.NullInt64
+		pattern := fmt.Sprintf("%s-%d-%%", dateString, inventoryID)
+
+		// Use raw SQL to extract and find MAX increment
+		// SPLIT_PART splits form_number by '-' and gets the 3rd part (the increment)
+		// We include soft-deleted records (Unscoped) to ensure we don't reuse their numbers
 		err := s.db.WithContext(ctx).
-			Unscoped().
-			Model(&models.PaymentReceiptForm{}).
-			Where("form_number LIKE ?", fmt.Sprintf("%s-%d-%%", dateString, inventoryID)).
-			Count(&count).Error
+			Raw(`
+				SELECT COALESCE(MAX(CAST(SPLIT_PART(form_number, '-', 3) AS INTEGER)), 0)
+				FROM payment_receipt_forms
+				WHERE form_number LIKE ?
+			`, pattern).
+			Scan(&maxIncrement).Error
 
 		if err != nil {
-			return "", fmt.Errorf("failed to count existing forms: %w", err)
+			// Fallback to COUNT if MAX extraction fails (e.g., invalid form_number format)
+			var count int64
+			countErr := s.db.WithContext(ctx).
+				Unscoped().
+				Model(&models.PaymentReceiptForm{}).
+				Where("form_number LIKE ?", pattern).
+				Count(&count).Error
+
+			if countErr != nil {
+				return "", fmt.Errorf("failed to get next form number: %w", countErr)
+			}
+			maxIncrement = sql.NullInt64{Int64: count, Valid: true}
 		}
 
 		// Generate form number with next increment
-		increment := count + 1
+		var increment int64
+		if maxIncrement.Valid {
+			increment = maxIncrement.Int64 + 1
+		} else {
+			increment = 1
+		}
+
 		formNumber := fmt.Sprintf("%s-%d-%d", dateString, inventoryID, increment)
+		logger := log.WithFields(logrus.Fields{
+			"formNumber":  formNumber,
+			"inventoryID": inventoryID,
+			"date":        date,
+			"increment":   increment,
+		})
 
 		// Verify this form number doesn't exist
 		var existingCount int64
@@ -80,6 +117,9 @@ func (s *paymentReceiptFormService) generateNextFormNumber(ctx context.Context, 
 			Count(&existingCount).Error
 
 		if err != nil {
+			logger.WithFields(logrus.Fields{
+				"error": err.Error(),
+			}).Error("Failed to verify form number uniqueness")
 			return "", fmt.Errorf("failed to verify form number uniqueness: %w", err)
 		}
 
@@ -90,14 +130,19 @@ func (s *paymentReceiptFormService) generateNextFormNumber(ctx context.Context, 
 
 		// If we reach here, there's a race condition, retry
 		if attempt == maxRetries-1 {
-			return "", fmt.Errorf("failed to generate unique form number after %d attempts for formNumber %s", maxRetries, formNumber)
+			logger.WithFields(logrus.Fields{
+				"error": fmt.Errorf("failed to generate unique form number after %d attempts", maxRetries),
+			}).Error("Failed to generate unique form number")
+			return "", fmt.Errorf("failed to generate unique form number after %d attempts", maxRetries)
 		}
 
-		// Small delay before retry
-		time.Sleep(time.Millisecond * 10 * time.Duration(attempt+1))
+		// Exponential backoff with jitter before retry
+		baseDelay := time.Millisecond * time.Duration(20*(1<<uint(attempt))) // Exponential: 20ms, 40ms, 80ms...
+		jitter := time.Millisecond * time.Duration(rand.Intn(20))            // Random jitter up to 20ms
+		time.Sleep(baseDelay + jitter)
 	}
 
-	return formNumber, nil
+	return "", fmt.Errorf("failed to generate form number after %d attempts", maxRetries)
 }
 
 // CreatePaymentReceiptForm creates a new payment receipt form
@@ -187,6 +232,30 @@ func (s *paymentReceiptFormService) UpdatePaymentReceiptForm(ctx context.Context
 	return nil
 }
 
+// isDuplicateKeyError checks if an error is a PostgreSQL duplicate key violation
+func (s *paymentReceiptFormService) isDuplicateKeyError(err error) bool {
+	if err == nil {
+		return false
+	}
+
+	// Check the error message (which includes AppError message and cause)
+	errStr := strings.ToLower(err.Error())
+	if strings.Contains(errStr, "duplicate key") || strings.Contains(errStr, "sqlstate 23505") {
+		return true
+	}
+
+	// Also check if it's an AppError and unwrap to check the cause
+	var appErr *pkg.AppError
+	if errors.As(err, &appErr) && appErr.Cause != nil {
+		causeStr := strings.ToLower(appErr.Cause.Error())
+		if strings.Contains(causeStr, "duplicate key") || strings.Contains(causeStr, "sqlstate 23505") {
+			return true
+		}
+	}
+
+	return false
+}
+
 // ApprovePaymentReceiptForm approves a payment receipt form
 func (s *paymentReceiptFormService) ApprovePaymentReceiptForm(ctx context.Context, id uint) error {
 	// Get the form to check if it exists and current status
@@ -216,14 +285,36 @@ func (s *paymentReceiptFormService) ApprovePaymentReceiptForm(ctx context.Contex
 		finalizedDate = form.Date
 	}
 
-	formNumber, err := s.generateNextFormNumber(ctx, finalizedDate, *form.PurchaseOrder.InventoryID)
-	if err != nil {
-		return fmt.Errorf("failed to generate form number: %w", err)
-	}
-	form.FormNumber = &formNumber
+	// Retry logic to handle concurrent form number generation
+	maxRetries := 5
+	for attempt := 0; attempt < maxRetries; attempt++ {
+		formNumber, err := s.generateNextFormNumber(ctx, finalizedDate, *form.PurchaseOrder.InventoryID)
+		if err != nil {
+			return fmt.Errorf("failed to generate form number: %w", err)
+		}
+		form.FormNumber = &formNumber
 
-	// Update the form
-	if err := s.paymentReceiptFormRepo.Update(ctx, form); err != nil {
+		// Update the form
+		err = s.paymentReceiptFormRepo.Update(ctx, form)
+		if err == nil {
+			// Success, no need to retry
+			return nil
+		}
+
+		// Check if it's a duplicate key error
+		if s.isDuplicateKeyError(err) {
+			// If this is the last attempt, return the error
+			if attempt == maxRetries-1 {
+				return fmt.Errorf("failed to update payment receipt form after %d retries due to duplicate key conflicts: %w", maxRetries, err)
+			}
+			// Exponential backoff with jitter to reduce thundering herd
+			baseDelay := time.Millisecond * time.Duration(50*(1<<uint(attempt))) // Exponential: 50ms, 100ms, 200ms, 400ms...
+			jitter := time.Millisecond * time.Duration(rand.Intn(50))            // Random jitter up to 50ms
+			time.Sleep(baseDelay + jitter)
+			continue
+		}
+
+		// If it's not a duplicate key error, return immediately
 		return fmt.Errorf("failed to update payment receipt form: %w", err)
 	}
 
