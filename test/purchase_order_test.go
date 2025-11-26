@@ -497,8 +497,8 @@ var _ = Describe("Purchase Order API", func() {
 				name                  string
 				currentPOStatus       models.PurchaseOrderStatus
 				currentPOItem1Status  models.PurchaseOrderItemStatus
-				deliveredQuantity1    float64
-				deliveredQuantity2    float64
+				receivedQuantity1     float64
+				receivedQuantity2     float64
 				expectedPOStatus      models.PurchaseOrderStatus
 				expectedPOItem1Status models.PurchaseOrderItemStatus
 			}{
@@ -506,8 +506,8 @@ var _ = Describe("Purchase Order API", func() {
 					name:                  "should receive partial delivery when both items partially delivered",
 					currentPOStatus:       models.PurchaseOrderStatusOrderPlaced,
 					currentPOItem1Status:  models.PurchaseOrderItemStatusAwaitingDelivery,
-					deliveredQuantity1:    50,
-					deliveredQuantity2:    50,
+					receivedQuantity1:     50,
+					receivedQuantity2:     50,
 					expectedPOStatus:      models.PurchaseOrderStatusPartiallyDelivered,
 					expectedPOItem1Status: models.PurchaseOrderItemStatusPartiallyDelivered,
 				},
@@ -515,8 +515,8 @@ var _ = Describe("Purchase Order API", func() {
 					name:                  "should receive partial delivery when first item fully delivered",
 					currentPOStatus:       models.PurchaseOrderStatusOrderPlaced,
 					currentPOItem1Status:  models.PurchaseOrderItemStatusAwaitingDelivery,
-					deliveredQuantity1:    100,
-					deliveredQuantity2:    50,
+					receivedQuantity1:     100,
+					receivedQuantity2:     50,
 					expectedPOStatus:      models.PurchaseOrderStatusPartiallyDelivered,
 					expectedPOItem1Status: models.PurchaseOrderItemStatusDelivered,
 				},
@@ -524,8 +524,8 @@ var _ = Describe("Purchase Order API", func() {
 					name:                  "should receive full delivery when both items fully delivered",
 					currentPOStatus:       models.PurchaseOrderStatusOrderPlaced,
 					currentPOItem1Status:  models.PurchaseOrderItemStatusAwaitingDelivery,
-					deliveredQuantity1:    100,
-					deliveredQuantity2:    100,
+					receivedQuantity1:     100,
+					receivedQuantity2:     100,
 					expectedPOStatus:      models.PurchaseOrderStatusFullyDelivered,
 					expectedPOItem1Status: models.PurchaseOrderItemStatusDelivered,
 				},
@@ -533,8 +533,8 @@ var _ = Describe("Purchase Order API", func() {
 					name:                  "should complete delivery from partially delivered status",
 					currentPOStatus:       models.PurchaseOrderStatusPartiallyDelivered,
 					currentPOItem1Status:  models.PurchaseOrderItemStatusPartiallyDelivered,
-					deliveredQuantity1:    100,
-					deliveredQuantity2:    100,
+					receivedQuantity1:     100,
+					receivedQuantity2:     100,
 					expectedPOStatus:      models.PurchaseOrderStatusFullyDelivered,
 					expectedPOItem1Status: models.PurchaseOrderItemStatusDelivered,
 				},
@@ -584,11 +584,11 @@ var _ = Describe("Purchase Order API", func() {
 							"items": []map[string]interface{}{
 								{
 									"id":                purchaseOrderItems[0].ID,
-									"received_quantity": tc.deliveredQuantity1,
+									"received_quantity": tc.receivedQuantity1,
 								},
 								{
 									"id":                purchaseOrderItems[1].ID,
-									"received_quantity": tc.deliveredQuantity2,
+									"received_quantity": tc.receivedQuantity2,
 								},
 							},
 						}
@@ -606,6 +606,46 @@ var _ = Describe("Purchase Order API", func() {
 					})
 				}
 			}
+		})
+
+		It("should re-update purchase order status when call receive inventory with quantity 0", func(ctx SpecContext) {
+			client := testutil.NewClient(tenv, models.RoleAdmin)
+
+			testPurchaseOrder := fixture.WithPurchaseOrder(tenv.ContextfulDB(), models.PurchaseOrder{
+				OrderNumber: uuid.New().String(),
+				Status:      models.PurchaseOrderStatusPartiallyDelivered,
+				InventoryID: &testInventory.ID,
+				Items: []*models.PurchaseOrderItem{
+					{
+						ProductID:        &testProducts[0].ID,
+						SupplierID:       &testSupplier.ID,
+						UnitID:           &testBaseUnit.ID,
+						Quantity:         decimal.NewFromInt(100),
+						ReceivedQuantity: decimal.Zero,
+						Status:           models.PurchaseOrderItemStatusDelivered,
+					},
+				},
+			})
+
+			payload := map[string]interface{}{
+				"items": []map[string]interface{}{
+					{
+						"id":                testPurchaseOrder.Items[0].ID,
+						"received_quantity": 0,
+					},
+				},
+			}
+
+			urlPath := fmt.Sprintf("/api/v1/purchase-orders/%d/receive", testPurchaseOrder.ID)
+			resp, err := client.MakeRequest("PUT", urlPath, payload, testutil.WithAuth())
+			Expect(err).NotTo(HaveOccurred())
+			Expect(resp.StatusCode).To(Equal(200))
+
+			// Verify in database
+			var purchaseOrder models.PurchaseOrder
+			err = tenv.DB.WithContext(ctx).First(&purchaseOrder, "id = ?", testPurchaseOrder.ID).Error
+			Expect(err).NotTo(HaveOccurred())
+			Expect(purchaseOrder.Status).To(Equal(models.PurchaseOrderStatusFullyDelivered))
 		})
 
 		It("should not receive purchase order if item quantity is smaller than received quantity", func(ctx SpecContext) {
@@ -933,6 +973,140 @@ var _ = Describe("Purchase Order API", func() {
 				Expect(response.Items[0].Status).To(Equal(models.PurchaseOrderItemStatusAwaitingDelivery))
 			})
 
+			It("should update purchase order status accordingly when items are removed", func(ctx SpecContext) {
+				client := testutil.NewClient(tenv, models.RoleAdmin)
+
+				// Create purchase order with multiple items in different states
+				testPurchaseOrder := fixture.WithPurchaseOrder(tenv.ContextfulDB(), models.PurchaseOrder{
+					OrderNumber: uuid.New().String(),
+					Status:      models.PurchaseOrderStatusPartiallyDelivered,
+					InventoryID: &testInventory.ID,
+					Items: []*models.PurchaseOrderItem{
+						{
+							ProductID:        &testProducts[0].ID,
+							SupplierID:       &testSupplier.ID,
+							UnitID:           pkg.Ptr(testBaseUnit.ID),
+							Quantity:         decimal.NewFromInt(100),
+							ReceivedQuantity: decimal.NewFromInt(100),
+							Status:           models.PurchaseOrderItemStatusDelivered,
+							UnitPrice:        1000,
+						},
+						{
+							ProductID:        &testProducts[1].ID,
+							SupplierID:       &testSupplier.ID,
+							UnitID:           pkg.Ptr(testBaseUnit.ID),
+							Quantity:         decimal.NewFromInt(50),
+							ReceivedQuantity: decimal.Zero,
+							Status:           models.PurchaseOrderItemStatusAwaitingDelivery,
+							UnitPrice:        2000,
+						},
+					},
+				})
+
+				// Remove the awaiting delivery item, keeping only the delivered item
+				urlPath := fmt.Sprintf("/api/v1/purchase-orders/%d", testPurchaseOrder.ID)
+				payload := map[string]interface{}{
+					"inventory_id": testInventory.ID,
+					"notes":        uuid.New().String(),
+					"items": []map[string]interface{}{
+						{
+							"product_id":  testProducts[0].ID,
+							"supplier_id": testSupplier.ID,
+							"unit_id":     testBaseUnit.ID,
+							"quantity":    100,
+							"unit_price":  1000,
+						},
+					},
+				}
+
+				resp, err := client.MakeRequest("PUT", urlPath, payload, testutil.WithAuth())
+				Expect(err).NotTo(HaveOccurred())
+				Expect(resp.StatusCode).To(Equal(200))
+
+				// Verify response
+				var response models.PurchaseOrder
+				err = json.NewDecoder(resp.Body).Decode(&response)
+				Expect(err).NotTo(HaveOccurred())
+				Expect(response.Status).To(Equal(models.PurchaseOrderStatusFullyDelivered))
+				Expect(response.Items).To(HaveLen(1))
+				Expect(*response.Items[0].ProductID).To(Equal(testProducts[0].ID))
+				Expect(response.Items[0].Status).To(Equal(models.PurchaseOrderItemStatusDelivered))
+
+				// Verify in database
+				var purchaseOrder models.PurchaseOrder
+				err = tenv.DB.WithContext(ctx).Preload("Items").First(&purchaseOrder, "id = ?", testPurchaseOrder.ID).Error
+				Expect(err).NotTo(HaveOccurred())
+				Expect(purchaseOrder.Status).To(Equal(models.PurchaseOrderStatusFullyDelivered))
+				Expect(purchaseOrder.Items).To(HaveLen(1))
+			})
+
+			It("should update purchase order status accordingly when items are removed - partially_delivered remains", func(ctx SpecContext) {
+				client := testutil.NewClient(tenv, models.RoleAdmin)
+
+				// Create purchase order with multiple items
+				testPurchaseOrder := fixture.WithPurchaseOrder(tenv.ContextfulDB(), models.PurchaseOrder{
+					OrderNumber: uuid.New().String(),
+					Status:      models.PurchaseOrderStatusPartiallyDelivered,
+					InventoryID: &testInventory.ID,
+					Items: []*models.PurchaseOrderItem{
+						{
+							ProductID:        &testProducts[0].ID,
+							SupplierID:       &testSupplier.ID,
+							UnitID:           pkg.Ptr(testBaseUnit.ID),
+							Quantity:         decimal.NewFromInt(100),
+							ReceivedQuantity: decimal.NewFromInt(50),
+							Status:           models.PurchaseOrderItemStatusPartiallyDelivered,
+							UnitPrice:        1000,
+						},
+						{
+							ProductID:        &testProducts[1].ID,
+							SupplierID:       &testSupplier.ID,
+							UnitID:           pkg.Ptr(testBaseUnit.ID),
+							Quantity:         decimal.NewFromInt(50),
+							ReceivedQuantity: decimal.Zero,
+							Status:           models.PurchaseOrderItemStatusAwaitingDelivery,
+							UnitPrice:        2000,
+						},
+					},
+				})
+
+				// Remove the awaiting delivery item, keeping only the partially delivered item
+				urlPath := fmt.Sprintf("/api/v1/purchase-orders/%d", testPurchaseOrder.ID)
+				payload := map[string]interface{}{
+					"inventory_id": testInventory.ID,
+					"notes":        uuid.New().String(),
+					"items": []map[string]interface{}{
+						{
+							"product_id":  testProducts[0].ID,
+							"supplier_id": testSupplier.ID,
+							"unit_id":     testBaseUnit.ID,
+							"quantity":    100,
+							"unit_price":  1000,
+						},
+					},
+				}
+
+				resp, err := client.MakeRequest("PUT", urlPath, payload, testutil.WithAuth())
+				Expect(err).NotTo(HaveOccurred())
+				Expect(resp.StatusCode).To(Equal(200))
+
+				// Verify response
+				var response models.PurchaseOrder
+				err = json.NewDecoder(resp.Body).Decode(&response)
+				Expect(err).NotTo(HaveOccurred())
+				Expect(response.Status).To(Equal(models.PurchaseOrderStatusPartiallyDelivered))
+				Expect(response.Items).To(HaveLen(1))
+				Expect(*response.Items[0].ProductID).To(Equal(testProducts[0].ID))
+				Expect(response.Items[0].Status).To(Equal(models.PurchaseOrderItemStatusPartiallyDelivered))
+
+				// Verify in database
+				var purchaseOrder models.PurchaseOrder
+				err = tenv.DB.WithContext(ctx).Preload("Items").First(&purchaseOrder, "id = ?", testPurchaseOrder.ID).Error
+				Expect(err).NotTo(HaveOccurred())
+				Expect(purchaseOrder.Status).To(Equal(models.PurchaseOrderStatusPartiallyDelivered))
+				Expect(purchaseOrder.Items).To(HaveLen(1))
+			})
+
 			It("should update quantity & total amount when derived unit is updated", func(ctx SpecContext) {
 				client := testutil.NewClient(tenv, models.RoleAdmin)
 
@@ -1045,6 +1219,28 @@ var _ = Describe("Purchase Order API", func() {
 
 				errorResp := testutil.ParseResponse(resp)
 				Expect(errorResp["error"]).To(ContainSubstring("cannot delete item with received quantity"))
+			})
+
+			It("should not update purchase order when no items are provided", func(ctx SpecContext) {
+				client := testutil.NewClient(tenv, models.RoleAdmin)
+
+				testPurchaseOrder := fixture.WithPurchaseOrder(tenv.ContextfulDB(), models.PurchaseOrder{
+					OrderNumber: uuid.New().String(),
+					Status:      models.PurchaseOrderStatusOrderPlaced,
+					InventoryID: &testInventory.ID,
+				})
+				payload := map[string]interface{}{
+					"inventory_id": testInventory.ID,
+					"notes":        uuid.New().String(),
+				}
+
+				urlPath := fmt.Sprintf("/api/v1/purchase-orders/%d", testPurchaseOrder.ID)
+				resp, err := client.MakeRequest("PUT", urlPath, payload, testutil.WithAuth())
+				Expect(err).NotTo(HaveOccurred())
+				Expect(resp.StatusCode).To(Equal(400))
+
+				errorResp := testutil.ParseResponse(resp)
+				Expect(errorResp["error"]).To(ContainSubstring("validation failed"))
 			})
 		})
 

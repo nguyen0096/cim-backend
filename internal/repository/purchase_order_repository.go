@@ -459,7 +459,8 @@ func (r *purchaseOrderRepository) UpdatePurchaseOrder(ctx context.Context, id ui
 		}
 
 		// Find existing items and new items to upsert
-		upsertItems := make([]*models.PurchaseOrderItem, 0, len(req.Items))
+		// Separate items that need database updates from items that don't need updating
+		itemsToUpdate := make([]*models.PurchaseOrderItem, 0, len(req.Items))
 		for _, itemReq := range req.Items {
 			key := fmt.Sprintf("%d-%d", *itemReq.SupplierID, *itemReq.ProductID)
 			if existingItem, found := existingItemsMap[key]; found {
@@ -479,6 +480,7 @@ func (r *purchaseOrderRepository) UpdatePurchaseOrder(ctx context.Context, id ui
 				unitIDMatch := (existingItem.UnitID == nil && itemReq.UnitID == nil) ||
 					(existingItem.UnitID != nil && itemReq.UnitID != nil && *existingItem.UnitID == *itemReq.UnitID)
 				if existingItem.Quantity.Equal(itemReq.Quantity) && existingItem.UnitPrice == itemReq.UnitPrice && unitIDMatch {
+					// Item doesn't need updating, skip it (will be reloaded from DB later)
 					continue
 				}
 
@@ -488,7 +490,7 @@ func (r *purchaseOrderRepository) UpdatePurchaseOrder(ctx context.Context, id ui
 					existingItem.UnitID = itemReq.UnitID
 				}
 				existingItem.UpdateStatus()
-				upsertItems = append(upsertItems, existingItem)
+				itemsToUpdate = append(itemsToUpdate, existingItem)
 			} else {
 				if po.Status == models.PurchaseOrderStatusFullyDelivered {
 					po.Status = models.PurchaseOrderStatusPartiallyDelivered
@@ -503,7 +505,16 @@ func (r *purchaseOrderRepository) UpdatePurchaseOrder(ctx context.Context, id ui
 					ReceivedQuantity: decimal.Zero, // Default to 0
 					Status:           models.PurchaseOrderItemStatusAwaitingDelivery,
 				}
-				upsertItems = append(upsertItems, newItem)
+				itemsToUpdate = append(itemsToUpdate, newItem)
+			}
+		}
+
+		// Update quantity and prices of purchase order items that need updating
+		if len(itemsToUpdate) > 0 {
+			for _, item := range itemsToUpdate {
+				if err := tx.Save(item).Error; err != nil {
+					return fmt.Errorf("failed to save purchase order item: %w", err)
+				}
 			}
 		}
 
@@ -517,21 +528,22 @@ func (r *purchaseOrderRepository) UpdatePurchaseOrder(ctx context.Context, id ui
 			}
 		}
 
-		// Set items to purchase order
-		po.Items = upsertItems
-		po.Notes = req.Notes
-		if len(upsertItems) > 0 {
-			// Update quantity and prices of purchase order items
-			for _, item := range upsertItems {
-				if err := tx.Save(item).Error; err != nil {
-					return fmt.Errorf("failed to save purchase order item: %w", err)
-				}
-			}
+		// Reload all remaining items from database to ensure we have complete, up-to-date list
+		// This is important after deletion to get all remaining items with their current status
+		var remainingItems []*models.PurchaseOrderItem
+		if err := tx.Where("purchase_order_id = ?", id).Find(&remainingItems).Error; err != nil {
+			return fmt.Errorf("failed to reload purchase order items: %w", err)
+		}
 
+		// Set items to purchase order (all remaining items)
+		po.Items = remainingItems
+		po.Notes = req.Notes
+
+		// Always update status if there are items remaining (after deletion or update)
+		if len(remainingItems) > 0 {
 			if err := po.UpdateStatus(ctx); err != nil {
 				return fmt.Errorf("failed to update purchase order status: %w", err)
 			}
-
 		}
 
 		if err := tx.Save(po).Error; err != nil {

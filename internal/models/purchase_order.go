@@ -95,8 +95,9 @@ func (po *PurchaseOrder) UpdateStatus(ctx context.Context) error {
 	}
 
 	// partially_delivered -> fully_delivered
+	// Only transition to fully_delivered if there are no awaiting/partially delivered items AND there is at least one delivered item
 	if po.Status == PurchaseOrderStatusPartiallyDelivered &&
-		!hasAwaitingDeliveryItem && !hasPartiallyDelieveredItem {
+		!hasAwaitingDeliveryItem && !hasPartiallyDelieveredItem && hasDeliveredItem {
 		po.Status = PurchaseOrderStatusFullyDelivered
 	}
 

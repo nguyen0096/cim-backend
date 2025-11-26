@@ -40,14 +40,21 @@ func (poi *PurchaseOrderItem) CalculateTotalAmount() decimal.Decimal {
 
 func (poi *PurchaseOrderItem) UpdateStatus() {
 	// delivered -> partially_delivered (when quantity increases and received < quantity)
+	// Only downgrade if received quantity is greater than zero but less than ordered quantity
 	if poi.Status == PurchaseOrderItemStatusDelivered &&
-		poi.ReceivedQuantity.LessThan(poi.Quantity) {
+		poi.ReceivedQuantity.GreaterThan(decimal.Zero) && poi.ReceivedQuantity.LessThan(poi.Quantity) {
 		poi.Status = PurchaseOrderItemStatusPartiallyDelivered
 	}
 
-	// awaiting_delivery -> partially_delivered
+	// awaiting_delivery -> delivered (when full quantity is received)
 	if poi.Status == PurchaseOrderItemStatusAwaitingDelivery &&
-		poi.ReceivedQuantity.GreaterThan(decimal.Zero) {
+		poi.ReceivedQuantity.Equal(poi.Quantity) {
+		poi.Status = PurchaseOrderItemStatusDelivered
+	}
+
+	// awaiting_delivery -> partially_delivered (when partial quantity is received)
+	if poi.Status == PurchaseOrderItemStatusAwaitingDelivery &&
+		poi.ReceivedQuantity.GreaterThan(decimal.Zero) && poi.ReceivedQuantity.LessThan(poi.Quantity) {
 		poi.Status = PurchaseOrderItemStatusPartiallyDelivered
 	}
 
@@ -55,5 +62,10 @@ func (poi *PurchaseOrderItem) UpdateStatus() {
 	if poi.Status == PurchaseOrderItemStatusPartiallyDelivered &&
 		poi.ReceivedQuantity.Equal(poi.Quantity) {
 		poi.Status = PurchaseOrderItemStatusDelivered
+	}
+
+	// If received quantity is 0 and status is PartiallyDelivered, it should become AwaitingDelivery
+	if poi.ReceivedQuantity.Equal(decimal.Zero) && poi.Status == PurchaseOrderItemStatusPartiallyDelivered {
+		poi.Status = PurchaseOrderItemStatusAwaitingDelivery
 	}
 }
