@@ -125,6 +125,12 @@ func (r *paymentReceiptFormRepository) List(ctx context.Context, req *dto.Paymen
 		return nil, 0, fmt.Errorf("failed to count payment receipt forms: %w", err)
 	}
 
+	// Apply finalized date filter if provided
+	if !req.FinalizedDate.IsZero() {
+		finalizedDate := req.FinalizedDate.Truncate(24 * time.Hour).Format("20060102")
+		query = query.Where("payment_receipt_forms.form_number LIKE ?", finalizedDate+"-%")
+	}
+
 	if req.Date != "" {
 		date, err := time.Parse("2006-01-02", req.Date)
 		if err != nil {
@@ -141,7 +147,16 @@ func (r *paymentReceiptFormRepository) List(ctx context.Context, req *dto.Paymen
 		if req.Order == "" {
 			req.Order = "asc"
 		}
-		query = query.Order("payment_receipt_forms." + req.Sort + " " + req.Order)
+		// Special handling for form_number to sort by numeric parts
+		// Form number format: YYYYMMDD-inventoryID-increment
+		if req.Sort == "form_number" {
+			// Sort by date part, then inventoryID, then increment (all as integers)
+			query = query.Order("CAST(SPLIT_PART(payment_receipt_forms.form_number, '-', 1) AS INTEGER) " + req.Order).
+				Order("CAST(SPLIT_PART(payment_receipt_forms.form_number, '-', 2) AS INTEGER) " + req.Order).
+				Order("CAST(SPLIT_PART(payment_receipt_forms.form_number, '-', 3) AS INTEGER) " + req.Order)
+		} else {
+			query = query.Order("payment_receipt_forms." + req.Sort + " " + req.Order)
+		}
 	} else {
 		query = query.Order("payment_receipt_forms.created_at desc")
 	}

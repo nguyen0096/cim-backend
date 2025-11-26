@@ -344,7 +344,7 @@ func (s *excelService) FinalizeRevenueExpense(ctx context.Context, date time.Tim
 			Sort:  "form_number",
 			Order: "asc",
 		},
-		Date: lastFinalizedDate.Format("2006-01-02"),
+		FinalizedDate: lastFinalizedDate,
 	}
 	req.ValidateAndSetDefaults()
 
