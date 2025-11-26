@@ -371,8 +371,8 @@ func (s *excelService) FinalizeRevenueExpense(ctx context.Context, date time.Tim
 			return nil, pkg.ErrFailedToInitializeGoogleSheetsRepo(ctx, err)
 		}
 
-		// Add new date row
-		if err := s.revenueExpenseGoogleSheetsRepo.AddNewDateRow(ctx, sheetName, lastFinalizedDate); err != nil {
+		// Add new date row, the date when user click finalize button, not the last finalized date
+		if err := s.revenueExpenseGoogleSheetsRepo.AddNewDateRow(ctx, sheetName, today); err != nil {
 			return nil, pkg.ErrFailedToAddNewDateRowGoogleSheets(ctx, err)
 		}
 
@@ -389,8 +389,8 @@ func (s *excelService) FinalizeRevenueExpense(ctx context.Context, date time.Tim
 			return nil, pkg.ErrFailedToInitializeExcelRepo(ctx, err)
 		}
 
-		// Add new date row
-		if err := s.revenueExpenseExcelRepo.AddNewDateRow(ctx, sheetName, lastFinalizedDate); err != nil {
+		// Add new date row, the date when user click finalize button, not the last finalized date
+		if err := s.revenueExpenseExcelRepo.AddNewDateRow(ctx, sheetName, today); err != nil {
 			return nil, pkg.ErrFailedToAddNewDateRowExcel(ctx, err)
 		}
 
