@@ -99,8 +99,18 @@ func (r *purchaseOrderRepository) List(ctx context.Context, params models.ListPa
 	baseQuery := r.db.WithContext(ctx).Model(&models.PurchaseOrder{}).Preload("Inventory")
 
 	// Apply search filter
+	// Uses indexes:
+	// - idx_purchase_order_items_purchase_order_id for EXISTS subquery lookups
+	// - idx_suppliers_name_trgm (GIN trigram) for ILIKE pattern matching on supplier names
+	// - order_number has unique constraint (automatic index) for order_number searches
 	if params.Search != "" {
-		baseQuery = baseQuery.Where("order_number ILIKE ? OR notes ILIKE ?", "%"+params.Search+"%", "%"+params.Search+"%")
+		searchPattern := "%" + params.Search + "%"
+		// EXISTS subquery uses index on purchase_order_items.purchase_order_id
+		// GIN trigram index on suppliers.name is automatically used for ILIKE queries
+		baseQuery = baseQuery.Where(
+			"order_number ILIKE ? OR notes ILIKE ? OR EXISTS (SELECT 1 FROM purchase_order_items poi JOIN suppliers s ON poi.supplier_id = s.id WHERE poi.purchase_order_id = purchase_orders.id AND s.name ILIKE ?)",
+			searchPattern, searchPattern, searchPattern,
+		)
 	}
 
 	// Apply date range filter

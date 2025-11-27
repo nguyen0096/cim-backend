@@ -50,7 +50,7 @@ func WithUnit(db *gorm.DB, unit models.Unit) *models.Unit {
 }
 
 // WithUnits creates multiple test units and returns them
-func WithUnits(db *gorm.DB, units []models.Unit) []models.Unit {
+func WithUnits(db *gorm.DB, units []*models.Unit) []*models.Unit {
 	// MATCHING APP CREATION LOGIC
 	// uppercase the unit name
 	for i := range units {
@@ -63,14 +63,21 @@ func WithUnits(db *gorm.DB, units []models.Unit) []models.Unit {
 		units[i].ID = 0
 	}
 
-	if err := db.Create(&units).Error; err != nil {
+	if err := db.Create(units).Error; err != nil {
 		panic(fmt.Sprintf("failed to create test units: %v", err))
 	}
 	DeferCleanup(func() {
-		// Delete in reverse order to avoid foreign key constraint violations
-		for i := len(units) - 1; i >= 0; i-- {
-			db.Exec("DELETE FROM units WHERE id = ?", units[i].ID)
+		ids := make([]uint, len(units))
+		for i, unit := range units {
+			ids[i] = unit.ID
 		}
+		// Delete product_suppliers for products that reference these units
+		db.Exec("DELETE FROM product_suppliers WHERE product_id IN (SELECT id FROM products WHERE unit_id IN (?))", ids)
+		// Note: purchase_order_items are deleted by WithPurchaseOrders cleanup
+		// Delete products that reference these units
+		db.Exec("DELETE FROM products WHERE unit_id IN (?)", ids)
+		// Then delete units
+		db.Exec("DELETE FROM units WHERE id IN (?)", ids)
 	})
 	return units
 }
@@ -91,7 +98,7 @@ func WithProduct(db *gorm.DB, product models.Product) *models.Product {
 }
 
 // WithProducts creates multiple test products and returns them
-func WithProducts(db *gorm.DB, products []models.Product) []models.Product {
+func WithProducts(db *gorm.DB, products []*models.Product) []*models.Product {
 	// reset the id incase the client set it.
 	// let the DB generate the id.
 	for i := range products {
@@ -102,11 +109,65 @@ func WithProducts(db *gorm.DB, products []models.Product) []models.Product {
 		panic(fmt.Sprintf("failed to create test products: %v", err))
 	}
 	DeferCleanup(func() {
-		for _, product := range products {
-			db.Exec("DELETE FROM products WHERE id = ?", product.ID)
+		ids := make([]uint, len(products))
+		for i, product := range products {
+			ids[i] = product.ID
 		}
+		// Delete product_suppliers junction table first
+		db.Exec("DELETE FROM product_suppliers WHERE product_id IN (?)", ids)
+		// Note: purchase_order_items are deleted by WithPurchaseOrders cleanup
+		// Then delete products (purchase_order_items should already be deleted)
+		db.Exec("DELETE FROM products WHERE id IN (?)", ids)
 	})
+
 	return products
+}
+
+func WithSuppliers(db *gorm.DB, suppliers []*models.Supplier) []*models.Supplier {
+	// reset the id incase the client set it.
+	// let the DB generate the id.
+	for i := range suppliers {
+		suppliers[i].ID = 0
+	}
+
+	if err := db.Create(&suppliers).Error; err != nil {
+		panic(fmt.Sprintf("failed to create test suppliers: %v", err))
+	}
+	DeferCleanup(func() {
+		ids := make([]uint, len(suppliers))
+		for i, supplier := range suppliers {
+			ids[i] = supplier.ID
+		}
+		// Delete product_suppliers junction table first
+		db.Exec("DELETE FROM product_suppliers WHERE supplier_id IN (?)", ids)
+		// Note: purchase_order_items are deleted by WithPurchaseOrders cleanup
+		// Then delete suppliers (purchase_order_items should already be deleted)
+		db.Exec("DELETE FROM suppliers WHERE id IN (?)", ids)
+	})
+	return suppliers
+}
+
+func WithPurchaseOrders(db *gorm.DB, purchaseOrders []*models.PurchaseOrder) []*models.PurchaseOrder {
+	// reset the id incase the client set it.
+	// let the DB generate the id.
+	for i := range purchaseOrders {
+		purchaseOrders[i].ID = 0
+	}
+
+	if err := db.Create(&purchaseOrders).Error; err != nil {
+		panic(fmt.Sprintf("failed to create test purchase orders: %v", err))
+	}
+	DeferCleanup(func() {
+		ids := make([]uint, len(purchaseOrders))
+		for i, purchaseOrder := range purchaseOrders {
+			ids[i] = purchaseOrder.ID
+		}
+		// Delete purchase order items first (they reference purchase_orders)
+		db.Exec("DELETE FROM purchase_order_items WHERE purchase_order_id IN (?)", ids)
+		// Then delete purchase orders
+		db.Exec("DELETE FROM purchase_orders WHERE id IN (?)", ids)
+	})
+	return purchaseOrders
 }
 
 // WithInventory creates a test inventory and returns it
@@ -119,6 +180,8 @@ func WithInventory(db *gorm.DB, inventory models.Inventory) *models.Inventory {
 		panic(fmt.Sprintf("failed to create test inventory: %v", err))
 	}
 	DeferCleanup(func() {
+		// Note: purchase_orders and purchase_order_items are deleted by WithPurchaseOrders cleanup
+		// Just delete the inventory (purchase_orders should already be deleted)
 		db.Exec("DELETE FROM inventories WHERE id = ?", inventory.ID)
 	})
 	return &inventory
@@ -140,6 +203,23 @@ func WithPurchaseOrder(db *gorm.DB, purchaseOrder models.PurchaseOrder) *models.
 		db.Exec("DELETE FROM purchase_orders WHERE id = ?", purchaseOrder.ID)
 	})
 	return &purchaseOrder
+}
+
+// WithPaymentReceiptForm creates a test payment receipt form and returns it
+func WithPaymentReceiptForms(db *gorm.DB, paymentReceiptForms []*models.PaymentReceiptForm) []*models.PaymentReceiptForm {
+	if err := db.Create(&paymentReceiptForms).Error; err != nil {
+		panic(fmt.Sprintf("failed to create test payment receipt form: %v", err))
+	}
+	DeferCleanup(func() {
+		// Only clean up payment receipt forms
+		// Nested entities (purchase orders, products, suppliers, etc.) are cleaned up by their own fixture functions
+		ids := make([]uint, len(paymentReceiptForms))
+		for i, paymentReceiptForm := range paymentReceiptForms {
+			ids[i] = paymentReceiptForm.ID
+		}
+		db.Exec("DELETE FROM payment_receipt_forms WHERE id IN (?)", ids)
+	})
+	return paymentReceiptForms
 }
 
 // CreatePurchaseOrderExcelFile creates a test Excel file for purchase order import

@@ -18,21 +18,18 @@ import (
 
 var _ = Describe("Purchase Order API", func() {
 	Describe("Create Purchase Order", func() {
-		var testSuppliers []models.Supplier
+		var testSuppliers []*models.Supplier
 		var testBaseUnit *models.Unit
 		var testDerivedUnit *models.Unit
-		var testProducts []models.Product
+		var testProducts []*models.Product
 		var testInventory *models.Inventory
 
 		BeforeEach(func() {
 			// Create suppliers
-			supplier1 := fixture.WithSupplier(tenv.ContextfulDB(), models.Supplier{
-				Name: fmt.Sprintf("Test Supplier 1 %s", uuid.New().String()),
+			testSuppliers = fixture.WithSuppliers(tenv.ContextfulDB(), []*models.Supplier{
+				{Name: fmt.Sprintf("Test Supplier 1 %s", uuid.New().String())},
+				{Name: fmt.Sprintf("Test Supplier 2 %s", uuid.New().String())},
 			})
-			supplier2 := fixture.WithSupplier(tenv.ContextfulDB(), models.Supplier{
-				Name: fmt.Sprintf("Test Supplier 2 %s", uuid.New().String()),
-			})
-			testSuppliers = []models.Supplier{*supplier1, *supplier2}
 
 			// Create units
 			testBaseUnit = fixture.WithUnit(tenv.ContextfulDB(), models.Unit{
@@ -50,15 +47,9 @@ var _ = Describe("Purchase Order API", func() {
 			})
 
 			// Create products
-			testProducts = fixture.WithProducts(tenv.ContextfulDB(), []models.Product{
-				{
-					Name:   fmt.Sprintf("Test Product 1 %s", uuid.New().String()),
-					UnitID: testBaseUnit.ID,
-				},
-				{
-					Name:   fmt.Sprintf("Test Product 2 %s", uuid.New().String()),
-					UnitID: testBaseUnit.ID,
-				},
+			testProducts = fixture.WithProducts(tenv.ContextfulDB(), []*models.Product{
+				{Name: fmt.Sprintf("Test Product 1 %s", uuid.New().String()), UnitID: testBaseUnit.ID},
+				{Name: fmt.Sprintf("Test Product 2 %s", uuid.New().String()), UnitID: testBaseUnit.ID},
 			})
 
 			// Create inventory
@@ -461,7 +452,7 @@ var _ = Describe("Purchase Order API", func() {
 	Describe("Receive Purchase Order", func() {
 		var testBaseUnit *models.Unit
 		var testSupplier *models.Supplier
-		var testProducts []models.Product
+		var testProducts []*models.Product
 		var testInventory *models.Inventory
 
 		BeforeEach(func() {
@@ -476,15 +467,9 @@ var _ = Describe("Purchase Order API", func() {
 				Name: fmt.Sprintf("Test Supplier 1 %s", uuid.New().String()),
 			})
 
-			testProducts = fixture.WithProducts(tenv.ContextfulDB(), []models.Product{
-				{
-					Name:   fmt.Sprintf("Test Product 1 %s", uuid.New().String()),
-					UnitID: testBaseUnit.ID,
-				},
-				{
-					Name:   fmt.Sprintf("Test Product 2 %s", uuid.New().String()),
-					UnitID: testBaseUnit.ID,
-				},
+			testProducts = fixture.WithProducts(tenv.ContextfulDB(), []*models.Product{
+				{Name: fmt.Sprintf("Test Product 1 %s", uuid.New().String()), UnitID: testBaseUnit.ID},
+				{Name: fmt.Sprintf("Test Product 2 %s", uuid.New().String()), UnitID: testBaseUnit.ID},
 			})
 
 			testInventory = fixture.WithInventory(tenv.ContextfulDB(), models.Inventory{
@@ -738,7 +723,7 @@ var _ = Describe("Purchase Order API", func() {
 		var testBaseUnit *models.Unit
 		var testDerivedUnit *models.Unit
 		var testDerivedUnit2 *models.Unit
-		var testProducts []models.Product
+		var testProducts []*models.Product
 		var testInventory *models.Inventory
 
 		BeforeEach(func() {
@@ -767,15 +752,9 @@ var _ = Describe("Purchase Order API", func() {
 				BaseUnitID:       pkg.Ptr(testBaseUnit.ID),
 			})
 
-			testProducts = fixture.WithProducts(tenv.ContextfulDB(), []models.Product{
-				{
-					Name:   fmt.Sprintf("Test Product 1 %s", uuid.New().String()),
-					UnitID: testBaseUnit.ID,
-				},
-				{
-					Name:   fmt.Sprintf("Test Product 2 %s", uuid.New().String()),
-					UnitID: testDerivedUnit.ID,
-				},
+			testProducts = fixture.WithProducts(tenv.ContextfulDB(), []*models.Product{
+				{Name: fmt.Sprintf("Test Product 1 %s", uuid.New().String()), UnitID: testBaseUnit.ID},
+				{Name: fmt.Sprintf("Test Product 2 %s", uuid.New().String()), UnitID: testDerivedUnit.ID},
 			})
 
 			testInventory = fixture.WithInventory(tenv.ContextfulDB(), models.Inventory{
@@ -1779,6 +1758,93 @@ var _ = Describe("Purchase Order API", func() {
 						Equal(string(models.PurchaseOrderStatusCompleted)),
 						Equal(string(models.PurchaseOrderStatusCancelled)),
 					))
+				}
+			})
+
+			It("should search purchase orders by supplier name", func(ctx SpecContext) {
+				client := testutil.NewClient(tenv, models.RoleAdmin)
+
+				// Create a supplier with a unique name for searching
+				uniqueSupplierName := "Supplier-Search-Test-" + uuid.New().String()
+				searchSupplier := fixture.WithSupplier(tenv.ContextfulDB(), models.Supplier{
+					Name: uniqueSupplierName,
+				})
+
+				// Create another supplier that should not match
+				otherSupplier := fixture.WithSupplier(tenv.ContextfulDB(), models.Supplier{
+					Name: "Other-Supplier-" + uuid.New().String(),
+				})
+
+				// Create purchase orders with the search supplier
+				searchPurchaseOrders := fixture.WithPurchaseOrders(tenv.ContextfulDB(), []*models.PurchaseOrder{
+					{
+						Status:      models.PurchaseOrderStatusOrderPlaced,
+						InventoryID: &testInventory.ID,
+						OrderNumber: "PO-" + uuid.New().String(),
+						Items: []*models.PurchaseOrderItem{
+							{
+								ProductID:  &testProduct.ID,
+								SupplierID: &searchSupplier.ID,
+								UnitID:     &testUnit.ID,
+								Quantity:   decimal.NewFromInt(1),
+								UnitPrice:  100,
+							},
+						},
+					},
+					{
+						Status:      models.PurchaseOrderStatusPartiallyDelivered,
+						InventoryID: &testInventory.ID,
+						OrderNumber: "PO-" + uuid.New().String(),
+						Items: []*models.PurchaseOrderItem{
+							{
+								ProductID:  &testProduct.ID,
+								SupplierID: &searchSupplier.ID,
+								UnitID:     &testUnit.ID,
+								Quantity:   decimal.NewFromInt(1),
+								UnitPrice:  100,
+							},
+						},
+					},
+				})
+
+				// Create a purchase order with a different supplier (should not be returned)
+				fixture.WithPurchaseOrder(tenv.ContextfulDB(), models.PurchaseOrder{
+					Status:      models.PurchaseOrderStatusOrderPlaced,
+					InventoryID: &testInventory.ID,
+					OrderNumber: "PO-" + uuid.New().String(),
+					Items: []*models.PurchaseOrderItem{
+						{
+							ProductID:  &testProduct.ID,
+							SupplierID: &otherSupplier.ID,
+							UnitID:     &testUnit.ID,
+							Quantity:   decimal.NewFromInt(1),
+							UnitPrice:  100,
+						},
+					},
+				})
+
+				// Search by supplier name
+				resp, err := client.MakeRequest("GET", "/api/v1/purchase-orders", nil,
+					testutil.WithAuth(),
+					testutil.WithParams(map[string]string{
+						"q": uniqueSupplierName,
+					}),
+				)
+				Expect(err).NotTo(HaveOccurred())
+				Expect(resp.StatusCode).To(Equal(200))
+
+				purchaseOrderResp := testutil.ParseResponse(resp)
+				purchaseOrders := purchaseOrderResp["data"].([]interface{})
+				Expect(purchaseOrders).To(HaveLen(len(searchPurchaseOrders)))
+
+				// Verify all returned purchase orders have the correct supplier
+				for _, purchaseOrder := range purchaseOrders {
+					purchaseOrderMap := purchaseOrder.(map[string]interface{})
+					items := purchaseOrderMap["items"].([]interface{})
+					Expect(items).To(HaveLen(1))
+					item := items[0].(map[string]interface{})
+					supplierID := uint(item["supplier_id"].(float64))
+					Expect(supplierID).To(Equal(searchSupplier.ID))
 				}
 			})
 		})

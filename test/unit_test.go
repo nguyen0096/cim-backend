@@ -16,7 +16,7 @@ import (
 
 var _ = Describe("Unit API", func() {
 	Describe("Create Unit", func() {
-		var testUnits []models.Unit
+		var testUnits []*models.Unit
 
 		BeforeEach(func() {
 			// Setup unit hierarchy for testing
@@ -49,14 +49,14 @@ var _ = Describe("Unit API", func() {
 				ConversionFactor: 8,
 			}
 
-			testUnits = fixture.WithUnits(tenv.ContextfulDB(), []models.Unit{baseUnit, unitLevel2, unitLevel3, unitLevel4})
+			testUnits = fixture.WithUnits(tenv.ContextfulDB(), []*models.Unit{&baseUnit, &unitLevel2, &unitLevel3, &unitLevel4})
 			// Set up base unit references after creation
 			testUnits[1].BaseUnitID = pkg.Ptr(testUnits[0].ID)
 			testUnits[2].BaseUnitID = pkg.Ptr(testUnits[1].ID)
 			testUnits[3].BaseUnitID = pkg.Ptr(testUnits[2].ID)
-			tenv.DB.WithContext(tenv.DefaultContext).Save(&testUnits[1])
-			tenv.DB.WithContext(tenv.DefaultContext).Save(&testUnits[2])
-			tenv.DB.WithContext(tenv.DefaultContext).Save(&testUnits[3])
+			tenv.DB.WithContext(tenv.DefaultContext).Save(testUnits[1])
+			tenv.DB.WithContext(tenv.DefaultContext).Save(testUnits[2])
+			tenv.DB.WithContext(tenv.DefaultContext).Save(testUnits[3])
 		})
 
 		Context("when user has authorized role", func() {
@@ -171,7 +171,7 @@ var _ = Describe("Unit API", func() {
 	})
 
 	Describe("Get Unit", func() {
-		var testUnits []models.Unit
+		var testUnits []*models.Unit
 
 		BeforeEach(func() {
 			baseUnit := models.Unit{
@@ -203,13 +203,13 @@ var _ = Describe("Unit API", func() {
 				ConversionFactor: 8,
 			}
 
-			testUnits = fixture.WithUnits(tenv.ContextfulDB(), []models.Unit{baseUnit, unitLevel2, unitLevel3, unitLevel4})
+			testUnits = fixture.WithUnits(tenv.ContextfulDB(), []*models.Unit{&baseUnit, &unitLevel2, &unitLevel3, &unitLevel4})
 			testUnits[1].BaseUnitID = pkg.Ptr(testUnits[0].ID)
 			testUnits[2].BaseUnitID = pkg.Ptr(testUnits[1].ID)
 			testUnits[3].BaseUnitID = pkg.Ptr(testUnits[2].ID)
-			tenv.DB.WithContext(tenv.DefaultContext).Save(&testUnits[1])
-			tenv.DB.WithContext(tenv.DefaultContext).Save(&testUnits[2])
-			tenv.DB.WithContext(tenv.DefaultContext).Save(&testUnits[3])
+			tenv.DB.WithContext(tenv.DefaultContext).Save(testUnits[1])
+			tenv.DB.WithContext(tenv.DefaultContext).Save(testUnits[2])
+			tenv.DB.WithContext(tenv.DefaultContext).Save(testUnits[3])
 		})
 
 		It("should get base unit with all derived units", func() {
@@ -340,10 +340,10 @@ var _ = Describe("Unit API", func() {
 	})
 
 	Describe("Search Unit", func() {
-		var testUnits []models.Unit
+		var testUnits []*models.Unit
 
 		BeforeEach(func() {
-			baseUnits := []models.Unit{
+			baseUnits := []*models.Unit{
 				{
 					Name:             "Kilogram Search",
 					Symbol:           "kg",
@@ -367,7 +367,7 @@ var _ = Describe("Unit API", func() {
 			testUnits = fixture.WithUnits(tenv.ContextfulDB(), baseUnits)
 
 			// Create derived units that reference base units
-			derivedUnits := []models.Unit{
+			derivedUnits := []*models.Unit{
 				{
 					Name:             "Gram Search",
 					Symbol:           "g",

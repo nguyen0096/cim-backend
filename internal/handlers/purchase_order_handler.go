@@ -62,7 +62,7 @@ func (h *PurchaseOrderHandler) getRequestLogger(c echo.Context, operation string
 // @Produce json
 // @Param page query int false "Page number (default: 1, minimum: 1)"
 // @Param limit query int false "Number of items per page (default: 20, minimum: 1, maximum: 100)"
-// @Param q query string false "Search term for order number or notes"
+// @Param q query string false "Search term for order number, notes, or supplier name"
 // @Param sort query string false "Sort field (order_number, status, total_amount, created_at, updated_at)"
 // @Param order query string false "Sort direction (asc, desc, default: asc)"
 // @Param start_date query string false "Start date for filtering (format: YYYY-MM-DD)"

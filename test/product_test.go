@@ -423,7 +423,7 @@ var _ = Describe("Product API", func() {
 
 		BeforeAll(func() {
 			// Create units required by the import test
-			fixture.WithUnits(tenv.ContextfulDB(), []models.Unit{
+			fixture.WithUnits(tenv.ContextfulDB(), []*models.Unit{
 				{
 					UnitType:         "general",
 					Name:             "CHAI",
