@@ -36,7 +36,7 @@ var _ = Describe("InventoryItemRepository", func() {
 					ContactPhone: "123-456-7890",
 					Address:      "Test Address",
 				})
-				products := fixture.WithProducts(db.WithContext(ctx), []models.Product{
+				products := fixture.WithProducts(db.WithContext(ctx), []*models.Product{
 					{Name: "Product 1", Status: "active", UnitID: 1},
 					{Name: "Product 2", Status: "active", UnitID: 1},
 				})
@@ -77,7 +77,7 @@ var _ = Describe("InventoryItemRepository", func() {
 					ContactPhone: "123-456-7890",
 					Address:      "Test Address",
 				})
-				products := fixture.WithProducts(db.WithContext(ctx), []models.Product{
+				products := fixture.WithProducts(db.WithContext(ctx), []*models.Product{
 					{Name: "Product with stock", Status: "active", UnitID: 1},
 					{Name: "Product with zero stock", Status: "active", UnitID: 1},
 				})
@@ -126,7 +126,7 @@ var _ = Describe("InventoryItemRepository", func() {
 					ContactPhone: "123-456-7890",
 					Address:      "Test Address",
 				})
-				products := fixture.WithProducts(db.WithContext(ctx), []models.Product{
+				products := fixture.WithProducts(db.WithContext(ctx), []*models.Product{
 					{Name: "Test Product", Status: "active", UnitID: 1},
 				})
 				inventory := fixture.WithInventory(db.WithContext(ctx), models.Inventory{
@@ -203,7 +203,7 @@ var _ = Describe("InventoryItemRepository", func() {
 					ContactPhone: "123-456-7890",
 					Address:      "Test Address",
 				})
-				products := fixture.WithProducts(db.WithContext(ctx), []models.Product{
+				products := fixture.WithProducts(db.WithContext(ctx), []*models.Product{
 					{Name: "Test Product", Status: "active", UnitID: 1},
 				})
 				inventory = fixture.WithInventory(db.WithContext(ctx), models.Inventory{
@@ -338,7 +338,7 @@ var _ = Describe("SaveInventoryItemChanges", func() {
 			ContactPhone: "123-456-7890",
 			Address:      "Test Address",
 		})
-		products := fixture.WithProducts(db.WithContext(ctx), []models.Product{
+		products := fixture.WithProducts(db.WithContext(ctx), []*models.Product{
 			{Name: "Product 1", Status: "active", UnitID: 1},
 			{Name: "Product 2", Status: "active", UnitID: 1},
 		})
@@ -429,7 +429,7 @@ var _ = Describe("SaveInventoryItemChanges", func() {
 			ContactPhone: "123-456-7890",
 			Address:      "Test Address",
 		})
-		products := fixture.WithProducts(db.WithContext(ctx), []models.Product{
+		products := fixture.WithProducts(db.WithContext(ctx), []*models.Product{
 			{Name: "Product 1", Status: "active", UnitID: 1},
 		})
 		inventory := fixture.WithInventory(db.WithContext(ctx), models.Inventory{
@@ -492,7 +492,7 @@ var _ = Describe("SaveInventoryItemChanges", func() {
 			ContactPhone: "123-456-7890",
 			Address:      "Test Address",
 		})
-		products := fixture.WithProducts(db.WithContext(ctx), []models.Product{
+		products := fixture.WithProducts(db.WithContext(ctx), []*models.Product{
 			{Name: "Product 1", Status: "active", UnitID: 1},
 		})
 		inventory := fixture.WithInventory(db.WithContext(ctx), models.Inventory{
@@ -536,7 +536,7 @@ var _ = Describe("SaveInventoryItemChanges", func() {
 			ContactPhone: "123-456-7890",
 			Address:      "Test Address",
 		})
-		products := fixture.WithProducts(db.WithContext(ctx), []models.Product{
+		products := fixture.WithProducts(db.WithContext(ctx), []*models.Product{
 			{Name: "Product 1", Status: "active", UnitID: 1},
 		})
 		inventory := fixture.WithInventory(db.WithContext(ctx), models.Inventory{
@@ -578,7 +578,7 @@ var _ = Describe("SaveInventoryItemChanges", func() {
 			ContactPhone: "123-456-7890",
 			Address:      "Test Address",
 		})
-		products := fixture.WithProducts(db.WithContext(ctx), []models.Product{
+		products := fixture.WithProducts(db.WithContext(ctx), []*models.Product{
 			{Name: "Product 1", Status: "active", UnitID: 1},
 		})
 		inventory := fixture.WithInventory(db.WithContext(ctx), models.Inventory{
@@ -635,7 +635,7 @@ var _ = Describe("SaveInventoryItemChanges", func() {
 			ContactPhone: "123-456-7890",
 			Address:      "Test Address",
 		})
-		products := fixture.WithProducts(db.WithContext(ctx), []models.Product{
+		products := fixture.WithProducts(db.WithContext(ctx), []*models.Product{
 			{Name: "Product 1", Status: "active", UnitID: 1},
 			{Name: "Product 2", Status: "active", UnitID: 1},
 			{Name: "Product 3", Status: "active", UnitID: 1},
