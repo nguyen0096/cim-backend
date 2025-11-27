@@ -271,18 +271,8 @@ func (h *PaymentReceiptFormHandler) ListPaymentReceiptForms(c echo.Context) erro
 	// Validate and set defaults
 	req.ValidateAndSetDefaults()
 
-	// Get search query
-	query := c.QueryParam("q")
-
-	var forms []models.PaymentReceiptForm
-	var total int64
-	var err error
-
-	if query != "" {
-		forms, total, err = h.paymentReceiptFormService.SearchPaymentReceiptForms(c.Request().Context(), query, &req)
-	} else {
-		forms, total, err = h.paymentReceiptFormService.ListPaymentReceiptForms(c.Request().Context(), &req)
-	}
+	// List payment receipt forms (search is handled via req.Search from ListParams)
+	forms, total, err := h.paymentReceiptFormService.ListPaymentReceiptForms(c.Request().Context(), &req)
 
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to retrieve payment receipt forms"})

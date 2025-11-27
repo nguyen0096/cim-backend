@@ -23,7 +23,6 @@ type PaymentReceiptFormRepository interface {
 	Update(ctx context.Context, form *models.PaymentReceiptForm) error
 	Delete(ctx context.Context, id uint) error
 	DeletePermanently(ctx context.Context, id uint) error
-	Search(ctx context.Context, query string, req *dto.PaymentReceiptFormListRequest) ([]models.PaymentReceiptForm, int64, error)
 	GetLatestPaymentReceiptForms(ctx context.Context, purchaseOrderID uint, status models.PaymentReceiptFormStatus, limit int) ([]*models.PaymentReceiptForm, error)
 }
 
@@ -120,9 +119,11 @@ func (r *paymentReceiptFormRepository) List(ctx context.Context, req *dto.Paymen
 		query = query.Where("payment_receipt_forms.status IN ?", req.Statuses)
 	}
 
-	// Count total records
-	if err := query.Count(&total).Error; err != nil {
-		return nil, 0, fmt.Errorf("failed to count payment receipt forms: %w", err)
+	// Apply search filter if provided
+	if req.Search != "" {
+		searchPattern := "%" + req.Search + "%"
+		query = query.Where("payment_receipt_forms.full_name ILIKE ? OR payment_receipt_forms.department ILIKE ? OR payment_receipt_forms.details ILIKE ?",
+			searchPattern, searchPattern, searchPattern)
 	}
 
 	// Apply finalized date filter if provided
@@ -131,6 +132,7 @@ func (r *paymentReceiptFormRepository) List(ctx context.Context, req *dto.Paymen
 		query = query.Where("payment_receipt_forms.form_number LIKE ?", finalizedDate+"-%")
 	}
 
+	// Apply date filter if provided
 	if req.Date != "" {
 		date, err := time.Parse("2006-01-02", req.Date)
 		if err != nil {
@@ -139,6 +141,11 @@ func (r *paymentReceiptFormRepository) List(ctx context.Context, req *dto.Paymen
 		startOfDay := date.Truncate(24 * time.Hour)
 		endOfDay := startOfDay.Add(24 * time.Hour)
 		query = query.Where("payment_receipt_forms.date >= ? AND payment_receipt_forms.date < ?", startOfDay, endOfDay)
+	}
+
+	// Count total records (after all filters are applied)
+	if err := query.Count(&total).Error; err != nil {
+		return nil, 0, fmt.Errorf("failed to count payment receipt forms: %w", err)
 	}
 
 	// Apply pagination and sorting
@@ -194,58 +201,6 @@ func (r *paymentReceiptFormRepository) DeletePermanently(ctx context.Context, id
 		return fmt.Errorf("failed to delete payment receipt form: %w", err)
 	}
 	return nil
-}
-
-// Search searches payment receipt forms with pagination
-func (r *paymentReceiptFormRepository) Search(ctx context.Context, query string, req *dto.PaymentReceiptFormListRequest) ([]models.PaymentReceiptForm, int64, error) {
-	var forms []models.PaymentReceiptForm
-	var total int64
-
-	searchQuery := r.db.WithContext(ctx).Model(&models.PaymentReceiptForm{}).
-		Preload("PurchaseOrder").
-		Preload("PurchaseOrder.Inventory").
-		Where("payment_receipt_forms.full_name ILIKE ? OR payment_receipt_forms.department ILIKE ? OR payment_receipt_forms.details ILIKE ?",
-			"%"+query+"%", "%"+query+"%", "%"+query+"%")
-
-	// Apply purchase order filter if provided
-	if req.PurchaseOrderID != 0 {
-		searchQuery = searchQuery.Where("payment_receipt_forms.purchase_order_id = ?", req.PurchaseOrderID)
-	}
-
-	// Apply inventory filter if provided
-	if req.InventoryID != 0 {
-		searchQuery = searchQuery.Joins("JOIN purchase_orders ON payment_receipt_forms.purchase_order_id = purchase_orders.id").
-			Where("purchase_orders.inventory_id = ?", req.InventoryID)
-	}
-
-	// Apply status filter if provided
-	if len(req.Statuses) > 0 {
-		searchQuery = searchQuery.Where("payment_receipt_forms.status IN ?", req.Statuses)
-	}
-
-	// Count total records
-	if err := searchQuery.Count(&total).Error; err != nil {
-		return nil, 0, fmt.Errorf("failed to count search results: %w", err)
-	}
-
-	// Apply pagination and sorting
-	offset := req.GetOffset()
-
-	// Apply sorting
-	if req.Sort != "" {
-		if req.Order == "" {
-			req.Order = "asc"
-		}
-		searchQuery = searchQuery.Order("payment_receipt_forms." + req.Sort + " " + req.Order)
-	} else {
-		searchQuery = searchQuery.Order("payment_receipt_forms.created_at desc")
-	}
-
-	if err := searchQuery.Offset(offset).Limit(req.Limit).Find(&forms).Error; err != nil {
-		return nil, 0, fmt.Errorf("failed to search payment receipt forms: %w", err)
-	}
-
-	return forms, total, nil
 }
 
 // GetLatestPaymentReceiptForms retrieves the latest payment receipt forms in the provided status

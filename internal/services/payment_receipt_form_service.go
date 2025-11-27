@@ -29,7 +29,6 @@ type PaymentReceiptFormService interface {
 	ApprovePaymentReceiptForm(ctx context.Context, id uint) error
 	RejectPaymentReceiptForm(ctx context.Context, id uint) error
 	DeletePaymentReceiptForm(ctx context.Context, id uint) error
-	SearchPaymentReceiptForms(ctx context.Context, query string, req *dto.PaymentReceiptFormListRequest) ([]models.PaymentReceiptForm, int64, error)
 	GetLatestPaymentReceiptForms(ctx context.Context, purchaseOrderID uint, status models.PaymentReceiptFormStatus, limit int) ([]*models.PaymentReceiptForm, error)
 }
 
@@ -344,15 +343,6 @@ func (s *paymentReceiptFormService) DeletePaymentReceiptForm(ctx context.Context
 	}
 
 	return nil
-}
-
-// SearchPaymentReceiptForms searches payment receipt forms with pagination
-func (s *paymentReceiptFormService) SearchPaymentReceiptForms(ctx context.Context, query string, req *dto.PaymentReceiptFormListRequest) ([]models.PaymentReceiptForm, int64, error) {
-	forms, total, err := s.paymentReceiptFormRepo.Search(ctx, query, req)
-	if err != nil {
-		return nil, 0, fmt.Errorf("failed to search payment receipt forms: %w", err)
-	}
-	return forms, total, nil
 }
 
 // GetLatestPaymentReceiptForms retrieves the latest payment receipt forms in pending status
