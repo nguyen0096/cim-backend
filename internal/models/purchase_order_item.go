@@ -8,6 +8,7 @@ const (
 	PurchaseOrderItemStatusAwaitingDelivery   PurchaseOrderItemStatus = "awaiting_delivery"
 	PurchaseOrderItemStatusPartiallyDelivered PurchaseOrderItemStatus = "partially_delivered"
 	PurchaseOrderItemStatusDelivered          PurchaseOrderItemStatus = "delivered"
+	PurchaseOrderItemStatusOverDelivered      PurchaseOrderItemStatus = "over_delivered"
 	PurchaseOrderItemStatusCancelled          PurchaseOrderItemStatus = "cancelled"
 )
 
@@ -25,7 +26,7 @@ type PurchaseOrderItem struct {
 	UnitPrice        float64                 `json:"unit_price" gorm:"type:decimal(13,2)" validate:"min=0"`
 	Quantity         decimal.Decimal         `json:"quantity" gorm:"type:decimal(10,2);not null" validate:"required"`
 	ReceivedQuantity decimal.Decimal         `json:"received_quantity" gorm:"type:decimal(10,2);default:0"`
-	Status           PurchaseOrderItemStatus `json:"status" gorm:"default:awaiting_delivery;check:status IN ('awaiting_delivery', 'partially_delivered', 'delivered', 'cancelled')" example:"delivering"`
+	Status           PurchaseOrderItemStatus `json:"status" gorm:"default:awaiting_delivery;check:status IN ('awaiting_delivery', 'partially_delivered', 'delivered', 'over_delivered', 'cancelled')" example:"delivering"`
 
 	// Display fields, not stored in DB
 
@@ -39,33 +40,33 @@ func (poi *PurchaseOrderItem) CalculateTotalAmount() decimal.Decimal {
 }
 
 func (poi *PurchaseOrderItem) UpdateStatus() {
-	// delivered -> partially_delivered (when quantity increases and received < quantity)
-	// Only downgrade if received quantity is greater than zero but less than ordered quantity
-	if poi.Status == PurchaseOrderItemStatusDelivered &&
-		poi.ReceivedQuantity.GreaterThan(decimal.Zero) && poi.ReceivedQuantity.LessThan(poi.Quantity) {
-		poi.Status = PurchaseOrderItemStatusPartiallyDelivered
+	// If received quantity is 0, status should be awaiting_delivery
+	if poi.ReceivedQuantity.Equal(decimal.Zero) {
+		if poi.Status == PurchaseOrderItemStatusPartiallyDelivered || poi.Status == PurchaseOrderItemStatusDelivered || poi.Status == PurchaseOrderItemStatusOverDelivered {
+			poi.Status = PurchaseOrderItemStatusAwaitingDelivery
+		}
+		return
 	}
 
-	// awaiting_delivery -> delivered (when full quantity is received)
-	if poi.Status == PurchaseOrderItemStatusAwaitingDelivery &&
-		poi.ReceivedQuantity.Equal(poi.Quantity) {
-		poi.Status = PurchaseOrderItemStatusDelivered
+	// If received quantity > ordered quantity, status should be over_delivered
+	if poi.ReceivedQuantity.GreaterThan(poi.Quantity) {
+		poi.Status = PurchaseOrderItemStatusOverDelivered
+		return
 	}
 
-	// awaiting_delivery -> partially_delivered (when partial quantity is received)
-	if poi.Status == PurchaseOrderItemStatusAwaitingDelivery &&
-		poi.ReceivedQuantity.GreaterThan(decimal.Zero) && poi.ReceivedQuantity.LessThan(poi.Quantity) {
-		poi.Status = PurchaseOrderItemStatusPartiallyDelivered
+	// If received quantity == ordered quantity, status should be delivered
+	if poi.ReceivedQuantity.Equal(poi.Quantity) {
+		if poi.Status == PurchaseOrderItemStatusAwaitingDelivery || poi.Status == PurchaseOrderItemStatusPartiallyDelivered || poi.Status == PurchaseOrderItemStatusOverDelivered {
+			poi.Status = PurchaseOrderItemStatusDelivered
+		}
+		return
 	}
 
-	// partially_delivered -> delivered
-	if poi.Status == PurchaseOrderItemStatusPartiallyDelivered &&
-		poi.ReceivedQuantity.Equal(poi.Quantity) {
-		poi.Status = PurchaseOrderItemStatusDelivered
-	}
-
-	// If received quantity is 0 and status is PartiallyDelivered, it should become AwaitingDelivery
-	if poi.ReceivedQuantity.Equal(decimal.Zero) && poi.Status == PurchaseOrderItemStatusPartiallyDelivered {
-		poi.Status = PurchaseOrderItemStatusAwaitingDelivery
+	// If received quantity < ordered quantity but > 0, status should be partially_delivered
+	if poi.ReceivedQuantity.GreaterThan(decimal.Zero) && poi.ReceivedQuantity.LessThan(poi.Quantity) {
+		if poi.Status == PurchaseOrderItemStatusAwaitingDelivery || poi.Status == PurchaseOrderItemStatusDelivered || poi.Status == PurchaseOrderItemStatusOverDelivered {
+			poi.Status = PurchaseOrderItemStatusPartiallyDelivered
+		}
+		return
 	}
 }

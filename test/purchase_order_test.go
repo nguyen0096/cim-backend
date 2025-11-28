@@ -633,7 +633,7 @@ var _ = Describe("Purchase Order API", func() {
 			Expect(purchaseOrder.Status).To(Equal(models.PurchaseOrderStatusFullyDelivered))
 		})
 
-		It("should not receive purchase order if item quantity is smaller than received quantity", func(ctx SpecContext) {
+		It("should allow receiving quantity higher than order quantity", func(ctx SpecContext) {
 			client := testutil.NewClient(tenv, models.RoleAdmin)
 
 			testPurchaseOrder := fixture.WithPurchaseOrder(tenv.ContextfulDB(), models.PurchaseOrder{
@@ -662,10 +662,21 @@ var _ = Describe("Purchase Order API", func() {
 			urlPath := fmt.Sprintf("/api/v1/purchase-orders/%d/receive", testPurchaseOrder.ID)
 			resp, err := client.MakeRequest("PUT", urlPath, payload, testutil.WithAuth())
 			Expect(err).NotTo(HaveOccurred())
-			Expect(resp.StatusCode).To(Equal(400))
+			Expect(resp.StatusCode).To(Equal(200))
 
-			errorResp := testutil.ParseResponse(resp)
-			Expect(errorResp["error"]).To(ContainSubstring("exceeds remaining quantity"))
+			// Verify in database that received quantity is now 150 (50 + 100)
+			var purchaseOrder models.PurchaseOrder
+			err = tenv.DB.WithContext(ctx).Preload("Items").First(&purchaseOrder, "id = ?", testPurchaseOrder.ID).Error
+			Expect(err).NotTo(HaveOccurred())
+			expectedQuantity := decimal.NewFromInt(150)
+			Expect(purchaseOrder.Items[0].ReceivedQuantity.Equal(expectedQuantity)).To(BeTrue(),
+				"Expected received quantity to be %s but got %s", expectedQuantity.String(), purchaseOrder.Items[0].ReceivedQuantity.String())
+
+			// Verify purchase order item status is over_delivered (received 150 > ordered 100)
+			Expect(purchaseOrder.Items[0].Status).To(Equal(models.PurchaseOrderItemStatusOverDelivered))
+
+			// Verify purchase order status is fully_delivered (over_delivered items are treated as delivered)
+			Expect(purchaseOrder.Status).To(Equal(models.PurchaseOrderStatusFullyDelivered))
 		})
 
 		It("should not receive purchase order if decimal places is larger than unit decimal places", func(ctx SpecContext) {

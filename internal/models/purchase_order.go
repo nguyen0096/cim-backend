@@ -69,6 +69,7 @@ func (po *PurchaseOrder) UpdateStatus(ctx context.Context) error {
 	var hasAwaitingDeliveryItem = false
 	var hasPartiallyDelieveredItem = false
 	var hasDeliveredItem = false
+	var hasOverDeliveredItem = false
 	for _, item := range po.Items {
 		if item != nil {
 			switch item.Status {
@@ -78,13 +79,15 @@ func (po *PurchaseOrder) UpdateStatus(ctx context.Context) error {
 				hasPartiallyDelieveredItem = true
 			case PurchaseOrderItemStatusDelivered:
 				hasDeliveredItem = true
+			case PurchaseOrderItemStatusOverDelivered:
+				hasOverDeliveredItem = true
 			}
 		}
 	}
 
 	// order_placed -> partially_delivered
 	if po.Status == PurchaseOrderStatusOrderPlaced &&
-		(hasPartiallyDelieveredItem || hasDeliveredItem) {
+		(hasPartiallyDelieveredItem || hasDeliveredItem || hasOverDeliveredItem) {
 		po.Status = PurchaseOrderStatusPartiallyDelivered
 	}
 
@@ -95,9 +98,9 @@ func (po *PurchaseOrder) UpdateStatus(ctx context.Context) error {
 	}
 
 	// partially_delivered -> fully_delivered
-	// Only transition to fully_delivered if there are no awaiting/partially delivered items AND there is at least one delivered item
+	// Only transition to fully_delivered if there are no awaiting/partially delivered items AND there is at least one delivered or over_delivered item
 	if po.Status == PurchaseOrderStatusPartiallyDelivered &&
-		!hasAwaitingDeliveryItem && !hasPartiallyDelieveredItem && hasDeliveredItem {
+		!hasAwaitingDeliveryItem && !hasPartiallyDelieveredItem && (hasDeliveredItem || hasOverDeliveredItem) {
 		po.Status = PurchaseOrderStatusFullyDelivered
 	}
 

@@ -206,9 +206,12 @@ func (r *purchaseOrderRepository) GetByStatus(status string) ([]models.PurchaseO
 
 // AnyDeliveringItem checks if all items in a purchase order are delivered
 func (r *purchaseOrderRepository) AnyDeliveringItem(ctx context.Context, purchaseOrderID uint) bool {
-	// Get count of delivered items
+	// Get count of delivered items (including over_delivered)
 	err := r.db.WithContext(ctx).Model(&models.PurchaseOrderItem{}).
-		Where("purchase_order_id = ? AND status != ?", purchaseOrderID, models.PurchaseOrderItemStatusDelivered).
+		Where("purchase_order_id = ? AND status NOT IN ?", purchaseOrderID, []models.PurchaseOrderItemStatus{
+			models.PurchaseOrderItemStatusDelivered,
+			models.PurchaseOrderItemStatusOverDelivered,
+		}).
 		First(&models.PurchaseOrderItem{}).Error
 	return err == nil
 }
@@ -287,14 +290,6 @@ func (r *purchaseOrderRepository) ReceiveInventory(ctx context.Context, req dto.
 			poItem, exists := poItemMap[dtoItem.ID]
 			if !exists {
 				return pkg.NewAppError(pkg.ErrorCodeNotFound, fmt.Sprintf("purchase order item with ID %d not found", dtoItem.ID), nil)
-			}
-
-			// Validate received quantity doesn't exceed remaining quantity
-			remainingQuantity := poItem.Quantity.Sub(poItem.ReceivedQuantity)
-			if dtoItem.ReceivedQuantity.GreaterThan(remainingQuantity) {
-				return pkg.NewAppError(pkg.ErrorCodeValidation,
-					fmt.Sprintf("received quantity %s exceeds remaining quantity %s for item ID %d",
-						dtoItem.ReceivedQuantity.String(), remainingQuantity.String(), dtoItem.ID), nil)
 			}
 
 			receivedQuantityDecimalPlaces := getDecimalPlaces(dtoItem.ReceivedQuantity)
