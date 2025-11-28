@@ -18,7 +18,9 @@ import (
 type RevenueExpenseExcelRepository interface {
 	InitializeWithFile(ctx context.Context, filePath string, sheetNames ...string) error
 	AddExpenses(ctx context.Context, sheetName string, expensesData []map[string]interface{}, cellColors []string) error
-	GetLastExpense(ctx context.Context, sheetName string) (map[string]interface{}, error)
+	FindLastTransactionRow(rows [][]string) ([]string, int, error)                        // For TESTING ONLY
+	GetLastExpense(ctx context.Context, sheetName string) (map[string]interface{}, error) // For TESTING ONLY
+	MapRowToExpense(sheetName string, row []string) (map[string]interface{}, error)       // For TESTING ONLY
 	GetLastTransactionDate(ctx context.Context, sheetName string) (time.Time, error)
 	GetSchema(ctx context.Context) *models.FileMetadata
 	VerifyFileAndSheet(ctx context.Context, filePath string, sheetName string) error
@@ -164,6 +166,30 @@ func (r *revenueExpenseExcelRepository) GetLastExpense(ctx context.Context, shee
 	for _, header := range sheetMetadata.Headers {
 		if header.ColumnIndex < len(lastDataRow) {
 			cellValue := strings.TrimSpace(lastDataRow[header.ColumnIndex])
+			if cellValue != "" {
+				expenseData[header.ColumnName] = cellValue
+			}
+		}
+	}
+
+	return expenseData, nil
+}
+
+// MapRowToExpense maps a row to an expense data map
+func (r *revenueExpenseExcelRepository) MapRowToExpense(sheetName string, row []string) (map[string]interface{}, error) {
+	expenseData := make(map[string]interface{})
+	sheetMetadata := r.findSheetMetadata(sheetName)
+	if sheetMetadata == nil {
+		return nil, fmt.Errorf("sheet %s not found in metadata", sheetName)
+	}
+
+	if len(row) == 0 {
+		return nil, fmt.Errorf("row is empty")
+	}
+
+	for _, header := range sheetMetadata.Headers {
+		if header.ColumnIndex < len(row) {
+			cellValue := strings.TrimSpace(row[header.ColumnIndex])
 			if cellValue != "" {
 				expenseData[header.ColumnName] = cellValue
 			}

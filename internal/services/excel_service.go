@@ -336,6 +336,7 @@ func (s *excelService) FinalizeRevenueExpense(ctx context.Context, date time.Tim
 	}
 
 	// Query payment receipt forms from lastFinalizedDate to today
+	// Only get approved forms for finalization
 	lastFinalizedDate := date.Truncate(24 * time.Hour)
 	req := &dto.PaymentReceiptFormListRequest{
 		ListParams: models.ListParams{
@@ -345,6 +346,7 @@ func (s *excelService) FinalizeRevenueExpense(ctx context.Context, date time.Tim
 			Order: "asc",
 		},
 		FinalizedDate: lastFinalizedDate,
+		Statuses:      []models.PaymentReceiptFormStatus{models.PaymentReceiptFormStatusApproved},
 	}
 	req.ValidateAndSetDefaults()
 
