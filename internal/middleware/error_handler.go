@@ -59,8 +59,8 @@ func HandleError(c echo.Context, err error) error {
 
 		// Return the display message to client
 		return c.JSON(appErr.HTTPStatus(), map[string]interface{}{
-			"error": appErr.Message,
-			"code":  appErr.Code.String(),
+			"message": appErr.Message,
+			"code":    appErr.Code.String(),
 		})
 	}
 

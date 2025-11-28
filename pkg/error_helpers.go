@@ -18,6 +18,15 @@ const (
 	// Purchase Order Error Keys
 	ErrKeyPurchaseOrderNoItems                      = "purchase_order_no_items"
 	ErrKeyPurchaseOrderNoApprovedPaymentReceipt     = "purchase_order_no_approved_payment_receipt"
+	ErrKeyPurchaseOrderNotFound                     = "purchase_order_not_found"
+	ErrKeyFailedToFetchPurchaseOrder                = "failed_to_fetch_purchase_order"
+	ErrKeyCannotEditPurchaseOrderWithStatus         = "cannot_edit_purchase_order_with_status"
+	ErrKeyCannotDeleteItemWithReceivedQuantity      = "cannot_delete_item_with_received_quantity"
+	ErrKeyReceivedQuantityGreaterThanUpdated        = "received_quantity_greater_than_updated"
+	ErrKeyFailedToSavePurchaseOrderItem             = "failed_to_save_purchase_order_item"
+	ErrKeyFailedToDeletePurchaseOrderItems          = "failed_to_delete_purchase_order_items"
+	ErrKeyFailedToReloadPurchaseOrderItems          = "failed_to_reload_purchase_order_items"
+	ErrKeyFailedToUpdatePurchaseOrder               = "failed_to_update_purchase_order"
 	ErrKeyFailedToUpdatePurchaseOrderStatus         = "failed_to_update_purchase_order_status"
 	ErrKeyFailedToDeletePurchaseOrder               = "failed_to_delete_purchase_order"
 	ErrKeyFailedToUpdatePurchaseOrderDeliveryStatus = "failed_to_update_purchase_order_delivery_status"
@@ -35,6 +44,9 @@ const (
 	ErrKeyUnitIDRequired                    = "unit_id_required"
 	ErrKeyCannotDeleteUnitProductsReference = "cannot_delete_unit_products_reference"
 	ErrKeyFailedToDeleteUnit                = "failed_to_delete_unit"
+	ErrKeyUnitIncompatibleWithProduct       = "unit_incompatible_with_product"
+	ErrKeyFailedToGetBaseUnit               = "failed_to_get_base_unit"
+	ErrKeyFailedToConvertQuantityToBaseUnit = "failed_to_convert_quantity_to_base_unit"
 
 	// File Error Keys
 	ErrKeyUnsupportedFileFormat = "unsupported_file_format"
@@ -72,6 +84,42 @@ var ErrorMessages = map[string]ErrorMessage{
 	ErrKeyPurchaseOrderNoApprovedPaymentReceipt: {
 		EN: "Cannot complete purchase order: no approved payment receipt form found",
 		VI: "Không thể hoàn thành đơn hàng: không tìm thấy phiếu thu chi đã được duyệt",
+	},
+	ErrKeyPurchaseOrderNotFound: {
+		EN: "Purchase order with ID %d not found",
+		VI: "Không tìm thấy đơn hàng với ID %d",
+	},
+	ErrKeyFailedToFetchPurchaseOrder: {
+		EN: "Failed to fetch purchase order",
+		VI: "Không thể lấy thông tin đơn hàng",
+	},
+	ErrKeyCannotEditPurchaseOrderWithStatus: {
+		EN: "Cannot edit purchase order with status %s",
+		VI: "Không thể chỉnh sửa đơn hàng với trạng thái %s",
+	},
+	ErrKeyCannotDeleteItemWithReceivedQuantity: {
+		EN: "Cannot delete item with received quantity %s",
+		VI: "Không thể xóa sản phẩm với số lượng đã nhận %s",
+	},
+	ErrKeyReceivedQuantityGreaterThanUpdated: {
+		EN: "Received quantity (%s) for product %d from supplier %d is greater than updated quantity (%s)",
+		VI: "Số lượng đã nhận (%s) cho sản phẩm %d từ nhà cung cấp %d lớn hơn số lượng cập nhật (%s)",
+	},
+	ErrKeyFailedToSavePurchaseOrderItem: {
+		EN: "Failed to save purchase order item",
+		VI: "Không thể lưu sản phẩm đơn hàng",
+	},
+	ErrKeyFailedToDeletePurchaseOrderItems: {
+		EN: "Failed to delete removed purchase order items",
+		VI: "Không thể xóa các sản phẩm đơn hàng đã bị loại bỏ",
+	},
+	ErrKeyFailedToReloadPurchaseOrderItems: {
+		EN: "Failed to reload purchase order items",
+		VI: "Không thể tải lại các sản phẩm đơn hàng",
+	},
+	ErrKeyFailedToUpdatePurchaseOrder: {
+		EN: "Failed to update purchase order",
+		VI: "Không thể cập nhật đơn hàng",
 	},
 	ErrKeyFailedToUpdatePurchaseOrderStatus: {
 		EN: "Failed to update purchase order status",
@@ -126,6 +174,18 @@ var ErrorMessages = map[string]ErrorMessage{
 	ErrKeyFailedToDeleteUnit: {
 		EN: "Failed to delete unit %d",
 		VI: "Không thể xóa đơn vị %d",
+	},
+	ErrKeyUnitIncompatibleWithProduct: {
+		EN: "Unit %d (base unit %d) is not compatible with product %d (base unit %d)",
+		VI: "Đơn vị %d (đơn vị cơ sở %d) không tương thích với sản phẩm %d (đơn vị cơ sở %d)",
+	},
+	ErrKeyFailedToGetBaseUnit: {
+		EN: "Failed to get base unit",
+		VI: "Không thể lấy đơn vị cơ sở",
+	},
+	ErrKeyFailedToConvertQuantityToBaseUnit: {
+		EN: "Failed to convert quantity to base unit for unit %d",
+		VI: "Không thể chuyển đổi số lượng sang đơn vị cơ sở cho đơn vị %d",
 	},
 	// File Errors
 	ErrKeyUnsupportedFileFormat: {
@@ -341,6 +401,63 @@ func ErrNoApprovedPaymentReceiptForm(ctx context.Context) *AppError {
 
 // Purchase Order Handler Error Helpers
 
+// ErrPurchaseOrderNotFound creates an error for purchase order not found
+func ErrPurchaseOrderNotFound(ctx context.Context, id uint) *AppError {
+	template := getErrorMessage(ctx, ErrKeyPurchaseOrderNotFound)
+	message := fmt.Sprintf(template, id)
+	return NewAppError(ErrorCodeNotFound, message, nil)
+}
+
+// ErrFailedToFetchPurchaseOrder creates an error for failed to fetch purchase order
+func ErrFailedToFetchPurchaseOrder(ctx context.Context, cause error) *AppError {
+	message := getErrorMessage(ctx, ErrKeyFailedToFetchPurchaseOrder)
+	return NewAppError(ErrorCodeInternal, message, cause)
+}
+
+// ErrCannotEditPurchaseOrderWithStatus creates an error when trying to edit purchase order with invalid status
+func ErrCannotEditPurchaseOrderWithStatus(ctx context.Context, status string) *AppError {
+	template := getErrorMessage(ctx, ErrKeyCannotEditPurchaseOrderWithStatus)
+	message := fmt.Sprintf(template, status)
+	return NewAppError(ErrorCodeValidation, message, nil)
+}
+
+// ErrCannotDeleteItemWithReceivedQuantity creates an error when trying to delete item with received quantity
+func ErrCannotDeleteItemWithReceivedQuantity(ctx context.Context, receivedQuantity decimal.Decimal) *AppError {
+	template := getErrorMessage(ctx, ErrKeyCannotDeleteItemWithReceivedQuantity)
+	message := fmt.Sprintf(template, receivedQuantity.String())
+	return NewAppError(ErrorCodeValidation, message, nil)
+}
+
+// ErrReceivedQuantityGreaterThanUpdated creates an error when received quantity is greater than updated quantity
+func ErrReceivedQuantityGreaterThanUpdated(ctx context.Context, receivedQuantity decimal.Decimal, productID, supplierID uint, updatedQuantity decimal.Decimal) *AppError {
+	template := getErrorMessage(ctx, ErrKeyReceivedQuantityGreaterThanUpdated)
+	message := fmt.Sprintf(template, receivedQuantity.String(), productID, supplierID, updatedQuantity.String())
+	return NewAppError(ErrorCodeValidation, message, nil)
+}
+
+// ErrFailedToSavePurchaseOrderItem creates an error for failed to save purchase order item
+func ErrFailedToSavePurchaseOrderItem(ctx context.Context, cause error) *AppError {
+	message := getErrorMessage(ctx, ErrKeyFailedToSavePurchaseOrderItem)
+	return NewAppError(ErrorCodeInternal, message, cause)
+}
+
+// ErrFailedToDeletePurchaseOrderItems creates an error for failed to delete purchase order items
+func ErrFailedToDeletePurchaseOrderItems(ctx context.Context, cause error) *AppError {
+	message := getErrorMessage(ctx, ErrKeyFailedToDeletePurchaseOrderItems)
+	return NewAppError(ErrorCodeInternal, message, cause)
+}
+
+// ErrFailedToReloadPurchaseOrderItems creates an error for failed to reload purchase order items
+func ErrFailedToReloadPurchaseOrderItems(ctx context.Context, cause error) *AppError {
+	message := getErrorMessage(ctx, ErrKeyFailedToReloadPurchaseOrderItems)
+	return NewAppError(ErrorCodeInternal, message, cause)
+}
+
+// ErrFailedToUpdatePurchaseOrder creates an error for failed purchase order update
+func ErrFailedToUpdatePurchaseOrder(ctx context.Context, cause error) *AppError {
+	return NewAppError(ErrorCodeInternal, getErrorMessage(ctx, ErrKeyFailedToUpdatePurchaseOrder), cause)
+}
+
 // ErrFailedToUpdatePurchaseOrderStatus creates an error for failed purchase order status update
 func ErrFailedToUpdatePurchaseOrderStatus(ctx context.Context, cause error) *AppError {
 	return NewAppError(ErrorCodeInternal, getErrorMessage(ctx, ErrKeyFailedToUpdatePurchaseOrderStatus), cause)
@@ -416,6 +533,26 @@ func ErrUnitAlreadyExists(ctx context.Context, unitName, unitType string) *AppEr
 	template := getErrorMessage(ctx, ErrKeyUnitAlreadyExists)
 	message := fmt.Sprintf(template, unitName, unitType)
 	return NewAppError(ErrorCodeDuplicate, message, nil)
+}
+
+// ErrUnitIncompatibleWithProduct creates an error when unit is not compatible with product
+func ErrUnitIncompatibleWithProduct(ctx context.Context, unitID, unitBaseUnitID, productID, productBaseUnitID uint) *AppError {
+	template := getErrorMessage(ctx, ErrKeyUnitIncompatibleWithProduct)
+	message := fmt.Sprintf(template, unitID, unitBaseUnitID, productID, productBaseUnitID)
+	return NewAppError(ErrorCodeValidation, message, nil)
+}
+
+// ErrFailedToGetBaseUnit creates an error for failed to get base unit
+func ErrFailedToGetBaseUnit(ctx context.Context, cause error) *AppError {
+	message := getErrorMessage(ctx, ErrKeyFailedToGetBaseUnit)
+	return NewAppError(ErrorCodeInternal, message, cause)
+}
+
+// ErrFailedToConvertQuantityToBaseUnit creates an error for failed to convert quantity to base unit
+func ErrFailedToConvertQuantityToBaseUnit(ctx context.Context, unitID uint, cause error) *AppError {
+	template := getErrorMessage(ctx, ErrKeyFailedToConvertQuantityToBaseUnit)
+	message := fmt.Sprintf(template, unitID)
+	return NewAppError(ErrorCodeInternal, message, cause)
 }
 
 // Revenue Expense Error Helpers

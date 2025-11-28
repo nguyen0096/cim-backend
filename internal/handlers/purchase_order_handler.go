@@ -142,6 +142,7 @@ func (h *PurchaseOrderHandler) CreatePurchaseOrder(c echo.Context) error {
 // @Security BearerAuth
 func (h *PurchaseOrderHandler) UpdatePurchaseOrder(c echo.Context) error {
 	logger := h.getRequestLogger(c, "UpdatePurchaseOrder")
+	ctx := c.Request().Context()
 
 	// Extract purchase order ID from path
 	id, err := pkg.ExtractIDParam(c)
@@ -152,25 +153,25 @@ func (h *PurchaseOrderHandler) UpdatePurchaseOrder(c echo.Context) error {
 	// Parse request body
 	var req dto.UpdatePurchaseOrderRequest
 	if err := c.Bind(&req); err != nil {
-		return pkg.ErrInvalidRequestBody(err)
+		return pkg.ErrInvalidRequestBodyI18n(ctx, err)
 	}
 
 	// Validate request
 	validate := validator.New()
 	if err := validate.Struct(req); err != nil {
 		logger.WithError(err).Error("Validation failed")
-		return pkg.ErrValidation("validation failed", err)
+		return pkg.ErrValidationI18n(ctx, err)
 	}
 
 	// Update purchase order
-	po, err := h.purchaseOrderService.UpdatePurchaseOrder(c.Request().Context(), id, req)
+	po, err := h.purchaseOrderService.UpdatePurchaseOrder(ctx, id, req)
 	if err != nil {
 		// Check if error is already an AppError, return it directly
 		var appErr *pkg.AppError
 		if errors.As(err, &appErr) {
 			return err
 		}
-		return pkg.ErrInternal("Failed to update purchase order", err)
+		return pkg.ErrFailedToUpdatePurchaseOrder(ctx, err)
 	}
 
 	return c.JSON(http.StatusOK, po)

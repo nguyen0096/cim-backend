@@ -369,7 +369,7 @@ func (s *purchaseOrderService) UpdatePurchaseOrderStatus(ctx context.Context, id
 				"purchase_order_id": id,
 				"error":             err,
 			}).Error("Failed to get approved payment receipt forms")
-			return fmt.Errorf("failed to get approved payment receipt forms: %w", err)
+			return pkg.ErrFailedToGetApprovedPaymentReceiptForms(ctx, err)
 		}
 
 		if len(forms) == 0 {
@@ -389,7 +389,7 @@ func (s *purchaseOrderService) UpdatePurchaseOrderStatus(ctx context.Context, id
 			"status":            status,
 			"error":             err,
 		}).Error("Failed to update purchase order status")
-		return err
+		return pkg.ErrFailedToUpdatePurchaseOrderStatus(ctx, err)
 	}
 
 	log.WithFields(logrus.Fields{
@@ -1186,6 +1186,11 @@ func (s *purchaseOrderService) UpdatePurchaseOrder(ctx context.Context, id uint,
 					"product_id": *req.Items[i].ProductID,
 					"error":      err,
 				}).Error("Failed to get product")
+				// Check if error is already an AppError, return it directly
+				var appErr *pkg.AppError
+				if errors.As(err, &appErr) {
+					return nil, err
+				}
 				return nil, fmt.Errorf("failed to get product %d: %w", *req.Items[i].ProductID, err)
 			}
 
@@ -1197,7 +1202,7 @@ func (s *purchaseOrderService) UpdatePurchaseOrder(ctx context.Context, id uint,
 					"product_id": *req.Items[i].ProductID,
 					"error":      err,
 				}).Error("Failed to get product base unit")
-				return nil, fmt.Errorf("failed to get product base unit: %w", err)
+				return nil, pkg.ErrFailedToGetBaseUnit(ctx, err)
 			}
 
 			// Get base unit ID for item's unit
@@ -1208,7 +1213,7 @@ func (s *purchaseOrderService) UpdatePurchaseOrder(ctx context.Context, id uint,
 					"unit_id":   *req.Items[i].UnitID,
 					"error":     err,
 				}).Error("Failed to get item base unit")
-				return nil, fmt.Errorf("failed to get item base unit: %w", err)
+				return nil, pkg.ErrFailedToGetBaseUnit(ctx, err)
 			}
 
 			// Validate that item's unit base unit matches product's unit base unit
@@ -1220,9 +1225,7 @@ func (s *purchaseOrderService) UpdatePurchaseOrder(ctx context.Context, id uint,
 					"item_unit_id":      *req.Items[i].UnitID,
 					"item_base_unit":    itemBaseUnitID,
 				}).Error("Item unit base unit does not match product unit base unit")
-				return nil, pkg.NewAppError(pkg.ErrorCodeValidation,
-					fmt.Sprintf("unit %d (base unit %d) is not compatible with product %d (base unit %d)",
-						*req.Items[i].UnitID, itemBaseUnitID, *req.Items[i].ProductID, productBaseUnitID), nil)
+				return nil, pkg.ErrUnitIncompatibleWithProduct(ctx, *req.Items[i].UnitID, itemBaseUnitID, *req.Items[i].ProductID, productBaseUnitID)
 			}
 
 			// Convert quantities to base unit
@@ -1233,7 +1236,7 @@ func (s *purchaseOrderService) UpdatePurchaseOrder(ctx context.Context, id uint,
 					"unit_id":   *req.Items[i].UnitID,
 					"error":     err,
 				}).Error("Failed to convert quantity to base unit")
-				return nil, fmt.Errorf("failed to convert quantity to base unit for unit %d: %w", *req.Items[i].UnitID, err)
+				return nil, pkg.ErrFailedToConvertQuantityToBaseUnit(ctx, *req.Items[i].UnitID, err)
 			}
 			req.Items[i].Quantity = baseQuantity
 			req.Items[i].UnitPrice = baseUnitPrice
@@ -1248,7 +1251,12 @@ func (s *purchaseOrderService) UpdatePurchaseOrder(ctx context.Context, id uint,
 			"purchase_order_id": id,
 			"error":             err,
 		}).Error("Failed to update purchase order")
-		return nil, err
+		// Check if error is already an AppError, return it directly
+		var appErr *pkg.AppError
+		if errors.As(err, &appErr) {
+			return nil, err
+		}
+		return nil, pkg.ErrFailedToUpdatePurchaseOrder(ctx, err)
 	}
 
 	// Calculate total amount based on items

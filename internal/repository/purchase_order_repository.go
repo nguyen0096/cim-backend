@@ -421,15 +421,14 @@ func (r *purchaseOrderRepository) UpdatePurchaseOrder(ctx context.Context, id ui
 		// Fetch existing purchase order with items
 		if err := tx.Preload("Items").First(&po, id).Error; err != nil {
 			if err == gorm.ErrRecordNotFound {
-				return pkg.NewAppError(pkg.ErrorCodeNotFound, fmt.Sprintf("purchase order with ID %d not found", id), nil)
+				return pkg.ErrPurchaseOrderNotFound(ctx, id)
 			}
-			return fmt.Errorf("failed to fetch purchase order: %w", err)
+			return pkg.ErrFailedToFetchPurchaseOrder(ctx, err)
 		}
 
 		// Check if purchase order can be edited (not completed or cancelled)
 		if po.Status == models.PurchaseOrderStatusCompleted || po.Status == models.PurchaseOrderStatusCancelled {
-			return pkg.NewAppError(pkg.ErrorCodeValidation,
-				fmt.Sprintf("cannot edit purchase order with status %s", po.Status), nil)
+			return pkg.ErrCannotEditPurchaseOrderWithStatus(ctx, string(po.Status))
 		}
 		// Build a map of existing items by their ID to preserve ReceivedQuantity
 		existingItemsMap := make(map[string]*models.PurchaseOrderItem)
@@ -456,8 +455,7 @@ func (r *purchaseOrderRepository) UpdatePurchaseOrder(ctx context.Context, id ui
 			if _, found := newItemsKeyMap[key]; !found && existingItem != nil {
 				// Preserve items that have received quantity > 0
 				if existingItem.ReceivedQuantity.GreaterThan(decimal.Zero) {
-					return pkg.NewAppError(pkg.ErrorCodeValidation,
-						fmt.Sprintf("cannot delete item with received quantity %s", existingItem.ReceivedQuantity.String()), nil)
+					return pkg.ErrCannotDeleteItemWithReceivedQuantity(ctx, existingItem.ReceivedQuantity)
 				}
 				itemsToDeleteIDs = append(itemsToDeleteIDs, existingItem.ID)
 			}
@@ -470,11 +468,7 @@ func (r *purchaseOrderRepository) UpdatePurchaseOrder(ctx context.Context, id ui
 			key := fmt.Sprintf("%d-%d", *itemReq.SupplierID, *itemReq.ProductID)
 			if existingItem, found := existingItemsMap[key]; found {
 				if existingItem.ReceivedQuantity.GreaterThan(itemReq.Quantity) {
-					return pkg.NewAppError(
-						pkg.ErrorCodeValidation,
-						fmt.Sprintf("received quantity (%s) for product %d from supplier %d is greater than updated quantity (%s)", existingItem.ReceivedQuantity.String(), *itemReq.ProductID, *itemReq.SupplierID, itemReq.Quantity.String()),
-						nil,
-					)
+					return pkg.ErrReceivedQuantityGreaterThanUpdated(ctx, existingItem.ReceivedQuantity, *itemReq.ProductID, *itemReq.SupplierID, itemReq.Quantity)
 				}
 
 				if existingItem.ReceivedQuantity.GreaterThan(decimal.Zero) && existingItem.ReceivedQuantity.LessThan(itemReq.Quantity) {
@@ -518,7 +512,7 @@ func (r *purchaseOrderRepository) UpdatePurchaseOrder(ctx context.Context, id ui
 		if len(itemsToUpdate) > 0 {
 			for _, item := range itemsToUpdate {
 				if err := tx.Save(item).Error; err != nil {
-					return fmt.Errorf("failed to save purchase order item: %w", err)
+					return pkg.ErrFailedToSavePurchaseOrderItem(ctx, err)
 				}
 			}
 		}
@@ -529,7 +523,7 @@ func (r *purchaseOrderRepository) UpdatePurchaseOrder(ctx context.Context, id ui
 				Where("id IN (?)", itemsToDeleteIDs).
 				Delete(&models.PurchaseOrderItem{}).
 				Error; err != nil {
-				return fmt.Errorf("failed to delete removed purchase order items: %w", err)
+				return pkg.ErrFailedToDeletePurchaseOrderItems(ctx, err)
 			}
 		}
 
@@ -537,7 +531,7 @@ func (r *purchaseOrderRepository) UpdatePurchaseOrder(ctx context.Context, id ui
 		// This is important after deletion to get all remaining items with their current status
 		var remainingItems []*models.PurchaseOrderItem
 		if err := tx.Where("purchase_order_id = ?", id).Find(&remainingItems).Error; err != nil {
-			return fmt.Errorf("failed to reload purchase order items: %w", err)
+			return pkg.ErrFailedToReloadPurchaseOrderItems(ctx, err)
 		}
 
 		// Set items to purchase order (all remaining items)
@@ -547,12 +541,12 @@ func (r *purchaseOrderRepository) UpdatePurchaseOrder(ctx context.Context, id ui
 		// Always update status if there are items remaining (after deletion or update)
 		if len(remainingItems) > 0 {
 			if err := po.UpdateStatus(ctx); err != nil {
-				return fmt.Errorf("failed to update purchase order status: %w", err)
+				return pkg.ErrFailedToUpdatePurchaseOrderStatus(ctx, err)
 			}
 		}
 
 		if err := tx.Save(po).Error; err != nil {
-			return fmt.Errorf("failed to save purchase order: %w", err)
+			return pkg.ErrFailedToUpdatePurchaseOrder(ctx, err)
 		}
 
 		return nil
