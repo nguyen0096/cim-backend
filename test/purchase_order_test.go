@@ -1211,6 +1211,84 @@ var _ = Describe("Purchase Order API", func() {
 				Expect(errorResp["message"]).To(ContainSubstring("Cannot delete item with received quantity"))
 			})
 
+			It("should remove item if update quantity is 0", func(ctx SpecContext) {
+				client := testutil.NewClient(tenv, models.RoleAdmin)
+
+				testPurchaseOrder := fixture.WithPurchaseOrder(tenv.ContextfulDB(), models.PurchaseOrder{
+					OrderNumber: uuid.New().String(),
+					Status:      models.PurchaseOrderStatusOrderPlaced,
+					InventoryID: &testInventory.ID,
+					Items: []*models.PurchaseOrderItem{
+						{
+							ProductID:        &testProducts[0].ID,
+							SupplierID:       &testSupplier.ID,
+							UnitID:           pkg.Ptr(testBaseUnit.ID),
+							Quantity:         decimal.NewFromInt(50),
+							ReceivedQuantity: decimal.Zero,
+							Status:           models.PurchaseOrderItemStatusAwaitingDelivery,
+							UnitPrice:        1000,
+						},
+						{
+							ProductID:        &testProducts[1].ID,
+							SupplierID:       &testSupplier.ID,
+							UnitID:           pkg.Ptr(testBaseUnit.ID),
+							Quantity:         decimal.NewFromInt(100),
+							ReceivedQuantity: decimal.Zero,
+							Status:           models.PurchaseOrderItemStatusAwaitingDelivery,
+							UnitPrice:        2000,
+						},
+					},
+				})
+
+				// Update purchase order, setting quantity to 0 for the first item
+				urlPath := fmt.Sprintf("/api/v1/purchase-orders/%d", testPurchaseOrder.ID)
+				payload := map[string]interface{}{
+					"inventory_id": testInventory.ID,
+					"notes":        uuid.New().String(),
+					"items": []map[string]interface{}{
+						{
+							"product_id":  testProducts[0].ID,
+							"supplier_id": testSupplier.ID,
+							"unit_id":     testBaseUnit.ID,
+							"quantity":    0,
+							"unit_price":  1000,
+						},
+						{
+							"product_id":  testProducts[1].ID,
+							"supplier_id": testSupplier.ID,
+							"unit_id":     testBaseUnit.ID,
+							"quantity":    100,
+							"unit_price":  2000,
+						},
+					},
+				}
+				resp, err := client.MakeRequest("PUT", urlPath, payload, testutil.WithAuth())
+				Expect(err).NotTo(HaveOccurred())
+				Expect(resp.StatusCode).To(Equal(200))
+
+				// Verify response
+				var response models.PurchaseOrder
+				err = json.NewDecoder(resp.Body).Decode(&response)
+				Expect(err).NotTo(HaveOccurred())
+				Expect(response.Status).To(Equal(models.PurchaseOrderStatusOrderPlaced))
+				Expect(response.Items).To(HaveLen(1))
+				Expect(*response.Items[0].ProductID).To(Equal(testProducts[1].ID))
+				responseQuantity, _ := response.Items[0].Quantity.Float64()
+				Expect(int(responseQuantity)).To(Equal(100))
+
+				// Verify in database that the first item is removed
+				var purchaseOrder models.PurchaseOrder
+				err = tenv.DB.WithContext(ctx).Preload("Items").First(&purchaseOrder, "id = ?", testPurchaseOrder.ID).Error
+				Expect(err).NotTo(HaveOccurred())
+				Expect(purchaseOrder.Items).To(HaveLen(1))
+				Expect(*purchaseOrder.Items[0].ProductID).To(Equal(testProducts[1].ID))
+
+				// Verify the removed item no longer exists
+				var removedItem models.PurchaseOrderItem
+				err = tenv.DB.WithContext(ctx).Where("purchase_order_id = ? AND product_id = ?", testPurchaseOrder.ID, testProducts[0].ID).First(&removedItem).Error
+				Expect(err).To(HaveOccurred())
+			})
+
 			It("should not update purchase order when no items are provided", func(ctx SpecContext) {
 				client := testutil.NewClient(tenv, models.RoleAdmin)
 

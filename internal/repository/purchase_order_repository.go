@@ -467,6 +467,17 @@ func (r *purchaseOrderRepository) UpdatePurchaseOrder(ctx context.Context, id ui
 		for _, itemReq := range req.Items {
 			key := fmt.Sprintf("%d-%d", *itemReq.SupplierID, *itemReq.ProductID)
 			if existingItem, found := existingItemsMap[key]; found {
+				// If quantity is 0, treat it as deletion
+				if itemReq.Quantity.LessThanOrEqual(decimal.Zero) {
+					// Can't delete item if it has received quantity > 0
+					if existingItem.ReceivedQuantity.GreaterThan(decimal.Zero) {
+						return pkg.ErrCannotDeleteItemWithReceivedQuantity(ctx, existingItem.ReceivedQuantity)
+					}
+					// Mark for deletion
+					itemsToDeleteIDs = append(itemsToDeleteIDs, existingItem.ID)
+					continue
+				}
+
 				if existingItem.ReceivedQuantity.GreaterThan(itemReq.Quantity) {
 					return pkg.ErrReceivedQuantityGreaterThanUpdated(ctx, existingItem.ReceivedQuantity, *itemReq.ProductID, *itemReq.SupplierID, itemReq.Quantity)
 				}
@@ -491,6 +502,10 @@ func (r *purchaseOrderRepository) UpdatePurchaseOrder(ctx context.Context, id ui
 				existingItem.UpdateStatus()
 				itemsToUpdate = append(itemsToUpdate, existingItem)
 			} else {
+				// Skip creating new items with quantity 0
+				if itemReq.Quantity.LessThanOrEqual(decimal.Zero) {
+					continue
+				}
 				if po.Status == models.PurchaseOrderStatusFullyDelivered {
 					po.Status = models.PurchaseOrderStatusPartiallyDelivered
 				}
