@@ -161,7 +161,7 @@ var _ = Describe("Purchase Order API", func() {
 				Expect(resp.StatusCode).To(Equal(403))
 
 				errorResp := testutil.ParseResponse(resp)
-				Expect(errorResp["error"]).To(Equal(fmt.Sprintf("Access denied: %s role cannot create purchase-orders", models.RoleStaff)))
+				Expect(errorResp["messsage"]).To(Equal(fmt.Sprintf("Access denied: %s role cannot create purchase-orders", models.RoleStaff)))
 			})
 
 			It("should not create purchase order with bot form role", func() {
@@ -185,7 +185,7 @@ var _ = Describe("Purchase Order API", func() {
 				Expect(resp.StatusCode).To(Equal(403))
 
 				errorResp := testutil.ParseResponse(resp)
-				Expect(errorResp["error"]).To(Equal(fmt.Sprintf("Access denied: %s role cannot create purchase-orders", models.RoleBotForm)))
+				Expect(errorResp["messsage"]).To(Equal(fmt.Sprintf("Access denied: %s role cannot create purchase-orders", models.RoleBotForm)))
 			})
 		})
 	})
@@ -442,7 +442,7 @@ var _ = Describe("Purchase Order API", func() {
 						Expect(resp.StatusCode).To(Equal(403))
 
 						errorResp := testutil.ParseResponse(resp)
-						Expect(errorResp["error"]).To(Equal(fmt.Sprintf("Access denied: %s role cannot update purchase-orders", role)))
+						Expect(errorResp["messsage"]).To(Equal(fmt.Sprintf("Access denied: %s role cannot update purchase-orders", role)))
 					})
 				}
 			}
@@ -725,7 +725,7 @@ var _ = Describe("Purchase Order API", func() {
 			Expect(resp.StatusCode).To(Equal(400))
 
 			errorResp := testutil.ParseResponse(resp)
-			Expect(errorResp["error"]).To(ContainSubstring("decimal places"))
+			Expect(errorResp["messsage"]).To(ContainSubstring("decimal places"))
 		})
 	})
 
@@ -1208,7 +1208,7 @@ var _ = Describe("Purchase Order API", func() {
 				Expect(resp.StatusCode).To(Equal(400))
 
 				errorResp := testutil.ParseResponse(resp)
-				Expect(errorResp["error"]).To(ContainSubstring("cannot delete item with received quantity"))
+				Expect(errorResp["message"]).To(ContainSubstring("Cannot delete item with received quantity"))
 			})
 
 			It("should not update purchase order when no items are provided", func(ctx SpecContext) {
@@ -1230,7 +1230,7 @@ var _ = Describe("Purchase Order API", func() {
 				Expect(resp.StatusCode).To(Equal(400))
 
 				errorResp := testutil.ParseResponse(resp)
-				Expect(errorResp["error"]).To(ContainSubstring("validation failed"))
+				Expect(errorResp["message"]).To(ContainSubstring("Validation failed"))
 			})
 		})
 
@@ -1342,7 +1342,7 @@ var _ = Describe("Purchase Order API", func() {
 			Expect(resp.StatusCode).To(Equal(404))
 
 			errorResp := testutil.ParseResponse(resp)
-			Expect(errorResp["error"]).To(Equal(fmt.Sprintf("purchase order with ID %d not found", notFoundId)))
+			Expect(errorResp["message"]).To(Equal(fmt.Sprintf("Purchase order with ID %d not found", notFoundId)))
 		})
 
 		It("should return 400 when no items are provided", func() {
@@ -1373,7 +1373,7 @@ var _ = Describe("Purchase Order API", func() {
 			Expect(resp.StatusCode).To(Equal(400))
 
 			errorResp := testutil.ParseResponse(resp)
-			Expect(errorResp["error"]).To(ContainSubstring("validation failed"))
+			Expect(errorResp["message"]).To(ContainSubstring("Validation failed"))
 		})
 	})
 
