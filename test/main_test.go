@@ -2,8 +2,10 @@ package apptest
 
 import (
 	"context"
+	"testing"
 
 	. "github.com/onsi/ginkgo/v2"
+	. "github.com/onsi/gomega"
 
 	"cim-backend/pkg"
 	"cim-backend/pkg/testutil"
@@ -41,7 +43,7 @@ var _ = AfterSuite(func(ctx SpecContext) {
 	By("Clean upload files", tenv.CleanUploadFiles)
 })
 
-// func TestApplication(t *testing.T) {
-// 	RegisterFailHandler(Fail)
-// 	RunSpecs(t, "CIM Backend Test Suite")
-// }
+func TestApplication(t *testing.T) {
+	RegisterFailHandler(Fail)
+	RunSpecs(t, "CIM Backend Test Suite")
+}

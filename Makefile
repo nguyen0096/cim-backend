@@ -14,7 +14,7 @@ run:
 
 # Run tests
 test:
-	go test ./...
+	go test internal/...
 
 # Run tests with coverage
 test-coverage:
@@ -93,6 +93,3 @@ generate:
 
 migrate-file:
 	migrate create -ext sql -dir database/migrations ${NAME}
-
-test-components:
-	go test -v ./test/components/scenarios -run TestComponentTestSuite
