@@ -1,7 +1,8 @@
-package repository
+package apptest
 
 import (
 	"cim-backend/internal/models"
+	"cim-backend/internal/repository"
 	"cim-backend/pkg"
 	"cim-backend/pkg/testutil/fixture"
 	"context"
@@ -18,13 +19,15 @@ import (
 var _ = Describe("InventoryItemRepository", func() {
 	Describe("GetActiveInventoryItems", func() {
 		var (
-			repo InventoryItemRepository
+			repo repository.InventoryItemRepository
 			ctx  context.Context
+			db   *gorm.DB
 		)
 
 		BeforeEach(func() {
-			repo = NewInventoryItemRepository(db)
-			ctx = pkg.WithUserEmail(context.Background(), "test@example.com")
+			ctx = tenv.DefaultContext
+			db = tenv.ContextfulDB()
+			repo = repository.NewInventoryItemRepository(db)
 		})
 
 		Context("filtering active items", func() {
@@ -304,7 +307,7 @@ var _ = Describe("InventoryItemRepository", func() {
 
 			It("should handle database errors gracefully", func() {
 				invalidDB, _ := gorm.Open(nil, nil)
-				closedRepo := NewInventoryItemRepository(invalidDB)
+				closedRepo := repository.NewInventoryItemRepository(invalidDB)
 
 				result, err := closedRepo.GetActiveInventoryItems(ctx, 1, []uint{1})
 
@@ -321,13 +324,15 @@ var _ = Describe("InventoryItemRepository", func() {
 
 var _ = Describe("SaveInventoryItemChanges", func() {
 	var (
-		repo InventoryItemRepository
+		repo repository.InventoryItemRepository
 		ctx  context.Context
+		db   *gorm.DB
 	)
 
 	BeforeEach(func() {
-		repo = NewInventoryItemRepository(db)
-		ctx = pkg.WithUserEmail(context.Background(), "test@example.com")
+		ctx = tenv.DefaultContext
+		db = tenv.ContextfulDB()
+		repo = repository.NewInventoryItemRepository(db)
 	})
 
 	It("should successfully create and update inventory items and transactions with valid data", func() {
