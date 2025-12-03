@@ -29,7 +29,7 @@ var _ = BeforeSuite(func(ctx SpecContext) {
 
 	By("Initialize default test context", func() {
 		tenv.DefaultContext = pkg.WithUserEmail(context.Background(), "test-admin@cim.local")
-		tenv.DefaultContext = pkg.WithUserID(tenv.DefaultContext, "test-admin-uid")
+		tenv.DefaultContext = pkg.WithUserID(tenv.DefaultContext, "test-admi\n-uid")
 	})
 
 	GinkgoWriter.Printf("Base URL: %s\n", tenv.BaseURL)

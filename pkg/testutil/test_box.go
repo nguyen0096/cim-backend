@@ -31,7 +31,7 @@ const (
 	testDBName     = "test_db"
 	testDBPort     = "5432"
 
-	testServerPort = "16081"
+	testServerPortBase = 16081
 
 	suiteSetupStepTimeout    = 5 * time.Second
 	suiteProvisionTimeout    = 30 * time.Second
@@ -211,11 +211,23 @@ func (t *TestBox) InitAndStartServer() {
 	t.Server, err = server.SetupServer(&t.Config, t.DB, t.AuthMock)
 	Expect(err).NotTo(HaveOccurred(), "Failed to setup server")
 
-	listener, err := net.Listen("tcp", fmt.Sprintf(":%s", testServerPort))
-	Expect(err).NotTo(HaveOccurred(), "Failed to listen on port %s", testServerPort)
+	// Find an available port for parallel test execution
+	// Start from base port and increment if needed
+	portNumber := testServerPortBase
+	for {
+		listener, err := net.Listen("tcp", fmt.Sprintf(":%d", portNumber))
+		if err == nil {
+			// Port is available, use it
+			listener.Close()
+			break
+		}
+		// Port is in use, try next port
+		portNumber++
+		if portNumber > testServerPortBase+100 {
+			Fail(fmt.Sprintf("Failed to find available port after 100 attempts starting from %d", testServerPortBase))
+		}
+	}
 
-	portNumber := listener.Addr().(*net.TCPAddr).Port
-	listener.Close()
 	t.BaseURL = fmt.Sprintf("http://127.0.0.1:%d", portNumber)
 
 	serverErr := make(chan error, 1)
