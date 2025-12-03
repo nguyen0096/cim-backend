@@ -116,7 +116,7 @@ jobs:
   build-and-release:
     name: Build and Release
     runs-on: ubuntu-latest
-    needs: [lint, test]  # Only runs if both lint and test pass
+    needs: [lint, test, integration-test]  # Only runs if both lint and test pass
     environment: production
     permissions:
       contents: write

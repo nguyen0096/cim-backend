@@ -109,7 +109,7 @@ jobs:
   build-and-deploy:
     name: Build and Deploy
     runs-on: ubuntu-latest
-    needs: [lint, test]  # Only runs if both lint and test pass
+    needs: [lint, test, integration-test]  # Only runs if both lint and test pass
     environment: staging
     permissions:
       contents: read
