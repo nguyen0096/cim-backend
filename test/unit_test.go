@@ -165,7 +165,7 @@ var _ = Describe("Unit API", func() {
 				Expect(resp.StatusCode).To(Equal(400))
 
 				errorResp := testutil.ParseResponse(resp)
-				Expect(errorResp["error"]).To(ContainSubstring("Maximum allowed hierarchy depth is 4 levels"))
+				Expect(errorResp["message"]).To(ContainSubstring("Maximum allowed hierarchy depth is 4 levels"))
 			})
 		})
 	})
@@ -743,7 +743,7 @@ var _ = Describe("Unit API", func() {
 				Expect(resp.StatusCode).To(Equal(404))
 
 				errorResp := testutil.ParseResponse(resp)
-				Expect(errorResp["error"]).To(ContainSubstring("not found"))
+				Expect(errorResp["message"]).To(ContainSubstring("not found"))
 			})
 		})
 
@@ -771,7 +771,7 @@ var _ = Describe("Unit API", func() {
 				Expect(resp.StatusCode).To(Equal(409))
 
 				errorResp := testutil.ParseResponse(resp)
-				Expect(errorResp["error"]).To(ContainSubstring("already exists"))
+				Expect(errorResp["message"]).To(ContainSubstring("already exists"))
 			})
 		})
 
@@ -802,7 +802,7 @@ var _ = Describe("Unit API", func() {
 				Expect(resp.StatusCode).To(Equal(400))
 
 				errorResp := testutil.ParseResponse(resp)
-				Expect(errorResp["error"]).To(ContainSubstring("Maximum allowed hierarchy depth is 4 levels"))
+				Expect(errorResp["message"]).To(ContainSubstring("Maximum allowed hierarchy depth is 4 levels"))
 			})
 		})
 
@@ -831,7 +831,7 @@ var _ = Describe("Unit API", func() {
 				Expect(resp.StatusCode).To(Equal(400))
 
 				errorResp := testutil.ParseResponse(resp)
-				Expect(errorResp["error"]).To(ContainSubstring("base unit must have the same unit_type"))
+				Expect(errorResp["message"]).To(ContainSubstring("base unit must have the same unit_type"))
 			})
 		})
 
@@ -853,7 +853,7 @@ var _ = Describe("Unit API", func() {
 				Expect(resp.StatusCode).To(Equal(400))
 
 				errorResp := testutil.ParseResponse(resp)
-				Expect(errorResp["error"]).To(ContainSubstring("conversion_factor must be 1 for base units"))
+				Expect(errorResp["message"]).To(ContainSubstring("conversion_factor must be 1 for base units"))
 			})
 		})
 	})
@@ -920,7 +920,7 @@ var _ = Describe("Unit API", func() {
 				Expect(resp.StatusCode).To(Equal(400))
 
 				errorResp := testutil.ParseResponse(resp)
-				Expect(errorResp["error"]).To(ContainSubstring("Unit ID is required"))
+				Expect(errorResp["message"]).To(ContainSubstring("Unit ID is required"))
 			})
 		})
 
@@ -944,7 +944,7 @@ var _ = Describe("Unit API", func() {
 				Expect(resp.StatusCode).To(Equal(400))
 
 				errorResp := testutil.ParseResponse(resp)
-				Expect(errorResp["error"]).To(ContainSubstring("Cannot delete unit: products reference this unit"))
+				Expect(errorResp["message"]).To(ContainSubstring("Cannot delete unit: products reference this unit"))
 
 				// Verify unit is not deleted
 				var unit models.Unit

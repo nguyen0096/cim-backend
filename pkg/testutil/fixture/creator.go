@@ -25,6 +25,10 @@ func WithSupplier(db *gorm.DB, supplier models.Supplier) *models.Supplier {
 		panic(fmt.Sprintf("failed to create test supplier: %v", err))
 	}
 	DeferCleanup(func() {
+		// Delete in order: inventory_transactions -> purchase_order_items -> product_suppliers -> suppliers
+		db.Exec("DELETE FROM inventory_transactions WHERE supplier_id = ?", supplier.ID)
+		db.Exec("DELETE FROM purchase_order_items WHERE supplier_id = ?", supplier.ID)
+		db.Exec("DELETE FROM product_suppliers WHERE supplier_id = ?", supplier.ID)
 		db.Exec("DELETE FROM suppliers WHERE id = ?", supplier.ID)
 	})
 	return &supplier
@@ -44,6 +48,14 @@ func WithUnit(db *gorm.DB, unit models.Unit) *models.Unit {
 		panic(fmt.Sprintf("failed to create test unit: %v", err))
 	}
 	DeferCleanup(func() {
+		// Delete in order: inventory_transactions -> inventory_items -> purchase_order_items -> products -> derived_units -> units
+		db.Exec("DELETE FROM inventory_transactions WHERE inventory_item_id IN (SELECT id FROM inventory_items WHERE product_id IN (SELECT id FROM products WHERE unit_id = ?))", unit.ID)
+		db.Exec("DELETE FROM inventory_items WHERE product_id IN (SELECT id FROM products WHERE unit_id = ?)", unit.ID)
+		db.Exec("DELETE FROM purchase_order_items WHERE unit_id = ?", unit.ID)
+		db.Exec("DELETE FROM product_suppliers WHERE product_id IN (SELECT id FROM products WHERE unit_id = ?)", unit.ID)
+		db.Exec("DELETE FROM products WHERE unit_id = ?", unit.ID)
+		// Delete derived units that reference this unit as base_unit_id
+		db.Exec("DELETE FROM units WHERE base_unit_id = ?", unit.ID)
 		db.Exec("DELETE FROM units WHERE id = ?", unit.ID)
 	})
 	return &unit
@@ -71,12 +83,14 @@ func WithUnits(db *gorm.DB, units []*models.Unit) []*models.Unit {
 		for i, unit := range units {
 			ids[i] = unit.ID
 		}
-		// Delete product_suppliers for products that reference these units
+		// Delete in order: inventory_transactions -> inventory_items -> purchase_order_items -> product_suppliers -> products -> derived_units -> units
+		db.Exec("DELETE FROM inventory_transactions WHERE inventory_item_id IN (SELECT id FROM inventory_items WHERE product_id IN (SELECT id FROM products WHERE unit_id IN (?)))", ids)
+		db.Exec("DELETE FROM inventory_items WHERE product_id IN (SELECT id FROM products WHERE unit_id IN (?))", ids)
+		db.Exec("DELETE FROM purchase_order_items WHERE unit_id IN (?)", ids)
 		db.Exec("DELETE FROM product_suppliers WHERE product_id IN (SELECT id FROM products WHERE unit_id IN (?))", ids)
-		// Note: purchase_order_items are deleted by WithPurchaseOrders cleanup
-		// Delete products that reference these units
 		db.Exec("DELETE FROM products WHERE unit_id IN (?)", ids)
-		// Then delete units
+		// Delete derived units that reference these units as base_unit_id
+		db.Exec("DELETE FROM units WHERE base_unit_id IN (?)", ids)
 		db.Exec("DELETE FROM units WHERE id IN (?)", ids)
 	})
 	return units
@@ -92,6 +106,11 @@ func WithProduct(db *gorm.DB, product models.Product) *models.Product {
 		panic(fmt.Sprintf("failed to create test product: %v", err))
 	}
 	DeferCleanup(func() {
+		// Delete in order: inventory_transactions -> inventory_items -> purchase_order_items -> product_suppliers -> products
+		db.Exec("DELETE FROM inventory_transactions WHERE inventory_item_id IN (SELECT id FROM inventory_items WHERE product_id = ?)", product.ID)
+		db.Exec("DELETE FROM inventory_items WHERE product_id = ?", product.ID)
+		db.Exec("DELETE FROM purchase_order_items WHERE product_id = ?", product.ID)
+		db.Exec("DELETE FROM product_suppliers WHERE product_id = ?", product.ID)
 		db.Exec("DELETE FROM products WHERE id = ?", product.ID)
 	})
 	return &product
@@ -113,10 +132,11 @@ func WithProducts(db *gorm.DB, products []*models.Product) []*models.Product {
 		for i, product := range products {
 			ids[i] = product.ID
 		}
-		// Delete product_suppliers junction table first
+		// Delete in order: inventory_transactions -> inventory_items -> purchase_order_items -> product_suppliers -> products
+		db.Exec("DELETE FROM inventory_transactions WHERE inventory_item_id IN (SELECT id FROM inventory_items WHERE product_id IN (?))", ids)
+		db.Exec("DELETE FROM inventory_items WHERE product_id IN (?)", ids)
+		db.Exec("DELETE FROM purchase_order_items WHERE product_id IN (?)", ids)
 		db.Exec("DELETE FROM product_suppliers WHERE product_id IN (?)", ids)
-		// Note: purchase_order_items are deleted by WithPurchaseOrders cleanup
-		// Then delete products (purchase_order_items should already be deleted)
 		db.Exec("DELETE FROM products WHERE id IN (?)", ids)
 	})
 
@@ -138,10 +158,10 @@ func WithSuppliers(db *gorm.DB, suppliers []*models.Supplier) []*models.Supplier
 		for i, supplier := range suppliers {
 			ids[i] = supplier.ID
 		}
-		// Delete product_suppliers junction table first
+		// Delete in order: inventory_transactions -> purchase_order_items -> product_suppliers -> suppliers
+		db.Exec("DELETE FROM inventory_transactions WHERE supplier_id IN (?)", ids)
+		db.Exec("DELETE FROM purchase_order_items WHERE supplier_id IN (?)", ids)
 		db.Exec("DELETE FROM product_suppliers WHERE supplier_id IN (?)", ids)
-		// Note: purchase_order_items are deleted by WithPurchaseOrders cleanup
-		// Then delete suppliers (purchase_order_items should already be deleted)
 		db.Exec("DELETE FROM suppliers WHERE id IN (?)", ids)
 	})
 	return suppliers
@@ -180,8 +200,12 @@ func WithInventory(db *gorm.DB, inventory models.Inventory) *models.Inventory {
 		panic(fmt.Sprintf("failed to create test inventory: %v", err))
 	}
 	DeferCleanup(func() {
-		// Note: purchase_orders and purchase_order_items are deleted by WithPurchaseOrders cleanup
-		// Just delete the inventory (purchase_orders should already be deleted)
+		// Delete in order: payment_receipt_forms -> purchase_order_items -> purchase_orders -> inventory_transactions -> inventory_items -> inventories
+		db.Exec("DELETE FROM payment_receipt_forms WHERE purchase_order_id IN (SELECT id FROM purchase_orders WHERE inventory_id = ?)", inventory.ID)
+		db.Exec("DELETE FROM purchase_order_items WHERE purchase_order_id IN (SELECT id FROM purchase_orders WHERE inventory_id = ?)", inventory.ID)
+		db.Exec("DELETE FROM purchase_orders WHERE inventory_id = ?", inventory.ID)
+		db.Exec("DELETE FROM inventory_transactions WHERE inventory_item_id IN (SELECT id FROM inventory_items WHERE inventory_id = ?)", inventory.ID)
+		db.Exec("DELETE FROM inventory_items WHERE inventory_id = ?", inventory.ID)
 		db.Exec("DELETE FROM inventories WHERE id = ?", inventory.ID)
 	})
 	return &inventory

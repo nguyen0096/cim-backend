@@ -209,7 +209,11 @@ var _ = Describe("Revenue Expense API", func() {
 				// This method finds the last date row and parses it, confirming the date exists and is correct
 				lastDate, err := excelRepo.GetLastTransactionDate(tenv.DefaultContext, sheetName)
 				Expect(err).NotTo(HaveOccurred())
-				Expect(lastDate.Format("2006-01-02")).To(Equal(pkg.GetTodayDate().Format("2006-01-02")))
+				// Compare dates by year, month, and day to avoid format ambiguity issues
+				today := pkg.GetTodayDate()
+				Expect(lastDate.Year()).To(Equal(today.Year()))
+				Expect(lastDate.Month()).To(Equal(today.Month()))
+				Expect(lastDate.Day()).To(Equal(today.Day()))
 
 				// Verify the date row exists and has the correct format by finding it manually
 				// Scan backwards from the last transaction row to find the date row
@@ -245,16 +249,44 @@ var _ = Describe("Revenue Expense API", func() {
 				dateStr := strings.TrimSpace(dateRow[0])
 				Expect(dateStr).NotTo(BeEmpty(), "Date string should not be empty")
 				// Verify the date matches today (format may vary, so we parse and compare)
+				// Try all formats and prefer the one closest to today to avoid ambiguity
 				var parsedDate time.Time
 				var parseErr error
+				var bestDate time.Time
+				var bestDiff time.Duration = time.Hour * 24 * 365 * 100 // Very large initial diff
+				found := false
 				for _, format := range []string{"02/01/2006", "2/1/2006", "01/02/2006", "1/2/2006"} {
-					parsedDate, parseErr = time.Parse(format, dateStr)
-					if parseErr == nil {
-						break
+					if parsed, err := time.Parse(format, dateStr); err == nil {
+						// Calculate absolute difference from today
+						diff := today.Sub(parsed)
+						if diff < 0 {
+							diff = -diff
+						}
+						// Prefer dates closer to today (within reasonable range, e.g., last 10 years)
+						if diff < time.Hour*24*365*10 && diff < bestDiff {
+							bestDate = parsed
+							bestDiff = diff
+							found = true
+						}
+					}
+				}
+				if found {
+					parsedDate = bestDate
+					parseErr = nil
+				} else {
+					// Fallback to first format that matches
+					for _, format := range []string{"02/01/2006", "2/1/2006", "01/02/2006", "1/2/2006"} {
+						parsedDate, parseErr = time.Parse(format, dateStr)
+						if parseErr == nil {
+							break
+						}
 					}
 				}
 				Expect(parseErr).NotTo(HaveOccurred(), "Date should be parseable")
-				Expect(parsedDate.Format("2006-01-02")).To(Equal(pkg.GetTodayDate().Format("2006-01-02")))
+				// Compare dates by year, month, and day to avoid format ambiguity issues
+				Expect(parsedDate.Year()).To(Equal(today.Year()))
+				Expect(parsedDate.Month()).To(Equal(today.Month()))
+				Expect(parsedDate.Day()).To(Equal(today.Day()))
 			})
 		})
 
@@ -269,7 +301,7 @@ var _ = Describe("Revenue Expense API", func() {
 				Expect(resp.StatusCode).To(Equal(400))
 
 				errorResp := testutil.ParseResponse(resp)
-				Expect(errorResp["error"]).NotTo(BeEmpty())
+				Expect(errorResp["message"]).NotTo(BeEmpty())
 			})
 
 			It("should return 200 when date format is invalid (validation only checks required)", func(ctx SpecContext) {
@@ -311,7 +343,7 @@ var _ = Describe("Revenue Expense API", func() {
 				Expect(resp.StatusCode).To(Equal(500))
 
 				errorResp := testutil.ParseResponse(resp)
-				Expect(errorResp["error"]).NotTo(BeEmpty())
+				Expect(errorResp["message"]).NotTo(BeEmpty())
 			})
 		})
 

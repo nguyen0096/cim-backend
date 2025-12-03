@@ -231,8 +231,8 @@ func (h *PurchaseOrderHandler) UpdatePurchaseOrderStatus(c echo.Context) error {
 	userRole, _ := reqCtx.Value(pkg.AuthContextKeyUserRole).(string)
 
 	statusToActionsMap := map[string][]string{
-		"cancelled": []string{"update", "cancel"},
-		"completed": []string{"update", "confirm"},
+		"cancelled": {"update", "cancel"},
+		"completed": {"update", "confirm"},
 	}
 	allowedActions := statusToActionsMap[req.Status]
 	isAllowed := false

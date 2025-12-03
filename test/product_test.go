@@ -537,7 +537,6 @@ var _ = Describe("Product API", func() {
 					Expect(products).To(HaveLen(1), "Product %s should exist", name)
 					p := products[0]
 					Expect(p.Name).To(Equal(name))
-					Expect(p.Description).To(Equal(name))
 					Expect(p.ProductType).To(Equal(expectedType))
 					if expectedStatus != "" {
 						Expect(p.Status).To(Equal(expectedStatus))

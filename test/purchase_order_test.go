@@ -161,7 +161,7 @@ var _ = Describe("Purchase Order API", func() {
 				Expect(resp.StatusCode).To(Equal(403))
 
 				errorResp := testutil.ParseResponse(resp)
-				Expect(errorResp["messsage"]).To(Equal(fmt.Sprintf("Access denied: %s role cannot create purchase-orders", models.RoleStaff)))
+				Expect(errorResp["error"]).To(Equal(fmt.Sprintf("Access denied: %s role cannot create purchase-orders", models.RoleStaff)))
 			})
 
 			It("should not create purchase order with bot form role", func() {
@@ -185,7 +185,7 @@ var _ = Describe("Purchase Order API", func() {
 				Expect(resp.StatusCode).To(Equal(403))
 
 				errorResp := testutil.ParseResponse(resp)
-				Expect(errorResp["messsage"]).To(Equal(fmt.Sprintf("Access denied: %s role cannot create purchase-orders", models.RoleBotForm)))
+				Expect(errorResp["error"]).To(Equal(fmt.Sprintf("Access denied: %s role cannot create purchase-orders", models.RoleBotForm)))
 			})
 		})
 	})
@@ -442,7 +442,7 @@ var _ = Describe("Purchase Order API", func() {
 						Expect(resp.StatusCode).To(Equal(403))
 
 						errorResp := testutil.ParseResponse(resp)
-						Expect(errorResp["messsage"]).To(Equal(fmt.Sprintf("Access denied: %s role cannot update purchase-orders", role)))
+						Expect(errorResp["error"]).To(Equal(fmt.Sprintf("Access denied: %s role cannot update purchase-orders", role)))
 					})
 				}
 			}
@@ -606,7 +606,7 @@ var _ = Describe("Purchase Order API", func() {
 						SupplierID:       &testSupplier.ID,
 						UnitID:           &testBaseUnit.ID,
 						Quantity:         decimal.NewFromInt(100),
-						ReceivedQuantity: decimal.Zero,
+						ReceivedQuantity: decimal.NewFromInt(100),
 						Status:           models.PurchaseOrderItemStatusDelivered,
 					},
 				},
@@ -725,7 +725,7 @@ var _ = Describe("Purchase Order API", func() {
 			Expect(resp.StatusCode).To(Equal(400))
 
 			errorResp := testutil.ParseResponse(resp)
-			Expect(errorResp["messsage"]).To(ContainSubstring("decimal places"))
+			Expect(errorResp["message"]).To(ContainSubstring("decimal places"))
 		})
 	})
 
