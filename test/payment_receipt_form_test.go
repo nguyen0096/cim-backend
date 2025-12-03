@@ -561,4 +561,44 @@ var _ = Describe("Payment Receipt Form API", func() {
 			}
 		})
 	})
+
+	Describe("ListPaymentReceiptForms", func() {
+		It("should list payment receipt forms successfully with filters and approval status as default", func() {
+			ctx := pkg.WithUserEmail(context.Background(), "test@cim.local")
+			tenv.DB.WithContext(ctx).Exec("DELETE FROM payment_receipt_forms")
+
+			adminClient := testutil.NewClient(tenv, models.RoleAdmin)
+
+			createForm := func(formNumbers []int) {
+				for _, formNumber := range formNumbers {
+					form := models.PaymentReceiptForm{
+						PurchaseOrderID: testPurchaseOrder.ID,
+						FormNumber:      pkg.Ptr(fmt.Sprintf("%s-%d-%d", time.Now().Format("20060102"), *testPurchaseOrder.InventoryID, formNumber)),
+						FullName:        "Test Form",
+						Date:            time.Now(),
+						Department:      "Test Department",
+						Details:         "Test form",
+						TotalAmount:     1000,
+						Status:          models.PaymentReceiptFormStatusApproved,
+					}
+					err := tenv.DB.WithContext(ctx).Create(&form).Error
+					Expect(err).NotTo(HaveOccurred())
+				}
+			}
+
+			createForm([]int{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20})
+
+			listURL := fmt.Sprintf("/api/v1/payment-receipt-forms?date=%s&inventory_id=%d&limit=10", time.Now().Format("2006-01-02"), *testPurchaseOrder.InventoryID)
+			listResp, err := adminClient.MakeRequest("GET", listURL, nil, testutil.WithAuth())
+			Expect(err).NotTo(HaveOccurred())
+			Expect(listResp.StatusCode).To(Equal(200), "Expected status 200, got %d", listResp.StatusCode)
+
+			listRespBody := testutil.ParseResponse(listResp)
+			Expect(listRespBody["total"]).To(Equal(float64(20)), "Expected total 20, got %f", listRespBody["total"])
+			Expect(listRespBody["page"]).To(Equal(float64(1)), "Expected page 1, got %f", listRespBody["page"])
+			Expect(listRespBody["limit"]).To(Equal(float64(10)), "Expected limit 10, got %f", listRespBody["limit"])
+			Expect(listRespBody["totalPages"]).To(Equal(float64(2)), "Expected total pages 2, got %f", listRespBody["totalPages"])
+			Expect(len(listRespBody["data"].([]interface{}))).To(Equal(10), "Expected data length 10, got %d", len(listRespBody["data"].([]interface{})))
+		})
+	})
 })
