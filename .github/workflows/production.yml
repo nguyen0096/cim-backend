@@ -47,21 +47,6 @@ jobs:
   test:
     name: Test
     runs-on: ubuntu-latest
-
-    services:
-      postgres:
-        image: postgres:15
-        env:
-          POSTGRES_PASSWORD: postgres
-          POSTGRES_DB: test_db
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-        ports:
-          - 5432:5432
-
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -90,24 +75,43 @@ jobs:
       - name: Generate mocks
         run: make generate
 
-      - name: Run migrations
-        run: make migrate-up
-        env:
-          DB_HOST: localhost
-          DB_PORT: 5432
-          DB_USER: postgres
-          DB_PASSWORD: postgres
-          DB_NAME: test_db
-          MIGRATION_DIR: database/migrations
-
       - name: Run tests
         run: make test
-        env:
-          DB_HOST: localhost
-          DB_PORT: 5432
-          DB_USER: postgres
-          DB_PASSWORD: postgres
-          DB_NAME: test_db
+
+  integration-test:
+    name: Integration Test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: "1.25"
+
+      - name: Cache Go modules
+        uses: actions/cache@v4
+        with:
+          path: ~/go/pkg/mod
+          key: ${{ runner.os }}-go-v2-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-go-v2-
+      - name: Install dependencies
+        run: go mod download
+
+      - name: Install tools
+        run: |
+          go install github.com/onsi/ginkgo/v2/ginkgo
+          go install golang.org/x/tools/cmd/stringer@latest
+          go install github.com/vektra/mockery/v2@latest
+
+      - name: Generate mocks
+        run: make generate
+        
+      - name: Run integration tests
+        run: |
+          ginkgo -r -p -race -tags=integration ./test/...
 
   build-and-release:
     name: Build and Release
