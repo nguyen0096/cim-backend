@@ -78,7 +78,7 @@ func (h *RevenueExpenseHandler) FinalizeRevenueExpense(c echo.Context) error {
 	}
 
 	defer func() {
-		settingsCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		settingsCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 30*time.Second)
 		defer cancel()
 		if err := h.settingsService.SetSetting(settingsCtx, config.LastFinalizedDateSettingsKey, time.Now()); err != nil {
 			log.WithFields(logrus.Fields{
