@@ -5,6 +5,7 @@ import (
 	"cim-backend/internal/services"
 	"cim-backend/pkg"
 	"cim-backend/pkg/log"
+	"context"
 	"errors"
 	"net/http"
 	"time"
@@ -77,7 +78,9 @@ func (h *RevenueExpenseHandler) FinalizeRevenueExpense(c echo.Context) error {
 	}
 
 	defer func() {
-		if err := h.settingsService.SetSetting(ctx, config.LastFinalizedDateSettingsKey, time.Now()); err != nil {
+		settingsCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		if err := h.settingsService.SetSetting(settingsCtx, config.LastFinalizedDateSettingsKey, time.Now()); err != nil {
 			log.WithFields(logrus.Fields{
 				"error":   err.Error(),
 				"details": "Failed to set last finalized date to now",
