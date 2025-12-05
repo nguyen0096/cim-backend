@@ -60,16 +60,8 @@ func (i *InventoryItem) IsNew() bool {
 	return i.Base.ID == 0
 }
 
-func (i *InventoryItem) GetID() uint {
-	return i.Base.ID
-}
-
 // InventoryItemChange represents a change to an inventory item.
 type InventoryItemChange struct {
 	*InventoryItem
 	OriginalQuantity decimal.Decimal
-}
-
-func (i *InventoryItemChange) GetID() uint {
-	return i.ID
 }

@@ -18,6 +18,10 @@ type Base struct {
 	DeletedAt gorm.DeletedAt `json:"deleted_at" gorm:"index" swaggertype:"string"`
 }
 
+func (b Base) GetID() uint {
+	return b.ID
+}
+
 func (b *Base) BeforeCreate(tx *gorm.DB) error {
 	// set CreatedBy to the user email
 	if tx.Statement.Context == nil {
