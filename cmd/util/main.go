@@ -1,6 +1,7 @@
 package main
 
 import (
+	"cim-backend/internal/config"
 	"cim-backend/test/data"
 	"fmt"
 	"os"
@@ -85,15 +86,21 @@ func init() {
 		fmt.Fprintf(os.Stderr, "Warning: Could not load .env file: %v\n", err)
 	}
 
+	// Add subcommands to migrate unit command
+	unitCmd.AddCommand(unitMigrateConversionsCmd)
+
 	// Add subcommands to migrate command
 	migrateCmd.AddCommand(migrateUpCmd)
 	migrateCmd.AddCommand(migrateDownCmd)
+	migrateCmd.AddCommand(unitCmd)
 
 	rootCmd.AddCommand(seedCmd)
 	rootCmd.AddCommand(migrateCmd)
 }
 
 func main() {
+	config.Load()
+
 	if err := rootCmd.Execute(); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)

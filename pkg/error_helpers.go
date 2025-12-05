@@ -72,6 +72,9 @@ const (
 	ErrKeyFailedToInitializeExcelRepo         = "failed_to_initialize_excel_repo"
 	ErrKeyFailedToAddNewDateRowExcel          = "failed_to_add_new_date_row_excel"
 	ErrKeyFailedToAddExpensesToExcel          = "failed_to_add_expenses_to_excel"
+
+	// Unit Error Keys
+	ErrKeyUnitConversionAlreadyExists = "unit_conversion_already_exists"
 )
 
 // ErrorMessages maps error keys to multilingual messages
@@ -272,6 +275,13 @@ var ErrorMessages = map[string]ErrorMessage{
 	ErrKeyFailedToAddExpensesToExcel: {
 		EN: "Failed to add expenses to Excel",
 		VI: "Không thể thêm chi phí vào Excel",
+	},
+
+	// Unit Error Keys
+
+	ErrKeyUnitConversionAlreadyExists: {
+		EN: "Unit conversion from %d to %d already exists",
+		VI: "Đã tồn tại chuyển đổi đơn vị từ %d đến %d",
 	},
 }
 
@@ -670,4 +680,10 @@ func ErrFailedToAddNewDateRowExcel(ctx context.Context, cause error) *AppError {
 func ErrFailedToAddExpensesToExcel(ctx context.Context, cause error) *AppError {
 	message := getErrorMessage(ctx, ErrKeyFailedToAddExpensesToExcel)
 	return NewAppError(ErrorCodeInternal, message, cause)
+}
+
+func ErrUnitConversionAlreadyExists(ctx context.Context, fromUnitID, toUnitID uint) *AppError {
+	template := getErrorMessage(ctx, ErrKeyUnitConversionAlreadyExists)
+	message := fmt.Sprintf(template, fromUnitID, toUnitID)
+	return NewAppError(ErrorCodeDuplicate, message, nil)
 }

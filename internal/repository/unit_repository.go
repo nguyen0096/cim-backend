@@ -22,6 +22,13 @@ type UnitRepository interface {
 	Search(ctx context.Context, query string, limit, offset int, sortBy, sortOrder, unitType string, baseOnly bool) ([]models.Unit, error)
 	Count(ctx context.Context, unitType string, baseOnly bool) (int64, error)
 	CountSearch(ctx context.Context, query, unitType string, baseOnly bool) (int64, error)
+
+	// v1
+
+	// UnitConversion
+
+	GetConversionsFrom(ctx context.Context, unitID uint) ([]models.UnitConversion, error)
+	CreateConversion(ctx context.Context, conversion *models.UnitConversion) error
 }
 
 type unitRepository struct {
