@@ -510,21 +510,23 @@ var _ = Describe("Unit API", func() {
 	})
 
 	Describe("Update Unit", func() {
-		var baseUnit *models.Unit
-		var level2Unit *models.Unit
-		var level3Unit *models.Unit
-		var level4Unit *models.Unit
+		type testUnits struct {
+			baseUnit   *models.Unit
+			level2Unit *models.Unit
+			level3Unit *models.Unit
+			level4Unit *models.Unit
+		}
 
-		BeforeEach(func() {
-			baseUnit = fixture.WithUnit(tenv.ContextfulDB(), models.Unit{
-				Name:             "Update Test Base Unit",
+		createTestUnits := func() testUnits {
+			baseUnit := fixture.WithUnit(tenv.ContextfulDB(), models.Unit{
+				Name:             fmt.Sprintf("Update Test Base Unit %s", uuid.New().String()),
 				Symbol:           "utbu",
 				UnitType:         "general",
 				ConversionFactor: 1,
 			})
 
-			level2Unit = fixture.WithUnit(tenv.ContextfulDB(), models.Unit{
-				Name:             "Level 2 Unit",
+			level2Unit := fixture.WithUnit(tenv.ContextfulDB(), models.Unit{
+				Name:             fmt.Sprintf("Level 2 Unit %s", uuid.New().String()),
 				Symbol:           "l2",
 				UnitType:         "general",
 				ConversionFactor: 2,
@@ -532,8 +534,8 @@ var _ = Describe("Unit API", func() {
 				Level:            2,
 			})
 
-			level3Unit = fixture.WithUnit(tenv.ContextfulDB(), models.Unit{
-				Name:             "Level 3 Unit",
+			level3Unit := fixture.WithUnit(tenv.ContextfulDB(), models.Unit{
+				Name:             fmt.Sprintf("Level 3 Unit %s", uuid.New().String()),
 				Symbol:           "l3",
 				UnitType:         "general",
 				ConversionFactor: 3,
@@ -541,31 +543,40 @@ var _ = Describe("Unit API", func() {
 				Level:            3,
 			})
 
-			level4Unit = fixture.WithUnit(tenv.ContextfulDB(), models.Unit{
-				Name:             "Level 4 Unit",
+			level4Unit := fixture.WithUnit(tenv.ContextfulDB(), models.Unit{
+				Name:             fmt.Sprintf("Level 4 Unit %s", uuid.New().String()),
 				Symbol:           "l4",
 				UnitType:         "general",
 				ConversionFactor: 4,
 				BaseUnitID:       pkg.Ptr(level3Unit.ID),
 				Level:            4,
 			})
-		})
+
+			return testUnits{
+				baseUnit:   baseUnit,
+				level2Unit: level2Unit,
+				level3Unit: level3Unit,
+				level4Unit: level4Unit,
+			}
+		}
 
 		Context("when user has authorized role", func() {
 			It("should update unit with admin role", func() {
 				client := testutil.NewClient(tenv, models.RoleAdmin)
-				updatedName := fmt.Sprintf("Updated Unit Name %s", uuid.New().String())
+				units := createTestUnits()
+
+				updatedName := strings.ToUpper(fmt.Sprintf("Updated Unit Name %s", uuid.New().String()))
 
 				payload := map[string]interface{}{
 					"name":              updatedName,
 					"symbol":            "updated",
 					"unit_type":         "general",
-					"base_unit_id":      baseUnit.ID,
+					"base_unit_id":      units.baseUnit.ID,
 					"conversion_factor": 5,
 					"decimal_places":    3,
 				}
 
-				urlPath := fmt.Sprintf("/api/v1/units/%d", level2Unit.ID)
+				urlPath := fmt.Sprintf("/api/v1/units/%d", units.level2Unit.ID)
 				resp, err := client.MakeRequest("PUT", urlPath, payload, testutil.WithAuth())
 				Expect(err).NotTo(HaveOccurred())
 				Expect(resp.StatusCode).To(Equal(200))
@@ -574,25 +585,27 @@ var _ = Describe("Unit API", func() {
 				Expect(unitResp["name"]).To(Equal(updatedName))
 				Expect(unitResp["symbol"]).To(Equal("updated"))
 				Expect(unitResp["unit_type"]).To(Equal("general"))
-				Expect(unitResp["base_unit_id"]).To(Equal(float64(baseUnit.ID)))
+				Expect(unitResp["base_unit_id"]).To(Equal(float64(units.baseUnit.ID)))
 				Expect(unitResp["conversion_factor"]).To(Equal(float64(5)))
 				Expect(unitResp["decimal_places"]).To(Equal(float64(3)))
 			})
 
 			It("should update unit with accountant role", func() {
 				client := testutil.NewClient(tenv, models.RoleAccountant)
-				updatedName := fmt.Sprintf("Updated Unit Name %s", uuid.New().String())
+				units := createTestUnits()
+
+				updatedName := strings.ToUpper(fmt.Sprintf("Updated Unit Name %s", uuid.New().String()))
 
 				payload := map[string]interface{}{
 					"name":              updatedName,
 					"symbol":            "updated",
 					"unit_type":         "general",
-					"base_unit_id":      baseUnit.ID,
+					"base_unit_id":      units.baseUnit.ID,
 					"conversion_factor": 5,
 					"decimal_places":    3,
 				}
 
-				urlPath := fmt.Sprintf("/api/v1/units/%d", level2Unit.ID)
+				urlPath := fmt.Sprintf("/api/v1/units/%d", units.level2Unit.ID)
 				resp, err := client.MakeRequest("PUT", urlPath, payload, testutil.WithAuth())
 				Expect(err).NotTo(HaveOccurred())
 				Expect(resp.StatusCode).To(Equal(200))
@@ -604,6 +617,7 @@ var _ = Describe("Unit API", func() {
 
 		It("should update unit level and conversion factor to current when change base unit", func() {
 			client := testutil.NewClient(tenv, models.RoleAdmin)
+			units := createTestUnits()
 
 			// Create a fresh level2Unit for this test
 			freshLevel2Unit := fixture.WithUnit(tenv.ContextfulDB(), models.Unit{
@@ -611,7 +625,7 @@ var _ = Describe("Unit API", func() {
 				Symbol:           "fl2",
 				UnitType:         "general",
 				ConversionFactor: 2,
-				BaseUnitID:       pkg.Ptr(baseUnit.ID),
+				BaseUnitID:       pkg.Ptr(units.baseUnit.ID),
 				Level:            2,
 			})
 
@@ -626,7 +640,7 @@ var _ = Describe("Unit API", func() {
 			})
 
 			// Get base unit to see its derived units
-			urlPathGet := fmt.Sprintf("/api/v1/units/%d", baseUnit.ID)
+			urlPathGet := fmt.Sprintf("/api/v1/units/%d", units.baseUnit.ID)
 			respGet, err := client.MakeRequest("GET", urlPathGet, nil, testutil.WithAuth())
 			Expect(err).NotTo(HaveOccurred())
 			Expect(respGet.StatusCode).To(Equal(200))
@@ -651,7 +665,7 @@ var _ = Describe("Unit API", func() {
 				"name":              testUnitForLevelChange.Name,
 				"symbol":            testUnitForLevelChange.Symbol,
 				"unit_type":         "general",
-				"base_unit_id":      baseUnit.ID,
+				"base_unit_id":      units.baseUnit.ID,
 				"conversion_factor": 10,
 			}
 
@@ -663,7 +677,7 @@ var _ = Describe("Unit API", func() {
 			unitResp := testutil.ParseResponse(resp)
 			Expect(unitResp["level"]).To(Equal(float64(2)))
 			Expect(unitResp["conversion_factor"]).To(Equal(float64(10)))
-			Expect(unitResp["base_unit_id"]).To(Equal(float64(baseUnit.ID)))
+			Expect(unitResp["base_unit_id"]).To(Equal(float64(units.baseUnit.ID)))
 
 			// Get base unit again to verify conversion factor
 			respGet2, err := client.MakeRequest("GET", urlPathGet, nil, testutil.WithAuth())
@@ -688,16 +702,17 @@ var _ = Describe("Unit API", func() {
 		Context("when user has unauthorized role", func() {
 			It("should not update unit with staff role", func() {
 				client := testutil.NewClient(tenv, models.RoleStaff)
+				units := createTestUnits()
 
 				payload := map[string]interface{}{
 					"name":              "Updated Name",
 					"symbol":            "updated",
 					"unit_type":         "general",
-					"base_unit_id":      baseUnit.ID,
+					"base_unit_id":      units.baseUnit.ID,
 					"conversion_factor": 5,
 				}
 
-				urlPath := fmt.Sprintf("/api/v1/units/%d", level2Unit.ID)
+				urlPath := fmt.Sprintf("/api/v1/units/%d", units.level2Unit.ID)
 				resp, err := client.MakeRequest("PUT", urlPath, payload, testutil.WithAuth())
 				Expect(err).NotTo(HaveOccurred())
 				Expect(resp.StatusCode).To(Equal(403))
@@ -708,16 +723,17 @@ var _ = Describe("Unit API", func() {
 
 			It("should not update unit with bot form role", func() {
 				client := testutil.NewClient(tenv, models.RoleBotForm)
+				units := createTestUnits()
 
 				payload := map[string]interface{}{
 					"name":              "Updated Name",
 					"symbol":            "updated",
 					"unit_type":         "general",
-					"base_unit_id":      baseUnit.ID,
+					"base_unit_id":      units.baseUnit.ID,
 					"conversion_factor": 5,
 				}
 
-				urlPath := fmt.Sprintf("/api/v1/units/%d", level2Unit.ID)
+				urlPath := fmt.Sprintf("/api/v1/units/%d", units.level2Unit.ID)
 				resp, err := client.MakeRequest("PUT", urlPath, payload, testutil.WithAuth())
 				Expect(err).NotTo(HaveOccurred())
 				Expect(resp.StatusCode).To(Equal(403))
@@ -750,9 +766,10 @@ var _ = Describe("Unit API", func() {
 		Context("when duplicate name exists", func() {
 			It("should return error", func(ctx SpecContext) {
 				client := testutil.NewClient(tenv, models.RoleAdmin)
+				units := createTestUnits()
 
 				duplicateTestUnit := fixture.WithUnit(tenv.ContextfulDB(), models.Unit{
-					Name:             "Duplicate Test Unit",
+					Name:             fmt.Sprintf("Duplicate Test Unit %s", uuid.New().String()),
 					Symbol:           "dtu",
 					UnitType:         "general",
 					ConversionFactor: 1,
@@ -765,7 +782,7 @@ var _ = Describe("Unit API", func() {
 					"conversion_factor": 1,
 				}
 
-				urlPath := fmt.Sprintf("/api/v1/units/%d", level2Unit.ID)
+				urlPath := fmt.Sprintf("/api/v1/units/%d", units.level2Unit.ID)
 				resp, err := client.MakeRequest("PUT", urlPath, payload, testutil.WithAuth())
 				Expect(err).NotTo(HaveOccurred())
 				Expect(resp.StatusCode).To(Equal(409))
@@ -778,21 +795,22 @@ var _ = Describe("Unit API", func() {
 		Context("when reaching maximum hierarchy depth", func() {
 			It("should return error", func() {
 				client := testutil.NewClient(tenv, models.RoleAdmin)
+				units := createTestUnits()
 
 				testUnitForDepth := fixture.WithUnit(tenv.ContextfulDB(), models.Unit{
-					Name:             "Depth Test Unit" + uuid.New().String(),
+					Name:             fmt.Sprintf("Depth Test Unit %s", uuid.New().String()),
 					Symbol:           "dtu",
 					UnitType:         "general",
 					ConversionFactor: 2,
-					BaseUnitID:       pkg.Ptr(baseUnit.ID),
+					BaseUnitID:       pkg.Ptr(units.baseUnit.ID),
 					Level:            2,
 				})
 
 				payload := map[string]interface{}{
-					"name":              "Test Unit" + uuid.New().String(),
+					"name":              fmt.Sprintf("Test Unit %s", uuid.New().String()),
 					"symbol":            "test",
 					"unit_type":         "general",
-					"base_unit_id":      level4Unit.ID,
+					"base_unit_id":      units.level4Unit.ID,
 					"conversion_factor": 1,
 				}
 
@@ -809,23 +827,24 @@ var _ = Describe("Unit API", func() {
 		Context("when base unit has different unit_type", func() {
 			It("should return error", func(ctx SpecContext) {
 				client := testutil.NewClient(tenv, models.RoleAdmin)
+				units := createTestUnits()
 
 				differentTypeUnit := fixture.WithUnit(tenv.ContextfulDB(), models.Unit{
-					Name:             "Different Type Unit",
+					Name:             fmt.Sprintf("Different Type Unit %s", uuid.New().String()),
 					Symbol:           "dtu",
 					UnitType:         "mass",
 					ConversionFactor: 1,
 				})
 
 				payload := map[string]interface{}{
-					"name":              "Test Unit" + uuid.New().String(),
+					"name":              fmt.Sprintf("Test Unit %s", uuid.New().String()),
 					"symbol":            "test",
 					"unit_type":         "general",
 					"base_unit_id":      differentTypeUnit.ID,
 					"conversion_factor": 1,
 				}
 
-				urlPath := fmt.Sprintf("/api/v1/units/%d", level2Unit.ID)
+				urlPath := fmt.Sprintf("/api/v1/units/%d", units.level2Unit.ID)
 				resp, err := client.MakeRequest("PUT", urlPath, payload, testutil.WithAuth())
 				Expect(err).NotTo(HaveOccurred())
 				Expect(resp.StatusCode).To(Equal(400))
@@ -838,16 +857,17 @@ var _ = Describe("Unit API", func() {
 		Context("when base unit conversion factor is not 1", func() {
 			It("should return error", func() {
 				client := testutil.NewClient(tenv, models.RoleAdmin)
+				units := createTestUnits()
 
 				payload := map[string]interface{}{
-					"name":              "Test Unit" + uuid.New().String(),
+					"name":              fmt.Sprintf("Test Unit %s", uuid.New().String()),
 					"symbol":            "test",
 					"unit_type":         "general",
 					"base_unit_id":      nil,
 					"conversion_factor": 5,
 				}
 
-				urlPath := fmt.Sprintf("/api/v1/units/%d", baseUnit.ID)
+				urlPath := fmt.Sprintf("/api/v1/units/%d", units.baseUnit.ID)
 				resp, err := client.MakeRequest("PUT", urlPath, payload, testutil.WithAuth())
 				Expect(err).NotTo(HaveOccurred())
 				Expect(resp.StatusCode).To(Equal(400))

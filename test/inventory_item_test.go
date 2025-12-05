@@ -33,6 +33,7 @@ var _ = Describe("InventoryItemRepository", func() {
 		Context("filtering active items", func() {
 			It("should return active items for single inventory ID", func() {
 				// Setup minimal fixture
+				unit := fixture.WithUnit(db.WithContext(ctx), models.Unit{Name: "Unit 1", Symbol: "U1", UnitType: "general"})
 				_ = fixture.WithSupplier(db.WithContext(ctx), models.Supplier{
 					Name:         "Test Supplier",
 					ContactEmail: "test@supplier.com",
@@ -40,8 +41,8 @@ var _ = Describe("InventoryItemRepository", func() {
 					Address:      "Test Address",
 				})
 				products := fixture.WithProducts(db.WithContext(ctx), []*models.Product{
-					{Name: "Product 1", Status: "active", UnitID: 1},
-					{Name: "Product 2", Status: "active", UnitID: 1},
+					{Name: "Product 1", Status: "active", UnitID: unit.ID},
+					{Name: "Product 2", Status: "active", UnitID: unit.ID},
 				})
 				inventory := fixture.WithInventory(db.WithContext(ctx), models.Inventory{
 					Name:   fmt.Sprintf("Test Inventory %d", time.Now().UnixNano()),
@@ -50,8 +51,8 @@ var _ = Describe("InventoryItemRepository", func() {
 
 				// Create inventory items
 				items := []models.InventoryItem{
-					{InventoryID: inventory.ID, ProductID: products[0].ID, Quantity: decimal.NewFromInt(10), Status: models.InventoryItemStatusActive},
-					{InventoryID: inventory.ID, ProductID: products[1].ID, Quantity: decimal.NewFromInt(5), Status: models.InventoryItemStatusActive},
+					{InventoryID: inventory.ID, ProductID: products[0].ID, Quantity: decimal.NewFromInt(10), Status: models.InventoryItemStatusActive, UnitID: unit.ID},
+					{InventoryID: inventory.ID, ProductID: products[1].ID, Quantity: decimal.NewFromInt(5), Status: models.InventoryItemStatusActive, UnitID: unit.ID},
 				}
 				err := db.WithContext(ctx).Create(&items).Error
 				Expect(err).To(BeNil())
@@ -74,6 +75,7 @@ var _ = Describe("InventoryItemRepository", func() {
 
 			It("should include items with zero quantity if status is active", func() {
 				// Setup minimal fixture
+				unit := fixture.WithUnit(db.WithContext(ctx), models.Unit{Name: "Unit 1", Symbol: "U1", UnitType: "general"})
 				_ = fixture.WithSupplier(db.WithContext(ctx), models.Supplier{
 					Name:         "Test Supplier",
 					ContactEmail: "test@supplier.com",
@@ -81,8 +83,8 @@ var _ = Describe("InventoryItemRepository", func() {
 					Address:      "Test Address",
 				})
 				products := fixture.WithProducts(db.WithContext(ctx), []*models.Product{
-					{Name: "Product with stock", Status: "active", UnitID: 1},
-					{Name: "Product with zero stock", Status: "active", UnitID: 1},
+					{Name: "Product with stock", Status: "active", UnitID: unit.ID},
+					{Name: "Product with zero stock", Status: "active", UnitID: unit.ID},
 				})
 				inventory := fixture.WithInventory(db.WithContext(ctx), models.Inventory{
 					Name:   fmt.Sprintf("Test Inventory %d", time.Now().UnixNano()),
@@ -91,8 +93,8 @@ var _ = Describe("InventoryItemRepository", func() {
 
 				// Create inventory items (both active status, one with quantity 0)
 				items := []models.InventoryItem{
-					{InventoryID: inventory.ID, ProductID: products[0].ID, Quantity: decimal.NewFromInt(10), Status: models.InventoryItemStatusActive},
-					{InventoryID: inventory.ID, ProductID: products[1].ID, Quantity: decimal.Zero, Status: models.InventoryItemStatusActive},
+					{InventoryID: inventory.ID, ProductID: products[0].ID, Quantity: decimal.NewFromInt(10), Status: models.InventoryItemStatusActive, UnitID: unit.ID},
+					{InventoryID: inventory.ID, ProductID: products[1].ID, Quantity: decimal.Zero, Status: models.InventoryItemStatusActive, UnitID: unit.ID},
 				}
 				err := db.WithContext(ctx).Create(&items).Error
 				Expect(err).To(BeNil())
@@ -123,6 +125,7 @@ var _ = Describe("InventoryItemRepository", func() {
 		Context("preloading transactions with ConsumingTransactionID", func() {
 			It("should preload purchase transactions correctly for item with ConsumingTransactionID", func() {
 				// Setup minimal fixture
+				unit := fixture.WithUnit(db.WithContext(ctx), models.Unit{Name: "Unit 1", Symbol: "U1", UnitType: "general"})
 				supplier := fixture.WithSupplier(db.WithContext(ctx), models.Supplier{
 					Name:         "Test Supplier",
 					ContactEmail: "test@supplier.com",
@@ -130,7 +133,7 @@ var _ = Describe("InventoryItemRepository", func() {
 					Address:      "Test Address",
 				})
 				products := fixture.WithProducts(db.WithContext(ctx), []*models.Product{
-					{Name: "Test Product", Status: "active", UnitID: 1},
+					{Name: "Test Product", Status: "active", UnitID: unit.ID},
 				})
 				inventory := fixture.WithInventory(db.WithContext(ctx), models.Inventory{
 					Name:   fmt.Sprintf("Test Inventory %d", time.Now().UnixNano()),
@@ -143,6 +146,7 @@ var _ = Describe("InventoryItemRepository", func() {
 					ProductID:   products[0].ID,
 					Quantity:    decimal.NewFromInt(5),
 					Status:      models.InventoryItemStatusActive,
+					UnitID:      unit.ID,
 				}
 				err := db.WithContext(ctx).Create(&item).Error
 				Expect(err).To(BeNil())
@@ -200,6 +204,7 @@ var _ = Describe("InventoryItemRepository", func() {
 
 			BeforeEach(func() {
 				// Setup fixture for both tests in this context
+				unit := fixture.WithUnit(db.WithContext(ctx), models.Unit{Name: "Unit 1", Symbol: "U1", UnitType: "general"})
 				supplier := fixture.WithSupplier(db.WithContext(ctx), models.Supplier{
 					Name:         "Test Supplier",
 					ContactEmail: "test@supplier.com",
@@ -207,7 +212,7 @@ var _ = Describe("InventoryItemRepository", func() {
 					Address:      "Test Address",
 				})
 				products := fixture.WithProducts(db.WithContext(ctx), []*models.Product{
-					{Name: "Test Product", Status: "active", UnitID: 1},
+					{Name: "Test Product", Status: "active", UnitID: unit.ID},
 				})
 				inventory = fixture.WithInventory(db.WithContext(ctx), models.Inventory{
 					Name:   fmt.Sprintf("Test Inventory %d", time.Now().UnixNano()),
@@ -220,6 +225,7 @@ var _ = Describe("InventoryItemRepository", func() {
 					ProductID:   products[0].ID,
 					Quantity:    decimal.NewFromInt(45),
 					Status:      models.InventoryItemStatusActive,
+					UnitID:      unit.ID,
 				}
 				err := db.WithContext(ctx).Create(&item).Error
 				Expect(err).To(BeNil())
@@ -333,10 +339,12 @@ var _ = Describe("SaveInventoryItemChanges", func() {
 		ctx = tenv.DefaultContext
 		db = tenv.ContextfulDB()
 		repo = repository.NewInventoryItemRepository(db)
+
 	})
 
 	It("should successfully create and update inventory items and transactions with valid data", func() {
 		// Setup minimal fixture
+		unit := fixture.WithUnit(db.WithContext(ctx), models.Unit{Name: "Unit 1", Symbol: "U1", UnitType: "general"})
 		supplier := fixture.WithSupplier(db.WithContext(ctx), models.Supplier{
 			Name:         "Test Supplier",
 			ContactEmail: "test@supplier.com",
@@ -344,8 +352,8 @@ var _ = Describe("SaveInventoryItemChanges", func() {
 			Address:      "Test Address",
 		})
 		products := fixture.WithProducts(db.WithContext(ctx), []*models.Product{
-			{Name: "Product 1", Status: "active", UnitID: 1},
-			{Name: "Product 2", Status: "active", UnitID: 1},
+			{Name: "Product 1", Status: "active", UnitID: unit.ID},
+			{Name: "Product 2", Status: "active", UnitID: unit.ID},
 		})
 		inventory := fixture.WithInventory(db.WithContext(ctx), models.Inventory{
 			Name:   fmt.Sprintf("Test Inventory %d", time.Now().UnixNano()),
@@ -354,7 +362,7 @@ var _ = Describe("SaveInventoryItemChanges", func() {
 
 		// Create inventory items
 		items := []models.InventoryItem{
-			{InventoryID: inventory.ID, ProductID: products[0].ID, Quantity: decimal.NewFromInt(10), Status: models.InventoryItemStatusActive},
+			{InventoryID: inventory.ID, ProductID: products[0].ID, Quantity: decimal.NewFromInt(10), Status: models.InventoryItemStatusActive, UnitID: unit.ID},
 		}
 		err := db.WithContext(ctx).Create(&items).Error
 		Expect(err).To(BeNil())
@@ -380,11 +388,12 @@ var _ = Describe("SaveInventoryItemChanges", func() {
 			ProductID:   products[1].ID,
 			Quantity:    decimal.NewFromInt(5),
 			Status:      models.InventoryItemStatusActive,
+			UnitID:      unit.ID,
 		}
 
 		changes := []*models.InventoryItemChange{
 			{
-				InventoryItem:    &models.InventoryItem{Base: models.Base{ID: items[0].ID}, InventoryID: inventory.ID, ProductID: products[0].ID, Quantity: decimal.NewFromInt(8), Status: models.InventoryItemStatusActive},
+				InventoryItem:    &models.InventoryItem{Base: models.Base{ID: items[0].ID}, InventoryID: inventory.ID, ProductID: products[0].ID, Quantity: decimal.NewFromInt(8), Status: models.InventoryItemStatusActive, UnitID: unit.ID},
 				OriginalQuantity: decimal.NewFromInt(10),
 			},
 			{InventoryItem: newInventoryItem},
@@ -428,6 +437,7 @@ var _ = Describe("SaveInventoryItemChanges", func() {
 
 	It("should return error when quantity has been modified by another transaction", func() {
 		// Setup minimal fixture
+		unit := fixture.WithUnit(db.WithContext(ctx), models.Unit{Name: "Unit 1", Symbol: "U1", UnitType: "general"})
 		_ = fixture.WithSupplier(db.WithContext(ctx), models.Supplier{
 			Name:         "Test Supplier",
 			ContactEmail: "test@supplier.com",
@@ -435,7 +445,7 @@ var _ = Describe("SaveInventoryItemChanges", func() {
 			Address:      "Test Address",
 		})
 		products := fixture.WithProducts(db.WithContext(ctx), []*models.Product{
-			{Name: "Product 1", Status: "active", UnitID: 1},
+			{Name: "Product 1", Status: "active", UnitID: unit.ID},
 		})
 		inventory := fixture.WithInventory(db.WithContext(ctx), models.Inventory{
 			Name:   fmt.Sprintf("Test Inventory %d", time.Now().UnixNano()),
@@ -447,6 +457,7 @@ var _ = Describe("SaveInventoryItemChanges", func() {
 			ProductID:   products[0].ID,
 			Quantity:    decimal.NewFromInt(10),
 			Status:      models.InventoryItemStatusActive,
+			UnitID:      unit.ID,
 		}
 		err := db.WithContext(ctx).Create(&item).Error
 		Expect(err).To(BeNil())
@@ -465,7 +476,7 @@ var _ = Describe("SaveInventoryItemChanges", func() {
 
 		changes := []*models.InventoryItemChange{
 			{
-				InventoryItem:    &models.InventoryItem{Base: models.Base{ID: item.ID}, InventoryID: inventory.ID, ProductID: products[0].ID, Quantity: decimal.NewFromInt(8), Status: models.InventoryItemStatusActive},
+				InventoryItem:    &models.InventoryItem{Base: models.Base{ID: item.ID}, InventoryID: inventory.ID, ProductID: products[0].ID, Quantity: decimal.NewFromInt(8), Status: models.InventoryItemStatusActive, UnitID: unit.ID},
 				OriginalQuantity: originalQuantity,
 			},
 		}
@@ -491,6 +502,7 @@ var _ = Describe("SaveInventoryItemChanges", func() {
 
 	It("should handle only inventory items without transactions", func() {
 		// Setup minimal fixture
+		unit := fixture.WithUnit(db.WithContext(ctx), models.Unit{Name: "Unit 1", Symbol: "U1", UnitType: "general"})
 		_ = fixture.WithSupplier(db.WithContext(ctx), models.Supplier{
 			Name:         "Test Supplier",
 			ContactEmail: "test@supplier.com",
@@ -498,7 +510,7 @@ var _ = Describe("SaveInventoryItemChanges", func() {
 			Address:      "Test Address",
 		})
 		products := fixture.WithProducts(db.WithContext(ctx), []*models.Product{
-			{Name: "Product 1", Status: "active", UnitID: 1},
+			{Name: "Product 1", Status: "active", UnitID: unit.ID},
 		})
 		inventory := fixture.WithInventory(db.WithContext(ctx), models.Inventory{
 			Name:   fmt.Sprintf("Test Inventory %d", time.Now().UnixNano()),
@@ -510,6 +522,7 @@ var _ = Describe("SaveInventoryItemChanges", func() {
 			ProductID:   products[0].ID,
 			Quantity:    decimal.NewFromInt(10),
 			Status:      models.InventoryItemStatusActive,
+			UnitID:      unit.ID,
 		}
 		err := db.WithContext(ctx).Create(&item).Error
 		Expect(err).To(BeNil())
@@ -519,7 +532,7 @@ var _ = Describe("SaveInventoryItemChanges", func() {
 
 		changes := []*models.InventoryItemChange{
 			{
-				InventoryItem:    &models.InventoryItem{Base: models.Base{ID: item.ID}, InventoryID: inventory.ID, ProductID: products[0].ID, Quantity: decimal.NewFromInt(9), Status: models.InventoryItemStatusActive},
+				InventoryItem:    &models.InventoryItem{Base: models.Base{ID: item.ID}, InventoryID: inventory.ID, ProductID: products[0].ID, Quantity: decimal.NewFromInt(9), Status: models.InventoryItemStatusActive, UnitID: unit.ID},
 				OriginalQuantity: decimal.NewFromInt(10),
 			},
 		}
@@ -535,6 +548,7 @@ var _ = Describe("SaveInventoryItemChanges", func() {
 
 	It("should handle only transactions without inventory items", func() {
 		// Setup minimal fixture
+		unit := fixture.WithUnit(db.WithContext(ctx), models.Unit{Name: "Unit 1", Symbol: "U1", UnitType: "general"})
 		_ = fixture.WithSupplier(db.WithContext(ctx), models.Supplier{
 			Name:         "Test Supplier",
 			ContactEmail: "test@supplier.com",
@@ -542,7 +556,7 @@ var _ = Describe("SaveInventoryItemChanges", func() {
 			Address:      "Test Address",
 		})
 		products := fixture.WithProducts(db.WithContext(ctx), []*models.Product{
-			{Name: "Product 1", Status: "active", UnitID: 1},
+			{Name: "Product 1", Status: "active", UnitID: unit.ID},
 		})
 		inventory := fixture.WithInventory(db.WithContext(ctx), models.Inventory{
 			Name:   fmt.Sprintf("Test Inventory %d", time.Now().UnixNano()),
@@ -554,6 +568,7 @@ var _ = Describe("SaveInventoryItemChanges", func() {
 			ProductID:   products[0].ID,
 			Quantity:    decimal.NewFromInt(5),
 			Status:      models.InventoryItemStatusActive,
+			UnitID:      unit.ID,
 		}
 		err := db.WithContext(ctx).Create(&item).Error
 		Expect(err).To(BeNil())
@@ -577,6 +592,7 @@ var _ = Describe("SaveInventoryItemChanges", func() {
 
 	It("should rollback transaction on error", func() {
 		// Setup minimal fixture
+		unit := fixture.WithUnit(db.WithContext(ctx), models.Unit{Name: "Unit 1", Symbol: "U1", UnitType: "general"})
 		_ = fixture.WithSupplier(db.WithContext(ctx), models.Supplier{
 			Name:         "Test Supplier",
 			ContactEmail: "test@supplier.com",
@@ -584,7 +600,7 @@ var _ = Describe("SaveInventoryItemChanges", func() {
 			Address:      "Test Address",
 		})
 		products := fixture.WithProducts(db.WithContext(ctx), []*models.Product{
-			{Name: "Product 1", Status: "active", UnitID: 1},
+			{Name: "Product 1", Status: "active", UnitID: unit.ID},
 		})
 		inventory := fixture.WithInventory(db.WithContext(ctx), models.Inventory{
 			Name:   fmt.Sprintf("Test Inventory %d", time.Now().UnixNano()),
@@ -596,6 +612,7 @@ var _ = Describe("SaveInventoryItemChanges", func() {
 			ProductID:   products[0].ID,
 			Quantity:    decimal.NewFromInt(20),
 			Status:      models.InventoryItemStatusActive,
+			UnitID:      unit.ID,
 		}
 		err := db.WithContext(ctx).Create(&item).Error
 		Expect(err).To(BeNil())
@@ -634,6 +651,7 @@ var _ = Describe("SaveInventoryItemChanges", func() {
 
 	It("should handle multiple items and transactions in single consumption", func() {
 		// Setup minimal fixture
+		unit := fixture.WithUnit(db.WithContext(ctx), models.Unit{Name: "Unit 1", Symbol: "U1", UnitType: "general"})
 		_ = fixture.WithSupplier(db.WithContext(ctx), models.Supplier{
 			Name:         "Test Supplier",
 			ContactEmail: "test@supplier.com",
@@ -641,9 +659,9 @@ var _ = Describe("SaveInventoryItemChanges", func() {
 			Address:      "Test Address",
 		})
 		products := fixture.WithProducts(db.WithContext(ctx), []*models.Product{
-			{Name: "Product 1", Status: "active", UnitID: 1},
-			{Name: "Product 2", Status: "active", UnitID: 1},
-			{Name: "Product 3", Status: "active", UnitID: 1},
+			{Name: "Product 1", Status: "active", UnitID: unit.ID},
+			{Name: "Product 2", Status: "active", UnitID: unit.ID},
+			{Name: "Product 3", Status: "active", UnitID: unit.ID},
 		})
 		inventory := fixture.WithInventory(db.WithContext(ctx), models.Inventory{
 			Name:   fmt.Sprintf("Test Inventory %d", time.Now().UnixNano()),
@@ -651,9 +669,9 @@ var _ = Describe("SaveInventoryItemChanges", func() {
 		})
 
 		items := []models.InventoryItem{
-			{InventoryID: inventory.ID, ProductID: products[0].ID, Quantity: decimal.NewFromInt(10), Status: models.InventoryItemStatusActive},
-			{InventoryID: inventory.ID, ProductID: products[1].ID, Quantity: decimal.NewFromInt(20), Status: models.InventoryItemStatusActive},
-			{InventoryID: inventory.ID, ProductID: products[2].ID, Quantity: decimal.NewFromInt(5), Status: models.InventoryItemStatusActive},
+			{InventoryID: inventory.ID, ProductID: products[0].ID, Quantity: decimal.NewFromInt(10), Status: models.InventoryItemStatusActive, UnitID: unit.ID},
+			{InventoryID: inventory.ID, ProductID: products[1].ID, Quantity: decimal.NewFromInt(20), Status: models.InventoryItemStatusActive, UnitID: unit.ID},
+			{InventoryID: inventory.ID, ProductID: products[2].ID, Quantity: decimal.NewFromInt(5), Status: models.InventoryItemStatusActive, UnitID: unit.ID},
 		}
 		err := db.WithContext(ctx).Create(&items).Error
 		Expect(err).To(BeNil())
@@ -663,9 +681,9 @@ var _ = Describe("SaveInventoryItemChanges", func() {
 		})
 
 		changes := []*models.InventoryItemChange{
-			{InventoryItem: &models.InventoryItem{Base: models.Base{ID: items[0].ID}, InventoryID: inventory.ID, ProductID: products[0].ID, Quantity: decimal.NewFromInt(7), Status: models.InventoryItemStatusActive}, OriginalQuantity: decimal.NewFromInt(10)},
-			{InventoryItem: &models.InventoryItem{Base: models.Base{ID: items[1].ID}, InventoryID: inventory.ID, ProductID: products[1].ID, Quantity: decimal.NewFromInt(18), Status: models.InventoryItemStatusActive}, OriginalQuantity: decimal.NewFromInt(20)},
-			{InventoryItem: &models.InventoryItem{Base: models.Base{ID: items[2].ID}, InventoryID: inventory.ID, ProductID: products[2].ID, Quantity: decimal.NewFromInt(3), Status: models.InventoryItemStatusActive}, OriginalQuantity: decimal.NewFromInt(5)},
+			{InventoryItem: &models.InventoryItem{Base: models.Base{ID: items[0].ID}, InventoryID: inventory.ID, ProductID: products[0].ID, Quantity: decimal.NewFromInt(7), Status: models.InventoryItemStatusActive, UnitID: unit.ID}, OriginalQuantity: decimal.NewFromInt(10)},
+			{InventoryItem: &models.InventoryItem{Base: models.Base{ID: items[1].ID}, InventoryID: inventory.ID, ProductID: products[1].ID, Quantity: decimal.NewFromInt(18), Status: models.InventoryItemStatusActive, UnitID: unit.ID}, OriginalQuantity: decimal.NewFromInt(20)},
+			{InventoryItem: &models.InventoryItem{Base: models.Base{ID: items[2].ID}, InventoryID: inventory.ID, ProductID: products[2].ID, Quantity: decimal.NewFromInt(3), Status: models.InventoryItemStatusActive, UnitID: unit.ID}, OriginalQuantity: decimal.NewFromInt(5)},
 		}
 
 		sellTxns := []*models.InventoryTransaction{
