@@ -1575,14 +1575,24 @@ func SeedDatabase() error {
 
 	// Seed in correct order (respecting foreign key constraints)
 
-	// 0. Units
-	units := Units()
-	if err := tx.Create(&units).Error; err != nil {
+	// 0. Base Units (Level 1)
+	baseUnits := Units()
+	if err := tx.Create(&baseUnits).Error; err != nil {
 		tx.Rollback()
-		return fmt.Errorf("failed to create units: %w", err)
+		return fmt.Errorf("failed to create base units: %w", err)
 	}
-	unitIDs := make(map[string]uint, len(units))
-	for _, unit := range units {
+
+	// 0.1. Derived Units (Levels 2-4)
+	derivedUnits, err := createDerivedUnits(tx, baseUnits)
+	if err != nil {
+		tx.Rollback()
+		return fmt.Errorf("failed to create derived units: %w", err)
+	}
+
+	// 0.2. Build unitIDs map for product creation
+	allUnits := append(baseUnits, derivedUnits...)
+	unitIDs := make(map[string]uint, len(allUnits))
+	for _, unit := range allUnits {
 		unitIDs[unit.Symbol] = unit.ID
 	}
 
@@ -1703,4 +1713,220 @@ func seedUsers(db *gorm.DB, casbinCfg config.CasbinConfig) error {
 
 	log.Println("User seeding completed!")
 	return nil
+}
+
+// createDerivedUnits creates derived units (levels 2-4) based on the base units
+func createDerivedUnits(tx *gorm.DB, baseUnits []models.Unit) ([]models.Unit, error) {
+	now := time.Now()
+
+	// Build map for easy lookup of base units by symbol
+	unitMap := make(map[string]*models.Unit)
+	for i := range baseUnits {
+		unitMap[baseUnits[i].Symbol] = &baseUnits[i]
+	}
+
+	// Level 2 units
+	level2Units := []models.Unit{
+		// Mass hierarchy - Level 2: GRAM
+		{
+			Base: models.Base{
+				CreatedAt: now,
+				UpdatedAt: now,
+			},
+			UnitType:         "mass",
+			Name:             "GRAM",
+			Symbol:           "g",
+			ConversionFactor: 0.001,
+			Level:            2,
+			BaseUnitID:       &unitMap["kg"].ID,
+		},
+		// Volume hierarchy - Level 2: MILLILITER
+		{
+			Base: models.Base{
+				CreatedAt: now,
+				UpdatedAt: now,
+			},
+			UnitType:         "volume",
+			Name:             "MILLILITER",
+			Symbol:           "ml",
+			ConversionFactor: 0.001,
+			Level:            2,
+			BaseUnitID:       &unitMap["liter"].ID,
+		},
+		// Count hierarchies - Level 2
+		{
+			Base: models.Base{
+				CreatedAt: now,
+				UpdatedAt: now,
+			},
+			UnitType:         "count",
+			Name:             "BOX_CARTON",
+			Symbol:           "box_c",
+			ConversionFactor: 0.25,
+			Level:            2,
+			BaseUnitID:       &unitMap["carton"].ID,
+		},
+		{
+			Base: models.Base{
+				CreatedAt: now,
+				UpdatedAt: now,
+			},
+			UnitType:         "count",
+			Name:             "MILLILITER_BOTTLE",
+			Symbol:           "ml_btl",
+			ConversionFactor: 0.001,
+			Level:            2,
+			BaseUnitID:       &unitMap["bottle"].ID,
+		},
+		{
+			Base: models.Base{
+				CreatedAt: now,
+				UpdatedAt: now,
+			},
+			UnitType:         "count",
+			Name:             "MILLILITER_CAN",
+			Symbol:           "ml_can",
+			ConversionFactor: 0.00303,
+			Level:            2,
+			BaseUnitID:       &unitMap["can"].ID,
+		},
+		{
+			Base: models.Base{
+				CreatedAt: now,
+				UpdatedAt: now,
+			},
+			UnitType:         "count",
+			Name:             "PIECE_TRAY",
+			Symbol:           "piece_t",
+			ConversionFactor: 0.08333,
+			Level:            2,
+			BaseUnitID:       &unitMap["tray"].ID,
+		},
+		{
+			Base: models.Base{
+				CreatedAt: now,
+				UpdatedAt: now,
+			},
+			UnitType:         "count",
+			Name:             "SLICE",
+			Symbol:           "slice",
+			ConversionFactor: 0.05,
+			Level:            2,
+			BaseUnitID:       &unitMap["loaf"].ID,
+		},
+	}
+
+	if err := tx.Create(&level2Units).Error; err != nil {
+		return nil, fmt.Errorf("failed to create level 2 units: %w", err)
+	}
+
+	// Add level 2 units to map
+	for i := range level2Units {
+		unitMap[level2Units[i].Symbol] = &level2Units[i]
+	}
+
+	// Level 3 units
+	level3Units := []models.Unit{
+		// Mass hierarchy - Level 3: MILLIGRAM
+		{
+			Base: models.Base{
+				CreatedAt: now,
+				UpdatedAt: now,
+			},
+			UnitType:         "mass",
+			Name:             "MILLIGRAM",
+			Symbol:           "mg",
+			ConversionFactor: 0.001,
+			Level:            3,
+			BaseUnitID:       &unitMap["g"].ID,
+		},
+		// Volume hierarchy - Level 3: MICROLITER
+		{
+			Base: models.Base{
+				CreatedAt: now,
+				UpdatedAt: now,
+			},
+			UnitType:         "volume",
+			Name:             "MICROLITER",
+			Symbol:           "μl",
+			ConversionFactor: 0.001,
+			Level:            3,
+			BaseUnitID:       &unitMap["ml"].ID,
+		},
+		// Count hierarchy - Level 3: PACK_CARTON
+		{
+			Base: models.Base{
+				CreatedAt: now,
+				UpdatedAt: now,
+			},
+			UnitType:         "count",
+			Name:             "PACK_CARTON",
+			Symbol:           "pack_c",
+			ConversionFactor: 0.5,
+			Level:            3,
+			BaseUnitID:       &unitMap["box_c"].ID,
+		},
+	}
+
+	if err := tx.Create(&level3Units).Error; err != nil {
+		return nil, fmt.Errorf("failed to create level 3 units: %w", err)
+	}
+
+	// Add level 3 units to map
+	for i := range level3Units {
+		unitMap[level3Units[i].Symbol] = &level3Units[i]
+	}
+
+	// Level 4 units
+	level4Units := []models.Unit{
+		// Mass hierarchy - Level 4: MICROGRAM
+		{
+			Base: models.Base{
+				CreatedAt: now,
+				UpdatedAt: now,
+			},
+			UnitType:         "mass",
+			Name:             "MICROGRAM",
+			Symbol:           "mcg",
+			ConversionFactor: 0.001,
+			Level:            4,
+			BaseUnitID:       &unitMap["mg"].ID,
+		},
+		// Volume hierarchy - Level 4: NANOLITER
+		{
+			Base: models.Base{
+				CreatedAt: now,
+				UpdatedAt: now,
+			},
+			UnitType:         "volume",
+			Name:             "NANOLITER",
+			Symbol:           "nl",
+			ConversionFactor: 0.001,
+			Level:            4,
+			BaseUnitID:       &unitMap["μl"].ID,
+		},
+		// Count hierarchy - Level 4: PIECE_CARTON
+		{
+			Base: models.Base{
+				CreatedAt: now,
+				UpdatedAt: now,
+			},
+			UnitType:         "count",
+			Name:             "PIECE_CARTON",
+			Symbol:           "piece_c",
+			ConversionFactor: 0.1,
+			Level:            4,
+			BaseUnitID:       &unitMap["pack_c"].ID,
+		},
+	}
+
+	if err := tx.Create(&level4Units).Error; err != nil {
+		return nil, fmt.Errorf("failed to create level 4 units: %w", err)
+	}
+
+	// Combine all derived units
+	allDerived := append(level2Units, level3Units...)
+	allDerived = append(allDerived, level4Units...)
+
+	return allDerived, nil
 }

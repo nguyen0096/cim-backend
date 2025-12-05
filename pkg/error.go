@@ -54,6 +54,9 @@ const (
 	ErrorCodeUnsupportedFileFormat ErrorCode = 15 // unsupported-file-format
 	// ErrorCodeEmptyDataFile is used when a data row is not found.
 	ErrorCodeEmptyDataFile ErrorCode = 16 // data-row-not-found
+
+	// Unit Error Codes
+	ErrorCodeUnitConversionAlreadyExists ErrorCode = 17 // unit-conversion-already-exists
 )
 
 // AppError represents an application error with code, cause, and display message

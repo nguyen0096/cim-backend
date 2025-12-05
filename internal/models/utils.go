@@ -1,10 +1,5 @@
 package models
 
-var (
-	_ IDGetter = (*InventoryItem)(nil)
-	_ IDGetter = (*InventoryItemChange)(nil)
-)
-
 // IDGetter interface defines a method to get an ID as string
 type IDGetter interface {
 	GetID() uint

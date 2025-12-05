@@ -11,6 +11,8 @@ import (
 	"cim-backend/pkg/log"
 )
 
+var App *Config
+
 type Config struct {
 	Environment     string
 	Log             log.Config
@@ -80,7 +82,7 @@ func Load(filePath ...string) *Config {
 		logLever = logrus.ErrorLevel
 	}
 
-	return &Config{
+	App = &Config{
 		Environment: getEnv("ENV", "development"),
 		Database: DatabaseConfig{
 			Host:     getEnv("DB_HOST", "localhost"),
@@ -119,6 +121,7 @@ func Load(filePath ...string) *Config {
 			LogLevel: logrus.Level(logLever),
 		},
 	}
+	return App
 }
 
 func getEnv(key, defaultValue string) string {

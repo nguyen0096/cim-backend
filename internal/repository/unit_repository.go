@@ -6,12 +6,12 @@ import (
 	"fmt"
 	"slices"
 
+	"github.com/shopspring/decimal"
 	"gorm.io/gorm"
 )
 
 //go:generate mockery --name=UnitRepository --structname=UnitRepository --output=../mocks/repositorymocks --outpkg=repositorymocks
 type UnitRepository interface {
-	Create(ctx context.Context, unit *models.Unit) error
 	GetByID(ctx context.Context, id uint) (*models.Unit, error)
 	GetByTypeAndName(ctx context.Context, unitType, name string) (*models.Unit, error)
 	GetByNames(ctx context.Context, names []string) ([]models.Unit, error)
@@ -22,6 +22,16 @@ type UnitRepository interface {
 	Search(ctx context.Context, query string, limit, offset int, sortBy, sortOrder, unitType string, baseOnly bool) ([]models.Unit, error)
 	Count(ctx context.Context, unitType string, baseOnly bool) (int64, error)
 	CountSearch(ctx context.Context, query, unitType string, baseOnly bool) (int64, error)
+
+	// v1 - AGENTS MUST CONFIRM BEFORE MODIFYING SECTION BELOW THIS LINE
+
+	// Unit
+	Create(ctx context.Context, unit *models.Unit) error
+
+	// UnitConversion
+
+	GetConversionsFrom(ctx context.Context, unitID uint) ([]models.UnitConversion, error)
+	CreateConversion(ctx context.Context, conversion *models.UnitConversion) error
 }
 
 type unitRepository struct {
@@ -33,7 +43,19 @@ func NewUnitRepository(db *gorm.DB) UnitRepository {
 }
 
 func (r *unitRepository) Create(ctx context.Context, unit *models.Unit) error {
-	if err := r.db.WithContext(ctx).Create(unit).Error; err != nil {
+	if err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := tx.Create(unit).Error; err != nil {
+			return err
+		}
+		if err := r.txnCreateConversion(tx, &models.UnitConversion{
+			FromUnitID:       unit.ID,
+			ToUnitID:         *unit.BaseUnitID,
+			ConversionFactor: decimal.NewFromFloat(unit.ConversionFactor),
+		}); err != nil {
+			return err
+		}
+		return nil
+	}); err != nil {
 		return fmt.Errorf("failed to create unit: %w", err)
 	}
 	return nil
