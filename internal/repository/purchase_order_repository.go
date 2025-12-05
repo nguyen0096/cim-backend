@@ -295,14 +295,14 @@ func (r *purchaseOrderRepository) ReceiveInventory(ctx context.Context, req dto.
 			}
 
 			// Validation
+			if poi.ProductUnit == nil {
+				return pkg.NewAppError(pkg.ErrorCodeInternal, fmt.Sprintf("unit not found for product %d", *poi.ProductID), nil)
+			}
+
 			receivedQuantityDecimalPlaces := getDecimalPlaces(reqItem.ReceivedQuantity)
 			if receivedQuantityDecimalPlaces > poi.ProductUnit.DecimalPlaces {
 				return pkg.ErrQuantityHavingMoreDecimalPlacesThanProductUnit(ctx,
 					receivedQuantityDecimalPlaces, poi.ProductUnit.DecimalPlaces, poi.ProductUnit.Name)
-			}
-
-			if poi.ProductUnit == nil {
-				return pkg.NewAppError(pkg.ErrorCodeInternal, fmt.Sprintf("unit not found for product %d", *poi.ProductID), nil)
 			}
 
 			// Handle purchase order item

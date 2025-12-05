@@ -363,7 +363,7 @@ func (r *unitRepository) GetByNames(ctx context.Context, names []string) ([]mode
 
 func (r *unitRepository) Update(ctx context.Context, unit *models.Unit) error {
 	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		result := r.db.WithContext(ctx).Save(unit)
+		result := tx.Save(unit)
 		if result.Error != nil {
 			if isDuplicateError(result.Error, nil) {
 				return pkg.ErrUnitAlreadyExists(ctx, unit.Name, unit.UnitType)
@@ -373,6 +373,10 @@ func (r *unitRepository) Update(ctx context.Context, unit *models.Unit) error {
 
 		if result.RowsAffected == 0 {
 			return fmt.Errorf("failed to update unit %d: not found", unit.ID)
+		}
+
+		if unit.BaseUnitID == nil {
+			return nil
 		}
 
 		if err := r.txnCreateConversion(tx, &models.UnitConversion{
