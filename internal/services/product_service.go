@@ -421,7 +421,7 @@ func (s *productService) ImportProductsFromCSV(ctx context.Context, csvReader io
 			return 0, pkg.ErrValidation(fmt.Sprintf("unit is required for product '%s'", product.Name), nil)
 		}
 
-		unit, err := s.unitService.CreateUnit(ctx, &models.Unit{
+		unit, err := s.unitService.GetOrCreateUnit(ctx, &models.Unit{
 			UnitType:         "general",
 			Name:             unitLabel,
 			Symbol:           unitLabel,
@@ -723,7 +723,7 @@ func (s *productService) ImportProductsFromExcel(ctx context.Context, excelReade
 			return 0, pkg.ErrValidation(fmt.Sprintf("unit is required for product '%s'", product.Name), nil)
 		}
 
-		unit, err := s.unitService.CreateUnit(ctx, &models.Unit{
+		unit, err := s.unitService.GetOrCreateUnit(ctx, &models.Unit{
 			UnitType:         "general",
 			Name:             unitLabel,
 			Symbol:           unitLabel,

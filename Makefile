@@ -13,8 +13,9 @@ run:
 	go run main.go
 
 # Run tests
+# AGENTS MUST NOT CHANGE THIS COMMAND.
 test:
-	go test internal/...
+	go test ./...
 
 # Run tests with coverage
 test-coverage:

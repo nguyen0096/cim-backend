@@ -23,6 +23,8 @@ type InventoryItem struct {
 	ProductID              uint                    `json:"product_id" gorm:"index:idx_inventory_items_unique,unique;not null"`
 	Product                *Product                `json:"product,omitempty" gorm:"foreignKey:ProductID" validate:"-"`
 	Quantity               decimal.Decimal         `json:"quantity" gorm:"type:decimal(10,2);default:0"`
+	UnitID                 uint                    `json:"unit_id" gorm:"not null"`
+	Unit                   *Unit                   `json:"unit,omitempty" gorm:"foreignKey:UnitID"`
 	Status                 InventoryItemStatus     `json:"status" gorm:"default:active"`
 	ConsumingTransactionID uint                    `json:"consuming_transaction_id" validate:"-"`
 	ConsumableTransactions []*InventoryTransaction `json:"active_purchase_transactions,omitempty"`

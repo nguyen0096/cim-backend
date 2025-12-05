@@ -70,3 +70,14 @@ func (poi *PurchaseOrderItem) UpdateStatus() {
 		return
 	}
 }
+
+// CompatifyUnit is used to apply backward compatible update for POI unit field.
+// Previously, POI doesn't have unit field. For any place we set the unit field to make it backward compatible,
+// we should use this function.
+// The purpose is keep track of places that we're doing patching and remove it when we're done.
+func (poi *PurchaseOrderItem) CompatifyUnit(compatibleUnitID uint) {
+	if poi.Unit == nil {
+		poi.UnitID = &compatibleUnitID
+		return
+	}
+}

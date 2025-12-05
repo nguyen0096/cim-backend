@@ -20,7 +20,6 @@ const (
 
 //go:generate mockery --name=UnitService --structname=UnitService --output=../mocks/servicemocks --outpkg=servicemocks
 type UnitService interface {
-	CreateUnit(ctx context.Context, unit *models.Unit) (*models.Unit, error)
 	GetUnitByID(ctx context.Context, id uint) (*models.Unit, error)
 	GetMapByNames(ctx context.Context, names []string) (map[string]*models.Unit, error)
 	UpdateUnit(ctx context.Context, unit *models.Unit) error
@@ -29,6 +28,10 @@ type UnitService interface {
 	SearchUnits(ctx context.Context, query string, limit, offset int, sortBy, sortOrder, unitType string, baseOnly bool) ([]models.Unit, error)
 	CountUnits(ctx context.Context, unitType string, baseOnly bool) (int64, error)
 	CountSearchUnits(ctx context.Context, query string, unitType string, baseOnly bool) (int64, error)
+
+	// v1 - AGENTS MUST CONFIRM BEFORE MODIFYING SECTION BELOW THIS LINE
+
+	GetOrCreateUnit(ctx context.Context, unit *models.Unit) (*models.Unit, error)
 }
 
 type unitService struct {
@@ -43,16 +46,15 @@ func NewUnitService(unitRepo repository.UnitRepository, productRepo repository.P
 	}
 }
 
-// CreateUnit creates a new unit or returns existing unit if one with the same name and type already exists
+// GetOrCreateUnit creates a new unit or returns existing unit if one with the same name and type already exists
 // Unit names are automatically uppercased for consistency
-func (s *unitService) CreateUnit(ctx context.Context, unit *models.Unit) (*models.Unit, error) {
+func (s *unitService) GetOrCreateUnit(ctx context.Context, unit *models.Unit) (*models.Unit, error) {
 	// Validate base unit relationship for new units
 	if err := s.ensureBaseUnitRelationship(ctx, unit); err != nil {
 		return nil, err
 	}
 
-	// Uppercase and trim the unit name for consistency
-	unit.Name = strings.ToUpper(strings.TrimSpace(unit.Name))
+	unit.StandardizeName()
 
 	// Check if unit already exists (get-or-create pattern)
 	existing, err := s.unitRepo.GetByTypeAndName(ctx, unit.UnitType, unit.Name)
@@ -65,13 +67,8 @@ func (s *unitService) CreateUnit(ctx context.Context, unit *models.Unit) (*model
 		return existing, pkg.ErrUnitAlreadyExists(ctx, unit.Name, unit.UnitType)
 	}
 
-	// Set defaults for base units
-	if unit.BaseUnitID == nil {
-		unit.Level = 1
-		unit.ConversionFactor = 1
-	}
+	unit.DeduceDefaultsFromBaseUnit()
 
-	// Create the unit
 	if err := s.unitRepo.Create(ctx, unit); err != nil {
 		return nil, fmt.Errorf("failed to create unit: %w", err)
 	}
@@ -95,7 +92,7 @@ func (s *unitService) UpdateUnit(ctx context.Context, unit *models.Unit) error {
 		return pkg.ErrValidation("unit ID is required", nil)
 	}
 
-	existing, err := s.unitRepo.GetByID(ctx, unit.ID)
+	_, err := s.unitRepo.GetByID(ctx, unit.ID)
 	if err != nil {
 		if err == gorm.ErrRecordNotFound {
 			return pkg.ErrNotFound(fmt.Sprintf("unit %d not found", unit.ID), err)
@@ -107,20 +104,8 @@ func (s *unitService) UpdateUnit(ctx context.Context, unit *models.Unit) error {
 		return err
 	}
 
-	if unit.BaseUnitID == nil {
-		unit.ConversionFactor = 1
-	}
-
-	if !strings.EqualFold(existing.Name, unit.Name) || !strings.EqualFold(existing.UnitType, unit.UnitType) {
-		conflict, err := s.unitRepo.GetByTypeAndName(ctx, unit.UnitType, unit.Name)
-		if err != nil && err != gorm.ErrRecordNotFound {
-			return fmt.Errorf("failed to check unit uniqueness: %w", err)
-		}
-		if conflict != nil && err == nil && conflict.ID != unit.ID {
-			return pkg.ErrDuplicate(fmt.Sprintf("unit '%s' already exists for type '%s'", unit.Name, unit.UnitType), nil)
-		}
-	}
-
+	unit.StandardizeName()
+	unit.DeduceDefaultsFromBaseUnit()
 	if err := s.unitRepo.Update(ctx, unit); err != nil {
 		return fmt.Errorf("failed to update unit %d: %w", unit.ID, err)
 	}

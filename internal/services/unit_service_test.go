@@ -30,7 +30,7 @@ func TestCreateUnit(t *testing.T) {
 		unitRepo.On("GetByTypeAndName", ctx, "mass", "KILOGRAM").Return((*models.Unit)(nil), gorm.ErrRecordNotFound)
 		unitRepo.On("Create", ctx, unit).Return(nil)
 
-		createdUnit, err := service.CreateUnit(ctx, unit)
+		createdUnit, err := service.GetOrCreateUnit(ctx, unit)
 		assert.NoError(t, err)
 		assert.Equal(t, unit.ID, createdUnit.ID)
 		unitRepo.AssertExpectations(t)
@@ -59,7 +59,7 @@ func TestCreateUnit(t *testing.T) {
 		}, nil)
 		unitRepo.On("Create", ctx, unit).Return(nil)
 
-		createdUnit, err := service.CreateUnit(ctx, unit)
+		createdUnit, err := service.GetOrCreateUnit(ctx, unit)
 		assert.NoError(t, err)
 		assert.Equal(t, unit.ID, createdUnit.ID)
 		unitRepo.AssertExpectations(t)
@@ -70,7 +70,7 @@ func TestCreateUnit(t *testing.T) {
 		productRepo := repositorymocks.NewProductRepository(t)
 		service := NewUnitService(unitRepo, productRepo)
 
-		createdUnit, err := service.CreateUnit(ctx, &models.Unit{
+		createdUnit, err := service.GetOrCreateUnit(ctx, &models.Unit{
 			UnitType:         "mass",
 			Name:             "gram",
 			Symbol:           "g",
@@ -101,7 +101,7 @@ func TestCreateUnit(t *testing.T) {
 			BaseUnitID: &baseUnitID,
 		}, nil)
 
-		createdUnit, err := service.CreateUnit(ctx, unit)
+		createdUnit, err := service.GetOrCreateUnit(ctx, unit)
 		assert.Error(t, err)
 		unitRepo.AssertExpectations(t)
 		assert.Nil(t, createdUnit)
@@ -112,7 +112,7 @@ func TestCreateUnit(t *testing.T) {
 		productRepo := repositorymocks.NewProductRepository(t)
 		service := NewUnitService(unitRepo, productRepo)
 
-		createdUnit, err := service.CreateUnit(ctx, &models.Unit{
+		createdUnit, err := service.GetOrCreateUnit(ctx, &models.Unit{
 			UnitType:         "",
 			Name:             "",
 			Symbol:           "",
@@ -142,7 +142,7 @@ func TestCreateUnit(t *testing.T) {
 
 		unitRepo.On("GetByTypeAndName", ctx, "mass", "KILOGRAM").Return(existing, nil)
 
-		_, err := service.CreateUnit(ctx, unit)
+		_, err := service.GetOrCreateUnit(ctx, unit)
 		assert.Error(t, err)
 		unitRepo.AssertExpectations(t)
 	})
@@ -161,7 +161,7 @@ func TestCreateUnit(t *testing.T) {
 		unitRepo.On("GetByTypeAndName", ctx, "mass", "KILOGRAM").Return((*models.Unit)(nil), gorm.ErrRecordNotFound)
 		unitRepo.On("Create", ctx, unit).Return(errors.New("db error"))
 
-		createdUnit, err := service.CreateUnit(ctx, unit)
+		createdUnit, err := service.GetOrCreateUnit(ctx, unit)
 		assert.Nil(t, createdUnit)
 		assert.Error(t, err)
 		unitRepo.AssertExpectations(t)

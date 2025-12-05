@@ -195,7 +195,7 @@ func (h *UnitHandler) CreateUnit(c echo.Context) error {
 		unit.DecimalPlaces = 0 // Default value
 	}
 
-	createdUnit, err := h.unitService.CreateUnit(c.Request().Context(), unit)
+	createdUnit, err := h.unitService.GetOrCreateUnit(c.Request().Context(), unit)
 	if err != nil {
 		return err
 	}

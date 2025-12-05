@@ -76,7 +76,7 @@ var unitMigrateConversionsCmd = &cobra.Command{
 			err := unitConversionRepo.CreateConversion(ctx, unitConversion)
 			if err != nil {
 				// Check if it's a duplicate error
-				if pkg.IsErrorCode(err, pkg.ErrorCodeUnitConversionAlreadyExists) {
+				if pkg.IsErrorCode(err, pkg.ErrorCodeDuplicate) {
 					skippedCount++
 					continue
 				}

@@ -97,7 +97,7 @@ func TestUnitHandler_CreateUnit(t *testing.T) {
 	}
 
 	mockService.
-		On("CreateUnit", mock.Anything, mock.MatchedBy(func(unit *models.Unit) bool {
+		On("GetOrCreateUnit", mock.Anything, mock.MatchedBy(func(unit *models.Unit) bool {
 			return unit.UnitType == "volume" && unit.Name == "liter" && unit.Symbol == "L"
 		})).
 		Return(createdUnit, nil)
@@ -138,7 +138,7 @@ func TestUnitHandler_CreateUnit_DerivedUnit(t *testing.T) {
 	}
 
 	mockService.
-		On("CreateUnit", mock.Anything, mock.MatchedBy(func(unit *models.Unit) bool {
+		On("GetOrCreateUnit", mock.Anything, mock.MatchedBy(func(unit *models.Unit) bool {
 			return unit.BaseUnitID != nil && *unit.BaseUnitID == baseUnitID && unit.ConversionFactor == 0.001
 		})).
 		Return(createdUnit, nil)

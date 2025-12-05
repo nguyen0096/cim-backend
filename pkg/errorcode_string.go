@@ -25,12 +25,11 @@ func _() {
 	_ = x[ErrorCodeConsumeFIFOFailed-13]
 	_ = x[ErrorCodeUnsupportedFileFormat-15]
 	_ = x[ErrorCodeEmptyDataFile-16]
-	_ = x[ErrorCodeUnitConversionAlreadyExists-17]
 }
 
-const _ErrorCode_name = "internalinvalid-request-bodynot-foundunauthorizedforbiddenvalidationduplicatepurchase-order-no-itemsbad-inventory-item-stateconflictreconcile-validation-faileddispose-validation-failedtransfer-validation-failedconsume-fifo-failedpurchase-order-no-approved-payment-receiptunsupported-file-formatdata-row-not-foundunit-conversion-already-exists"
+const _ErrorCode_name = "internalinvalid-request-bodynot-foundunauthorizedforbiddenvalidationduplicatepurchase-order-no-itemsbad-inventory-item-stateconflictreconcile-validation-faileddispose-validation-failedtransfer-validation-failedconsume-fifo-failedpurchase-order-no-approved-payment-receiptunsupported-file-formatdata-row-not-found"
 
-var _ErrorCode_index = [...]uint16{0, 8, 28, 37, 49, 58, 68, 77, 100, 124, 132, 159, 184, 210, 229, 271, 294, 312, 342}
+var _ErrorCode_index = [...]uint16{0, 8, 28, 37, 49, 58, 68, 77, 100, 124, 132, 159, 184, 210, 229, 271, 294, 312}
 
 func (i ErrorCode) String() string {
 	if i < 0 || i >= ErrorCode(len(_ErrorCode_index)-1) {

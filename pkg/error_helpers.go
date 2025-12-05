@@ -15,7 +15,12 @@ type ErrorMessage struct {
 
 // Error message keys - predefined constants for error message map keys
 const (
+	// Quantity Error Keys
+
+	ErrKeyQuantityHavingMoreDecimalPlacesThanProductUnit = "quantity_having_more_decimal_places_than_product_unit"
+
 	// Purchase Order Error Keys
+
 	ErrKeyPurchaseOrderNoItems                      = "purchase_order_no_items"
 	ErrKeyPurchaseOrderNoApprovedPaymentReceipt     = "purchase_order_no_approved_payment_receipt"
 	ErrKeyPurchaseOrderNotFound                     = "purchase_order_not_found"
@@ -35,10 +40,12 @@ const (
 	ErrKeyPurchaseOrderDeliveryStatusChangeDenied   = "purchase_order_delivery_status_change_denied"
 
 	// Inventory Error Keys
+
 	ErrKeyInventoryItemNotFound  = "inventory_item_not_found"
 	ErrKeyOptimisticLockConflict = "optimistic_lock_conflict"
 
 	// Unit Error Keys
+
 	ErrKeyUnitAlreadyExists                 = "unit_already_exists"
 	ErrKeyFailedToCheckProductReferences    = "failed_to_check_product_references"
 	ErrKeyUnitIDRequired                    = "unit_id_required"
@@ -49,10 +56,12 @@ const (
 	ErrKeyFailedToConvertQuantityToBaseUnit = "failed_to_convert_quantity_to_base_unit"
 
 	// File Error Keys
+
 	ErrKeyUnsupportedFileFormat = "unsupported_file_format"
 	ErrKeyEmptyDataFile         = "empty_data_file"
 
 	// Revenue Expense Error Keys
+
 	ErrKeyInvalidRequestBody                  = "invalid_request_body"
 	ErrKeyValidationFailed                    = "validation_failed"
 	ErrKeyFailedToFinalizeRevenueExpense      = "failed_to_finalize_revenue_expense"
@@ -79,6 +88,12 @@ const (
 
 // ErrorMessages maps error keys to multilingual messages
 var ErrorMessages = map[string]ErrorMessage{
+	// Quantity Errors
+	ErrKeyQuantityHavingMoreDecimalPlacesThanProductUnit: {
+		EN: "Quantity has %d decimal places, more than allowed %d decimal places by product unit %s",
+		VI: "Số lượng có %d chữ số thập phân, nhiều hơn quy định %d chữ số thập phân của đơn vị %s",
+	},
+
 	// Purchase Order Errors
 	ErrKeyPurchaseOrderNoItems: {
 		EN: "Purchase order has no items",
@@ -686,4 +701,14 @@ func ErrUnitConversionAlreadyExists(ctx context.Context, fromUnitID, toUnitID ui
 	template := getErrorMessage(ctx, ErrKeyUnitConversionAlreadyExists)
 	message := fmt.Sprintf(template, fromUnitID, toUnitID)
 	return NewAppError(ErrorCodeDuplicate, message, nil)
+}
+
+func ErrQuantityHavingMoreDecimalPlacesThanProductUnit(ctx context.Context,
+	quantityDecimalPlaces int,
+	productUnitDecimalPlaces int,
+	productUnitName string,
+) *AppError {
+	template := getErrorMessage(ctx, ErrKeyQuantityHavingMoreDecimalPlacesThanProductUnit)
+	message := fmt.Sprintf(template, quantityDecimalPlaces, productUnitDecimalPlaces, productUnitName)
+	return NewAppError(ErrorCodeValidation, message, nil)
 }

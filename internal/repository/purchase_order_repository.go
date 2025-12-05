@@ -220,25 +220,27 @@ func (r *purchaseOrderRepository) AnyDeliveringItem(ctx context.Context, purchas
 func (r *purchaseOrderRepository) ReceiveInventory(ctx context.Context, req dto.UpdatePurchaseOrderDeliveryStatusRequest) (*models.PurchaseOrder, error) {
 	var po *models.PurchaseOrder
 	return po, r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		// Step 1:Query PO and validate existence.
+		// We use UPDATE locking to prevent concurrent updates to the same purchase order.
 		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
 			Where("id = ?", req.PurchaseOrderID).
 			Where("status NOT IN ?", []any{models.PurchaseOrderStatusCancelled}).
 			Find(&po).Error; err != nil {
-			return pkg.NewAppError(pkg.ErrorCodeNotFound,
-				fmt.Sprintf("purchase order ID %d not found", req.PurchaseOrderID), nil)
+			if err == gorm.ErrRecordNotFound {
+				return pkg.ErrPurchaseOrderNotFound(ctx, req.PurchaseOrderID)
+			}
+			return pkg.ErrFailedToFetchPurchaseOrder(ctx, err)
 		}
 
+		// Step 2: Query PO items and validate data.
+
+		// POIData represents a purchase order item with product data and
+		// existing inventory item ID (if any).
 		type POIData struct {
 			*models.PurchaseOrderItem
-			InventoryItemID      *uint
-			Product              *models.Product `gorm:"embedded;embeddedPrefix:product_"`
-			UnitID               uint
-			UnitName             string
-			UnitSymbol           string
-			UnitType             string
-			UnitBaseUnitID       *uint
-			UnitConversionFactor float64
-			UnitDecimalPlaces    int
+			InventoryItemID *uint
+			Product         *models.Product `gorm:"embedded;embeddedPrefix:product_"`
+			ProductUnit     *models.Unit    `gorm:"embedded;embeddedPrefix:unit_"`
 		}
 
 		var poiData []POIData
@@ -275,91 +277,93 @@ func (r *purchaseOrderRepository) ReceiveInventory(ctx context.Context, req dto.
 			return pkg.NewAppError(pkg.ErrorCodeNotFound, "no purchase order items found", nil)
 		}
 
-		poItemMap := make(map[uint]*POIData)
+		poiMap := make(map[uint]*POIData)
 		for i := range poiData {
-			poItemMap[poiData[i].ID] = &poiData[i]
+			poiMap[poiData[i].ID] = &poiData[i]
 		}
 
-		// Step 3: Process dto items and build transactions and new inventory items
+		// Step 3: Process request items to generate transactions and update/insert inventory items.
 		var transactions []*models.InventoryTransaction
 		var newInventoryItems []*models.InventoryItem
 		var updateInvetoryDeltas = make(map[uint]decimal.Decimal)
 
-		for _, dtoItem := range req.Items {
-			// Find corresponding purchase order item data
-			poItem, exists := poItemMap[dtoItem.ID]
+		for _, reqItem := range req.Items {
+			// Find corresponding purchase order item data in the DB.
+			poi, exists := poiMap[reqItem.ID]
 			if !exists {
-				return pkg.NewAppError(pkg.ErrorCodeNotFound, fmt.Sprintf("purchase order item with ID %d not found", dtoItem.ID), nil)
+				return pkg.NewAppError(pkg.ErrorCodeNotFound, fmt.Sprintf("purchase order item with ID %d not found", reqItem.ID), nil)
 			}
 
-			receivedQuantityDecimalPlaces := getDecimalPlaces(dtoItem.ReceivedQuantity)
-			if receivedQuantityDecimalPlaces > poItem.UnitDecimalPlaces {
-				return pkg.NewAppError(pkg.ErrorCodeValidation,
-					fmt.Sprintf("decimal places must be less than or equal to %d", poItem.UnitDecimalPlaces), nil)
+			// Validation
+			receivedQuantityDecimalPlaces := getDecimalPlaces(reqItem.ReceivedQuantity)
+			if receivedQuantityDecimalPlaces > poi.ProductUnit.DecimalPlaces {
+				return pkg.ErrQuantityHavingMoreDecimalPlacesThanProductUnit(ctx,
+					receivedQuantityDecimalPlaces, poi.ProductUnit.DecimalPlaces, poi.ProductUnit.Name)
 			}
 
-			poItem.ReceivedQuantity = poItem.ReceivedQuantity.Add(dtoItem.ReceivedQuantity)
-			poItem.PurchaseOrderItem.UpdateStatus()
+			if poi.ProductUnit == nil {
+				return pkg.NewAppError(pkg.ErrorCodeInternal, fmt.Sprintf("unit not found for product %d", *poi.ProductID), nil)
+			}
 
+			// Handle purchase order item
+			poi.ReceivedQuantity = poi.ReceivedQuantity.Add(reqItem.ReceivedQuantity)
+			poi.PurchaseOrderItem.UpdateStatus()
+
+			// Handle transaction
 			transaction := &models.InventoryTransaction{
 				TransactionType:     models.InventoryTransactionTypePurchase,
-				Price:               poItem.UnitPrice,
-				Quantity:            dtoItem.ReceivedQuantity,
-				PurchaseOrderItemID: poItem.PurchaseOrderID,
+				Price:               poi.UnitPrice,
+				Quantity:            reqItem.ReceivedQuantity,
+				PurchaseOrderItemID: poi.PurchaseOrderID,
 			}
-
-			if poItem.InventoryItemID != nil {
-				// Use existing inventory item
-				transaction.InventoryItemID = *poItem.InventoryItemID
-				if existing, ok := updateInvetoryDeltas[*poItem.InventoryItemID]; ok {
-					updateInvetoryDeltas[*poItem.InventoryItemID] = existing.Add(dtoItem.ReceivedQuantity)
-				} else {
-					updateInvetoryDeltas[*poItem.InventoryItemID] = dtoItem.ReceivedQuantity
-				}
-			} else {
-				transaction.InventoryItem = &models.InventoryItem{
-					InventoryID: *po.InventoryID,
-					ProductID:   *poItem.ProductID,
-					Quantity:    dtoItem.ReceivedQuantity,
-					Status:      models.InventoryItemStatusActive,
-				}
-				newInventoryItems = append(newInventoryItems, transaction.InventoryItem)
-			}
-
-			transaction.SupplierID = poItem.SupplierID
+			transaction.SupplierID = poi.SupplierID
 			transactions = append(transactions, transaction)
+
+			// Handle inventory item
+			if poi.InventoryItemID != nil {
+				transaction.InventoryItemID = *poi.InventoryItemID // link transaction to be created with existing inventory item.
+
+				if existing, ok := updateInvetoryDeltas[*poi.InventoryItemID]; ok {
+					updateInvetoryDeltas[*poi.InventoryItemID] = existing.Add(reqItem.ReceivedQuantity)
+				} else {
+					updateInvetoryDeltas[*poi.InventoryItemID] = reqItem.ReceivedQuantity
+				}
+				continue
+			}
+
+			transaction.InventoryItem = &models.InventoryItem{
+				InventoryID: *po.InventoryID,
+				ProductID:   *poi.ProductID,
+				UnitID:      poi.ProductUnit.ID,
+				Quantity:    reqItem.ReceivedQuantity,
+				Status:      models.InventoryItemStatusActive,
+			}
+			newInventoryItems = append(newInventoryItems, transaction.InventoryItem)
 		}
 
-		// convert poiData to slice of PurchaseOrderItem model and set to
-		// PurchaseOrder field for updating status.
+		// extract inner POI model for DB operations.
+		// Note that we also patching the POI unit and formatting the API response.
 		poItems := make([]*models.PurchaseOrderItem, 0, len(poiData))
 		for _, data := range poiData {
-			if data.Product != nil {
-				data.Product.UnitID = data.UnitID
-				unit := &models.Unit{
-					Name:             data.UnitName,
-					Symbol:           data.UnitSymbol,
-					UnitType:         data.UnitType,
-					BaseUnitID:       data.UnitBaseUnitID,
-					ConversionFactor: data.UnitConversionFactor,
-				}
-				unit.ID = data.UnitID
-				data.Product.Unit = unit
-			}
-			// Ensure UnitID is set on purchase order item
-			// If it's not set (from old data), use the product's unit_id as fallback
-			if data.PurchaseOrderItem.UnitID == nil {
-				data.PurchaseOrderItem.UnitID = &data.UnitID
-			}
+			data.PurchaseOrderItem.CompatifyUnit(data.ProductUnit.ID) // here's the patch.
+
+			// set unit and product to the inner POI model
+			// for API response purpose.
 			data.PurchaseOrderItem.Product = data.Product
+			data.PurchaseOrderItem.Unit = data.ProductUnit
+
 			poItems = append(poItems, data.PurchaseOrderItem)
 		}
 
-		// Persist data
+		// Step 4: Persist data
+
+		// Handle inventory items
 		if len(newInventoryItems) > 0 {
 			if err := tx.Create(newInventoryItems).Error; err != nil {
 				return fmt.Errorf("failed to create new inventory items: %w", err)
 			}
+
+			// link transactions to the newly created inventory item IDs.
 			for _, txn := range transactions {
 				if txn.InventoryItem != nil && txn.InventoryItem.ID != 0 {
 					txn.InventoryItemID = txn.InventoryItem.ID
@@ -374,14 +378,17 @@ func (r *purchaseOrderRepository) ReceiveInventory(ctx context.Context, req dto.
 			}
 		}
 
+		// Handle transactions
 		if err := tx.Save(transactions).Error; err != nil {
 			return fmt.Errorf("failed to save transaction: %w", err)
 		}
 
+		// Handle purchase order items
 		if err := tx.Save(poItems).Error; err != nil {
 			return fmt.Errorf("failed to save purchase order items: %w", err)
 		}
 
+		// Handle purchase order
 		po.Items = poItems
 		now := time.Now()
 		po.ConfirmedAt = &now

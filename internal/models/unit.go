@@ -1,5 +1,7 @@
 package models
 
+import "strings"
+
 // Unit represents a measurement unit definition used by products
 // Supports a 4-level hierarchy: Level 1 (root base unit) through Level 4 (leaf units)
 type Unit struct {
@@ -112,4 +114,18 @@ func (u *Unit) CalculateConversionFactorToCurrent(targetUnitID uint) float64 {
 
 	// If we couldn't find a path, return 0 to indicate error
 	return 0
+}
+
+// StandardizeName standardizes the unit name to uppercase and trims the whitespace.
+func (u *Unit) StandardizeName() {
+	u.Name = strings.ToUpper(strings.TrimSpace(u.Name))
+}
+
+// DeduceDefaultsFromBaseUnit deduces the default values from the base unit.
+// If the unit is a base unit, it sets the level to 1 and the conversion factor to 1.
+func (u *Unit) DeduceDefaultsFromBaseUnit() {
+	if u.BaseUnitID == nil {
+		u.Level = 1
+		u.ConversionFactor = 1
+	}
 }

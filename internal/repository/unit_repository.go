@@ -2,6 +2,7 @@ package repository
 
 import (
 	"cim-backend/internal/models"
+	"cim-backend/pkg"
 	"context"
 	"fmt"
 	"slices"
@@ -15,7 +16,6 @@ type UnitRepository interface {
 	GetByID(ctx context.Context, id uint) (*models.Unit, error)
 	GetByTypeAndName(ctx context.Context, unitType, name string) (*models.Unit, error)
 	GetByNames(ctx context.Context, names []string) ([]models.Unit, error)
-	Update(ctx context.Context, unit *models.Unit) error
 	Delete(ctx context.Context, id uint) error
 	Restore(ctx context.Context, id uint) error
 	List(ctx context.Context, limit, offset int, sortBy, sortOrder, unitType string, baseOnly bool) ([]models.Unit, error)
@@ -27,6 +27,7 @@ type UnitRepository interface {
 
 	// Unit
 	Create(ctx context.Context, unit *models.Unit) error
+	Update(ctx context.Context, unit *models.Unit) error
 
 	// UnitConversion
 
@@ -43,10 +44,14 @@ func NewUnitRepository(db *gorm.DB) UnitRepository {
 }
 
 func (r *unitRepository) Create(ctx context.Context, unit *models.Unit) error {
-	if err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		if err := tx.Create(unit).Error; err != nil {
+			if isDuplicateError(err, nil) {
+				return pkg.ErrUnitAlreadyExists(ctx, unit.Name, unit.UnitType)
+			}
 			return err
 		}
+
 		if err := r.txnCreateConversion(tx, &models.UnitConversion{
 			FromUnitID:       unit.ID,
 			ToUnitID:         *unit.BaseUnitID,
@@ -54,11 +59,9 @@ func (r *unitRepository) Create(ctx context.Context, unit *models.Unit) error {
 		}); err != nil {
 			return err
 		}
+
 		return nil
-	}); err != nil {
-		return fmt.Errorf("failed to create unit: %w", err)
-	}
-	return nil
+	})
 }
 
 func (r *unitRepository) GetByID(ctx context.Context, id uint) (*models.Unit, error) {
@@ -359,14 +362,29 @@ func (r *unitRepository) GetByNames(ctx context.Context, names []string) ([]mode
 }
 
 func (r *unitRepository) Update(ctx context.Context, unit *models.Unit) error {
-	result := r.db.WithContext(ctx).Save(unit)
-	if result.Error != nil {
-		return fmt.Errorf("failed to update unit: %w", result.Error)
-	}
-	if result.RowsAffected == 0 {
-		return fmt.Errorf("failed to update unit %d: not found", unit.ID)
-	}
-	return nil
+	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		result := r.db.WithContext(ctx).Save(unit)
+		if result.Error != nil {
+			if isDuplicateError(result.Error, nil) {
+				return pkg.ErrUnitAlreadyExists(ctx, unit.Name, unit.UnitType)
+			}
+			return fmt.Errorf("failed to update unit: %w", result.Error)
+		}
+
+		if result.RowsAffected == 0 {
+			return fmt.Errorf("failed to update unit %d: not found", unit.ID)
+		}
+
+		if err := r.txnCreateConversion(tx, &models.UnitConversion{
+			FromUnitID:       unit.ID,
+			ToUnitID:         *unit.BaseUnitID,
+			ConversionFactor: decimal.NewFromFloat(unit.ConversionFactor),
+		}); err != nil {
+			return err
+		}
+
+		return nil
+	})
 }
 
 func (r *unitRepository) Delete(ctx context.Context, id uint) error {
