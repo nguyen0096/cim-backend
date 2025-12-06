@@ -232,6 +232,10 @@ func (r *purchaseOrderRepository) ReceiveInventory(ctx context.Context, req dto.
 			return pkg.ErrFailedToFetchPurchaseOrder(ctx, err)
 		}
 
+		if po.InventoryID == nil {
+			return pkg.NewAppError(pkg.ErrorCodeInternal, "unexpectedly found purchase order without inventory", nil)
+		}
+
 		// Step 2: Query PO items and validate data.
 
 		// POIData represents a purchase order item with product data and
@@ -246,25 +250,28 @@ func (r *purchaseOrderRepository) ReceiveInventory(ctx context.Context, req dto.
 		var poiData []POIData
 		err := tx.Table("purchase_order_items poi").
 			Select(`
-			poi.*,
-			ii.id as inventory_item_id,
-			p.id as product_id,
-			p.name as product_name,
-			p.description as product_description,
-			p.product_type as product_product_type,
-			p.status as product_status,
-			p.unit_id as product_unit_id,
-			u.id as unit_id,
-			u.name as unit_name,
-			u.symbol as unit_symbol,
-			u.unit_type as unit_type,
-			u.base_unit_id as unit_base_unit_id,
-			u.conversion_factor as unit_conversion_factor,
-			u.decimal_places as unit_decimal_places
-		`).
-			Joins(`LEFT JOIN inventory_items ii ON poi.product_id = ii.product_id
-				AND ii.status = ?
-		`, models.InventoryItemStatusActive).
+				poi.*,
+				ii.id as inventory_item_id,
+				p.id as product_id,
+				p.name as product_name,
+				p.description as product_description,
+				p.product_type as product_product_type,
+				p.status as product_status,
+				p.unit_id as product_unit_id,
+				u.id as unit_id,
+				u.name as unit_name,
+				u.symbol as unit_symbol,
+				u.unit_type as unit_type,
+				u.base_unit_id as unit_base_unit_id,
+				u.conversion_factor as unit_conversion_factor,
+				u.decimal_places as unit_decimal_places
+			`).
+			// lookup for existing inventory item for the product.
+			Joins(`LEFT JOIN inventory_items ii ON
+				poi.product_id = ii.product_id AND
+				ii.status = ? AND
+				ii.inventory_id = ?
+			`, models.InventoryItemStatusActive, *po.InventoryID).
 			Joins(`JOIN products p ON poi.product_id = p.id`).
 			Joins(`JOIN units u ON p.unit_id = u.id`).
 			Where("poi.purchase_order_id = ?", req.PurchaseOrderID).
@@ -318,8 +325,8 @@ func (r *purchaseOrderRepository) ReceiveInventory(ctx context.Context, req dto.
 				Price:               poi.UnitPrice,
 				Quantity:            reqItem.ReceivedQuantity,
 				PurchaseOrderItemID: poi.PurchaseOrderID,
+				SupplierID:          poi.SupplierID,
 			}
-			transaction.SupplierID = poi.SupplierID
 			transactions = append(transactions, transaction)
 
 			// Handle inventory item
