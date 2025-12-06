@@ -1,8 +1,8 @@
 package apptest
 
 import (
-	"cim-backend/internal/config"
 	"cim-backend/internal/models"
+	"cim-backend/internal/repository"
 	"cim-backend/pkg"
 	"cim-backend/pkg/testutil"
 	"cim-backend/pkg/testutil/fixture"
@@ -18,7 +18,6 @@ import (
 	. "github.com/onsi/gomega"
 	"github.com/r3labs/sse/v2"
 	"github.com/shopspring/decimal"
-	"gorm.io/datatypes"
 )
 
 // Helper functions for SSE testing
@@ -338,26 +337,24 @@ var _ = Describe("Payment Receipt Form API", func() {
 			}
 		})
 
-		It("should use finalized date from settings when generating form number", func() {
+		It("should use finalized date from revenue expense finalization table when generating form number", func() {
 			ctx := pkg.WithUserEmail(context.Background(), "test@cim.local")
 			tenv.DB.WithContext(ctx).Exec("DELETE FROM payment_receipt_forms")
 
 			adminClient := testutil.NewClient(tenv, models.RoleAdmin)
 
-			// Set finalized date in settings (different from form date)
+			// Create a successful finalization record with finalized date (different from form date)
 			finalizedDate := time.Now().AddDate(0, 0, -5) // 5 days ago
-			finalizedDateJSON, err := json.Marshal(finalizedDate)
-			Expect(err).NotTo(HaveOccurred())
-
-			setting := models.Settings{
-				Key:   config.LastFinalizedDateSettingsKey,
-				Value: datatypes.JSON(finalizedDateJSON),
+			finalizationRepo := repository.NewRevenueExpenseFinalizationRepository(tenv.ContextfulDB())
+			finalization := &models.RevenueExpenseFinalization{
+				FinalizedDate: finalizedDate,
+				Status:        pkg.Ptr(models.RevenueExpenseFinalizationStatusSuccess),
 			}
-			err = tenv.DB.WithContext(ctx).Save(&setting).Error
+			err := finalizationRepo.Create(ctx, finalization)
 			Expect(err).NotTo(HaveOccurred())
 			DeferCleanup(func() {
 				cleanupCtx := pkg.WithUserEmail(context.Background(), "test@cim.local")
-				tenv.DB.WithContext(cleanupCtx).Where("key = ?", config.LastFinalizedDateSettingsKey).Delete(&models.Settings{})
+				tenv.DB.WithContext(cleanupCtx).Delete(&models.RevenueExpenseFinalization{}, finalization.ID)
 			})
 
 			// Create a form with a different date (today)
@@ -395,11 +392,11 @@ var _ = Describe("Payment Receipt Form API", func() {
 			Expect(ok).To(BeTrue(), "form_number should be a string")
 			Expect(formNumber).NotTo(BeEmpty(), "form_number should not be empty")
 
-			// Verify form number uses finalized date from settings, not form.Date
+			// Verify form number uses finalized date from finalization table, not form.Date
 			expectedDatePrefix := finalizedDate.Format("20060102")
 			expectedInventoryID := *testPurchaseOrder.InventoryID
 			expectedFormNumber := fmt.Sprintf("%s-%d-1", expectedDatePrefix, expectedInventoryID)
-			Expect(formNumber).To(Equal(expectedFormNumber), "Form number should use finalized date from settings, not form date")
+			Expect(formNumber).To(Equal(expectedFormNumber), "Form number should use finalized date from revenue expense finalization table, not form date")
 
 			// Verify it's NOT using form.Date
 			formDatePrefix := formDate.Format("20060102")

@@ -9,7 +9,6 @@ import (
 	"strings"
 	"time"
 
-	"cim-backend/internal/config"
 	"cim-backend/internal/models"
 	"cim-backend/internal/repository"
 	"cim-backend/internal/services/dto"
@@ -33,9 +32,10 @@ type PaymentReceiptFormService interface {
 }
 
 type paymentReceiptFormService struct {
-	paymentReceiptFormRepo repository.PaymentReceiptFormRepository
-	db                     *gorm.DB
-	settingsService        SettingsService
+	paymentReceiptFormRepo         repository.PaymentReceiptFormRepository
+	db                             *gorm.DB
+	settingsService                SettingsService
+	revenueExpenseFinalizationRepo repository.RevenueExpenseFinalizationRepository
 }
 
 // NewPaymentReceiptFormService creates a new payment receipt form service
@@ -43,11 +43,13 @@ func NewPaymentReceiptFormService(
 	paymentReceiptFormRepo repository.PaymentReceiptFormRepository,
 	db *gorm.DB,
 	settingsService SettingsService,
+	revenueExpenseFinalizationRepo repository.RevenueExpenseFinalizationRepository,
 ) PaymentReceiptFormService {
 	return &paymentReceiptFormService{
-		paymentReceiptFormRepo: paymentReceiptFormRepo,
-		db:                     db,
-		settingsService:        settingsService,
+		paymentReceiptFormRepo:         paymentReceiptFormRepo,
+		db:                             db,
+		settingsService:                settingsService,
+		revenueExpenseFinalizationRepo: revenueExpenseFinalizationRepo,
 	}
 }
 
@@ -273,13 +275,17 @@ func (s *paymentReceiptFormService) ApprovePaymentReceiptForm(ctx context.Contex
 
 	form.Status = models.PaymentReceiptFormStatusApproved
 
-	// Get finalized date from settings
+	// Get last successful finalized date from table
 	var finalizedDate time.Time
-	if err := s.settingsService.GetSettingValue(ctx, config.LastFinalizedDateSettingsKey, &finalizedDate); err != nil {
-		// If no finalized date is set, use form.Date as fallback
-		finalizedDate = form.Date
+	lastFinalization, err := s.revenueExpenseFinalizationRepo.GetLastSuccessful(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to get last successful finalized date: %w", err)
+	}
+	if lastFinalization != nil {
+		finalizedDate = lastFinalization.FinalizedDate
 	}
 
+	// If no finalized date is found, use form.Date as fallback
 	if finalizedDate.IsZero() {
 		finalizedDate = form.Date
 	}
