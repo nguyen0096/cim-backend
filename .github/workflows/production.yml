@@ -121,6 +121,8 @@ jobs:
           file: ./Dockerfile
           platforms: linux/amd64
           push: true
+          cache-from: type=gha,scope=build-cache
+          cache-to: type=gha,mode=max,scope=build-cache
           tags: |
             ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.version.outputs.new_version }}
             ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:stable
