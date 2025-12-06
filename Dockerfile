@@ -9,17 +9,22 @@ RUN apk add --no-cache git
 # Copy go mod files
 COPY go.mod go.sum ./
 
-# Download dependencies
-RUN go mod download
+# Download dependencies (this layer will be cached)
+RUN --mount=type=cache,target=/go/pkg/mod \
+    go mod download
 
 # Copy source code
 COPY . .
 
-# Build the main application
-RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o main .
+# Build the main application with cache mounts
+RUN --mount=type=cache,target=/go/pkg/mod \
+    --mount=type=cache,target=/root/.cache/go-build \
+    CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o main .
 
-# Build the utility CLI (for migrations and seeding)
-RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o util ./cmd/util
+# Build the utility CLI (for migrations and seeding) with cache mounts
+RUN --mount=type=cache,target=/go/pkg/mod \
+    --mount=type=cache,target=/root/.cache/go-build \
+    CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o util ./cmd/util
 
 # Final stage
 FROM alpine:latest

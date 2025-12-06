@@ -33,6 +33,9 @@ jobs:
         with:
           version: latest
           args: --timeout=5m
+          skip-cache: false
+          skip-pkg-cache: false
+          skip-build-cache: false
 
   test:
     name: Test
@@ -121,8 +124,10 @@ jobs:
           file: ./Dockerfile
           platforms: linux/amd64
           push: true
-          cache-from: type=gha,scope=build-cache
-          cache-to: type=gha,mode=max,scope=build-cache
+          cache-from: |
+            type=gha,scope=production-build
+            type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:buildcache
+          cache-to: type=gha,mode=max,scope=production-build
           tags: |
             ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.version.outputs.new_version }}
             ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:stable
