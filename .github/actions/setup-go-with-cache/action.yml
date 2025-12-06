@@ -25,10 +25,6 @@ runs:
         cache: ${{ inputs.skip-cache != 'true' }}
         cache-dependency-path: ${{ inputs.cache-dependency-path }}
 
-    - name: Install dependencies
-      shell: bash
-      run: go mod download
-
     - name: Install code generation tools
       shell: bash
       run: |
