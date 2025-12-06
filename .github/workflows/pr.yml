@@ -13,18 +13,8 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Set up Go
-        uses: actions/setup-go@v4
-        with:
-          go-version: "1.25"
-          
-      - name: Install code generation tools
-        run: |
-          go install golang.org/x/tools/cmd/stringer@latest
-          go install github.com/vektra/mockery/v2@latest
-
-      - name: Generate mocks
-        run: make generate
+      - name: Setup Go with cache and code generation
+        uses: ./.github/actions/setup-go-with-cache
 
       - name: Run golangci-lint
         uses: golangci/golangci-lint-action@v8
@@ -54,29 +44,8 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Set up Go
-        uses: actions/setup-go@v4
-        with:
-          go-version: "1.25"
-
-      - name: Cache Go modules
-        uses: actions/cache@v4
-        with:
-          path: ~/go/pkg/mod
-          key: ${{ runner.os }}-go-v2-${{ hashFiles('**/go.sum') }}
-          restore-keys: |
-            ${{ runner.os }}-go-v2-
-
-      - name: Install dependencies
-        run: go mod download
-
-      - name: Install code generation tools
-        run: |
-          go install golang.org/x/tools/cmd/stringer@latest
-          go install github.com/vektra/mockery/v2@latest
-
-      - name: Generate mocks
-        run: make generate
+      - name: Setup Go with cache and code generation
+        uses: ./.github/actions/setup-go-with-cache
 
       - name: Run migrations
         run: make migrate-up

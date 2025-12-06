@@ -1,0 +1,49 @@
+name: 'Setup Go with Cache and Code Generation'
+description: 'Sets up Go, caches modules, installs dependencies, and generates mocks'
+
+inputs:
+  go-version:
+    description: 'Go version to use'
+    required: false
+    default: '1.25'
+  cache-dependency-path:
+    description: 'Path to go.sum for cache key'
+    required: false
+    default: '**/go.sum'
+  skip-cache:
+    description: 'Skip caching Go modules'
+    required: false
+    default: 'false'
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Set up Go
+      uses: actions/setup-go@v4
+      with:
+        go-version: ${{ inputs.go-version }}
+
+    - name: Cache Go modules
+      if: inputs.skip-cache != 'true'
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.cache/go-build
+          ~/go/pkg/mod
+        key: ${{ runner.os }}-go-v2-${{ hashFiles(inputs.cache-dependency-path) }}
+        restore-keys: |
+          ${{ runner.os }}-go-v2-
+
+    - name: Install dependencies
+      shell: bash
+      run: go mod download
+
+    - name: Install code generation tools
+      shell: bash
+      run: |
+        go install golang.org/x/tools/cmd/stringer@latest
+        go install github.com/vektra/mockery/v2@latest
+
+    - name: Generate mocks
+      shell: bash
+      run: make generate

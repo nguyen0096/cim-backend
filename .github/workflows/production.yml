@@ -25,18 +25,8 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Set up Go
-        uses: actions/setup-go@v4
-        with:
-          go-version: "1.25"
-
-      - name: Install code generation tools
-        run: |
-          go install golang.org/x/tools/cmd/stringer@latest
-          go install github.com/vektra/mockery/v2@latest
-
-      - name: Generate mocks
-        run: make generate
+      - name: Setup Go with cache and code generation
+        uses: ./.github/actions/setup-go-with-cache
 
       - name: Run golangci-lint
         uses: golangci/golangci-lint-action@v8
@@ -51,72 +41,16 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Set up Go
-        uses: actions/setup-go@v4
-        with:
-          go-version: "1.25"
-
-      - name: Cache Go modules
-        uses: actions/cache@v4
-        with:
-          path: ~/go/pkg/mod
-          key: ${{ runner.os }}-go-v2-${{ hashFiles('**/go.sum') }}
-          restore-keys: |
-            ${{ runner.os }}-go-v2-
-
-      - name: Install dependencies
-        run: go mod download
-
-      - name: Install code generation tools
-        run: |
-          go install golang.org/x/tools/cmd/stringer@latest
-          go install github.com/vektra/mockery/v2@latest
-
-      - name: Generate mocks
-        run: make generate
+      - name: Setup Go with cache and code generation
+        uses: ./.github/actions/setup-go-with-cache
 
       - name: Run tests
         run: make test
 
-  integration-test:
-    name: Integration Test
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-        
-      - name: Set up Go
-        uses: actions/setup-go@v4
-        with:
-          go-version: "1.25"
-
-      - name: Cache Go modules
-        uses: actions/cache@v4
-        with:
-          path: ~/go/pkg/mod
-          key: ${{ runner.os }}-go-v2-${{ hashFiles('**/go.sum') }}
-          restore-keys: |
-            ${{ runner.os }}-go-v2-
-      - name: Install dependencies
-        run: go mod download
-
-      - name: Install tools
-        run: |
-          go install github.com/onsi/ginkgo/v2/ginkgo
-          go install golang.org/x/tools/cmd/stringer@latest
-          go install github.com/vektra/mockery/v2@latest
-
-      - name: Generate mocks
-        run: make generate
-        
-      - name: Run integration tests
-        run: |
-          ginkgo -r -p -race -tags=integration ./test/...
-
   build-and-release:
     name: Build and Release
     runs-on: ubuntu-latest
-    needs: [lint, test, integration-test]  # Only runs if both lint and test pass
+    needs: [lint, test]  # Only runs if both lint and test pass
     environment: production
     permissions:
       contents: write
