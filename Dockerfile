@@ -19,12 +19,12 @@ COPY . .
 # Build the main application with cache mounts
 RUN --mount=type=cache,target=/go/pkg/mod \
     --mount=type=cache,target=/root/.cache/go-build \
-    CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o main .
+    CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -trimpath -o main .
 
 # Build the utility CLI (for migrations and seeding) with cache mounts
 RUN --mount=type=cache,target=/go/pkg/mod \
     --mount=type=cache,target=/root/.cache/go-build \
-    CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o util ./cmd/util
+    CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -trimpath -o util ./cmd/util
 
 # Final stage
 FROM alpine:latest
