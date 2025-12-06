@@ -6,10 +6,6 @@ on:
       - main
   workflow_dispatch:
 
-concurrency:
-  group: staging-${{ github.sha }}
-  cancel-in-progress: true
-
 env:
   REGISTRY: ghcr.io
   IMAGE_NAME: hn-corp/cim-backend
