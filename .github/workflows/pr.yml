@@ -22,8 +22,7 @@ jobs:
           version: latest
           args: --timeout=5m
           skip-cache: false
-          skip-pkg-cache: false
-          skip-build-cache: false
+          skip-save-cache: false
 
   test:
     name: Test

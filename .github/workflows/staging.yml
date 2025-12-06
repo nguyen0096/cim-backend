@@ -6,6 +6,10 @@ on:
       - main
   workflow_dispatch:
 
+concurrency:
+  group: staging-${{ github.sha }}
+  cancel-in-progress: true
+
 env:
   REGISTRY: ghcr.io
   IMAGE_NAME: hn-corp/cim-backend
@@ -27,8 +31,7 @@ jobs:
           version: latest
           args: --timeout=5m
           skip-cache: false
-          skip-pkg-cache: false
-          skip-build-cache: false
+          skip-save-cache: false
 
   test:
     name: Test
