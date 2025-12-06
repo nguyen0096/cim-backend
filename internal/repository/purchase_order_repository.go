@@ -305,6 +305,9 @@ func (r *purchaseOrderRepository) ReceiveInventory(ctx context.Context, req dto.
 					receivedQuantityDecimalPlaces, poi.ProductUnit.DecimalPlaces, poi.ProductUnit.Name)
 			}
 
+			// backward compatible: patching the POI unit
+			poi.PurchaseOrderItem.CompatifyUnit(poi.ProductUnit.ID)
+
 			// Handle purchase order item
 			poi.ReceivedQuantity = poi.ReceivedQuantity.Add(reqItem.ReceivedQuantity)
 			poi.PurchaseOrderItem.UpdateStatus()
@@ -342,11 +345,9 @@ func (r *purchaseOrderRepository) ReceiveInventory(ctx context.Context, req dto.
 		}
 
 		// extract inner POI model for DB operations.
-		// Note that we also patching the POI unit and formatting the API response.
+		// Note that we also format the API response here.
 		poItems := make([]*models.PurchaseOrderItem, 0, len(poiData))
 		for _, data := range poiData {
-			data.PurchaseOrderItem.CompatifyUnit(data.ProductUnit.ID) // here's the patch.
-
 			// set unit and product to the inner POI model
 			// for API response purpose.
 			data.PurchaseOrderItem.Product = data.Product

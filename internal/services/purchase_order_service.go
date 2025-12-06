@@ -1275,6 +1275,11 @@ func (s *purchaseOrderService) ReceiveInventory(
 	ctx context.Context,
 	req dto.UpdatePurchaseOrderDeliveryStatusRequest,
 ) (*models.PurchaseOrder, error) {
+	// @todo: fetch POI's product unit and use v2 unit service method to convert the quantity to same unit as product unit.
+	// Context: currently, we're converting the quantity of POI at PO creation step.
+	// That why's we might not this step yet. In the future, we should keep the POI unit the same as user input.
+	// Quantity unit conversion in case POI unit is different from product unit.
+
 	po, err := s.purchaseOrderRepo.ReceiveInventory(ctx, req)
 	if err != nil {
 		return nil, fmt.Errorf("failed to persist delivery update: %w", err)
