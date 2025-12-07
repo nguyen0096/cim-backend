@@ -390,6 +390,14 @@ func (s *excelService) FinalizeRevenueExpense(ctx context.Context, date time.Tim
 		if err := s.revenueExpenseExcelRepo.InitializeWithFile(ctx, filePath, sheetName); err != nil {
 			return nil, pkg.ErrFailedToInitializeExcelRepo(ctx, err)
 		}
+		defer func() {
+			if err := s.revenueExpenseExcelRepo.Close(); err != nil {
+				log.WithContext(ctx).WithFields(logrus.Fields{
+					"operation": "FinalizeRevenueExpense",
+					"filePath":  filePath,
+				}).WithError(err).Warn("failed to close revenue expense excel repository")
+			}
+		}()
 
 		// Add new date row, the date when user click finalize button, not the last finalized date
 		if err := s.revenueExpenseExcelRepo.AddNewDateRow(ctx, sheetName, today); err != nil {
