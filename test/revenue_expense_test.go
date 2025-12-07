@@ -200,7 +200,8 @@ var _ = Describe("Revenue Expense API", func() {
 					snackAndRiceValueStr, ok := expenseData[pkg.RevenueExpenseColumnSnackAndRice].(string)
 					Expect(ok).To(BeTrue())
 					var snackAndRiceValue float64
-					_, err = fmt.Sscanf(strings.ToLower(snackAndRiceValueStr), "%f", &snackAndRiceValue)
+					normalizedValue := strings.ReplaceAll(strings.ToLower(snackAndRiceValueStr), ",", "")
+					_, err = fmt.Sscanf(normalizedValue, "%f", &snackAndRiceValue)
 					Expect(err).NotTo(HaveOccurred())
 					Expect(snackAndRiceValue).To(Equal(approvedPaymentReceiptForm.TotalAmount))
 				}
