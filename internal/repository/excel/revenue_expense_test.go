@@ -100,7 +100,7 @@ func TestRevenueExpenseExcelRepository(t *testing.T) {
 	// Compare last expense with expected expense
 	expectedExpense := map[string]interface{}{
 		pkg.RevenueExpenseColumnName:          "Test expense",
-		pkg.RevenueExpenseColumnWater:         15000,
+		pkg.RevenueExpenseColumnWater:         "15,000",
 		pkg.RevenueExpenseColumnOrdinalNumber: 10,
 	}
 	compareExpenses(t, expectedExpense, lastExpense)
@@ -124,7 +124,7 @@ func TestRevenueExpenseExcelRepository(t *testing.T) {
 	// Compare last expense with expected expense
 	expectedExpense2 := map[string]interface{}{
 		pkg.RevenueExpenseColumnName:          "Test expense 2",
-		pkg.RevenueExpenseColumnSnackAndRice:  1000000,
+		pkg.RevenueExpenseColumnSnackAndRice:  "1,000,000",
 		pkg.RevenueExpenseColumnOrdinalNumber: 13,
 	}
 	compareExpenses(t, expectedExpense2, lastExpense2)
