@@ -360,14 +360,15 @@ func (r *BaseExcelRepository) AddDataRowWithColor(file *excelize.File, sheetName
 		if !exists {
 			continue
 		}
+		
 		if column.ColumnName == pkg.RevenueExpenseColumnWater || column.ColumnName == pkg.RevenueExpenseColumnSnackAndRice {
+			if err := file.SetCellValue(sheetName, cellName, value); err != nil {
+				return fmt.Errorf("failed to set cell value: %w", err)
+			}
 			if err := file.SetCellStyle(sheetName, cellName, cellName, thousandStyleID); err != nil {
 				return fmt.Errorf("failed to set cell style: %w", err)
 			}
-		} else {
-			if err := file.SetCellStyle(sheetName, cellName, cellName, styleID); err != nil {
-				return fmt.Errorf("failed to set cell style: %w", err)
-			}
+			continue
 		}
 
 		// Convert value to uppercase string
@@ -375,6 +376,10 @@ func (r *BaseExcelRepository) AddDataRowWithColor(file *excelize.File, sheetName
 		uppercaseValue := strings.ToUpper(valueStr)
 		if err := file.SetCellValue(sheetName, cellName, uppercaseValue); err != nil {
 			return fmt.Errorf("failed to set cell value: %w", err)
+		}
+
+		if err := file.SetCellStyle(sheetName, cellName, cellName, styleID); err != nil {
+			return fmt.Errorf("failed to set cell style: %w", err)
 		}
 	}
 

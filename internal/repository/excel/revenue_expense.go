@@ -10,7 +10,9 @@ import (
 
 	"cim-backend/internal/models"
 	"cim-backend/pkg"
+	"cim-backend/pkg/log"
 
+	"github.com/sirupsen/logrus"
 	"github.com/xuri/excelize/v2"
 )
 
@@ -56,27 +58,46 @@ func (r *revenueExpenseExcelRepository) AddExpenses(ctx context.Context, sheetNa
 		return fmt.Errorf("no expenses data provided")
 	}
 
+	traceFields := func(step string, extra logrus.Fields) {
+		fields := logrus.Fields{
+			"operation":    "AddExpenses",
+			"sheetName":    sheetName,
+			"expense_rows": len(expensesData),
+			"step":         step,
+		}
+		for k, v := range extra {
+			fields[k] = v
+		}
+		log.WithContext(ctx).WithFields(fields).Info("excel revenue expense tracing")
+	}
+
 	// Validate all expense data
+	validateStart := time.Now()
 	for i, expenseData := range expensesData {
 		if err := ValidateData(expenseData); err != nil {
 			return fmt.Errorf("invalid expense data at index %d: %w", i, err)
 		}
 	}
+	traceFields("validateData", logrus.Fields{"elapsed_ms": time.Since(validateStart).Milliseconds()})
 
 	// Get file and sheet data
+	loadStart := time.Now()
 	file, _, rows, err := r.GetFileAndSheetData(sheetName)
 	if err != nil {
 		return err
 	}
+	traceFields("getFileAndSheetData", logrus.Fields{"elapsed_ms": time.Since(loadStart).Milliseconds(), "row_count": len(rows)})
 
 	// Find header row
+	headerStart := time.Now()
 	headerRow := r.FindHeaderRow(rows)
 	if headerRow < 0 || headerRow >= len(rows) {
 		return fmt.Errorf("no header row found")
 	}
+	traceFields("findHeaderRow", logrus.Fields{"elapsed_ms": time.Since(headerStart).Milliseconds(), "header_row_index": headerRow})
 
 	// Prepare date and row information
-	targetRow := len(rows) + 1
+	var targetRow int
 	var ordinalNumber int
 
 	// Add transaction date row if needed
@@ -101,10 +122,18 @@ func (r *revenueExpenseExcelRepository) AddExpenses(ctx context.Context, sheetNa
 	// 	ordinalNumber++
 	// }
 
-	lastRow, _, err := r.FindLastTransactionRow(rows)
+	lastRowStart := time.Now()
+	lastRow, lastRowIndex, err := r.FindLastTransactionRow(rows)
 	if err != nil {
 		return fmt.Errorf("failed to find last transaction row: %w", err)
 	}
+	traceFields("findLastTransactionRow", logrus.Fields{
+		"elapsed_ms":     time.Since(lastRowStart).Milliseconds(),
+		"last_row_index": lastRowIndex,
+	})
+
+	// Next data row should be directly after the last transaction row (e.g. newly added date row)
+	targetRow = lastRowIndex + 1
 
 	// Check if lastRow has enough columns to access the ordinal number (STT column at index 1)
 	if len(lastRow) < 2 {
@@ -120,6 +149,7 @@ func (r *revenueExpenseExcelRepository) AddExpenses(ctx context.Context, sheetNa
 	}
 
 	// Add all expense data rows
+	addRowsStart := time.Now()
 	for i, expenseData := range expensesData {
 		ordinalNumber++
 		if err := r.AddDataRowWithColor(file, sheetName, targetRow, expenseData, cellColors[i]); err != nil {
@@ -127,14 +157,21 @@ func (r *revenueExpenseExcelRepository) AddExpenses(ctx context.Context, sheetNa
 		}
 		targetRow++
 	}
+	traceFields("addDataRows", logrus.Fields{
+		"elapsed_ms": time.Since(addRowsStart).Milliseconds(),
+		"start_row":  targetRow - len(expensesData),
+	})
 
 	// Save the file
+	saveStart := time.Now()
 	if err := file.Save(); err != nil {
 		return fmt.Errorf("failed to save file: %w", err)
 	}
+	traceFields("saveFile", logrus.Fields{"elapsed_ms": time.Since(saveStart).Milliseconds()})
 
 	// Invalidate cache after saving to ensure next read gets fresh data
 	r.ForceCacheRefresh()
+	traceFields("forceCacheRefresh", logrus.Fields{})
 
 	return nil
 }
@@ -244,40 +281,63 @@ func (r *revenueExpenseExcelRepository) GetLastTransactionDate(ctx context.Conte
 
 // AddNewDateRow adds a new row with the specified date to the Excel file
 func (r *revenueExpenseExcelRepository) AddNewDateRow(ctx context.Context, sheetName string, date time.Time) error {
+	traceFields := func(step string, extra logrus.Fields) {
+		fields := logrus.Fields{
+			"operation": "AddNewDateRow",
+			"sheetName": sheetName,
+			"step":      step,
+		}
+		for k, v := range extra {
+			fields[k] = v
+		}
+		log.WithContext(ctx).WithFields(fields).Info("excel revenue expense tracing")
+	}
+
 	// Get file and sheet data
+	loadStart := time.Now()
 	file, _, rows, err := r.GetFileAndSheetData(sheetName)
 	if err != nil {
 		return fmt.Errorf("failed to get file and sheet data: %w", err)
 	}
+	traceFields("getFileAndSheetData", logrus.Fields{"elapsed_ms": time.Since(loadStart).Milliseconds(), "row_count": len(rows)})
 
 	// Find header row
+	headerStart := time.Now()
 	headerRow := r.FindHeaderRow(rows)
 	if headerRow < 0 || headerRow >= len(rows) {
 		return fmt.Errorf("no header row found")
 	}
+	traceFields("findHeaderRow", logrus.Fields{"elapsed_ms": time.Since(headerStart).Milliseconds(), "header_row_index": headerRow})
 
 	// Get the date format from the last date row
+	lastInfoStart := time.Now()
 	_, detectedDateFormat := FindLastTransactionDateInfo(rows, headerRow, date)
 	_, lastRowIndex, err := r.FindLastTransactionRow(rows)
 	if err != nil {
 		return fmt.Errorf("failed to find last transaction row: %w", err)
 	}
+	traceFields("determineLastRow", logrus.Fields{"elapsed_ms": time.Since(lastInfoStart).Milliseconds(), "last_row_index": lastRowIndex, "date_format": detectedDateFormat})
 
 	// Calculate the target row (append at the end)
 	targetRow := lastRowIndex + 1
 
 	// Add the date row
+	addRowStart := time.Now()
 	if err := r.AddTransactionDateRow(file, sheetName, targetRow, date, detectedDateFormat); err != nil {
 		return fmt.Errorf("failed to add transaction date row: %w", err)
 	}
+	traceFields("addTransactionDateRow", logrus.Fields{"elapsed_ms": time.Since(addRowStart).Milliseconds(), "target_row": targetRow})
 
 	// Save the file
+	saveStart := time.Now()
 	if err := file.Save(); err != nil {
 		return fmt.Errorf("failed to save file: %w", err)
 	}
+	traceFields("saveFile", logrus.Fields{"elapsed_ms": time.Since(saveStart).Milliseconds()})
 
 	// Invalidate cache after saving to ensure next read gets fresh data
 	r.ForceCacheRefresh()
+	traceFields("forceCacheRefresh", logrus.Fields{})
 
 	return nil
 }

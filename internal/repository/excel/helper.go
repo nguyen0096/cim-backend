@@ -59,7 +59,7 @@ func CreateCellStyleWithCurrencyThousandSeparator(file *excelize.File) (int, err
 	style := NewDefaultCellStyle()
 	style.Font.Bold = true
 	style.Font.Size = 14
-	currencyThousandSeparatorFormat := "#.##0"
+	currencyThousandSeparatorFormat := "#,##0"
 	style.CustomNumFmt = &currencyThousandSeparatorFormat
 	styleID, err := file.NewStyle(style)
 	if err != nil {

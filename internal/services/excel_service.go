@@ -387,9 +387,18 @@ func (s *excelService) FinalizeRevenueExpense(ctx context.Context, date time.Tim
 	} else {
 		// Handle local file
 		// Initialize repository
+		initStart := time.Now()
 		if err := s.revenueExpenseExcelRepo.InitializeWithFile(ctx, filePath, sheetName); err != nil {
 			return nil, pkg.ErrFailedToInitializeExcelRepo(ctx, err)
 		}
+		log.WithContext(ctx).WithFields(logrus.Fields{
+			"operation":    "FinalizeRevenueExpense",
+			"step":         "InitializeWithFile",
+			"filePath":     filePath,
+			"sheetName":    sheetName,
+			"elapsed_ms":   time.Since(initStart).Milliseconds(),
+			"record_count": len(forms),
+		}).Info("excel repository initialized")
 		defer func() {
 			if err := s.revenueExpenseExcelRepo.Close(); err != nil {
 				log.WithContext(ctx).WithFields(logrus.Fields{
@@ -400,15 +409,39 @@ func (s *excelService) FinalizeRevenueExpense(ctx context.Context, date time.Tim
 		}()
 
 		// Add new date row, the date when user click finalize button, not the last finalized date
+		addDateRowStart := time.Now()
 		if err := s.revenueExpenseExcelRepo.AddNewDateRow(ctx, sheetName, today); err != nil {
 			return nil, pkg.ErrFailedToAddNewDateRowExcel(ctx, err)
 		}
+		log.WithContext(ctx).WithFields(logrus.Fields{
+			"operation":  "FinalizeRevenueExpense",
+			"step":       "AddNewDateRow",
+			"sheetName":  sheetName,
+			"elapsed_ms": time.Since(addDateRowStart).Milliseconds(),
+		}).Info("added new date row to excel sheet")
 
+		expensesStart := time.Now()
 		expensesData, cellColors := s.createExpenseDataFromForms(forms)
+		log.WithContext(ctx).WithFields(logrus.Fields{
+			"operation":            "FinalizeRevenueExpense",
+			"step":                 "createExpenseDataFromForms",
+			"sheetName":            sheetName,
+			"elapsed_ms":           time.Since(expensesStart).Milliseconds(),
+			"payment_receipt_size": len(forms),
+			"expense_rows":         len(expensesData),
+		}).Info("prepared expense rows for excel sheet")
 		if len(expensesData) > 0 {
+			writeStart := time.Now()
 			if err := s.AddExpenses(ctx, sheetName, expensesData, cellColors); err != nil {
 				return nil, pkg.ErrFailedToAddExpensesToExcel(ctx, err)
 			}
+			log.WithContext(ctx).WithFields(logrus.Fields{
+				"operation":    "FinalizeRevenueExpense",
+				"step":         "AddExpenses",
+				"sheetName":    sheetName,
+				"elapsed_ms":   time.Since(writeStart).Milliseconds(),
+				"expense_rows": len(expensesData),
+			}).Info("added expenses to excel sheet")
 		}
 	}
 
