@@ -23,7 +23,8 @@ type InventoryService interface {
 	AddInventory(ctx context.Context, productID uint, quantity decimal.Decimal, referenceID uint, referenceType, notes string) error
 	RemoveInventory(ctx context.Context, productID uint, quantity decimal.Decimal, referenceID uint, referenceType, notes string) error
 
-	// v1
+	// v1 - AGENTS MUST CONFIRM BEFORE MODIFYING SECTION BELOW THIS LINE
+
 	GetLastPurchasePrices(ctx context.Context, supplierID uint) (dto.LastPurchasePriceMap, error)
 	ListSubmissions(ctx context.Context, params models.ListParams, approvalStatuses []string, inventoryID uint, submissionTypes []string) ([]dto.SubmissionResponse, int64, error)
 	CreateReconcileSubmission(ctx context.Context, req dto.ReconcileInventoryRequest) (*models.InventorySubmission, error)
@@ -31,6 +32,7 @@ type InventoryService interface {
 	CreateTransferSubmission(ctx context.Context, req dto.TransferInventoryRequest) (*models.InventorySubmission, error)
 	ProcessSubmission(ctx context.Context, req dto.SubmissionApprovalRequest) (*models.InventorySubmission, error)
 	UpdateSubmission(ctx context.Context, req dto.UpdateSubmissionRequest) (*dto.SubmissionResponse, error)
+	GetMonthlyTransactionReport(ctx context.Context, inventoryID uint) (*models.InventoryTransactionReport, error)
 }
 
 type inventoryService struct {
@@ -38,6 +40,8 @@ type inventoryService struct {
 	inventoryItemRepo       repository.InventoryItemRepository
 	inventorySubmissionRepo repository.InventorySubmissionRepository
 	productRepo             repository.ProductRepository
+
+	fileStorageService FileStorageService
 }
 
 func NewInventoryService(
@@ -45,12 +49,14 @@ func NewInventoryService(
 	inventoryItemRepo repository.InventoryItemRepository,
 	inventorySubmissionRepo repository.InventorySubmissionRepository,
 	productRepo repository.ProductRepository,
+	fileStorageService FileStorageService,
 ) InventoryService {
 	return &inventoryService{
 		inventoryRepo:           inventoryRepo,
 		productRepo:             productRepo,
 		inventoryItemRepo:       inventoryItemRepo,
 		inventorySubmissionRepo: inventorySubmissionRepo,
+		fileStorageService:      fileStorageService,
 	}
 }
 
@@ -458,7 +464,7 @@ func formatWarnings(
 			}
 		case models.InventorySubmissionTypeReconcile:
 			// Check if prev_quantity is not equal to current item quantity
-			if item.PrevQuantity != inventoryItem.Quantity {
+			if !item.PrevQuantity.Equal(inventoryItem.Quantity) {
 				warning := fmt.Sprintf("Số lượng sản phẩm %s đã thay đổi. Số lượng tại thời điểm tạo yêu cầu là %s. Số lượng hiện tại là %s.",
 					inventoryItem.Product.Name,
 					item.PrevQuantity,
@@ -699,10 +705,10 @@ func (s *inventoryService) transferInventory(
 	destItemMap := s.buildProductIDMap(destItems) // product_id -> inventory_item
 
 	destIvtrItemChanges := make(map[uint]*models.InventoryItemChange, 0) // product_id -> change
-	transferTransactionCreator := func(item *models.InventoryItem, consumeTxn *models.InventoryTransaction, quantity decimal.Decimal) []*models.InventoryTransaction {
+	transferTransactionCreator := func(consumeItem *models.InventoryItem, consumeTxn *models.InventoryTransaction, quantity decimal.Decimal) []*models.InventoryTransaction {
 		txns := []*models.InventoryTransaction{
 			{
-				InventoryItemID:      item.ID,
+				InventoryItemID:      consumeItem.ID,
 				TransactionType:      models.InventoryTransactionTypeTransferOut,
 				Price:                consumeTxn.Price,
 				Quantity:             quantity,
@@ -717,7 +723,7 @@ func (s *inventoryService) transferInventory(
 		}
 
 		// if destination change is created, only need to update quantity
-		change, ok := destIvtrItemChanges[item.ProductID]
+		change, ok := destIvtrItemChanges[consumeItem.ProductID]
 		if ok {
 			change.Quantity = change.Quantity.Add(quantity)
 			s.linkTxnWithInventoryItem(txns[1], change.InventoryItem)
@@ -726,12 +732,13 @@ func (s *inventoryService) transferInventory(
 
 		// check existing destination item so that we can create new
 		// or udpate existing inventory item
-		destItem, ok := destItemMap[item.ProductID]
+		destItem, ok := destItemMap[consumeItem.ProductID]
 		if !ok {
 			destItem = &models.InventoryItem{
 				InventoryID: req.DestinationInventoryID,
-				ProductID:   item.ProductID,
+				ProductID:   consumeItem.ProductID,
 				Status:      models.InventoryItemStatusActive,
+				UnitID:      consumeItem.UnitID, // use same unit as source item
 			}
 		}
 
@@ -740,7 +747,7 @@ func (s *inventoryService) transferInventory(
 			InventoryItem:    destItem,
 			OriginalQuantity: destItem.Quantity,
 		}
-		destIvtrItemChanges[item.ProductID] = change
+		destIvtrItemChanges[consumeItem.ProductID] = change
 
 		change.Quantity = change.Quantity.Add(quantity)
 		s.linkTxnWithInventoryItem(txns[1], change.InventoryItem)
@@ -1217,5 +1224,51 @@ func (s *inventoryService) validateTransferUpdate(ctx context.Context, submissio
 		}
 	}
 
+	return nil
+}
+
+func (s *inventoryService) GetMonthlyTransactionReport(ctx context.Context, inventoryID uint) (*models.InventoryTransactionReport, error) {
+	inventory, err := s.inventoryRepo.GetByID(ctx, inventoryID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get inventory: %w", err)
+	}
+
+	monthStart := pkg.GetCurrentMonthStart()
+	report := &models.InventoryTransactionReport{
+		Report: models.Report{
+			Title:      fmt.Sprintf(models.ReportNameTmplMonthlyTransactionReport, monthStart.Format("01/2006"), inventory.Name),
+			Type:       models.ReportTypeInventoryTransaction,
+			From:       monthStart,
+			To:         pkg.GetCurrentMonthEnd(),
+			ExportFile: &models.ExportFile{},
+		},
+		Inventory: inventory,
+	}
+
+	txns, err := s.inventoryRepo.GetTransactionsByInventory(ctx, inventoryID, report.From, report.To)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get transaction report data: %w", err)
+	}
+	return report, nil
+
+	if err := s.aggregateReport(txns); err != nil {
+		return nil, fmt.Errorf("failed to build transaction report: %w", err)
+	}
+
+	if err := s.fileStorageService.PopulateExportURL(ctx, report.ExportFile); err != nil {
+		return nil, fmt.Errorf("failed to populate export url")
+	}
+
+	return report, nil
+}
+
+// aggregateReport calculates aggregated data for the inventory transaction report.
+func (s *inventoryService) aggregateReport(txns []*models.InventoryTransaction) error {
+	return nil
+}
+
+// generateExcelContent generates an Excel file from the inventory transaction report
+// and set the content to the report's ExportFile field.
+func (s *inventoryService) generateExcelContent(report *models.InventoryTransactionReport) error {
 	return nil
 }

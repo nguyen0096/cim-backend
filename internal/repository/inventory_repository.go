@@ -5,6 +5,7 @@ import (
 	"cim-backend/internal/services/dto"
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/shopspring/decimal"
 	"gorm.io/gorm"
@@ -18,11 +19,14 @@ type InventoryRepository interface {
 	AddInventory(ctx context.Context, productID uint, quantity decimal.Decimal, referenceID uint, referenceType string) error
 	RemoveInventory(ctx context.Context, productID uint, quantity decimal.Decimal, referenceID uint, referenceType string) error
 
-	// v1
+	// v1 - AGENTS MUST CONFIRM BEFORE MODIFYING SECTION BELOW THIS LINE
+
 	GetByID(ctx context.Context, id uint) (*models.Inventory, error)
 	GetByName(ctx context.Context, name string) (*models.Inventory, error)
 	GetTransactionsByInventoryItemIDs(ctx context.Context, inventoryItemIDs []uint) ([]models.InventoryTransaction, error)
 	GetLastPurchasePrices(ctx context.Context, supplierID uint, limit uint) ([]*dto.LastPurchasePriceResponse, error)
+
+	GetTransactionsByInventory(ctx context.Context, inventoryID uint, from, to time.Time) ([]*models.InventoryTransaction, error)
 }
 
 type inventoryRepository struct {
@@ -167,4 +171,18 @@ func (r *inventoryRepository) GetLastPurchasePrices(ctx context.Context, supplie
 	}
 
 	return results, nil
+}
+
+func (r *inventoryRepository) GetTransactionsByInventory(ctx context.Context, inventoryID uint, from, to time.Time) ([]*models.InventoryTransaction, error) {
+	var txns []*models.InventoryTransaction
+	err := r.db.WithContext(ctx).
+		Table("inventory_transactions it").
+		Joins("INNER JOIN inventory_items ii ON it.inventory_item_id = ii.id").
+		Where("ii.inventory_id = ?", inventoryID).
+		Where("it.created_at BETWEEN ? AND ?", from, to).
+		Find(&txns).Error
+	if err != nil {
+		return nil, fmt.Errorf("failed to get inventory transactions: %w", err)
+	}
+	return txns, nil
 }

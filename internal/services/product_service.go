@@ -30,7 +30,8 @@ type ProductService interface {
 	CountProducts(ctx context.Context, status, productType string, supplierID uint) (int64, error)
 	CountSearchProducts(ctx context.Context, query string, status, productType string, supplierID uint) (int64, error)
 
-	// v1
+	// v1 - AGENTS MUST CONFIRM BEFORE MODIFYING SECTION BELOW THIS LINE
+
 	ListProducts(ctx context.Context, limit, offset int, sortBy, sortOrder, status, productType string, supplierID uint) ([]models.Product, error)
 	GetMapByNames(ctx context.Context, names []string) (map[string]*models.Product, error)
 	ImportProductsFromCSV(ctx context.Context, csvReader io.Reader) (int, error)

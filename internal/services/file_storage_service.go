@@ -2,6 +2,7 @@ package services
 
 import (
 	"cim-backend/internal/config"
+	"cim-backend/internal/models"
 	"cim-backend/pkg"
 	"cim-backend/pkg/log"
 	"context"
@@ -22,6 +23,11 @@ type FileStorageService interface {
 	GetFilePath(ctx context.Context, fileUID string, extension string, category pkg.FileCategory) (string, error)
 	DeleteFile(ctx context.Context, fileUID string, extension string, category pkg.FileCategory) error
 	EnsureUploadDirectories() error
+
+	// v1 - AGENTS MUST CONFIRM BEFORE MODIFYING SECTION BELOW THIS LINE
+
+	// PopulateExportURL populates the DownloadURL field of an ExportFile with a presigned URL.
+	PopulateExportURL(ctx context.Context, export *models.ExportFile) error
 }
 
 type fileStorageService struct {
@@ -187,5 +193,9 @@ func (s *fileStorageService) EnsureUploadDirectories() error {
 	}
 
 	log.Info("Successfully ensured all upload directories exist")
+	return nil
+}
+
+func (s *fileStorageService) PopulateExportURL(ctx context.Context, export *models.ExportFile) error {
 	return nil
 }

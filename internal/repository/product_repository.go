@@ -26,7 +26,7 @@ type ProductRepository interface {
 	CountSearch(ctx context.Context, query string, status, productType string, supplierID uint) (int64, error)
 	AnyProductUsingUnitID(ctx context.Context, unitID uint) (bool, error)
 
-	// v1
+	// v1 - AGENTS MUST CONFIRM BEFORE MODIFYING SECTION BELOW THIS LINE
 	List(ctx context.Context, limit, offset int, sortBy, sortOrder, status, productType string, supplierID uint) ([]models.Product, error)
 }
 

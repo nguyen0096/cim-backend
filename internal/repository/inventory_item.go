@@ -45,7 +45,7 @@ type InventoryItemRepository interface {
 	Count(ctx context.Context) (int64, error)
 	CountLowStockItems(ctx context.Context) (int64, error)
 
-	// v1
+	// v1 - AGENTS MUST CONFIRM BEFORE MODIFYING SECTION BELOW THIS LINE
 	GetByInventoryIDWithFilters(ctx context.Context, inventoryID uint, filters InventoryItemFilters, limit, offset int) ([]models.InventoryItem, error)
 	CountByInventoryIDWithFilters(ctx context.Context, inventoryID uint, filters InventoryItemFilters) (int64, error)
 	GetActiveInventoryItems(ctx context.Context, inventoryID uint, ids []uint) ([]*models.InventoryItem, error)

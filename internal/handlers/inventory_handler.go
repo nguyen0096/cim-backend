@@ -442,3 +442,16 @@ func (h *InventoryHandler) UpdateSubmission(c echo.Context) error {
 
 	return c.JSON(http.StatusOK, response)
 }
+
+func (h *InventoryHandler) ExportMonthlyTransactionReport(c echo.Context) error {
+	id, err := pkg.ExtractIDParam(c)
+	if err != nil {
+		return err
+	}
+
+	response, err := h.inventoryService.GetMonthlyTransactionReport(c.Request().Context(), id)
+	if err != nil {
+		return fmt.Errorf("failed to export stock flow: %w", err)
+	}
+	return c.JSON(http.StatusOK, response.ExportFile)
+}

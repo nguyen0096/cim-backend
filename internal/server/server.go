@@ -49,15 +49,15 @@ func SetupServer(
 	paymentReceiptFormRepo := repository.NewPaymentReceiptFormRepository(db)
 
 	// Initialize services
+	fileStorageService := services.NewFileStorageService(cfg)
 	userService := services.NewUserService(userRepo, casbinService)
 	supplierService := services.NewSupplierService(supplierRepo)
 	settingsService := services.NewSettingsService(settingsRepo)
 	unitService := services.NewUnitService(unitRepo, productRepo)
 	productService := services.NewProductService(productRepo, supplierRepo, unitRepo, unitService, settingsService)
-	inventoryService := services.NewInventoryService(inventoryRepo, inventoryItemRepo, inventorySubmissionRepo, productRepo)
+	inventoryService := services.NewInventoryService(inventoryRepo, inventoryItemRepo, inventorySubmissionRepo, productRepo, fileStorageService)
 	inventoryItemService := services.NewInventoryItemService(inventoryItemRepo, inventoryRepo, productRepo)
 	excelService := services.NewExcelService(productRepo, inventoryRepo, paymentReceiptFormRepo, settingsService)
-	fileStorageService := services.NewFileStorageService(cfg)
 	purchaseOrderService := services.NewPurchaseOrderService(purchaseOrderRepo, paymentReceiptFormRepo, unitRepo, productRepo, inventoryService, excelService, settingsService, db, supplierRepo, inventoryRepo, unitService, productService)
 	paymentReceiptFormService := services.NewPaymentReceiptFormService(paymentReceiptFormRepo, db, settingsService)
 
@@ -209,6 +209,7 @@ func SetupServer(
 	inventories.POST("/transfer", inventoryHandler.TransferInventory)
 	inventories.POST("/:id/dispose", inventoryHandler.DisposeInventoryItems)
 	inventories.POST("/:id/reconcile", inventoryHandler.ReconcileInventory)
+	inventories.GET("/:id/export/monthly-transaction", inventoryHandler.ExportMonthlyTransactionReport)
 
 	// Nested inventory items routes
 	inventories.GET("/:id/inventory-items", inventoryItemHandler.GetInventoryItemsByInventoryID)

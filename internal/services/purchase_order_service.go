@@ -35,7 +35,8 @@ type PurchaseOrderService interface {
 	ReceivePurchaseOrder(ctx context.Context, id uint) error
 	UpdatePurchaseOrderItemStatus(ctx context.Context, purchaseOrderID, itemID uint, status models.PurchaseOrderItemStatus) (*dto.UpdatePurchaseOrderItemStatusResponse, error)
 
-	// V1
+	// v1 - AGENTS MUST CONFIRM BEFORE MODIFYING SECTION BELOW THIS LINE
+
 	UpdatePurchaseOrder(ctx context.Context, id uint, req dto.UpdatePurchaseOrderRequest) (*models.PurchaseOrder, error)
 	ReceiveInventory(ctx context.Context, req dto.UpdatePurchaseOrderDeliveryStatusRequest) (*models.PurchaseOrder, error)
 	RetryQueueRevenueExpenseRequest(ctx context.Context, paymentReceiptFormIDs []uint) error
