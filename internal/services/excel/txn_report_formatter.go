@@ -24,13 +24,13 @@ import (
 	"github.com/xuri/excelize/v2"
 )
 
-const txnReportSheetName = "XNT"
+const txnReportSheetName = "Sheet1"
 
 // DEBUG_SAVE_EXCEL enables saving Excel files to disk for debugging runtime sessions.
 // Set to true to save all generated files in the same directory as the executable.
 // Files are named: {report-title}-{timestamp}.xlsx
 // Remember to set back to false before committing!
-const DEBUG_SAVE_EXCEL = false
+const DEBUG_SAVE_EXCEL = true
 
 // TxnReportFormatter formats inventory transaction reports as Excel files.
 // It's a pure data transformation component with no database dependencies.

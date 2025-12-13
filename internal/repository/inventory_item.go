@@ -325,6 +325,7 @@ func (r *inventoryItemRepository) GetByIDs(ctx context.Context, ids []uint) ([]*
 		Unscoped().
 		Preload("Inventory").
 		Preload("Product").
+		Preload("Unit").
 		Where("id IN ?", ids).
 		Find(&items).Error
 	if err != nil {
