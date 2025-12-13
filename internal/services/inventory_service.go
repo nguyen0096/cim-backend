@@ -1241,7 +1241,7 @@ func (s *inventoryService) GetMonthlyTransactionReport(ctx context.Context, inve
 	from := pkg.GetMonthStart(0)
 	to := pkg.GetMonthStart(1)
 
-	txns, err := s.inventoryRepo.GetTransactionsByInventory(ctx, inventoryID, &from, &to)
+	txns, err := s.inventoryRepo.GetTransactionsByInventoryIDs(ctx, inventoryID, &from, &to)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get transaction report data: %w", err)
 	}
@@ -1259,7 +1259,7 @@ func (s *inventoryService) GetMonthlyTransactionReport(ctx context.Context, inve
 	}
 
 	// get historical transactions to calculate starting quantities
-	historicalTxns, err := s.inventoryRepo.GetTransactionsByInventory(ctx, inventoryID, nil, &from)
+	historicalTxns, err := s.inventoryRepo.GetTransactionsByInventoryIDs(ctx, inventoryID, nil, &from)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get historical transactions: %w", err)
 	}

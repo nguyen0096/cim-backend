@@ -26,7 +26,7 @@ type InventoryRepository interface {
 	GetLastPurchasePrices(ctx context.Context, supplierID uint, limit uint) ([]*dto.LastPurchasePriceResponse, error)
 
 	GetTransactionsByInventoryItemIDs(ctx context.Context, inventoryItemIDs []uint) ([]models.InventoryTransaction, error)
-	GetTransactionsByInventory(ctx context.Context, inventoryID uint, from, to *time.Time) ([]*models.InventoryTransaction, error)
+	GetTransactionsByInventoryIDs(ctx context.Context, inventoryID uint, from, to *time.Time) ([]*models.InventoryTransaction, error)
 }
 
 type inventoryRepository struct {
@@ -173,7 +173,7 @@ func (r *inventoryRepository) GetLastPurchasePrices(ctx context.Context, supplie
 	return results, nil
 }
 
-func (r *inventoryRepository) GetTransactionsByInventory(ctx context.Context, inventoryID uint, from, to *time.Time) ([]*models.InventoryTransaction, error) {
+func (r *inventoryRepository) GetTransactionsByInventoryIDs(ctx context.Context, inventoryID uint, from, to *time.Time) ([]*models.InventoryTransaction, error) {
 	var txns []*models.InventoryTransaction
 	q := r.db.WithContext(ctx).
 		Table("inventory_transactions it").
