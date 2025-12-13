@@ -206,6 +206,7 @@ func (rb *txnReportBuilder) updatePOSummary(
 		summary = &TxnReportPOSummary{
 			OrderNumber:           poItem.PurchaseOrder.OrderNumber,
 			Status:                poItem.PurchaseOrder.Status,
+			UnitPrice:             poItem.UnitPrice,
 			PurchaseQuantityByDay: make(map[int]decimal.Decimal),
 		}
 		reportItem.POMap[poItemID] = summary

@@ -29,6 +29,7 @@ type Report struct {
 type TxnReportPOSummary struct {
 	OrderNumber           string                  `json:"order_number"`
 	Status                PurchaseOrderStatus     `json:"status"`
+	UnitPrice             float64                 `json:"unit_price"`
 	PurchaseQuantityByDay map[int]decimal.Decimal `json:"quantity_by_day"`
 }
 
@@ -41,6 +42,7 @@ type TxnReportInventoryItem struct {
 
 	// computed fields
 
+	// POMap is purchase order summaries by PO ID.
 	POMap                 map[uint]*TxnReportPOSummary `json:"-"`
 	PurchaseQuantity      decimal.Decimal              `json:"total_purchase"`
 	PurchaseQuantityByDay map[int]decimal.Decimal      `json:"purchase_quantity_by_day"`

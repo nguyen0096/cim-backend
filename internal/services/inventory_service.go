@@ -4,6 +4,7 @@ import (
 	"cim-backend/internal/models"
 	"cim-backend/internal/repository"
 	"cim-backend/internal/services/dto"
+	"cim-backend/internal/services/excel"
 	"cim-backend/pkg"
 	"context"
 	"encoding/json"
@@ -1278,6 +1279,15 @@ func (s *inventoryService) GetMonthlyTransactionReport(ctx context.Context, inve
 		return nil, fmt.Errorf("failed to get report output: %w", err)
 	}
 
+	// format XLSX content
+	formatter := excel.NewTxnReportFormatter()
+	content, err := formatter.FormatToXLSX(r)
+	if err != nil {
+		return nil, fmt.Errorf("failed to format report as XLSX: %w", err)
+	}
+	r.ExportFile.Content = content
+	// @todo: debug save excelize file here
+
 	if err := s.fileStorageService.PopulateExportURL(ctx, r.ExportFile); err != nil {
 		return nil, fmt.Errorf("failed to populate export url")
 	}
@@ -1337,10 +1347,4 @@ func (s *inventoryService) getPurchaseOrderItemsLookup(
 	}
 
 	return lookup, nil
-}
-
-// formatReportXLSX generates an Excel file content from the inventory transaction report
-// and set the content to the report's ExportFile field.
-func (s *inventoryService) formatReportXLSX(report *models.TxnReportInventory) error {
-	return nil
 }
