@@ -32,7 +32,7 @@ type InventoryService interface {
 	CreateTransferSubmission(ctx context.Context, req dto.TransferInventoryRequest) (*models.InventorySubmission, error)
 	ProcessSubmission(ctx context.Context, req dto.SubmissionApprovalRequest) (*models.InventorySubmission, error)
 	UpdateSubmission(ctx context.Context, req dto.UpdateSubmissionRequest) (*dto.SubmissionResponse, error)
-	GetMonthlyTransactionReport(ctx context.Context, inventoryID uint) (*models.InventoryTransactionReport, error)
+	GetMonthlyTransactionReport(ctx context.Context, inventoryID uint) (*models.TxnReportInventory, error)
 }
 
 type inventoryService struct {
@@ -1227,17 +1227,17 @@ func (s *inventoryService) validateTransferUpdate(ctx context.Context, submissio
 	return nil
 }
 
-func (s *inventoryService) GetMonthlyTransactionReport(ctx context.Context, inventoryID uint) (*models.InventoryTransactionReport, error) {
+func (s *inventoryService) GetMonthlyTransactionReport(ctx context.Context, inventoryID uint) (*models.TxnReportInventory, error) {
 	inventory, err := s.inventoryRepo.GetByID(ctx, inventoryID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get inventory: %w", err)
 	}
 
 	monthStart := pkg.GetCurrentMonthStart()
-	report := &models.InventoryTransactionReport{
+	report := &models.TxnReportInventory{
 		Report: models.Report{
 			Title:      fmt.Sprintf(models.ReportNameTmplMonthlyTransactionReport, monthStart.Format("01/2006"), inventory.Name),
-			Type:       models.ReportTypeInventoryTransaction,
+			Type:       models.ReportTypeTransaction,
 			From:       monthStart,
 			To:         pkg.GetCurrentMonthEnd(),
 			ExportFile: &models.ExportFile{},
@@ -1249,9 +1249,13 @@ func (s *inventoryService) GetMonthlyTransactionReport(ctx context.Context, inve
 	if err != nil {
 		return nil, fmt.Errorf("failed to get transaction report data: %w", err)
 	}
-	return report, nil
 
-	if err := s.aggregateReport(txns); err != nil {
+	iiLookup, err := s.getInventoryItemLookup(ctx, txns)
+	if err != nil {
+		return nil, fmt.Errorf("failed to build inventory item lookup: %w", err)
+	}
+
+	if err := s.aggregateReport(report, iiLookup, txns); err != nil {
 		return nil, fmt.Errorf("failed to build transaction report: %w", err)
 	}
 
@@ -1262,13 +1266,33 @@ func (s *inventoryService) GetMonthlyTransactionReport(ctx context.Context, inve
 	return report, nil
 }
 
+// getInventoryItemLookup builds a lookup map of inventory items by their IDs from the given transactions.
+func (s *inventoryService) getInventoryItemLookup(ctx context.Context, txns []*models.InventoryTransaction) (map[uint]*models.InventoryItem, error) {
+	itemIDs := make([]uint, 0)
+	for _, txn := range txns {
+		if txn.InventoryItemID != 0 {
+			itemIDs = append(itemIDs, txn.InventoryItemID)
+		}
+	}
+	inventoryItems, err := s.inventoryItemRepo.GetByIDs(ctx, itemIDs)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get inventory items: %w", err)
+	}
+	return models.BuildIDMap(inventoryItems), nil
+}
+
 // aggregateReport calculates aggregated data for the inventory transaction report.
-func (s *inventoryService) aggregateReport(txns []*models.InventoryTransaction) error {
+func (s *inventoryService) aggregateReport(
+	report *models.TxnReportInventory,
+	iiLookup map[uint]*models.InventoryItem,
+	txns []*models.InventoryTransaction,
+) error {
+	// @todo
 	return nil
 }
 
 // generateExcelContent generates an Excel file from the inventory transaction report
 // and set the content to the report's ExportFile field.
-func (s *inventoryService) generateExcelContent(report *models.InventoryTransactionReport) error {
+func (s *inventoryService) generateExcelContent(report *models.TxnReportInventory) error {
 	return nil
 }

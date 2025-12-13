@@ -1,7 +1,5 @@
 package models
 
-import "github.com/shopspring/decimal"
-
 // InventoryStatus represents the status of inventory
 type InventoryStatus string
 
@@ -24,27 +22,4 @@ type Inventory struct {
 // GetTotalItems returns the total number of items in this inventory
 func (i *Inventory) GetTotalItems() int {
 	return len(i.Items)
-}
-
-type InventoryItemTransactionReport struct {
-	Report
-	*InventoryItem
-
-	StartQuantity decimal.Decimal         `json:"start_quantity"`
-	Transactions  []*InventoryTransaction `json:"transactions,omitempty"`
-
-	// computed fields
-
-	PurchaseQuantity decimal.Decimal         `json:"total_purchase"`
-	SoldQuantity     decimal.Decimal         `json:"total_sold"`
-	TransferQuantity decimal.Decimal         `json:"total_transfer"`
-	EndQuantity      decimal.Decimal         `json:"end_quantity"`
-	ChangeByDay      map[int]decimal.Decimal `json:"change_by_day"`
-}
-
-type InventoryTransactionReport struct {
-	Report
-	*Inventory
-
-	Items []*InventoryItemTransactionReport `json:"items,omitempty"`
 }
