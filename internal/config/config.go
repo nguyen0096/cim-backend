@@ -24,6 +24,7 @@ type Config struct {
 	Migration       MigrationConfig
 	GoogleSheets    GoogleSheetsConfig
 	Casbin          CasbinConfig
+	R2              R2Config
 	UploadsBasePath string
 }
 
@@ -68,6 +69,14 @@ type GoogleSheetsConfig struct {
 type CasbinConfig struct {
 	ModelFile  string
 	PolicyFile string
+}
+
+type R2Config struct {
+	AccountID       string
+	AccessKeyID     string
+	SecretAccessKey string
+	BucketName      string
+	Enabled         bool
 }
 
 // Load loads configuration from environment variables.
@@ -115,6 +124,13 @@ func Load(filePath ...string) *Config {
 		Casbin: CasbinConfig{
 			ModelFile:  getEnv("CASBIN_MODEL_FILE", "rbac_model.conf"),
 			PolicyFile: getEnv("CASBIN_POLICY_FILE", "rbac_policy.csv"),
+		},
+		R2: R2Config{
+			AccountID:       getEnv("R2_ACCOUNT_ID", ""),
+			AccessKeyID:     getEnv("R2_ACCESS_KEY_ID", ""),
+			SecretAccessKey: getEnv("R2_SECRET_ACCESS_KEY", ""),
+			BucketName:      getEnv("R2_BUCKET_NAME", ""),
+			Enabled:         getEnv("R2_ENABLED", "false") == "true",
 		},
 		UploadsBasePath: getEnv("UPLOADS_BASE_PATH", "uploads"),
 		Log: log.Config{

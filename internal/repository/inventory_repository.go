@@ -23,9 +23,9 @@ type InventoryRepository interface {
 
 	GetByID(ctx context.Context, id uint) (*models.Inventory, error)
 	GetByName(ctx context.Context, name string) (*models.Inventory, error)
-	GetTransactionsByInventoryItemIDs(ctx context.Context, inventoryItemIDs []uint) ([]models.InventoryTransaction, error)
 	GetLastPurchasePrices(ctx context.Context, supplierID uint, limit uint) ([]*dto.LastPurchasePriceResponse, error)
 
+	GetTransactionsByInventoryItemIDs(ctx context.Context, inventoryItemIDs []uint) ([]models.InventoryTransaction, error)
 	GetTransactionsByInventory(ctx context.Context, inventoryID uint, from, to *time.Time) ([]*models.InventoryTransaction, error)
 }
 

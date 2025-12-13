@@ -12,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/sirupsen/logrus"
@@ -32,12 +33,16 @@ type FileStorageService interface {
 
 type fileStorageService struct {
 	uploadsBasePath string
+	s3Client        S3Client
+	r2Enabled       bool
 }
 
 // NewFileStorageService creates a new file storage service
-func NewFileStorageService(cfg *config.Config) FileStorageService {
+func NewFileStorageService(cfg *config.Config, s3Client S3Client) FileStorageService {
 	service := &fileStorageService{
 		uploadsBasePath: cfg.UploadsBasePath,
+		s3Client:        s3Client,
+		r2Enabled:       cfg.R2.Enabled,
 	}
 
 	// Ensure upload directories exist on initialization
@@ -197,5 +202,72 @@ func (s *fileStorageService) EnsureUploadDirectories() error {
 }
 
 func (s *fileStorageService) PopulateExportURL(ctx context.Context, export *models.ExportFile) error {
+	log.WithFields(logrus.Fields{
+		"operation":  "PopulateExportURL",
+		"r2_enabled": s.r2Enabled,
+	}).Info("Populating export URL")
+
+	if !s.r2Enabled {
+		log.Warn("R2 is disabled, skipping export URL population")
+		return nil
+	}
+
+	// Validate export file
+	if export == nil {
+		return pkg.ErrValidation("export file cannot be nil", nil)
+	}
+	if len(export.Content) == 0 {
+		return pkg.ErrValidation("export file content cannot be empty", nil)
+	}
+
+	// Generate file key with date organization
+	now := time.Now()
+	fileUID := uuid.New().String()
+
+	// Format: exports/YYYY/MM/DD/uuid.xlsx
+	fileKey := fmt.Sprintf("exports/%d/%02d/%02d/%s.xlsx",
+		now.Year(), now.Month(), now.Day(), fileUID)
+
+	log.WithFields(logrus.Fields{
+		"file_key":     fileKey,
+		"content_size": len(export.Content),
+	}).Debug("Generated file key")
+
+	// Determine content type from FileType MIME
+	contentType := "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+	if fileTypeStr := export.FileType.String(); fileTypeStr != "" {
+		contentType = fileTypeStr
+	}
+
+	// Upload to R2
+	if err := s.s3Client.UploadFile(ctx, fileKey, export.Content, contentType); err != nil {
+		log.WithFields(logrus.Fields{
+			"error":    err,
+			"file_key": fileKey,
+		}).Error("Failed to upload file to R2")
+		return fmt.Errorf("failed to upload file to R2: %w", err)
+	}
+
+	log.WithFields(logrus.Fields{
+		"file_key": fileKey,
+	}).Info("Successfully uploaded file to R2")
+
+	// Generate presigned URL with 15-minute expiration
+	presignedURL, err := s.s3Client.GeneratePresignedURL(ctx, fileKey, 15*time.Minute)
+	if err != nil {
+		log.WithFields(logrus.Fields{
+			"error":    err,
+			"file_key": fileKey,
+		}).Error("Failed to generate presigned URL")
+		return fmt.Errorf("failed to generate presigned URL: %w", err)
+	}
+
+	export.DownloadURL = presignedURL
+
+	log.WithFields(logrus.Fields{
+		"file_key":   fileKey,
+		"url_length": len(presignedURL),
+	}).Info("Successfully populated export URL")
+
 	return nil
 }

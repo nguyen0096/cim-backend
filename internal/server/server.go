@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"time"
 
@@ -48,8 +49,14 @@ func SetupServer(
 	settingsRepo := repository.NewSettingsRepository(db)
 	paymentReceiptFormRepo := repository.NewPaymentReceiptFormRepository(db)
 
+	// Initialize S3 client for R2
+	s3Client, err := services.NewS3Client(cfg)
+	if err != nil {
+		return nil, fmt.Errorf("failed to initialize S3 client: %w", err)
+	}
+
 	// Initialize services
-	fileStorageService := services.NewFileStorageService(cfg)
+	fileStorageService := services.NewFileStorageService(cfg, s3Client)
 	userService := services.NewUserService(userRepo, casbinService)
 	supplierService := services.NewSupplierService(supplierRepo)
 	settingsService := services.NewSettingsService(settingsRepo)
