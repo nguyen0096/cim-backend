@@ -1,5 +1,7 @@
 package models
 
+import "github.com/gabriel-vasile/mimetype"
+
 // FileType constants for different Excel file types
 const (
 	FileTypeRevenueExpense   = "revenue_expense"
@@ -7,6 +9,7 @@ const (
 )
 
 type ExportFile struct {
-	Content     []byte `json:"-"`
-	DownloadURL string `json:"download_url"`
+	Content     []byte        `json:"-"`
+	FileType    mimetype.MIME `json:"file_type"`
+	DownloadURL string        `json:"download_url"`
 }

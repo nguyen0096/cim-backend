@@ -34,3 +34,27 @@ type InventoryTransaction struct {
 	CounterTransactionID *uint                    `json:"counter_transaction_id"`
 	PurchaseOrderItemID  *uint                    `json:"purchase_order_item_id"`
 }
+
+// AggTxnQuantities aggregates net quantities by inventory item ID from a slice of transactions.
+// Purchases and transfers-in add to quantity, while sells, disposals, and transfers-out subtract.
+func AggTxnQuantities(
+	txns []*InventoryTransaction,
+) map[uint]decimal.Decimal {
+	quantities := make(map[uint]decimal.Decimal)
+
+	for _, txn := range txns {
+		current, exists := quantities[txn.InventoryItemID]
+		if !exists {
+			current = decimal.Zero
+		}
+
+		switch txn.TransactionType {
+		case InventoryTransactionTypePurchase, InventoryTransactionTypeTransferIn:
+			quantities[txn.InventoryItemID] = current.Add(txn.Quantity)
+		case InventoryTransactionTypeSell, InventoryTransactionTypeDisposal, InventoryTransactionTypeTransferOut:
+			quantities[txn.InventoryItemID] = current.Sub(txn.Quantity)
+		}
+	}
+
+	return quantities
+}

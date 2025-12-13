@@ -88,7 +88,7 @@ func ParseGormLogLevel(logLevel string) logger.LogLevel {
 		return logger.Error
 	case "warn":
 		return logger.Warn
-	case "info":
+	case "info", "debug":
 		return logger.Info
 	}
 	return logger.Error

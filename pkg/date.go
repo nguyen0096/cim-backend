@@ -10,14 +10,9 @@ func GetTodayDate() time.Time {
 	return time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
 }
 
-// GetCurrentMonthStart returns the first day of the month for the given date.
-func GetCurrentMonthStart() time.Time {
+// GetMonthStart returns the first day of the current month with the given offset.
+// Offset = 0 returns the current month, -1 returns the previous month, +1 returns the next month.
+func GetMonthStart(offset int) time.Time {
 	date := time.Now()
-	return time.Date(date.Year(), date.Month(), 1, 0, 0, 0, 0, time.UTC)
-}
-
-// GetCurrentMonthEnd returns the last day of the month for the given date.
-func GetCurrentMonthEnd() time.Time {
-	date := time.Now()
-	return time.Date(date.Year(), date.Month()+1, 0, 0, 0, 0, 0, time.UTC)
+	return time.Date(date.Year(), date.Month(), 1, 0, 0, 0, 0, time.UTC).AddDate(0, offset, 0)
 }

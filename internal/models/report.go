@@ -21,8 +21,8 @@ const (
 type Report struct {
 	*ExportFile
 	Title string     `json:"name"`
-	From  time.Time  `json:"from_date"`
-	To    time.Time  `json:"to_date"`
+	From  *time.Time `json:"from_date"`
+	To    *time.Time `json:"to_date"`
 	Type  ReportType `json:"type"`
 }
 
@@ -53,6 +53,5 @@ type TxnReportInventoryItem struct {
 type TxnReportInventory struct {
 	Report
 	*Inventory
-
 	Items []*TxnReportInventoryItem `json:"items,omitempty"`
 }

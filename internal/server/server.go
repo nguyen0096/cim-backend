@@ -55,7 +55,7 @@ func SetupServer(
 	settingsService := services.NewSettingsService(settingsRepo)
 	unitService := services.NewUnitService(unitRepo, productRepo)
 	productService := services.NewProductService(productRepo, supplierRepo, unitRepo, unitService, settingsService)
-	inventoryService := services.NewInventoryService(inventoryRepo, inventoryItemRepo, inventorySubmissionRepo, productRepo, fileStorageService)
+	inventoryService := services.NewInventoryService(inventoryRepo, inventoryItemRepo, inventorySubmissionRepo, productRepo, fileStorageService, db)
 	inventoryItemService := services.NewInventoryItemService(inventoryItemRepo, inventoryRepo, productRepo)
 	excelService := services.NewExcelService(productRepo, inventoryRepo, paymentReceiptFormRepo, settingsService)
 	purchaseOrderService := services.NewPurchaseOrderService(purchaseOrderRepo, paymentReceiptFormRepo, unitRepo, productRepo, inventoryService, excelService, settingsService, db, supplierRepo, inventoryRepo, unitService, productService)

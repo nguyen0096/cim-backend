@@ -11,6 +11,7 @@ import (
 
 	"github.com/labstack/gommon/log"
 	"github.com/shopspring/decimal"
+	"gorm.io/gorm"
 )
 
 //go:generate mockery --name=InventoryService --structname=InventoryService --output=../mocks/servicemocks --outpkg=servicemocks
@@ -42,6 +43,7 @@ type inventoryService struct {
 	productRepo             repository.ProductRepository
 
 	fileStorageService FileStorageService
+	db                 *gorm.DB
 }
 
 func NewInventoryService(
@@ -50,6 +52,7 @@ func NewInventoryService(
 	inventorySubmissionRepo repository.InventorySubmissionRepository,
 	productRepo repository.ProductRepository,
 	fileStorageService FileStorageService,
+	db *gorm.DB,
 ) InventoryService {
 	return &inventoryService{
 		inventoryRepo:           inventoryRepo,
@@ -57,6 +60,7 @@ func NewInventoryService(
 		inventoryItemRepo:       inventoryItemRepo,
 		inventorySubmissionRepo: inventorySubmissionRepo,
 		fileStorageService:      fileStorageService,
+		db:                      db,
 	}
 }
 
@@ -1233,41 +1237,59 @@ func (s *inventoryService) GetMonthlyTransactionReport(ctx context.Context, inve
 		return nil, fmt.Errorf("failed to get inventory: %w", err)
 	}
 
-	monthStart := pkg.GetCurrentMonthStart()
-	report := &models.TxnReportInventory{
-		Report: models.Report{
-			Title:      fmt.Sprintf(models.ReportNameTmplMonthlyTransactionReport, monthStart.Format("01/2006"), inventory.Name),
-			Type:       models.ReportTypeTransaction,
-			From:       monthStart,
-			To:         pkg.GetCurrentMonthEnd(),
-			ExportFile: &models.ExportFile{},
-		},
-		Inventory: inventory,
-	}
+	from := pkg.GetMonthStart(0)
+	to := pkg.GetMonthStart(1)
 
-	txns, err := s.inventoryRepo.GetTransactionsByInventory(ctx, inventoryID, report.From, report.To)
+	txns, err := s.inventoryRepo.GetTransactionsByInventory(ctx, inventoryID, &from, &to)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get transaction report data: %w", err)
 	}
 
+	// build inventory item lookup from all transactions
 	iiLookup, err := s.getInventoryItemLookup(ctx, txns)
 	if err != nil {
 		return nil, fmt.Errorf("failed to build inventory item lookup: %w", err)
 	}
 
-	if err := s.aggregateReport(report, iiLookup, txns); err != nil {
-		return nil, fmt.Errorf("failed to build transaction report: %w", err)
+	// build purchase order item lookup from all transactions
+	poItemLookup, err := s.getPurchaseOrderItemsLookup(ctx, txns)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch purchase order items: %w", err)
 	}
 
-	if err := s.fileStorageService.PopulateExportURL(ctx, report.ExportFile); err != nil {
+	// get historical transactions to calculate starting quantities
+	historicalTxns, err := s.inventoryRepo.GetTransactionsByInventory(ctx, inventoryID, nil, &from)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get historical transactions: %w", err)
+	}
+
+	rb, err := models.NewReportBuilder(inventory, from, to).
+		Txns(txns).
+		HistoricalTxns(historicalTxns).
+		InventoryItemLookup(iiLookup).
+		PurchaseOrderItemLookup(poItemLookup).
+		Build()
+	if err != nil {
+		return nil, fmt.Errorf("failed to build report: %w", err)
+	}
+
+	r, err := rb.GetOutput()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get report output: %w", err)
+	}
+
+	if err := s.fileStorageService.PopulateExportURL(ctx, r.ExportFile); err != nil {
 		return nil, fmt.Errorf("failed to populate export url")
 	}
 
-	return report, nil
+	return r, nil
 }
 
 // getInventoryItemLookup builds a lookup map of inventory items by their IDs from the given transactions.
-func (s *inventoryService) getInventoryItemLookup(ctx context.Context, txns []*models.InventoryTransaction) (map[uint]*models.InventoryItem, error) {
+func (s *inventoryService) getInventoryItemLookup(
+	ctx context.Context,
+	txns []*models.InventoryTransaction,
+) (map[uint]*models.InventoryItem, error) {
 	itemIDs := make([]uint, 0)
 	for _, txn := range txns {
 		if txn.InventoryItemID != 0 {
@@ -1281,18 +1303,44 @@ func (s *inventoryService) getInventoryItemLookup(ctx context.Context, txns []*m
 	return models.BuildIDMap(inventoryItems), nil
 }
 
-// aggregateReport calculates aggregated data for the inventory transaction report.
-func (s *inventoryService) aggregateReport(
-	report *models.TxnReportInventory,
-	iiLookup map[uint]*models.InventoryItem,
+// fetchPurchaseOrderItemsLookup batch fetches purchase order items and builds a lookup map.
+func (s *inventoryService) getPurchaseOrderItemsLookup(
+	ctx context.Context,
 	txns []*models.InventoryTransaction,
-) error {
-	// @todo
-	return nil
+) (map[uint]*models.PurchaseOrderItem, error) {
+	if len(txns) == 0 {
+		return make(map[uint]*models.PurchaseOrderItem), nil
+	}
+
+	poItemIDs := []uint{}
+	poItemIDSet := make(map[uint]bool)
+	for _, txn := range txns {
+		if txn.PurchaseOrderItemID != nil && !poItemIDSet[*txn.PurchaseOrderItemID] {
+			poItemIDs = append(poItemIDs, *txn.PurchaseOrderItemID)
+			poItemIDSet[*txn.PurchaseOrderItemID] = true
+		}
+	}
+
+	var poItems []*models.PurchaseOrderItem
+	err := s.db.WithContext(ctx).
+		Preload("PurchaseOrder").
+		Where("id IN ?", poItemIDs).
+		Find(&poItems).Error
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch purchase order items: %w", err)
+	}
+
+	// Build lookup map
+	lookup := make(map[uint]*models.PurchaseOrderItem)
+	for _, poItem := range poItems {
+		lookup[poItem.ID] = poItem
+	}
+
+	return lookup, nil
 }
 
-// generateExcelContent generates an Excel file from the inventory transaction report
+// formatReportXLSX generates an Excel file content from the inventory transaction report
 // and set the content to the report's ExportFile field.
-func (s *inventoryService) generateExcelContent(report *models.TxnReportInventory) error {
+func (s *inventoryService) formatReportXLSX(report *models.TxnReportInventory) error {
 	return nil
 }

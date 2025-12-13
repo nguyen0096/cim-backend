@@ -26,7 +26,7 @@ type InventoryRepository interface {
 	GetTransactionsByInventoryItemIDs(ctx context.Context, inventoryItemIDs []uint) ([]models.InventoryTransaction, error)
 	GetLastPurchasePrices(ctx context.Context, supplierID uint, limit uint) ([]*dto.LastPurchasePriceResponse, error)
 
-	GetTransactionsByInventory(ctx context.Context, inventoryID uint, from, to time.Time) ([]*models.InventoryTransaction, error)
+	GetTransactionsByInventory(ctx context.Context, inventoryID uint, from, to *time.Time) ([]*models.InventoryTransaction, error)
 }
 
 type inventoryRepository struct {
@@ -173,16 +173,23 @@ func (r *inventoryRepository) GetLastPurchasePrices(ctx context.Context, supplie
 	return results, nil
 }
 
-func (r *inventoryRepository) GetTransactionsByInventory(ctx context.Context, inventoryID uint, from, to time.Time) ([]*models.InventoryTransaction, error) {
+func (r *inventoryRepository) GetTransactionsByInventory(ctx context.Context, inventoryID uint, from, to *time.Time) ([]*models.InventoryTransaction, error) {
 	var txns []*models.InventoryTransaction
-	err := r.db.WithContext(ctx).
+	q := r.db.WithContext(ctx).
 		Table("inventory_transactions it").
 		Joins("INNER JOIN inventory_items ii ON it.inventory_item_id = ii.id").
-		Where("ii.inventory_id = ?", inventoryID).
-		Where("it.created_at BETWEEN ? AND ?", from, to).
-		Find(&txns).Error
-	if err != nil {
-		return nil, fmt.Errorf("failed to get inventory transactions: %w", err)
+		Where("ii.inventory_id = ?", inventoryID)
+
+	if from != nil {
+		q = q.Where("it.created_at >= ?", from)
+	}
+
+	if to != nil {
+		q = q.Where("it.created_at < ?", to)
+	}
+
+	if err := q.Find(&txns).Error; err != nil {
+		return nil, fmt.Errorf("failed to get inventory transactions before date: %w", err)
 	}
 	return txns, nil
 }

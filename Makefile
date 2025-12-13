@@ -1,6 +1,7 @@
 .PHONY: build build-util run test clean docker-build docker-run docker-stop migrate-up migrate-down docs mock proto proto-install proto-clean buf-install buf-lint buf-format
 
-# Build the application
+# BUILD COMMANDS
+
 build:
 	go build -o bin/main .
 
@@ -8,44 +9,42 @@ build:
 build-util:
 	go build -o bin/util ./cmd/util
 
-# Run the application
+# DEVELOPMENT COMMANDS
+generate:
+	go generate ./...
+
 run:
 	go run main.go
 
-# Run tests
-# AGENTS MUST NOT CHANGE THIS COMMAND.
-test:
+test: # AGENTS MUST NOT CHANGE THIS COMMAND.
 	go test ./...
 
-# Run tests with coverage
 test-coverage:
 	go test -v -coverprofile=coverage.out ./...
 	go tool cover -html=coverage.out -o coverage.html
 
-# Clean build artifacts
 clean:
 	rm -rf bin/
 	rm -f coverage.out coverage.html
 
-# Install dependencies
 deps:
 	go mod download
 	go mod tidy
 
-# Run linter
 lint:
 	golangci-lint run
 
-# Format code
 fmt:
 	go fmt ./...
 
-# Database migrations
-migrate-up:
+migrate:
 	go run ./cmd/util migrate
 
-migrate-down:
-	go run ./cmd/util migrate down
+seed:
+	go run ./cmd/util seed
+
+token:
+	go run ./cmd/auth
 
 # Development setup
 dev-setup:
@@ -60,37 +59,6 @@ docs:
 # Test API with sample data
 test-api:
 	./test-api.sh
-
-# Seed database with mock data
-seed-db:
-	go run cmd/util seed
-
-# Help
-help:
-	@echo "Available commands:"
-	@echo "  build            - Build the application"
-	@echo "  build-util       - Build the utility binary"
-	@echo "  run              - Run the application"
-	@echo "  test             - Run tests"
-	@echo "  test-coverage    - Run tests with coverage"
-	@echo "  clean            - Clean build artifacts"
-	@echo "  deps             - Install dependencies"
-	@echo "  lint             - Run linter"
-	@echo "  fmt              - Format code"
-	@echo "  migrate-up       - Run database migrations (alias)"
-	@echo "  migrate-down     - Rollback last migration"
-	@echo "  docker-build     - Build Docker images"
-	@echo "  docker-run       - Run with Docker Compose"
-	@echo "  docker-stop      - Stop Docker containers"
-	@echo "  docker-logs      - Show Docker logs"
-	@echo "  dev-setup        - Setup development environment"
-	@echo "  prod-setup       - Setup production environment"
-	@echo "  docs             - Generate API documentation"
-	@echo "  test-api         - Test API with sample data"
-	@echo "  seed-db          - Seed database with mock data"
-
-generate:
-	go generate ./...
 
 migrate-file:
 	migrate create -ext sql -dir database/migrations ${NAME}
