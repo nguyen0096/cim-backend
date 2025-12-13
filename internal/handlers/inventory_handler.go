@@ -443,13 +443,46 @@ func (h *InventoryHandler) UpdateSubmission(c echo.Context) error {
 	return c.JSON(http.StatusOK, response)
 }
 
+// ExportMonthlyTransactionReport generates monthly transaction report for an inventory
+// @Summary Export monthly transaction report
+// @Description Export monthly transaction report as Excel file for a specific inventory
+// @Tags inventories
+// @Accept json
+// @Produce json
+// @Param id path int true "Inventory ID"
+// @Param month query int false "Month (1-12), defaults to current month"
+// @Param year query int false "Year (e.g., 2024), defaults to current year"
+// @Success 200 {object} models.ExportFile
+// @Failure 400 {object} map[string]string
+// @Failure 404 {object} map[string]string
+// @Failure 500 {object} map[string]string
+// @Security BearerAuth
+// @Router /inventories/{id}/reports/monthly-transactions [get]
 func (h *InventoryHandler) ExportMonthlyTransactionReport(c echo.Context) error {
 	id, err := pkg.ExtractIDParam(c)
 	if err != nil {
 		return err
 	}
 
-	response, err := h.inventoryService.GetMonthlyTransactionReport(c.Request().Context(), id)
+	// Parse month and year from query params (default to current month/year)
+	month := 0
+	year := 0
+	if monthStr := c.QueryParam("month"); monthStr != "" {
+		m, err := strconv.Atoi(monthStr)
+		if err != nil || m < 1 || m > 12 {
+			return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid month parameter (must be 1-12)"})
+		}
+		month = m
+	}
+	if yearStr := c.QueryParam("year"); yearStr != "" {
+		y, err := strconv.Atoi(yearStr)
+		if err != nil || y < 2000 || y > 2100 {
+			return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid year parameter (must be between 2000-2100)"})
+		}
+		year = y
+	}
+
+	response, err := h.inventoryService.GetMonthlyTransactionReport(c.Request().Context(), id, month, year)
 	if err != nil {
 		return fmt.Errorf("failed to export stock flow: %w", err)
 	}

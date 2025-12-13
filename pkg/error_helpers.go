@@ -41,8 +41,9 @@ const (
 
 	// Inventory Error Keys
 
-	ErrKeyInventoryItemNotFound  = "inventory_item_not_found"
-	ErrKeyOptimisticLockConflict = "optimistic_lock_conflict"
+	ErrKeyInventoryItemNotFound        = "inventory_item_not_found"
+	ErrKeyOptimisticLockConflict       = "optimistic_lock_conflict"
+	ErrKeyNoTransactionsInReportPeriod = "no_transactions_in_report_period"
 
 	// Unit Error Keys
 
@@ -171,6 +172,10 @@ var ErrorMessages = map[string]ErrorMessage{
 	ErrKeyOptimisticLockConflict: {
 		EN: "Quantity of %s %d has changed (previous: %s, current: %s)",
 		VI: "Số lượng của %s %d đã thay đổi (trước đó: %s, hiện tại: %s)",
+	},
+	ErrKeyNoTransactionsInReportPeriod: {
+		EN: "No transactions found for the selected period",
+		VI: "Không tìm thấy giao dịch nào trong khoảng thời gian đã chọn",
 	},
 	// Unit Errors
 	ErrKeyUnitAlreadyExists: {
@@ -400,6 +405,12 @@ func ErrOptimisticLockConflict(ctx context.Context, resourceType string, resourc
 func ErrInventoryItemNotFound(ctx context.Context, itemID uint) *AppError {
 	template := getErrorMessage(ctx, ErrKeyInventoryItemNotFound)
 	message := fmt.Sprintf(template, itemID)
+	return NewAppError(ErrorCodeNotFound, message, nil)
+}
+
+// ErrNoTransactionsInReportPeriod creates an error for no transactions in report period
+func ErrNoTransactionsInReportPeriod(ctx context.Context) *AppError {
+	message := getErrorMessage(ctx, ErrKeyNoTransactionsInReportPeriod)
 	return NewAppError(ErrorCodeNotFound, message, nil)
 }
 

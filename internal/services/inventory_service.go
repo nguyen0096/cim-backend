@@ -9,6 +9,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"time"
 
 	"github.com/labstack/gommon/log"
 	"github.com/shopspring/decimal"
@@ -34,7 +35,7 @@ type InventoryService interface {
 	CreateTransferSubmission(ctx context.Context, req dto.TransferInventoryRequest) (*models.InventorySubmission, error)
 	ProcessSubmission(ctx context.Context, req dto.SubmissionApprovalRequest) (*models.InventorySubmission, error)
 	UpdateSubmission(ctx context.Context, req dto.UpdateSubmissionRequest) (*dto.SubmissionResponse, error)
-	GetMonthlyTransactionReport(ctx context.Context, inventoryID uint) (*models.TxnReportInventory, error)
+	GetMonthlyTransactionReport(ctx context.Context, inventoryID uint, month, year int) (*models.TxnReportInventory, error)
 }
 
 type inventoryService struct {
@@ -1232,19 +1233,33 @@ func (s *inventoryService) validateTransferUpdate(ctx context.Context, submissio
 	return nil
 }
 
-func (s *inventoryService) GetMonthlyTransactionReport(ctx context.Context, inventoryID uint) (*models.TxnReportInventory, error) {
+func (s *inventoryService) GetMonthlyTransactionReport(ctx context.Context, inventoryID uint, month, year int) (*models.TxnReportInventory, error) {
 	inventory, err := s.inventoryRepo.GetByID(ctx, inventoryID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get inventory: %w", err)
 	}
 
-	from := pkg.GetMonthStart(0)
-	to := pkg.GetMonthStart(1)
+	// Use provided month/year or default to current month
+	var from, to time.Time
+	if month == 0 || year == 0 {
+		// Default to current month
+		from = pkg.GetMonthStart(0)
+		to = pkg.GetMonthStart(1)
+	} else {
+		// Use provided month and year
+		from = time.Date(year, time.Month(month), 1, 0, 0, 0, 0, time.UTC)
+		to = from.AddDate(0, 1, 0) // First day of next month
+	}
 
 	// 1. Get ALL transactions in period
 	txns, err := s.inventoryRepo.GetTransactionsByInventoryIDs(ctx, inventoryID, &from, &to)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get transaction report data: %w", err)
+	}
+
+	// Check if there are any transactions
+	if len(txns) == 0 {
+		return nil, pkg.ErrNoTransactionsInReportPeriod(ctx)
 	}
 
 	// 2. Get consume transactions in period
