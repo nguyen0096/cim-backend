@@ -30,7 +30,7 @@ const txnReportSheetName = "Sheet1"
 // Set to true to save all generated files in the same directory as the executable.
 // Files are named: {report-title}-{timestamp}.xlsx
 // Remember to set back to false before committing!
-const DEBUG_SAVE_EXCEL = true
+const DEBUG_SAVE_EXCEL = false
 
 // TxnReportFormatter formats inventory transaction reports as Excel files.
 // It's a pure data transformation component with no database dependencies.
@@ -175,10 +175,6 @@ func (f *TxnReportFormatter) writeHeaders(file *excelize.File, daysInMonth int) 
 	if err != nil {
 		return fmt.Errorf("failed to create white header style: %w", err)
 	}
-	styleYellow, err := f.createHeaderStyleYellow(file)
-	if err != nil {
-		return fmt.Errorf("failed to create yellow header style: %w", err)
-	}
 	styleGreen, err := f.createHeaderStyleGreen(file)
 	if err != nil {
 		return fmt.Errorf("failed to create green header style: %w", err)
@@ -187,13 +183,13 @@ func (f *TxnReportFormatter) writeHeaders(file *excelize.File, daysInMonth int) 
 	if err != nil {
 		return fmt.Errorf("failed to create cyan header style: %w", err)
 	}
-	styleBrightYellow, err := f.createHeaderStyleBrightYellow(file)
+	stylePink, err := f.createHeaderStylePink(file)
 	if err != nil {
-		return fmt.Errorf("failed to create bright yellow header style: %w", err)
+		return fmt.Errorf("failed to create pink header style: %w", err)
 	}
-	styleOrange, err := f.createHeaderStyleOrange(file)
+	styleGray, err := f.createHeaderStyleGray(file)
 	if err != nil {
-		return fmt.Errorf("failed to create orange header style: %w", err)
+		return fmt.Errorf("failed to create gray header style: %w", err)
 	}
 
 	col := 1
@@ -233,77 +229,124 @@ func (f *TxnReportFormatter) writeHeaders(file *excelize.File, daysInMonth int) 
 	if err := writeHeader("ĐVT", 1, styleWhite); err != nil {
 		return fmt.Errorf("failed to write ĐVT header: %w", err)
 	}
+	if err := writeHeader("Nguồn", 1, styleWhite); err != nil {
+		return fmt.Errorf("failed to write Nguồn header: %w", err)
+	}
+	if err := writeHeader("Ngày nhận", 1, styleWhite); err != nil {
+		return fmt.Errorf("failed to write Ngày nhận header: %w", err)
+	}
 	if err := writeHeader("Đơn giá", 1, styleWhite); err != nil {
 		return fmt.Errorf("failed to write Đơn giá header: %w", err)
 	}
 
-	// Tồn đầu (2 sub-columns: SL, TT) - #FFFF99
-	if err := writeHeader("Tồn đầu", 2, styleYellow); err != nil {
+	// Tồn đầu (2 sub-columns: SL, TT) - Blue
+	if err := writeHeader("Tồn đầu", 2, styleCyan); err != nil {
 		return fmt.Errorf("failed to write Tồn đầu header: %w", err)
 	}
 
-	// Daily columns (daysInMonth × 2 sub-columns each) - #CCFFCC
-	for day := 1; day <= daysInMonth; day++ {
-		header := fmt.Sprintf("Ngày %d", day)
-		if err := writeHeader(header, 2, styleGreen); err != nil {
-			return fmt.Errorf("failed to write day %d header: %w", day, err)
-		}
+	// SL nguồn (2 sub-columns) - Green
+	if err := writeHeader("SL nguồn", 2, styleGreen); err != nil {
+		return fmt.Errorf("failed to write SL nguồn header: %w", err)
 	}
 
-	// Tổng nhập (2 sub-columns) - #CCFFFF
-	if err := writeHeader("Tổng nhập", 2, styleCyan); err != nil {
-		return fmt.Errorf("failed to write Tổng nhập header: %w", err)
+	// Đã tiêu thụ (2 sub-columns) - Pink (same as Chi tiết tiêu thụ)
+	if err := writeHeader("Đã tiêu thụ", 2, stylePink); err != nil {
+		return fmt.Errorf("failed to write Đã tiêu thụ header: %w", err)
 	}
 
-	// Tiêu thụ (2 sub-columns) - #FFFF00
-	if err := writeHeader("Tiêu thụ", 2, styleBrightYellow); err != nil {
-		return fmt.Errorf("failed to write Tiêu thụ header: %w", err)
+	// Còn lại (2 sub-columns) - Gray
+	if err := writeHeader("Còn lại", 2, styleGray); err != nil {
+		return fmt.Errorf("failed to write Còn lại header: %w", err)
 	}
 
-	// Hủy (2 sub-columns) - #FFFF00
-	if err := writeHeader("Hủy", 2, styleBrightYellow); err != nil {
-		return fmt.Errorf("failed to write Hủy header: %w", err)
+	// Chi tiết tiêu thụ (4 sub-columns: Loại | Ngày | SL | TT) - Pink (same as Đã tiêu thụ)
+	if err := writeHeader("Chi tiết tiêu thụ", 4, stylePink); err != nil {
+		return fmt.Errorf("failed to write Chi tiết tiêu thụ header: %w", err)
 	}
 
-	// Xuất kho (2 sub-columns) - #FFFF00
-	if err := writeHeader("Xuất kho", 2, styleBrightYellow); err != nil {
-		return fmt.Errorf("failed to write Xuất kho header: %w", err)
-	}
-
-	// Tồn cuối (2 sub-columns) - #FFFF99
-	if err := writeHeader("Tồn cuối", 2, styleYellow); err != nil {
-		return fmt.Errorf("failed to write Tồn cuối header: %w", err)
-	}
-
-	// Now write sub-headers (SL, TT) on row 6
-	col = 5 // Start after STT, Diễn giải, ĐVT, Đơn giá
+	// Now write sub-headers on row 6
+	col = 7 // Start after STT, Diễn giải, ĐVT, Nguồn, Ngày nhận, Đơn giá
 	row = 6
-	subHeaderCount := 1 + daysInMonth + 5 // Tồn đầu + days + Tổng nhập + Tiêu thụ + Hủy + Xuất kho + Tồn cuối
 
-	for i := 0; i < subHeaderCount; i++ {
-		// SL column - #FFCC99 (orange)
-		slCell, _ := excelize.CoordinatesToCellName(col, row)
-		if err := file.SetCellValue(txnReportSheetName, slCell, "SL"); err != nil {
-			return fmt.Errorf("failed to write SL sub-header: %w", err)
+	// Tồn đầu sub-headers (SL, TT)
+	for i := 0; i < 2; i++ {
+		subHeader := "SL"
+		if i == 1 {
+			subHeader = "TT"
 		}
-		if err := file.SetCellStyle(txnReportSheetName, slCell, slCell, styleOrange); err != nil {
-			return err
+		cell, _ := excelize.CoordinatesToCellName(col, row)
+		if err := file.SetCellValue(txnReportSheetName, cell, subHeader); err != nil {
+			return fmt.Errorf("failed to write sub-header: %w", err)
 		}
-		col++
-
-		// TT column - white
-		ttCell, _ := excelize.CoordinatesToCellName(col, row)
-		if err := file.SetCellValue(txnReportSheetName, ttCell, "TT"); err != nil {
-			return fmt.Errorf("failed to write TT sub-header: %w", err)
-		}
-		if err := file.SetCellStyle(txnReportSheetName, ttCell, ttCell, styleWhite); err != nil {
+		if err := file.SetCellStyle(txnReportSheetName, cell, cell, styleWhite); err != nil {
 			return err
 		}
 		col++
 	}
 
-	// Merge single-column headers across both header rows (STT, Diễn giải, ĐVT, Đơn giá)
-	for _, col := range []int{1, 2, 3, 4} {
+	// SL nguồn sub-headers (SL, TT)
+	for i := 0; i < 2; i++ {
+		subHeader := "SL"
+		if i == 1 {
+			subHeader = "TT"
+		}
+		cell, _ := excelize.CoordinatesToCellName(col, row)
+		if err := file.SetCellValue(txnReportSheetName, cell, subHeader); err != nil {
+			return fmt.Errorf("failed to write sub-header: %w", err)
+		}
+		if err := file.SetCellStyle(txnReportSheetName, cell, cell, styleWhite); err != nil {
+			return err
+		}
+		col++
+	}
+
+	// Đã tiêu thụ sub-headers (SL, TT)
+	for i := 0; i < 2; i++ {
+		subHeader := "SL"
+		if i == 1 {
+			subHeader = "TT"
+		}
+		cell, _ := excelize.CoordinatesToCellName(col, row)
+		if err := file.SetCellValue(txnReportSheetName, cell, subHeader); err != nil {
+			return fmt.Errorf("failed to write sub-header: %w", err)
+		}
+		if err := file.SetCellStyle(txnReportSheetName, cell, cell, styleWhite); err != nil {
+			return err
+		}
+		col++
+	}
+
+	// Còn lại sub-headers (SL, TT)
+	for i := 0; i < 2; i++ {
+		subHeader := "SL"
+		if i == 1 {
+			subHeader = "TT"
+		}
+		cell, _ := excelize.CoordinatesToCellName(col, row)
+		if err := file.SetCellValue(txnReportSheetName, cell, subHeader); err != nil {
+			return fmt.Errorf("failed to write sub-header: %w", err)
+		}
+		if err := file.SetCellStyle(txnReportSheetName, cell, cell, styleWhite); err != nil {
+			return err
+		}
+		col++
+	}
+
+	// Chi tiết tiêu thụ sub-headers (Loại, Ngày, SL, TT)
+	chiTietSubHeaders := []string{"Loại", "Ngày", "SL", "TT"}
+	for _, subHeader := range chiTietSubHeaders {
+		cell, _ := excelize.CoordinatesToCellName(col, row)
+		if err := file.SetCellValue(txnReportSheetName, cell, subHeader); err != nil {
+			return fmt.Errorf("failed to write Chi tiết tiêu thụ sub-header: %w", err)
+		}
+		if err := file.SetCellStyle(txnReportSheetName, cell, cell, styleWhite); err != nil {
+			return err
+		}
+		col++
+	}
+
+	// Merge single-column headers across both header rows
+	for _, col := range []int{1, 2, 3, 4, 5, 6} {
 		startCell, _ := excelize.CoordinatesToCellName(col, 5)
 		endCell, _ := excelize.CoordinatesToCellName(col, 6)
 		if err := file.MergeCell(txnReportSheetName, startCell, endCell); err != nil {
@@ -344,6 +387,17 @@ func (f *TxnReportFormatter) writeDataRows(file *excelize.File, items []*models.
 	}
 
 	for _, item := range items {
+		// Check if this is source transaction view
+		if item.SourceTransaction != nil {
+			if err := f.writeSourceTransactionRows(file, rowNum, serialNum, item, dataStyle, dataStyleBold, numberStyle, slStyle); err != nil {
+				return err
+			}
+			rowNum += 1 + len(item.ConsumeDetails)
+			serialNum++
+			continue
+		}
+
+		// Legacy PO-grouped view
 		// If no POs, create single row with unit price = 0
 		if len(item.POMap) == 0 {
 			if err := f.writeItemPORow(file, rowNum, serialNum, item, nil, true, daysInMonth, dataStyle, dataStyleBold, numberStyle, slStyle); err != nil {
@@ -569,47 +623,197 @@ func (f *TxnReportFormatter) writeItemPORow(
 	return nil
 }
 
-// writeTotalsRow writes the totals row with SUM formulas.
-func (f *TxnReportFormatter) writeTotalsRow(file *excelize.File, lastDataRow, daysInMonth int) error {
-	totalsRow := lastDataRow + 1
+// writeSourceTransactionRows writes rows for source transaction view
+func (f *TxnReportFormatter) writeSourceTransactionRows(
+	file *excelize.File,
+	rowNum, serialNum int,
+	item *models.TxnReportInventoryItem,
+	dataStyle, dataStyleBold, numberStyle, slStyle int,
+) error {
+	source := item.SourceTransaction
 
-	headerStyle, err := f.createHeaderStyle(file)
-	if err != nil {
-		return err
-	}
-
-	numberStyle, err := f.createNumberStyle(file)
-	if err != nil {
-		return err
-	}
-
-	// Column B: "TỔNG CỘNG"
-	if err := file.SetCellValue(txnReportSheetName, "B"+fmt.Sprint(totalsRow), "TỔNG CỘNG"); err != nil {
-		return err
-	}
-	if err := file.SetCellStyle(txnReportSheetName, "B"+fmt.Sprint(totalsRow), "B"+fmt.Sprint(totalsRow), headerStyle); err != nil {
-		return err
-	}
-
-	// Starting column for numeric values (column E = Tồn đầu SL)
-	// We'll add SUM formulas for all numeric columns
-	startCol := 5 // Column E
-	// Total columns: Tồn đầu(2) + Days(daysInMonth*2) + Tổng nhập(2) + Tiêu thụ(2) + Hủy(2) + Xuất kho(2) + Tồn cuối(2)
-	totalCols := 2 + (daysInMonth * 2) + 2 + 2 + 2 + 2 + 2
-
-	for i := 0; i < totalCols; i++ {
-		col := startCol + i
-		cell, _ := excelize.CoordinatesToCellName(col, totalsRow)
-		startDataCell, _ := excelize.CoordinatesToCellName(col, 7) // Row 7 is first data row
-		endDataCell, _ := excelize.CoordinatesToCellName(col, lastDataRow)
-
-		formula := fmt.Sprintf("=SUM(%s:%s)", startDataCell, endDataCell)
-		if err := file.SetCellFormula(txnReportSheetName, cell, formula); err != nil {
-			return fmt.Errorf("failed to set total formula: %w", err)
-		}
-		if err := file.SetCellStyle(txnReportSheetName, cell, cell, numberStyle); err != nil {
+	// Helper to set cell with style
+	setCell := func(row, col int, value interface{}, style int) error {
+		cell, _ := excelize.CoordinatesToCellName(col, row)
+		if err := file.SetCellValue(txnReportSheetName, cell, value); err != nil {
 			return err
 		}
+		return file.SetCellStyle(txnReportSheetName, cell, cell, style)
+	}
+
+	// Get source type display name
+	sourceType := ""
+	unitPrice := source.Price
+	if source.TransactionType == models.InventoryTransactionTypePurchase {
+		sourceType = "Mua hàng"
+	} else if source.TransactionType == models.InventoryTransactionTypeTransferIn {
+		sourceType = "Chuyển kho"
+	}
+
+	// Consumed quantity from source transaction
+	consumedQty := source.ConsumedQuantity
+	remainingQty := source.Quantity.Sub(consumedQty)
+
+	// First row: source transaction details
+	col := 1
+
+	// STT
+	if err := setCell(rowNum, col, serialNum, dataStyle); err != nil {
+		return err
+	}
+	col++
+
+	// Product name
+	productName := ""
+	if item.Product != nil {
+		productName = item.Product.Name
+	}
+	if err := setCell(rowNum, col, productName, dataStyleBold); err != nil {
+		return err
+	}
+	col++
+
+	// Unit
+	unitName := ""
+	if item.InventoryItem != nil && item.InventoryItem.Unit != nil {
+		unitName = item.InventoryItem.Unit.Name
+	}
+	if err := setCell(rowNum, col, unitName, dataStyle); err != nil {
+		return err
+	}
+	col++
+
+	// Source type
+	if err := setCell(rowNum, col, sourceType, dataStyle); err != nil {
+		return err
+	}
+	col++
+
+	// Receive date
+	if err := setCell(rowNum, col, source.CreatedAt.Format("02/01/2006"), dataStyle); err != nil {
+		return err
+	}
+	col++
+
+	// Unit price
+	if err := setCell(rowNum, col, unitPrice, numberStyle); err != nil {
+		return err
+	}
+	col++
+
+	// Opening quantity (SL, TT)
+	qtyFloat, _ := item.StartQuantity.Float64()
+	if err := setCell(rowNum, col, qtyFloat, slStyle); err != nil {
+		return err
+	}
+	col++
+	if err := setCell(rowNum, col, qtyFloat*unitPrice, numberStyle); err != nil {
+		return err
+	}
+	col++
+
+	// Source quantity (SL, TT)
+	sourceQtyFloat, _ := source.Quantity.Float64()
+	if err := setCell(rowNum, col, sourceQtyFloat, slStyle); err != nil {
+		return err
+	}
+	col++
+	if err := setCell(rowNum, col, sourceQtyFloat*unitPrice, numberStyle); err != nil {
+		return err
+	}
+	col++
+
+	// Total consumed quantity (SL, TT) - sum of all consume details
+	totalConsumedQty := decimal.Zero
+	for _, consume := range item.ConsumeDetails {
+		totalConsumedQty = totalConsumedQty.Add(consume.Quantity)
+	}
+	totalConsumedQtyFloat, _ := totalConsumedQty.Float64()
+	if err := setCell(rowNum, col, totalConsumedQtyFloat, slStyle); err != nil {
+		return err
+	}
+	col++
+	if err := setCell(rowNum, col, totalConsumedQtyFloat*unitPrice, numberStyle); err != nil {
+		return err
+	}
+	col++
+
+	// Remaining quantity (SL, TT)
+	remainingQtyFloat, _ := remainingQty.Float64()
+	if err := setCell(rowNum, col, remainingQtyFloat, slStyle); err != nil {
+		return err
+	}
+	col++
+	if err := setCell(rowNum, col, remainingQtyFloat*unitPrice, numberStyle); err != nil {
+		return err
+	}
+	col++
+
+	// Tiêu thụ columns: Loại, Ngày, SL, TT (empty for source row - shows totals above)
+	setCell(rowNum, col, "", dataStyle)
+	col++
+	setCell(rowNum, col, "", dataStyle)
+	col++
+	setCell(rowNum, col, "", slStyle)
+	col++
+	setCell(rowNum, col, "", numberStyle)
+
+	// Write consume detail rows
+	for _, consume := range item.ConsumeDetails {
+		rowNum++
+		col = 1
+
+		// Leave STT, Product, Unit, Source, Receive Date, Unit Price empty
+		for j := 0; j < 6; j++ {
+			setCell(rowNum, col, "", dataStyle)
+			col++
+		}
+
+		// Leave opening, source qty empty (4 columns)
+		for j := 0; j < 4; j++ {
+			if j%2 == 0 {
+				setCell(rowNum, col, "", slStyle)
+			} else {
+				setCell(rowNum, col, "", numberStyle)
+			}
+			col++
+		}
+
+		// Leave "Đã tiêu thụ" total empty (2 columns)
+		setCell(rowNum, col, "", slStyle)
+		col++
+		setCell(rowNum, col, "", numberStyle)
+		col++
+
+		// Leave "Còn lại" empty (2 columns)
+		setCell(rowNum, col, "", slStyle)
+		col++
+		setCell(rowNum, col, "", numberStyle)
+		col++
+
+		// Tiêu thụ detail columns: Loại, Ngày, SL, TT
+		// Consume type
+		consumeType := ""
+		switch consume.TransactionType {
+		case models.InventoryTransactionTypeSell:
+			consumeType = "Tiêu thụ"
+		case models.InventoryTransactionTypeDisposal:
+			consumeType = "Hủy"
+		case models.InventoryTransactionTypeTransferOut:
+			consumeType = "Xuất kho"
+		}
+		setCell(rowNum, col, consumeType, dataStyle)
+		col++
+
+		// Consume date
+		setCell(rowNum, col, consume.CreatedAt.Format("02/01/2006"), dataStyle)
+		col++
+
+		// Consume quantity (SL, TT)
+		consumeQtyFloat, _ := consume.Quantity.Float64()
+		setCell(rowNum, col, consumeQtyFloat, slStyle)
+		col++
+		setCell(rowNum, col, consumeQtyFloat*unitPrice, numberStyle)
 	}
 
 	return nil
@@ -620,14 +824,27 @@ func (f *TxnReportFormatter) applyColumnWidths(file *excelize.File, daysInMonth 
 	file.SetColWidth(txnReportSheetName, "A", "A", 5)  // STT
 	file.SetColWidth(txnReportSheetName, "B", "B", 30) // Diễn giải
 	file.SetColWidth(txnReportSheetName, "C", "C", 10) // ĐVT
-	file.SetColWidth(txnReportSheetName, "D", "D", 12) // Đơn giá
+	file.SetColWidth(txnReportSheetName, "D", "D", 15) // Nguồn
+	file.SetColWidth(txnReportSheetName, "E", "E", 12) // Ngày nhận
+	file.SetColWidth(txnReportSheetName, "F", "F", 12) // Đơn giá
 
-	// All numeric columns (SL and TT): 12 width
-	startCol := 5
-	endCol := startCol + 2 + (daysInMonth * 2) + 2 + 2 + 2 + 2 + 2 - 1
-	startColName, _ := excelize.ColumnNumberToName(startCol)
-	endColName, _ := excelize.ColumnNumberToName(endCol)
-	file.SetColWidth(txnReportSheetName, startColName, endColName, 12)
+	// SL columns (G, I, K, M, Q) - width 12
+	file.SetColWidth(txnReportSheetName, "G", "G", 12) // Tồn đầu SL
+	file.SetColWidth(txnReportSheetName, "I", "I", 12) // SL nguồn SL
+	file.SetColWidth(txnReportSheetName, "K", "K", 12) // Đã tiêu thụ SL
+	file.SetColWidth(txnReportSheetName, "M", "M", 12) // Còn lại SL
+	file.SetColWidth(txnReportSheetName, "Q", "Q", 12) // Chi tiết tiêu thụ SL
+
+	// TT columns (H, J, L, N, R) - width 15 (bigger and consistent)
+	file.SetColWidth(txnReportSheetName, "H", "H", 15) // Tồn đầu TT
+	file.SetColWidth(txnReportSheetName, "J", "J", 15) // SL nguồn TT
+	file.SetColWidth(txnReportSheetName, "L", "L", 15) // Đã tiêu thụ TT
+	file.SetColWidth(txnReportSheetName, "N", "N", 15) // Còn lại TT
+	file.SetColWidth(txnReportSheetName, "R", "R", 15) // Chi tiết tiêu thụ TT
+
+	// Chi tiết tiêu thụ detail columns (O, P)
+	file.SetColWidth(txnReportSheetName, "O", "O", 12) // Loại tiêu thụ
+	file.SetColWidth(txnReportSheetName, "P", "P", 12) // Ngày tiêu thụ
 }
 
 // Style creation methods
@@ -688,17 +905,17 @@ func (f *TxnReportFormatter) createHeaderStyle(file *excelize.File) (int, error)
 	})
 }
 
-func (f *TxnReportFormatter) createHeaderStyleYellow(file *excelize.File) (int, error) {
-	// #FFFF99 for "Tồn đầu", "Tồn cuối"
+func (f *TxnReportFormatter) createHeaderStylePink(file *excelize.File) (int, error) {
+	// #FFB6C1 (light pink) for "Đã tiêu thụ" and "Chi tiết tiêu thụ"
 	return file.NewStyle(&excelize.Style{
 		Font: &excelize.Font{
 			Bold:   true,
-			Size:   14, // Changed to 14px
+			Size:   14,
 			Family: "Calibri",
 		},
 		Fill: excelize.Fill{
 			Type:    "pattern",
-			Color:   []string{"FFFF99"},
+			Color:   []string{"FFB6C1"},
 			Pattern: 1,
 		},
 		Border: []excelize.Border{
@@ -716,16 +933,16 @@ func (f *TxnReportFormatter) createHeaderStyleYellow(file *excelize.File) (int, 
 }
 
 func (f *TxnReportFormatter) createHeaderStyleGreen(file *excelize.File) (int, error) {
-	// #CCFFCC for each day header (Ngày 1-31)
+	// #90EE90 (light green) for "SL nguồn"
 	return file.NewStyle(&excelize.Style{
 		Font: &excelize.Font{
 			Bold:   true,
-			Size:   14, // Changed to 14px
+			Size:   14,
 			Family: "Calibri",
 		},
 		Fill: excelize.Fill{
 			Type:    "pattern",
-			Color:   []string{"CCFFCC"},
+			Color:   []string{"90EE90"},
 			Pattern: 1,
 		},
 		Border: []excelize.Border{
@@ -743,16 +960,16 @@ func (f *TxnReportFormatter) createHeaderStyleGreen(file *excelize.File) (int, e
 }
 
 func (f *TxnReportFormatter) createHeaderStyleCyan(file *excelize.File) (int, error) {
-	// #CCFFFF for "Tổng nhập"
+	// #ADD8E6 (light blue) for "Tồn đầu"
 	return file.NewStyle(&excelize.Style{
 		Font: &excelize.Font{
 			Bold:   true,
-			Size:   14, // Changed to 14px
+			Size:   14,
 			Family: "Calibri",
 		},
 		Fill: excelize.Fill{
 			Type:    "pattern",
-			Color:   []string{"CCFFFF"},
+			Color:   []string{"ADD8E6"},
 			Pattern: 1,
 		},
 		Border: []excelize.Border{
@@ -769,44 +986,17 @@ func (f *TxnReportFormatter) createHeaderStyleCyan(file *excelize.File) (int, er
 	})
 }
 
-func (f *TxnReportFormatter) createHeaderStyleBrightYellow(file *excelize.File) (int, error) {
-	// #FFFF00 for "Tiêu thụ", "Hủy", "Xuất kho"
+func (f *TxnReportFormatter) createHeaderStyleGray(file *excelize.File) (int, error) {
+	// #D3D3D3 (light gray) for "Còn lại"
 	return file.NewStyle(&excelize.Style{
 		Font: &excelize.Font{
 			Bold:   true,
-			Size:   14, // Changed to 14px
+			Size:   14,
 			Family: "Calibri",
 		},
 		Fill: excelize.Fill{
 			Type:    "pattern",
-			Color:   []string{"FFFF00"},
-			Pattern: 1,
-		},
-		Border: []excelize.Border{
-			{Type: "left", Color: "000000", Style: 1},
-			{Type: "top", Color: "000000", Style: 1},
-			{Type: "bottom", Color: "000000", Style: 1},
-			{Type: "right", Color: "000000", Style: 1},
-		},
-		Alignment: &excelize.Alignment{
-			Horizontal: "center",
-			Vertical:   "center",
-			WrapText:   true,
-		},
-	})
-}
-
-func (f *TxnReportFormatter) createHeaderStyleOrange(file *excelize.File) (int, error) {
-	// #FFCC99 for all "SL" sub-headers
-	return file.NewStyle(&excelize.Style{
-		Font: &excelize.Font{
-			Bold:   true,
-			Size:   14, // Changed to 14px
-			Family: "Calibri",
-		},
-		Fill: excelize.Fill{
-			Type:    "pattern",
-			Color:   []string{"FFCC99"},
+			Color:   []string{"D3D3D3"},
 			Pattern: 1,
 		},
 		Border: []excelize.Border{
@@ -896,7 +1086,7 @@ func (f *TxnReportFormatter) createNumberStyle(file *excelize.File) (int, error)
 	})
 }
 
-// createSLStyle creates a style for SL columns with #FFCC99 background and font size 14.
+// createSLStyle creates a style for SL columns with white background and font size 14.
 func (f *TxnReportFormatter) createSLStyle(file *excelize.File) (int, error) {
 	return file.NewStyle(&excelize.Style{
 		Font: &excelize.Font{
@@ -906,7 +1096,7 @@ func (f *TxnReportFormatter) createSLStyle(file *excelize.File) (int, error) {
 		CustomNumFmt: stringPtr("#,##0.00"),
 		Fill: excelize.Fill{
 			Type:    "pattern",
-			Color:   []string{"FFCC99"}, // #FFCC99 background for SL columns
+			Color:   []string{"FFFFFF"}, // White background (removed orange)
 			Pattern: 1,
 		},
 		Border: []excelize.Border{

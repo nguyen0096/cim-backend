@@ -27,6 +27,7 @@ type InventoryRepository interface {
 
 	GetTransactionsByInventoryItemIDs(ctx context.Context, inventoryItemIDs []uint) ([]models.InventoryTransaction, error)
 	GetTransactionsByInventoryIDs(ctx context.Context, inventoryID uint, from, to *time.Time) ([]*models.InventoryTransaction, error)
+	GetTransactionsByIDs(ctx context.Context, txnIDs []uint) ([]*models.InventoryTransaction, error)
 }
 
 type inventoryRepository struct {
@@ -190,6 +191,24 @@ func (r *inventoryRepository) GetTransactionsByInventoryIDs(ctx context.Context,
 
 	if err := q.Find(&txns).Error; err != nil {
 		return nil, fmt.Errorf("failed to get inventory transactions before date: %w", err)
+	}
+	return txns, nil
+}
+
+func (r *inventoryRepository) GetTransactionsByIDs(ctx context.Context, txnIDs []uint) ([]*models.InventoryTransaction, error) {
+	if len(txnIDs) == 0 {
+		return []*models.InventoryTransaction{}, nil
+	}
+
+	var txns []*models.InventoryTransaction
+	if err := r.db.WithContext(ctx).
+		Where("id IN ?", txnIDs).
+		Preload("InventoryItem").
+		Preload("InventoryItem.Inventory").
+		Preload("InventoryItem.Product").
+		Preload("InventoryItem.Unit").
+		Find(&txns).Error; err != nil {
+		return nil, fmt.Errorf("failed to get transactions by IDs: %w", err)
 	}
 	return txns, nil
 }

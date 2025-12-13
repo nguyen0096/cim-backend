@@ -18,6 +18,13 @@ type txnReportBuilder struct {
 	// @optimize: query from OLAP database for better performance.
 	txns []*InventoryTransaction
 
+	// consumeTxns is the list of consume transactions in the report period
+	consumeTxns []*InventoryTransaction
+
+	// sourceTxns is the list of source transactions (either created in period
+	// or consumed by consume transactions in period)
+	sourceTxns []*InventoryTransaction
+
 	// historicalTxns is the list of inventory transactions before
 	// the report start date, used to calculate starting quantities.
 	// @optimize: query from OLAP database for better performance.
@@ -63,6 +70,16 @@ func (rb *txnReportBuilder) Txns(txns []*InventoryTransaction) *txnReportBuilder
 	return rb
 }
 
+func (rb *txnReportBuilder) ConsumeTxns(txns []*InventoryTransaction) *txnReportBuilder {
+	rb.consumeTxns = txns
+	return rb
+}
+
+func (rb *txnReportBuilder) SourceTxns(txns []*InventoryTransaction) *txnReportBuilder {
+	rb.sourceTxns = txns
+	return rb
+}
+
 func (rb *txnReportBuilder) HistoricalTxns(txns []*InventoryTransaction) *txnReportBuilder {
 	rb.historicalTxns = txns
 	return rb
@@ -96,6 +113,109 @@ func (rb *txnReportBuilder) Build() (*txnReportBuilder, error) {
 		return nil, fmt.Errorf("report builder not ready: %w", err)
 	}
 
+	// If source transactions are provided, use new source transaction view
+	if len(rb.sourceTxns) > 0 {
+		return rb.buildSourceView()
+	}
+
+	// Otherwise, use legacy PO-grouped view
+	return rb.buildLegacyView()
+}
+
+func (rb *txnReportBuilder) buildSourceView() (*txnReportBuilder, error) {
+	startQuantities := AggTxnQuantities(rb.historicalTxns)
+
+	// Group consume transactions by (inventory_item_id, counter_transaction_id)
+	consumesBySource := make(map[uint]map[uint][]*InventoryTransaction)
+	for _, consume := range rb.consumeTxns {
+		if consume.CounterTransactionID == nil {
+			continue
+		}
+
+		itemID := consume.InventoryItemID
+		sourceID := *consume.CounterTransactionID
+
+		if _, exists := consumesBySource[itemID]; !exists {
+			consumesBySource[itemID] = make(map[uint][]*InventoryTransaction)
+		}
+		consumesBySource[itemID][sourceID] = append(consumesBySource[itemID][sourceID], consume)
+	}
+
+	// Create one row per source transaction
+	items := make([]*TxnReportInventoryItem, 0)
+	for _, sourceTxn := range rb.sourceTxns {
+		item, exists := rb.iiLookup[sourceTxn.InventoryItemID]
+		if !exists {
+			log.Warnf("inventory item %d not found in lookup for transaction %d", sourceTxn.InventoryItemID, sourceTxn.ID)
+			continue
+		}
+
+		reportItem := &TxnReportInventoryItem{
+			InventoryItem:         item,
+			SourceTransaction:     sourceTxn,
+			StartQuantity:         startQuantities[sourceTxn.InventoryItemID],
+			Transactions:          []*InventoryTransaction{sourceTxn},
+			POMap:                 make(map[uint]*TxnReportPOSummary),
+			PurchaseQuantity:      decimal.Zero,
+			PurchaseQuantityByDay: make(map[int]decimal.Decimal),
+			ReconcileQuantity:     decimal.Zero,
+			TransferQuantity:      decimal.Zero,
+			DisposeQuantity:       decimal.Zero,
+			EndQuantity:           decimal.Zero,
+		}
+
+		// Set consume details for this source
+		if consumesByItem, exists := consumesBySource[sourceTxn.InventoryItemID]; exists {
+			if consumes, exists := consumesByItem[sourceTxn.ID]; exists {
+				reportItem.ConsumeDetails = consumes
+			}
+		}
+
+		items = append(items, reportItem)
+	}
+
+	// Sort items by product name (ascending), then by receive date (ascending)
+	rb.sortSourceViewItems(items)
+
+	rb.report.Items = items
+	rb.isBuilt = true
+	return rb, nil
+}
+
+// sortSourceViewItems sorts report items by product name, then by source transaction date
+func (rb *txnReportBuilder) sortSourceViewItems(items []*TxnReportInventoryItem) {
+	// Use a custom sort function
+	for i := 0; i < len(items); i++ {
+		for j := i + 1; j < len(items); j++ {
+			// Compare product names
+			nameI := ""
+			nameJ := ""
+			if items[i].Product != nil {
+				nameI = items[i].Product.Name
+			}
+			if items[j].Product != nil {
+				nameJ = items[j].Product.Name
+			}
+
+			// If names are different, sort by name
+			if nameI != nameJ {
+				if nameI > nameJ {
+					items[i], items[j] = items[j], items[i]
+				}
+				continue
+			}
+
+			// If names are same, sort by receive date
+			if items[i].SourceTransaction != nil && items[j].SourceTransaction != nil {
+				if items[i].SourceTransaction.CreatedAt.After(items[j].SourceTransaction.CreatedAt) {
+					items[i], items[j] = items[j], items[i]
+				}
+			}
+		}
+	}
+}
+
+func (rb *txnReportBuilder) buildLegacyView() (*txnReportBuilder, error) {
 	startQuantities := AggTxnQuantities(rb.historicalTxns)
 
 	reportItems := make(map[uint]*TxnReportInventoryItem)

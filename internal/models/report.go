@@ -50,6 +50,10 @@ type TxnReportInventoryItem struct {
 	TransferQuantity      decimal.Decimal              `json:"total_transfer"`
 	DisposeQuantity       decimal.Decimal              `json:"total_dispose"`
 	EndQuantity           decimal.Decimal              `json:"end_quantity"`
+
+	// Source transaction view fields
+	SourceTransaction *InventoryTransaction   `json:"source_transaction,omitempty"` // The source (Purchase/Transfer In)
+	ConsumeDetails    []*InventoryTransaction `json:"consume_details,omitempty"`    // Consumes from this source in period
 }
 
 type TxnReportInventory struct {

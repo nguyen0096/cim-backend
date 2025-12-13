@@ -1241,10 +1241,47 @@ func (s *inventoryService) GetMonthlyTransactionReport(ctx context.Context, inve
 	from := pkg.GetMonthStart(0)
 	to := pkg.GetMonthStart(1)
 
+	// 1. Get ALL transactions in period
 	txns, err := s.inventoryRepo.GetTransactionsByInventoryIDs(ctx, inventoryID, &from, &to)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get transaction report data: %w", err)
 	}
+
+	// 2. Get consume transactions in period
+	consumeTxns := make([]*models.InventoryTransaction, 0)
+	periodSourceTxns := make([]*models.InventoryTransaction, 0)
+	for _, txn := range txns {
+		switch txn.TransactionType {
+		case models.InventoryTransactionTypeSell,
+			models.InventoryTransactionTypeDisposal,
+			models.InventoryTransactionTypeTransferOut:
+			consumeTxns = append(consumeTxns, txn)
+		case models.InventoryTransactionTypePurchase,
+			models.InventoryTransactionTypeTransferIn:
+			periodSourceTxns = append(periodSourceTxns, txn)
+		}
+	}
+
+	// 3. Extract counter_transaction_ids from consume transactions
+	sourceIDsMap := make(map[uint]bool)
+	for _, consume := range consumeTxns {
+		if consume.CounterTransactionID != nil {
+			sourceIDsMap[*consume.CounterTransactionID] = true
+		}
+	}
+	sourceIDs := make([]uint, 0, len(sourceIDsMap))
+	for id := range sourceIDsMap {
+		sourceIDs = append(sourceIDs, id)
+	}
+
+	// 4. Get historical source transactions referenced by consumes
+	historicalSourceTxns, err := s.inventoryRepo.GetTransactionsByIDs(ctx, sourceIDs)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get historical source transactions: %w", err)
+	}
+
+	// 5. Merge and deduplicate source transactions
+	allSourceTxns := s.mergeAndDeduplicateSourceTxns(historicalSourceTxns, periodSourceTxns)
 
 	// build inventory item lookup from all transactions
 	iiLookup, err := s.getInventoryItemLookup(ctx, txns)
@@ -1266,6 +1303,8 @@ func (s *inventoryService) GetMonthlyTransactionReport(ctx context.Context, inve
 
 	rb, err := models.NewReportBuilder(inventory, from, to).
 		Txns(txns).
+		ConsumeTxns(consumeTxns).
+		SourceTxns(allSourceTxns).
 		HistoricalTxns(historicalTxns).
 		InventoryItemLookup(iiLookup).
 		PurchaseOrderItemLookup(poItemLookup).
@@ -1293,6 +1332,32 @@ func (s *inventoryService) GetMonthlyTransactionReport(ctx context.Context, inve
 	}
 
 	return r, nil
+}
+
+// mergeAndDeduplicateSourceTxns merges historical and period source transactions and removes duplicates
+func (s *inventoryService) mergeAndDeduplicateSourceTxns(
+	historicalSources []*models.InventoryTransaction,
+	periodSources []*models.InventoryTransaction,
+) []*models.InventoryTransaction {
+	txnMap := make(map[uint]*models.InventoryTransaction)
+
+	// Add historical sources first
+	for _, txn := range historicalSources {
+		txnMap[txn.ID] = txn
+	}
+
+	// Add period sources (will overwrite if duplicate, but that's fine)
+	for _, txn := range periodSources {
+		txnMap[txn.ID] = txn
+	}
+
+	// Convert map to slice
+	result := make([]*models.InventoryTransaction, 0, len(txnMap))
+	for _, txn := range txnMap {
+		result = append(result, txn)
+	}
+
+	return result
 }
 
 // getInventoryItemLookup builds a lookup map of inventory items by their IDs from the given transactions.
