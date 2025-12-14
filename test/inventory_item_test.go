@@ -712,4 +712,277 @@ var _ = Describe("SaveInventoryItemChanges", func() {
 		Expect(err).To(BeNil())
 		Expect(len(transactions)).To(BeNumerically(">=", 3))
 	})
+
+	Describe("GetByInventoryIDWithFilters", func() {
+		var (
+			repo      repository.InventoryItemRepository
+			ctx       context.Context
+			db        *gorm.DB
+			inventory *models.Inventory
+			unit      *models.Unit
+			products  []*models.Product
+		)
+
+		BeforeEach(func() {
+			ctx = tenv.DefaultContext
+			db = tenv.ContextfulDB()
+			repo = repository.NewInventoryItemRepository(db)
+
+			// Setup fixtures
+			unit = fixture.WithUnit(db.WithContext(ctx), models.Unit{Name: "Kilogram", Symbol: "kg", UnitType: "mass"})
+			_ = fixture.WithSupplier(db.WithContext(ctx), models.Supplier{
+				Name:         "Test Supplier",
+				ContactEmail: "test@supplier.com",
+				ContactPhone: "123-456-7890",
+				Address:      "Test Address",
+			})
+			products = fixture.WithProducts(db.WithContext(ctx), []*models.Product{
+				{Name: "Product A", Status: "active", UnitID: unit.ID, ProductType: "material"},
+				{Name: "Product B", Status: "active", UnitID: unit.ID, ProductType: "finished_good"},
+				{Name: "Product C", Status: "active", UnitID: unit.ID, ProductType: "material"},
+			})
+			inventory = fixture.WithInventory(db.WithContext(ctx), models.Inventory{
+				Name:   fmt.Sprintf("Test Inventory %d", time.Now().UnixNano()),
+				Status: models.InventoryStatusActive,
+			})
+		})
+
+		Context("preloading relationships", func() {
+			It("should preload Inventory, Product, and Unit relationships", func() {
+				// Create inventory items
+				items := []models.InventoryItem{
+					{InventoryID: inventory.ID, ProductID: products[0].ID, Quantity: decimal.NewFromInt(10), Status: models.InventoryItemStatusActive, UnitID: unit.ID},
+					{InventoryID: inventory.ID, ProductID: products[1].ID, Quantity: decimal.NewFromInt(5), Status: models.InventoryItemStatusActive, UnitID: unit.ID},
+				}
+				err := db.WithContext(ctx).Create(&items).Error
+				Expect(err).To(BeNil())
+				DeferCleanup(func() {
+					db.WithContext(ctx).Where("id IN ?", []uint{items[0].ID, items[1].ID}).Delete(&models.InventoryItem{})
+				})
+
+				// Test
+				result, err := repo.GetByInventoryIDWithFilters(ctx, inventory.ID, repository.InventoryItemFilters{}, 10, 0)
+
+				Expect(err).To(BeNil())
+				Expect(result).To(HaveLen(2))
+				for _, item := range result {
+					// Verify Inventory is preloaded
+					Expect(item.Inventory).NotTo(BeNil())
+					Expect(item.Inventory.ID).To(Equal(inventory.ID))
+					Expect(item.Inventory.Name).To(Equal(inventory.Name))
+
+					// Verify Product is preloaded
+					Expect(item.Product).NotTo(BeNil())
+					Expect(item.Product.ID).To(Equal(item.ProductID))
+
+					// Verify Unit is preloaded
+					Expect(item.Unit).NotTo(BeNil())
+					Expect(item.Unit.ID).To(Equal(unit.ID))
+					Expect(item.Unit.Name).To(Equal("KILOGRAM")) // Names are standardized to uppercase
+					Expect(item.Unit.Symbol).To(Equal("kg"))
+				}
+			})
+		})
+
+		Context("filtering by status", func() {
+			It("should filter by active status", func() {
+				// Create items with different statuses
+				items := []models.InventoryItem{
+					{InventoryID: inventory.ID, ProductID: products[0].ID, Quantity: decimal.NewFromInt(10), Status: models.InventoryItemStatusActive, UnitID: unit.ID},
+					{InventoryID: inventory.ID, ProductID: products[1].ID, Quantity: decimal.NewFromInt(5), Status: models.InventoryItemStatusInactive, UnitID: unit.ID},
+					{InventoryID: inventory.ID, ProductID: products[2].ID, Quantity: decimal.NewFromInt(8), Status: models.InventoryItemStatusActive, UnitID: unit.ID},
+				}
+				err := db.WithContext(ctx).Create(&items).Error
+				Expect(err).To(BeNil())
+				DeferCleanup(func() {
+					db.WithContext(ctx).Where("id IN ?", []uint{items[0].ID, items[1].ID, items[2].ID}).Delete(&models.InventoryItem{})
+				})
+
+				// Test - filter by active status
+				filters := repository.InventoryItemFilters{Status: string(models.InventoryItemStatusActive)}
+				result, err := repo.GetByInventoryIDWithFilters(ctx, inventory.ID, filters, 10, 0)
+
+				Expect(err).To(BeNil())
+				Expect(result).To(HaveLen(2))
+				for _, item := range result {
+					Expect(item.Status).To(Equal(models.InventoryItemStatusActive))
+				}
+			})
+
+			It("should filter by inactive status", func() {
+				// Create items with different statuses
+				items := []models.InventoryItem{
+					{InventoryID: inventory.ID, ProductID: products[0].ID, Quantity: decimal.NewFromInt(10), Status: models.InventoryItemStatusActive, UnitID: unit.ID},
+					{InventoryID: inventory.ID, ProductID: products[1].ID, Quantity: decimal.NewFromInt(5), Status: models.InventoryItemStatusInactive, UnitID: unit.ID},
+				}
+				err := db.WithContext(ctx).Create(&items).Error
+				Expect(err).To(BeNil())
+				DeferCleanup(func() {
+					db.WithContext(ctx).Where("id IN ?", []uint{items[0].ID, items[1].ID}).Delete(&models.InventoryItem{})
+				})
+
+				// Test - filter by inactive status
+				filters := repository.InventoryItemFilters{Status: string(models.InventoryItemStatusInactive)}
+				result, err := repo.GetByInventoryIDWithFilters(ctx, inventory.ID, filters, 10, 0)
+
+				Expect(err).To(BeNil())
+				Expect(result).To(HaveLen(1))
+				Expect(result[0].Status).To(Equal(models.InventoryItemStatusInactive))
+			})
+		})
+
+		Context("filtering by product type", func() {
+			It("should filter by product type", func() {
+				// Create items
+				items := []models.InventoryItem{
+					{InventoryID: inventory.ID, ProductID: products[0].ID, Quantity: decimal.NewFromInt(10), Status: models.InventoryItemStatusActive, UnitID: unit.ID}, // material
+					{InventoryID: inventory.ID, ProductID: products[1].ID, Quantity: decimal.NewFromInt(5), Status: models.InventoryItemStatusActive, UnitID: unit.ID},  // finished_good
+					{InventoryID: inventory.ID, ProductID: products[2].ID, Quantity: decimal.NewFromInt(8), Status: models.InventoryItemStatusActive, UnitID: unit.ID},  // material
+				}
+				err := db.WithContext(ctx).Create(&items).Error
+				Expect(err).To(BeNil())
+				DeferCleanup(func() {
+					db.WithContext(ctx).Where("id IN ?", []uint{items[0].ID, items[1].ID, items[2].ID}).Delete(&models.InventoryItem{})
+				})
+
+				// Test - filter by material
+				filters := repository.InventoryItemFilters{ProductType: "material"}
+				result, err := repo.GetByInventoryIDWithFilters(ctx, inventory.ID, filters, 10, 0)
+
+				Expect(err).To(BeNil())
+				Expect(result).To(HaveLen(2))
+				for _, item := range result {
+					Expect(item.Product.ProductType).To(Equal("material"))
+				}
+			})
+		})
+
+		Context("pagination", func() {
+			It("should respect limit and offset", func() {
+				// Create items
+				items := []models.InventoryItem{
+					{InventoryID: inventory.ID, ProductID: products[0].ID, Quantity: decimal.NewFromInt(10), Status: models.InventoryItemStatusActive, UnitID: unit.ID},
+					{InventoryID: inventory.ID, ProductID: products[1].ID, Quantity: decimal.NewFromInt(5), Status: models.InventoryItemStatusActive, UnitID: unit.ID},
+					{InventoryID: inventory.ID, ProductID: products[2].ID, Quantity: decimal.NewFromInt(8), Status: models.InventoryItemStatusActive, UnitID: unit.ID},
+				}
+				err := db.WithContext(ctx).Create(&items).Error
+				Expect(err).To(BeNil())
+				DeferCleanup(func() {
+					db.WithContext(ctx).Where("id IN ?", []uint{items[0].ID, items[1].ID, items[2].ID}).Delete(&models.InventoryItem{})
+				})
+
+				// Test - limit 2
+				result, err := repo.GetByInventoryIDWithFilters(ctx, inventory.ID, repository.InventoryItemFilters{}, 2, 0)
+				Expect(err).To(BeNil())
+				Expect(result).To(HaveLen(2))
+
+				// Test - offset 2
+				result2, err := repo.GetByInventoryIDWithFilters(ctx, inventory.ID, repository.InventoryItemFilters{}, 10, 2)
+				Expect(err).To(BeNil())
+				Expect(result2).To(HaveLen(1))
+			})
+		})
+
+		Context("sorting", func() {
+			It("should sort by updated_at desc", func() {
+				// Create items with different update times
+				item1 := models.InventoryItem{InventoryID: inventory.ID, ProductID: products[0].ID, Quantity: decimal.NewFromInt(10), Status: models.InventoryItemStatusActive, UnitID: unit.ID}
+				err := db.WithContext(ctx).Create(&item1).Error
+				Expect(err).To(BeNil())
+				time.Sleep(10 * time.Millisecond)
+
+				item2 := models.InventoryItem{InventoryID: inventory.ID, ProductID: products[1].ID, Quantity: decimal.NewFromInt(5), Status: models.InventoryItemStatusActive, UnitID: unit.ID}
+				err = db.WithContext(ctx).Create(&item2).Error
+				Expect(err).To(BeNil())
+				DeferCleanup(func() {
+					db.WithContext(ctx).Where("id IN ?", []uint{item1.ID, item2.ID}).Delete(&models.InventoryItem{})
+				})
+
+				// Test - sort by updated_at desc
+				filters := repository.InventoryItemFilters{Sort: "updated_at", Order: "desc"}
+				result, err := repo.GetByInventoryIDWithFilters(ctx, inventory.ID, filters, 10, 0)
+
+				Expect(err).To(BeNil())
+				Expect(result).To(HaveLen(2))
+				Expect(result[0].ID).To(Equal(item2.ID)) // most recent first
+				Expect(result[1].ID).To(Equal(item1.ID))
+			})
+
+			It("should sort by quantity asc", func() {
+				// Create items with different quantities
+				items := []models.InventoryItem{
+					{InventoryID: inventory.ID, ProductID: products[0].ID, Quantity: decimal.NewFromInt(15), Status: models.InventoryItemStatusActive, UnitID: unit.ID},
+					{InventoryID: inventory.ID, ProductID: products[1].ID, Quantity: decimal.NewFromInt(5), Status: models.InventoryItemStatusActive, UnitID: unit.ID},
+					{InventoryID: inventory.ID, ProductID: products[2].ID, Quantity: decimal.NewFromInt(10), Status: models.InventoryItemStatusActive, UnitID: unit.ID},
+				}
+				err := db.WithContext(ctx).Create(&items).Error
+				Expect(err).To(BeNil())
+				DeferCleanup(func() {
+					db.WithContext(ctx).Where("id IN ?", []uint{items[0].ID, items[1].ID, items[2].ID}).Delete(&models.InventoryItem{})
+				})
+
+				// Test - sort by quantity asc
+				filters := repository.InventoryItemFilters{Sort: "quantity", Order: "asc"}
+				result, err := repo.GetByInventoryIDWithFilters(ctx, inventory.ID, filters, 10, 0)
+
+				Expect(err).To(BeNil())
+				Expect(result).To(HaveLen(3))
+				Expect(result[0].Quantity.Equal(decimal.NewFromInt(5))).To(BeTrue())
+				Expect(result[1].Quantity.Equal(decimal.NewFromInt(10))).To(BeTrue())
+				Expect(result[2].Quantity.Equal(decimal.NewFromInt(15))).To(BeTrue())
+			})
+		})
+
+		Context("search functionality", func() {
+			It("should search by product name", func() {
+				// Products already created: "Product A", "Product B", "Product C"
+				items := []models.InventoryItem{
+					{InventoryID: inventory.ID, ProductID: products[0].ID, Quantity: decimal.NewFromInt(10), Status: models.InventoryItemStatusActive, UnitID: unit.ID},
+					{InventoryID: inventory.ID, ProductID: products[1].ID, Quantity: decimal.NewFromInt(5), Status: models.InventoryItemStatusActive, UnitID: unit.ID},
+					{InventoryID: inventory.ID, ProductID: products[2].ID, Quantity: decimal.NewFromInt(8), Status: models.InventoryItemStatusActive, UnitID: unit.ID},
+				}
+				err := db.WithContext(ctx).Create(&items).Error
+				Expect(err).To(BeNil())
+				DeferCleanup(func() {
+					db.WithContext(ctx).Where("id IN ?", []uint{items[0].ID, items[1].ID, items[2].ID}).Delete(&models.InventoryItem{})
+				})
+
+				// Test - search for "Product A"
+				filters := repository.InventoryItemFilters{Search: "Product A"}
+				result, err := repo.GetByInventoryIDWithFilters(ctx, inventory.ID, filters, 10, 0)
+
+				Expect(err).To(BeNil())
+				Expect(result).To(HaveLen(1))
+				Expect(result[0].Product.Name).To(Equal("Product A"))
+			})
+		})
+
+		Context("combined filters", func() {
+			It("should apply multiple filters together", func() {
+				// Create items
+				items := []models.InventoryItem{
+					{InventoryID: inventory.ID, ProductID: products[0].ID, Quantity: decimal.NewFromInt(10), Status: models.InventoryItemStatusActive, UnitID: unit.ID},   // material, active
+					{InventoryID: inventory.ID, ProductID: products[1].ID, Quantity: decimal.NewFromInt(5), Status: models.InventoryItemStatusActive, UnitID: unit.ID},    // finished_good, active
+					{InventoryID: inventory.ID, ProductID: products[2].ID, Quantity: decimal.NewFromInt(8), Status: models.InventoryItemStatusInactive, UnitID: unit.ID}, // material, inactive
+				}
+				err := db.WithContext(ctx).Create(&items).Error
+				Expect(err).To(BeNil())
+				DeferCleanup(func() {
+					db.WithContext(ctx).Where("id IN ?", []uint{items[0].ID, items[1].ID, items[2].ID}).Delete(&models.InventoryItem{})
+				})
+
+				// Test - filter by status=active AND product_type=material
+				filters := repository.InventoryItemFilters{
+					Status:      string(models.InventoryItemStatusActive),
+					ProductType: "material",
+				}
+				result, err := repo.GetByInventoryIDWithFilters(ctx, inventory.ID, filters, 10, 0)
+
+				Expect(err).To(BeNil())
+				Expect(result).To(HaveLen(1))
+				Expect(result[0].Status).To(Equal(models.InventoryItemStatusActive))
+				Expect(result[0].Product.ProductType).To(Equal("material"))
+			})
+		})
+	})
 })
