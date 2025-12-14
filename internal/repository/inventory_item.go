@@ -100,6 +100,7 @@ func (r *inventoryItemRepository) GetByInventoryIDWithFilters(ctx context.Contex
 	query := r.db.WithContext(ctx).
 		Preload("Inventory").
 		Preload("Product").
+		Preload("Unit").
 		Where("inventory_items.inventory_id = ?", inventoryID)
 
 	// Apply status filter
