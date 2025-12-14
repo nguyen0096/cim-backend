@@ -12,10 +12,35 @@ import (
 	"github.com/xuri/excelize/v2"
 )
 
-// createTestReport creates a complete test report with all required data.
+// createTestReport creates a complete test report with source transaction view data.
 func createTestReport() *models.TxnReportInventory {
 	from := time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
 	to := time.Date(2025, 1, 31, 23, 59, 59, 0, time.UTC)
+	receiveDate := time.Date(2025, 1, 5, 10, 0, 0, 0, time.UTC)
+	consumeDate := time.Date(2025, 1, 15, 14, 0, 0, 0, time.UTC)
+
+	sourceTransaction := &models.InventoryTransaction{
+		Base: models.Base{
+			ID:        100,
+			CreatedAt: receiveDate,
+		},
+		InventoryItemID:  1,
+		TransactionType:  models.InventoryTransactionTypePurchase,
+		Quantity:         decimal.NewFromFloat(50),
+		Price:            15000,
+		ConsumedQuantity: decimal.NewFromFloat(30),
+	}
+
+	consumeDetail := &models.InventoryTransaction{
+		Base: models.Base{
+			ID:        101,
+			CreatedAt: consumeDate,
+		},
+		InventoryItemID:      1,
+		TransactionType:      models.InventoryTransactionTypeSell,
+		Quantity:             decimal.NewFromFloat(30),
+		CounterTransactionID: &sourceTransaction.ID,
+	}
 
 	report := &models.TxnReportInventory{
 		Report: models.Report{
@@ -38,24 +63,15 @@ func createTestReport() *models.TxnReportInventory {
 						Unit: &models.Unit{Name: "kg"},
 					},
 				},
-				StartQuantity:     decimal.NewFromFloat(100),
-				PurchaseQuantity:  decimal.NewFromFloat(50),
-				ReconcileQuantity: decimal.NewFromFloat(30),
-				DisposeQuantity:   decimal.NewFromFloat(5),
-				TransferQuantity:  decimal.NewFromFloat(10),
-				EndQuantity:       decimal.NewFromFloat(125),
-				POMap: map[uint]*models.TxnReportPOSummary{
-					1: {
-						OrderNumber: "PO-001",
-						Status:      "completed",
-						UnitPrice:   15000,
-						PurchaseQuantityByDay: map[int]decimal.Decimal{
-							1:  decimal.NewFromFloat(10),
-							15: decimal.NewFromFloat(20),
-							30: decimal.NewFromFloat(20),
-						},
-					},
-				},
+				StartQuantity:      decimal.NewFromFloat(100),
+				SourceTransaction:  sourceTransaction,
+				ConsumeDetails:     []*models.InventoryTransaction{consumeDetail},
+				POMap:              make(map[uint]*models.TxnReportPOSummary),
+				PurchaseQuantity:   decimal.Zero,
+				ReconcileQuantity:  decimal.Zero,
+				TransferQuantity:   decimal.Zero,
+				DisposeQuantity:    decimal.Zero,
+				EndQuantity:        decimal.Zero,
 			},
 		},
 	}
@@ -63,10 +79,36 @@ func createTestReport() *models.TxnReportInventory {
 	return report
 }
 
-// createTestReportWithMultiplePOs creates a report with an item that has multiple POs.
+// createTestReportWithMultiplePOs creates a report with multiple source transactions (purchases).
 func createTestReportWithMultiplePOs() *models.TxnReportInventory {
 	from := time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
 	to := time.Date(2025, 1, 31, 23, 59, 59, 0, time.UTC)
+	receiveDate1 := time.Date(2025, 1, 5, 10, 0, 0, 0, time.UTC)
+	receiveDate2 := time.Date(2025, 1, 20, 14, 0, 0, 0, time.UTC)
+
+	sourceTransaction1 := &models.InventoryTransaction{
+		Base: models.Base{
+			ID:        200,
+			CreatedAt: receiveDate1,
+		},
+		InventoryItemID:  1,
+		TransactionType:  models.InventoryTransactionTypePurchase,
+		Quantity:         decimal.NewFromFloat(50),
+		Price:            10000,
+		ConsumedQuantity: decimal.Zero,
+	}
+
+	sourceTransaction2 := &models.InventoryTransaction{
+		Base: models.Base{
+			ID:        201,
+			CreatedAt: receiveDate2,
+		},
+		InventoryItemID:  1,
+		TransactionType:  models.InventoryTransactionTypePurchase,
+		Quantity:         decimal.NewFromFloat(50),
+		Price:            11000,
+		ConsumedQuantity: decimal.Zero,
+	}
 
 	report := &models.TxnReportInventory{
 		Report: models.Report{
@@ -80,6 +122,7 @@ func createTestReportWithMultiplePOs() *models.TxnReportInventory {
 			Name: "Warehouse B",
 		},
 		Items: []*models.TxnReportInventoryItem{
+			// First source transaction
 			{
 				InventoryItem: &models.InventoryItem{
 					Base: models.Base{ID: 1},
@@ -90,30 +133,34 @@ func createTestReportWithMultiplePOs() *models.TxnReportInventory {
 					},
 				},
 				StartQuantity:     decimal.NewFromFloat(50),
-				PurchaseQuantity:  decimal.NewFromFloat(100),
-				ReconcileQuantity: decimal.NewFromFloat(40),
-				DisposeQuantity:   decimal.NewFromFloat(0),
-				TransferQuantity:  decimal.NewFromFloat(0),
-				EndQuantity:       decimal.NewFromFloat(110),
-				POMap: map[uint]*models.TxnReportPOSummary{
-					1: {
-						OrderNumber: "PO-001",
-						Status:      "completed",
-						UnitPrice:   10000,
-						PurchaseQuantityByDay: map[int]decimal.Decimal{
-							5:  decimal.NewFromFloat(30),
-							10: decimal.NewFromFloat(20),
-						},
-					},
-					2: {
-						OrderNumber: "PO-002",
-						Status:      "completed",
-						UnitPrice:   11000,
-						PurchaseQuantityByDay: map[int]decimal.Decimal{
-							20: decimal.NewFromFloat(50),
-						},
+				SourceTransaction: sourceTransaction1,
+				ConsumeDetails:    []*models.InventoryTransaction{},
+				POMap:             make(map[uint]*models.TxnReportPOSummary),
+				PurchaseQuantity:  decimal.Zero,
+				ReconcileQuantity: decimal.Zero,
+				TransferQuantity:  decimal.Zero,
+				DisposeQuantity:   decimal.Zero,
+				EndQuantity:       decimal.Zero,
+			},
+			// Second source transaction
+			{
+				InventoryItem: &models.InventoryItem{
+					Base: models.Base{ID: 1},
+					Unit: &models.Unit{Name: "box"},
+					Product: &models.Product{
+						Name: "Product B",
+						Unit: &models.Unit{Name: "box"},
 					},
 				},
+				StartQuantity:     decimal.NewFromFloat(50),
+				SourceTransaction: sourceTransaction2,
+				ConsumeDetails:    []*models.InventoryTransaction{},
+				POMap:             make(map[uint]*models.TxnReportPOSummary),
+				PurchaseQuantity:  decimal.Zero,
+				ReconcileQuantity: decimal.Zero,
+				TransferQuantity:  decimal.Zero,
+				DisposeQuantity:   decimal.Zero,
+				EndQuantity:       decimal.Zero,
 			},
 		},
 	}
@@ -155,12 +202,12 @@ func TestFormatToXLSX_Success(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "Diễn giải", dienGiaiHeader)
 
-	// Verify sub-headers in row 6
-	slHeader, err := file.GetCellValue(txnReportSheetName, "E6")
+	// Verify sub-headers in row 6 for "Tồn đầu" (columns G-H)
+	slHeader, err := file.GetCellValue(txnReportSheetName, "G6")
 	require.NoError(t, err)
 	assert.Equal(t, "SL", slHeader)
 
-	ttHeader, err := file.GetCellValue(txnReportSheetName, "F6")
+	ttHeader, err := file.GetCellValue(txnReportSheetName, "H6")
 	require.NoError(t, err)
 	assert.Equal(t, "TT", ttHeader)
 
@@ -177,7 +224,9 @@ func TestFormatToXLSX_Success(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "kg", unitName)
 
-	unitPrice, err := file.GetCellValue(txnReportSheetName, "D7")
+	// In new layout, column D is "Nguồn" (source type), column E is "Ngày nhận" (receive date),
+	// and column F is "Đơn giá" (unit price)
+	unitPrice, err := file.GetCellValue(txnReportSheetName, "F7")
 	require.NoError(t, err)
 	assert.Equal(t, "15,000.00", unitPrice)
 }
@@ -215,12 +264,12 @@ func TestFormatToXLSX_WithMultiplePOs(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "Product B", product2)
 
-	// Unit prices should be different
-	price1, err := file.GetCellValue(txnReportSheetName, "D7")
+	// Unit prices should be different (column F in new layout)
+	price1, err := file.GetCellValue(txnReportSheetName, "F7")
 	require.NoError(t, err)
 	assert.Equal(t, "10,000.00", price1)
 
-	price2, err := file.GetCellValue(txnReportSheetName, "D8")
+	price2, err := file.GetCellValue(txnReportSheetName, "F8")
 	require.NoError(t, err)
 	assert.Equal(t, "11,000.00", price2)
 }
@@ -313,9 +362,11 @@ func TestFormatToXLSX_ItemWithNilInventoryItem(t *testing.T) {
 	assert.Contains(t, err.Error(), "nil InventoryItem")
 }
 
-func TestFormatToXLSX_ItemWithNoPOs(t *testing.T) {
+func TestFormatToXLSX_ItemWithNoSourceTransaction(t *testing.T) {
 	report := createTestReport()
-	report.Items[0].POMap = map[uint]*models.TxnReportPOSummary{}
+	// Set SourceTransaction to nil to test case where there's no source
+	report.Items[0].SourceTransaction = nil
+	report.Items[0].ConsumeDetails = []*models.InventoryTransaction{}
 
 	formatter := NewTxnReportFormatter()
 
@@ -329,8 +380,8 @@ func TestFormatToXLSX_ItemWithNoPOs(t *testing.T) {
 	require.NoError(t, err)
 	defer file.Close()
 
-	// Should still have one row with unit price = 0
-	unitPrice, err := file.GetCellValue(txnReportSheetName, "D7")
+	// Should still have one row with unit price = 0 (column F in new layout)
+	unitPrice, err := file.GetCellValue(txnReportSheetName, "F7")
 	require.NoError(t, err)
 	assert.Equal(t, "0.00", unitPrice)
 }
