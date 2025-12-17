@@ -3,10 +3,13 @@ package apptest
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/csv"
 	"encoding/json"
 	"fmt"
+	"image/png"
 	"io"
+	"strconv"
 	"strings"
 
 	"github.com/google/uuid"
@@ -121,6 +124,56 @@ var _ = Describe("Product API", func() {
 				errorResp := testutil.ParseResponse(resp)
 				Expect(errorResp["error"]).To(Equal(fmt.Sprintf("Access denied: %s role cannot create products", models.RoleBotForm)))
 			})
+		})
+
+		Context("Image in payload", func() {
+			It("should create product with image in form data request", func() {
+				client := testutil.NewClient(tenv, models.RoleAdmin)
+				productName := fmt.Sprintf("Test Product %s", uuid.New().String())
+				productDescription := fmt.Sprintf("Test Description %s", uuid.New().String())
+
+				// Create test image
+				img := testutil.CreateImage(100, 100)
+				imageData := bytes.NewBuffer(nil)
+				err := png.Encode(imageData, img)
+				Expect(err).NotTo(HaveOccurred())
+				imageDataBase64 := base64.StdEncoding.EncodeToString(imageData.Bytes())
+				expectedImageDataURL := fmt.Sprintf("data:image/png;base64,%s", imageDataBase64)
+
+				// Create multipart form data
+				imageDataForUpload := bytes.NewBuffer(imageData.Bytes())
+				multipartData := &testutil.MultipartFormData{
+					Fields: map[string]string{
+						"name":         productName,
+						"description":  productDescription,
+						"product_type": "test",
+						"unit_id":      strconv.Itoa(int(testUnit.ID)),
+						"status":       "active",
+					},
+					Files: map[string]struct {
+						Filename string
+						Content  io.Reader
+					}{
+						"image": {
+							Filename: "test.png",
+							Content:  imageDataForUpload,
+						},
+					},
+				}
+
+				// Make request
+				resp, err := client.MakeRequest("POST", "/api/v1/products", nil, testutil.WithAuth(), testutil.WithMultipartFormData(multipartData))
+				Expect(err).NotTo(HaveOccurred())
+				Expect(resp.StatusCode).To(Equal(201))
+
+				// Verify response
+				productResp := testutil.ParseResponse(resp)
+				Expect(productResp["id"]).NotTo(BeNil())
+				Expect(productResp["name"]).To(Equal(productName))
+				Expect(productResp["description"]).To(Equal(productDescription))
+				Expect(productResp["product_image"]).To(Equal(expectedImageDataURL))
+			})
+
 		})
 	})
 
@@ -254,6 +307,100 @@ var _ = Describe("Product API", func() {
 
 				errorResp := testutil.ParseResponse(resp)
 				Expect(errorResp["error"]).To(Equal(fmt.Sprintf("Access denied: %s role cannot update products", models.RoleBotForm)))
+			})
+		})
+
+		When("Image in payload", func() {
+			It("should update product with image in form data request", func() {
+				client := testutil.NewClient(tenv, models.RoleAdmin)
+				newProductName := fmt.Sprintf("Test Product Edited %s", uuid.New().String())
+				newProductDescription := fmt.Sprintf("Test Description Edited %s", uuid.New().String())
+
+				img := testutil.CreateImage(100, 100)
+				imageData := bytes.NewBuffer(nil)
+				err := png.Encode(imageData, img)
+				Expect(err).NotTo(HaveOccurred())
+				imageDataBase64 := base64.StdEncoding.EncodeToString(imageData.Bytes())
+				expectedImageDataURL := fmt.Sprintf("data:image/png;base64,%s", imageDataBase64)
+
+				// Create fresh buffer for file upload (imageData was already read for base64)
+				imageDataForUpload := bytes.NewBuffer(imageData.Bytes())
+
+				multipartData := &testutil.MultipartFormData{
+					Fields: map[string]string{
+						"name":         newProductName,
+						"description":  newProductDescription,
+						"product_type": "test_edited",
+						"unit_id":      strconv.Itoa(int(testUnit.ID)),
+						"status":       "active",
+					},
+					Files: map[string]struct {
+						Filename string
+						Content  io.Reader
+					}{
+						"image": {
+							Filename: "test.png",
+							Content:  imageDataForUpload,
+						},
+					},
+				}
+
+				urlPath := fmt.Sprintf("/api/v1/products/%d", testProduct.ID)
+				resp, err := client.MakeRequest("PUT", urlPath, nil, testutil.WithAuth(), testutil.WithMultipartFormData(multipartData))
+				Expect(err).NotTo(HaveOccurred())
+				Expect(resp.StatusCode).To(Equal(200))
+
+				updatedProductResp := testutil.ParseResponse(resp)
+				Expect(updatedProductResp["name"]).To(Equal(newProductName))
+				Expect(updatedProductResp["description"]).To(Equal(newProductDescription))
+				Expect(updatedProductResp["product_image"]).To(Equal(expectedImageDataURL))
+
+				// Should not clear image
+				multipartData = &testutil.MultipartFormData{
+					Fields: map[string]string{
+						"name":         newProductName,
+						"description":  newProductDescription,
+						"product_type": "test_edited",
+						"unit_id":      strconv.Itoa(int(testUnit.ID)),
+						"status":       "inactive",
+					},
+				}
+				resp, err = client.MakeRequest("PUT", urlPath, nil, testutil.WithAuth(), testutil.WithMultipartFormData(multipartData))
+				Expect(err).NotTo(HaveOccurred())
+				Expect(resp.StatusCode).To(Equal(200))
+
+				updatedProductResp = testutil.ParseResponse(resp)
+				Expect(updatedProductResp["product_image"]).To(Equal(expectedImageDataURL))
+
+				// Verify in database
+				var updatedProduct models.Product
+				err = tenv.ContextfulDB().First(&updatedProduct, "id = ?", testProduct.ID).Error
+				Expect(err).NotTo(HaveOccurred())
+				Expect(updatedProductResp["product_image"]).To(Equal(expectedImageDataURL))
+
+				// Should clear image
+				multipartData = &testutil.MultipartFormData{
+					Fields: map[string]string{
+						"name":         newProductName,
+						"description":  newProductDescription,
+						"product_type": "test_edited",
+						"unit_id":      strconv.Itoa(int(testUnit.ID)),
+						"status":       "inactive",
+						"clear_image":  "true",
+					},
+				}
+				resp, err = client.MakeRequest("PUT", urlPath, nil, testutil.WithAuth(), testutil.WithMultipartFormData(multipartData))
+				Expect(err).NotTo(HaveOccurred())
+				Expect(resp.StatusCode).To(Equal(200))
+
+				updatedProductResp = testutil.ParseResponse(resp)
+				Expect(updatedProductResp["product_image"]).To(BeNil())
+
+				// Verify in database
+				var updatedProduct2 models.Product
+				err = tenv.ContextfulDB().First(&updatedProduct2, "id = ?", testProduct.ID).Error
+				Expect(err).NotTo(HaveOccurred())
+				Expect(updatedProduct2.ProductImage).To(BeEmpty())
 			})
 		})
 	})

@@ -5,6 +5,9 @@ import (
 	"cim-backend/internal/services"
 	"cim-backend/pkg"
 	"cim-backend/pkg/log"
+	"encoding/base64"
+	"io"
+	"mime/multipart"
 	"net/http"
 	"path/filepath"
 	"time"
@@ -91,6 +94,85 @@ func (h *ProductHandler) getRequestLogger(c echo.Context, operation string) *log
 	})
 }
 
+// convertImageToDataURL converts image bytes to base64 data URL for frontend rendering
+// Returns empty string for nil or empty image data
+func convertImageToDataURL(imageData []byte) string {
+	if len(imageData) == 0 {
+		return ""
+	}
+
+	// Detect image type from magic bytes
+	mimeType := "image/jpeg" // default
+	if len(imageData) >= 4 {
+		if imageData[0] == 0x89 && imageData[1] == 0x50 && imageData[2] == 0x4E && imageData[3] == 0x47 {
+			mimeType = "image/png"
+		} else if len(imageData) >= 3 && imageData[0] == 0xFF && imageData[1] == 0xD8 && imageData[2] == 0xFF {
+			mimeType = "image/jpeg"
+		} else if len(imageData) >= 6 && string(imageData[0:6]) == "GIF87a" || string(imageData[0:6]) == "GIF89a" {
+			mimeType = "image/gif"
+		} else if len(imageData) >= 12 && string(imageData[0:4]) == "RIFF" && string(imageData[8:12]) == "WEBP" {
+			mimeType = "image/webp"
+		}
+	}
+
+	base64Str := base64.StdEncoding.EncodeToString(imageData)
+	return "data:" + mimeType + ";base64," + base64Str
+}
+
+// ProductResponse represents a product with image as base64 data URL
+type ProductResponse struct {
+	ID             uint                    `json:"id"`
+	CreatedBy      string                  `json:"created_by"`
+	CreatedAt      time.Time               `json:"created_at"`
+	UpdatedBy      string                  `json:"updated_by"`
+	UpdatedAt      time.Time               `json:"updated_at"`
+	DeletedAt      interface{}             `json:"deleted_at"`
+	Name           string                  `json:"name"`
+	Description    string                  `json:"description"`
+	ProductType    string                  `json:"product_type"`
+	UnitID         uint                    `json:"unit_id"`
+	Unit           *models.Unit            `json:"unit,omitempty"`
+	Status         string                  `json:"status"`
+	ProductImage   *string                 `json:"product_image,omitempty"`
+	Suppliers      []*models.Supplier      `json:"suppliers,omitempty"`
+	InventoryItems []*models.InventoryItem `json:"inventory_items,omitempty"`
+}
+
+// convertProductToResponse converts a Product model to ProductResponse with base64 image
+func convertProductToResponse(product *models.Product) *ProductResponse {
+	var productImage *string
+	if imageDataURL := convertImageToDataURL(product.ProductImage); imageDataURL != "" {
+		productImage = &imageDataURL
+	}
+
+	return &ProductResponse{
+		ID:             product.ID,
+		CreatedBy:      product.CreatedBy,
+		CreatedAt:      product.CreatedAt,
+		UpdatedBy:      product.UpdatedBy,
+		UpdatedAt:      product.UpdatedAt,
+		DeletedAt:      product.DeletedAt,
+		Name:           product.Name,
+		Description:    product.Description,
+		ProductType:    product.ProductType,
+		UnitID:         product.UnitID,
+		Unit:           product.Unit,
+		Status:         product.Status,
+		ProductImage:   productImage,
+		Suppliers:      product.Suppliers,
+		InventoryItems: product.InventoryItems,
+	}
+}
+
+// convertProductsToResponse converts a slice of Product models to ProductResponse
+func convertProductsToResponse(products []models.Product) []*ProductResponse {
+	responses := make([]*ProductResponse, len(products))
+	for i := range products {
+		responses[i] = convertProductToResponse(&products[i])
+	}
+	return responses
+}
+
 // GetProducts godoc
 // @Summary Get all products
 // @Description Get a list of all products with pagination and sorting
@@ -160,9 +242,12 @@ func (h *ProductHandler) GetProducts(c echo.Context) error {
 		"duration_ms":    duration.Milliseconds(),
 	}).Info("Successfully retrieved products")
 
+	// Convert products to response format with base64 image data URLs
+	productResponses := convertProductsToResponse(products)
+
 	// Create response
 	response := map[string]interface{}{
-		"data":       products,
+		"data":       productResponses,
 		"total":      total,
 		"page":       request.Page,
 		"limit":      request.Limit,
@@ -251,9 +336,12 @@ func (h *ProductHandler) SearchProducts(c echo.Context) error {
 		"duration_ms":   duration.Milliseconds(),
 	}).Info("Search completed successfully")
 
+	// Convert products to response format with base64 image data URLs
+	productResponses := convertProductsToResponse(products)
+
 	// Create response
 	response := map[string]interface{}{
-		"data":       products,
+		"data":       productResponses,
 		"total":      total,
 		"page":       request.Page,
 		"limit":      request.Limit,
@@ -280,12 +368,13 @@ func (h *ProductHandler) CreateProduct(c echo.Context) error {
 	logger := h.getRequestLogger(c, "CreateProduct")
 
 	var request struct {
-		Name        string `json:"name"`
-		Description string `json:"description"`
-		ProductType string `json:"product_type"`
-		UnitID      uint   `json:"unit_id"`
-		Status      string `json:"status"`
-		SupplierIDs []uint `json:"supplier_ids"`
+		Name        string                `json:"name" form:"name"`
+		Description string                `json:"description" form:"description"`
+		ProductType string                `json:"product_type" form:"product_type"`
+		UnitID      uint                  `json:"unit_id" form:"unit_id"`
+		Status      string                `json:"status" form:"status"`
+		SupplierIDs []uint                `json:"supplier_ids" form:"supplier_ids"`
+		Image       *multipart.FileHeader `form:"image"`
 	}
 
 	if err := c.Bind(&request); err != nil {
@@ -293,12 +382,17 @@ func (h *ProductHandler) CreateProduct(c echo.Context) error {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid request body", "details": err.Error()})
 	}
 
-	logger.WithFields(logrus.Fields{
+	logFields := logrus.Fields{
 		"product_name": request.Name,
 		"product_type": request.ProductType,
 		"unit_id":      request.UnitID,
 		"supplier_ids": request.SupplierIDs,
-	}).Info("Creating new product")
+	}
+	if request.Image != nil {
+		logFields["image_size"] = request.Image.Size
+		logFields["image_filename"] = request.Image.Filename
+	}
+	logger.WithFields(logFields).Info("Creating new product")
 
 	// Validate ProductType if provided
 	if request.ProductType == "" {
@@ -317,8 +411,21 @@ func (h *ProductHandler) CreateProduct(c echo.Context) error {
 		Status:      request.Status,
 	}
 
-	if request.UnitID == 0 {
-		return pkg.ErrValidation("unit_id is required", nil)
+	if request.Image != nil {
+		// Handle image upload
+		imageFile, err := request.Image.Open()
+		if err != nil {
+			logger.WithError(err).Error("Failed to open image file")
+			return c.JSON(http.StatusBadRequest, map[string]string{"error": "Failed to open image file", "details": err.Error()})
+		}
+		defer imageFile.Close()
+
+		product.ProductImage, err = io.ReadAll(imageFile)
+		if err != nil {
+			logger.WithError(err).Error("Failed to read image file")
+			return c.JSON(http.StatusBadRequest, map[string]string{"error": "Failed to read image file", "details": err.Error()})
+		}
+		logger.WithField("image_size", len(product.ProductImage)).Info("Image uploaded successfully")
 	}
 
 	// Add suppliers if IDs provided
@@ -332,7 +439,10 @@ func (h *ProductHandler) CreateProduct(c echo.Context) error {
 
 	if err := h.productService.CreateProduct(c.Request().Context(), &product); err != nil {
 		logger.WithError(err).WithField("product_name", request.Name).Error("Failed to create product in service")
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to create product"})
+		if appErr, ok := err.(*pkg.AppError); ok {
+			return appErr
+		}
+		return pkg.ErrFailedToCreateProduct(c.Request().Context(), err)
 	}
 
 	duration := time.Since(startTime)
@@ -342,7 +452,10 @@ func (h *ProductHandler) CreateProduct(c echo.Context) error {
 		"duration_ms":  duration.Milliseconds(),
 	}).Info("Product created successfully")
 
-	return c.JSON(http.StatusCreated, product)
+	// Convert product to response format with base64 image data URL
+	productResponse := convertProductToResponse(&product)
+
+	return c.JSON(http.StatusCreated, productResponse)
 }
 
 func (h *ProductHandler) GetProduct(c echo.Context) error {
@@ -370,7 +483,10 @@ func (h *ProductHandler) GetProduct(c echo.Context) error {
 		"duration_ms":  duration.Milliseconds(),
 	}).Info("Product retrieved successfully")
 
-	return c.JSON(http.StatusOK, product)
+	// Convert product to response format with base64 image data URL
+	productResponse := convertProductToResponse(product)
+
+	return c.JSON(http.StatusOK, productResponse)
 }
 
 func (h *ProductHandler) UpdateProduct(c echo.Context) error {
@@ -384,16 +500,18 @@ func (h *ProductHandler) UpdateProduct(c echo.Context) error {
 	}
 
 	var request struct {
-		Name        string `json:"name" validate:"required"`
-		Description string `json:"description"`
-		ProductType string `json:"product_type" validate:"required"`
-		UnitID      uint   `json:"unit_id" validate:"required"`
-		Status      string `json:"status" validate:"required,oneof=active inactive"`
-		SupplierIDs []uint `json:"supplier_ids"`
+		Name        string                `json:"name" validate:"required" form:"name"`
+		Description string                `json:"description" form:"description"`
+		ProductType string                `json:"product_type" validate:"required" form:"product_type"`
+		UnitID      uint                  `json:"unit_id" validate:"required" form:"unit_id"`
+		Status      string                `json:"status" validate:"required,oneof=active inactive" form:"status"`
+		SupplierIDs []uint                `json:"supplier_ids" form:"supplier_ids"`
+		Image       *multipart.FileHeader `form:"image"`
+		ClearImage  bool                  `json:"clear_image" form:"clear_image"` // Set to true to explicitly clear the image
 	}
 	if err := c.Bind(&request); err != nil {
 		logger.WithError(err).WithField("product_id", id).Error("Failed to bind request body")
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid request body"})
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid request body", "details": err.Error()})
 	}
 
 	if err := pkg.Validator.Struct(request); err != nil {
@@ -408,6 +526,27 @@ func (h *ProductHandler) UpdateProduct(c echo.Context) error {
 		UnitID:      request.UnitID,
 		Status:      request.Status,
 	}
+
+	// Handle image: priority is file upload > explicit clear > no change
+	if request.Image != nil {
+		// Image file provided - update with new image
+		imageFile, err := request.Image.Open()
+		if err != nil {
+			logger.WithError(err).Error("Failed to open image file")
+			return c.JSON(http.StatusBadRequest, map[string]string{"error": "Failed to open image file", "details": err.Error()})
+		}
+		defer imageFile.Close()
+		product.ProductImage, err = io.ReadAll(imageFile)
+		if err != nil {
+			logger.WithError(err).Error("Failed to read image file")
+			return c.JSON(http.StatusBadRequest, map[string]string{"error": "Failed to read image file", "details": err.Error()})
+		}
+		logger.WithField("image_size", len(product.ProductImage)).Info("Image uploaded successfully")
+	} else if request.ClearImage {
+		// Clear image flag is set - clear the image
+		product.ProductImage = []byte{}
+	}
+	// Otherwise, product.ProductImage remains nil, which signals repository to not update the field
 
 	// Always set suppliers (even if empty array, to remove all suppliers)
 	suppliers := make([]*models.Supplier, len(request.SupplierIDs))
@@ -441,7 +580,19 @@ func (h *ProductHandler) UpdateProduct(c echo.Context) error {
 		"duration_ms":  duration.Milliseconds(),
 	}).Info("Product updated successfully")
 
-	return c.JSON(http.StatusOK, product)
+	// Get updated product to return with image
+	updatedProduct, err := h.productService.GetProductByID(c.Request().Context(), id)
+	if err != nil {
+		logger.WithError(err).Warn("Failed to fetch updated product, returning basic info")
+		// Convert product to response format with base64 image data URL
+		productResponse := convertProductToResponse(&product)
+		return c.JSON(http.StatusOK, productResponse)
+	}
+
+	// Convert product to response format with base64 image data URL
+	productResponse := convertProductToResponse(updatedProduct)
+
+	return c.JSON(http.StatusOK, productResponse)
 }
 
 // UpdateProductStatus godoc
