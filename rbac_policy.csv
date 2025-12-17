@@ -56,6 +56,14 @@ p, admin, users, view, allow
 p, admin, users, create, allow
 p, admin, users, update, allow
 p, admin, users, delete, allow
+p, admin, menus, view, allow
+p, admin, menus, create, allow
+p, admin, menus, update, allow
+p, admin, menus, delete, allow
+p, admin, menu-items, view, allow
+p, admin, menu-items, create, allow
+p, admin, menu-items, update, allow
+p, admin, menu-items, delete, allow
 
 p, accountant, permissions, view, allow
 p, accountant, products, view, allow
@@ -109,6 +117,15 @@ p, bot_form, permissions, view, allow
 p, bot_form, payment-receipt-forms, view-pending, allow
 p, bot_form, payment-receipt-forms, submit, allow
 p, bot_form, units, view, allow
+
+p, chef, menus, view, allow
+p, chef, menu-items, view, allow
+
+p, waiter, menus, view, allow
+p, waiter, menu-items, view, allow
+
+p, cashier, menus, view, allow
+p, cashier, menu-items, view, allow
 
 g, demoAdminUid0000000000000000, admin
 g, demoAccountantUid00000000000, accountant
