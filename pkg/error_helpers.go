@@ -56,6 +56,10 @@ const (
 	ErrKeyFailedToGetBaseUnit               = "failed_to_get_base_unit"
 	ErrKeyFailedToConvertQuantityToBaseUnit = "failed_to_convert_quantity_to_base_unit"
 
+	// Product Error Keys
+
+	ErrKeyFailedToCreateProduct = "failed_to_create_product"
+
 	// File Error Keys
 
 	ErrKeyUnsupportedFileFormat = "unsupported_file_format"
@@ -209,6 +213,11 @@ var ErrorMessages = map[string]ErrorMessage{
 	ErrKeyFailedToConvertQuantityToBaseUnit: {
 		EN: "Failed to convert quantity to base unit for unit %d",
 		VI: "Không thể chuyển đổi số lượng sang đơn vị cơ sở cho đơn vị %d",
+	},
+	// Product Errors
+	ErrKeyFailedToCreateProduct: {
+		EN: "Failed to create product",
+		VI: "Không thể tạo sản phẩm",
 	},
 	// File Errors
 	ErrKeyUnsupportedFileFormat: {
@@ -722,4 +731,12 @@ func ErrQuantityHavingMoreDecimalPlacesThanProductUnit(ctx context.Context,
 	template := getErrorMessage(ctx, ErrKeyQuantityHavingMoreDecimalPlacesThanProductUnit)
 	message := fmt.Sprintf(template, quantityDecimalPlaces, productUnitDecimalPlaces, productUnitName)
 	return NewAppError(ErrorCodeValidation, message, nil)
+}
+
+// Product Error Helpers
+
+// ErrFailedToCreateProduct creates an error for failed product creation
+func ErrFailedToCreateProduct(ctx context.Context, cause error) *AppError {
+	message := getErrorMessage(ctx, ErrKeyFailedToCreateProduct)
+	return NewAppError(ErrorCodeInternal, message, cause)
 }

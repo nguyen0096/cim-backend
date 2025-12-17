@@ -52,12 +52,15 @@ func (r *unitRepository) Create(ctx context.Context, unit *models.Unit) error {
 			return err
 		}
 
-		if err := r.txnCreateConversion(tx, &models.UnitConversion{
-			FromUnitID:       unit.ID,
-			ToUnitID:         *unit.BaseUnitID,
-			ConversionFactor: decimal.NewFromFloat(unit.ConversionFactor),
-		}); err != nil {
-			return err
+		// Only create unit conversion if BaseUnitID is not nil (not a root base unit)
+		if unit.BaseUnitID != nil {
+			if err := r.txnCreateConversion(tx, &models.UnitConversion{
+				FromUnitID:       unit.ID,
+				ToUnitID:         *unit.BaseUnitID,
+				ConversionFactor: decimal.NewFromFloat(unit.ConversionFactor),
+			}); err != nil {
+				return err
+			}
 		}
 
 		return nil
