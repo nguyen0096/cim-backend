@@ -48,6 +48,8 @@ func SetupServer(
 	purchaseOrderRepo := repository.NewPurchaseOrderRepository(db)
 	settingsRepo := repository.NewSettingsRepository(db)
 	paymentReceiptFormRepo := repository.NewPaymentReceiptFormRepository(db)
+	menuRepo := repository.NewMenuRepository(db)
+	menuItemRepo := repository.NewMenuItemRepository(db)
 
 	// Initialize S3 client for R2
 	s3Client, err := services.NewS3Client(cfg)
@@ -67,6 +69,8 @@ func SetupServer(
 	excelService := services.NewExcelService(productRepo, inventoryRepo, paymentReceiptFormRepo, settingsService)
 	purchaseOrderService := services.NewPurchaseOrderService(purchaseOrderRepo, paymentReceiptFormRepo, unitRepo, productRepo, inventoryService, excelService, settingsService, db, supplierRepo, inventoryRepo, unitService, productService)
 	paymentReceiptFormService := services.NewPaymentReceiptFormService(paymentReceiptFormRepo, db, settingsService)
+	menuService := services.NewMenuService(menuRepo, menuItemRepo, inventoryRepo)
+	menuItemService := services.NewMenuItemService(menuItemRepo, menuRepo, productRepo)
 
 	// Initialize handlers
 	userHandler := handlers.NewUserHandler(userService, firebaseAuth)
@@ -80,6 +84,8 @@ func SetupServer(
 	settingsHandler := handlers.NewSettingsHandler(settingsService)
 	paymentReceiptFormHandler := handlers.NewPaymentReceiptFormHandler(paymentReceiptFormService, purchaseOrderService, settingsService)
 	revenueExpenseHandler := handlers.NewRevenueExpenseHandler(excelService, settingsService)
+	menuHandler := handlers.NewMenuHandler(menuService)
+	menuItemHandler := handlers.NewMenuItemHandler(menuItemService)
 
 	// Initialize Echo
 	e := echo.New()
@@ -296,6 +302,22 @@ func SetupServer(
 	reports.GET("/inventory-summary", inventoryHandler.GetInventorySummary)
 	reports.GET("/low-stock", inventoryItemHandler.GetLowStockItems)
 	reports.GET("/purchase-summary", purchaseOrderHandler.GetPurchaseSummary)
+
+	// Menu routes
+	menus := api.Group("/menus")
+	menus.GET("", menuHandler.ListMenus)
+	menus.POST("", menuHandler.CreateMenu)
+	menus.GET("/:id", menuHandler.GetMenu)
+	menus.PUT("/:id", menuHandler.UpdateMenu)
+	menus.DELETE("/:id", menuHandler.DeleteMenu)
+
+	// Menu item routes
+	menuItems := api.Group("/menu-items")
+	menuItems.GET("", menuItemHandler.ListMenuItems)
+	menuItems.POST("", menuItemHandler.CreateMenuItem)
+	menuItems.GET("/:id", menuItemHandler.GetMenuItem)
+	menuItems.PUT("/:id", menuItemHandler.UpdateMenuItem)
+	menuItems.DELETE("/:id", menuItemHandler.DeleteMenuItem)
 
 	return e, nil
 }
