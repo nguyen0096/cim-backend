@@ -14,7 +14,7 @@ type MenuService interface {
 	GetMenuByID(ctx context.Context, id uint) (*models.Menu, error)
 	UpdateMenu(ctx context.Context, menu *models.Menu) error
 	DeleteMenu(ctx context.Context, id uint) error
-	ListMenus(ctx context.Context, limit, offset int) ([]models.Menu, error)
+	ListMenus(ctx context.Context, params models.ListParams) (*models.PaginationResult[models.Menu], error)
 }
 
 type menuService struct {
@@ -128,6 +128,13 @@ func (s *menuService) DeleteMenu(ctx context.Context, id uint) error {
 	return s.menuRepo.Delete(ctx, id)
 }
 
-func (s *menuService) ListMenus(ctx context.Context, limit, offset int) ([]models.Menu, error) {
-	return s.menuRepo.List(ctx, limit, offset)
+func (s *menuService) ListMenus(ctx context.Context, params models.ListParams) (*models.PaginationResult[models.Menu], error) {
+	params.ValidateAndSetDefaults()
+
+	menus, total, err := s.menuRepo.List(ctx, params)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list menus: %w", err)
+	}
+
+	return models.NewPaginationResult(menus, total, params.Page, params.Limit), nil
 }

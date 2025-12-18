@@ -198,9 +198,11 @@ var _ = Describe("Menu API", func() {
 				Expect(err).NotTo(HaveOccurred())
 				Expect(resp.StatusCode).To(Equal(200))
 
-				menusResp, err := testutil.ParseResponseArray(resp)
-				Expect(err).NotTo(HaveOccurred())
-				Expect(menusResp).NotTo(BeEmpty())
+				menusResp := testutil.ParseResponse(resp)
+				Expect(menusResp["data"]).NotTo(BeNil())
+				Expect(menusResp["total"]).NotTo(BeNil())
+				Expect(menusResp["page"]).To(Equal(float64(1)))
+				Expect(menusResp["limit"]).To(Equal(float64(20)))
 			})
 		})
 

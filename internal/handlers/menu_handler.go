@@ -5,7 +5,6 @@ import (
 	"cim-backend/internal/services"
 	"cim-backend/pkg"
 	"net/http"
-	"strconv"
 
 	"github.com/labstack/echo/v4"
 )
@@ -127,33 +126,32 @@ func (h *MenuHandler) GetMenu(c echo.Context) error {
 // @Produce json
 // @Param page query int false "Page number" default(1)
 // @Param limit query int false "Items per page" default(20)
-// @Success 200 {object} map[string]interface{}
+// @Param q query string false "Search term for menu name"
+// @Param sort query string false "Sort field (name, created_at, updated_at)"
+// @Param order query string false "Sort direction (asc, desc)" default(desc)
+// @Success 200 {object} models.PaginationResult[models.Menu]
+// @Failure 400 {object} map[string]string
 // @Failure 500 {object} map[string]string
 // @Security BearerAuth
 // @Router /menus [get]
 func (h *MenuHandler) ListMenus(c echo.Context) error {
-	// Parse query parameters
-	limit, _ := strconv.Atoi(c.QueryParam("limit"))
-	page, _ := strconv.Atoi(c.QueryParam("page"))
-
-	// Set defaults
-	if limit == 0 {
-		limit = 20
-	}
-	if page == 0 {
-		page = 1
+	var params models.ListParams
+	if err := c.Bind(&params); err != nil {
+		return pkg.ErrValidation("Invalid query parameters", err)
 	}
 
-	// Calculate offset
-	offset := (page - 1) * limit
-
-	// Get menus
-	menus, err := h.menuService.ListMenus(c.Request().Context(), limit, offset)
+	result, err := h.menuService.ListMenus(c.Request().Context(), params)
 	if err != nil {
+		if appErr, ok := err.(*pkg.AppError); ok {
+			return c.JSON(appErr.HTTPStatus(), map[string]interface{}{
+				"error": appErr.Message,
+				"code":  appErr.Code.String(),
+			})
+		}
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to fetch menus", "details": err.Error()})
 	}
 
-	return c.JSON(http.StatusOK, menus)
+	return c.JSON(http.StatusOK, result)
 }
 
 // UpdateMenuRequest represents the request body for updating a menu

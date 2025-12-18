@@ -13,7 +13,7 @@ type MenuRepository interface {
 	GetByID(ctx context.Context, id uint) (*models.Menu, error)
 	Update(ctx context.Context, menu *models.Menu) error
 	Delete(ctx context.Context, id uint) error
-	List(ctx context.Context, limit, offset int) ([]models.Menu, error)
+	List(ctx context.Context, params models.ListParams) ([]models.Menu, int64, error)
 }
 
 type menuRepository struct {
@@ -87,14 +87,49 @@ func (r *menuRepository) Delete(ctx context.Context, id uint) error {
 	return r.db.WithContext(ctx).Delete(&models.Menu{}, "id = ?", id).Error
 }
 
-func (r *menuRepository) List(ctx context.Context, limit, offset int) ([]models.Menu, error) {
+func (r *menuRepository) List(ctx context.Context, params models.ListParams) ([]models.Menu, int64, error) {
 	var menus []models.Menu
-	err := r.db.WithContext(ctx).
+	var total int64
+
+	baseQuery := r.db.WithContext(ctx).Model(&models.Menu{}).
 		Preload("MenuItems").
 		Preload("MenuItems.Products").
-		Preload("Inventories").
-		Limit(limit).
-		Offset(offset).
+		Preload("Inventories")
+
+	// Apply search filter
+	if params.Search != "" {
+		searchPattern := "%" + params.Search + "%"
+		baseQuery = baseQuery.Where("name ILIKE ?", searchPattern)
+	}
+
+	// Get total count
+	err := baseQuery.Count(&total).Error
+	if err != nil {
+		return nil, 0, fmt.Errorf("failed to count menus: %w", err)
+	}
+
+	// Apply sorting
+	if params.Sort != "" {
+		orderDirection := "ASC"
+		if params.Order == "desc" {
+			orderDirection = "DESC"
+		}
+		switch params.Sort {
+		case "name", "created_at", "updated_at":
+			baseQuery = baseQuery.Order(params.Sort + " " + orderDirection)
+		default:
+			baseQuery = baseQuery.Order("created_at DESC")
+		}
+	} else {
+		baseQuery = baseQuery.Order("created_at DESC")
+	}
+
+	// Apply pagination
+	err = baseQuery.Limit(params.Limit).Offset(params.GetOffset()).
 		Find(&menus).Error
-	return menus, err
+	if err != nil {
+		return nil, 0, fmt.Errorf("failed to fetch menus: %w", err)
+	}
+
+	return menus, total, nil
 }
