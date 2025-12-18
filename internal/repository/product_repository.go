@@ -95,13 +95,26 @@ func (r *productRepository) Update(ctx context.Context, product *models.Product)
 		}
 
 		// Update product fields (excluding Suppliers)
-		if err := tx.Model(&existingProduct).Omit("Suppliers").Updates(map[string]interface{}{
+		updateMap := map[string]interface{}{
 			"name":         product.Name,
 			"description":  product.Description,
 			"product_type": product.ProductType,
 			"unit_id":      product.UnitID,
 			"status":       product.Status,
-		}).Error; err != nil {
+		}
+		// Only update product_image if it's explicitly set (not nil)
+		// nil = don't update, empty slice = clear (set to NULL), has data = update
+		if product.ProductImage != nil {
+			if len(product.ProductImage) == 0 {
+				// Empty slice means clear the image (set to NULL)
+				updateMap["product_image"] = nil
+			} else {
+				// Has content, update with image data
+				updateMap["product_image"] = product.ProductImage
+			}
+		}
+
+		if err := tx.Model(&existingProduct).Omit("Suppliers").Updates(updateMap).Error; err != nil {
 			return fmt.Errorf("failed to update product: %w", err)
 		}
 

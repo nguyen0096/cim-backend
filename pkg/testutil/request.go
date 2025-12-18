@@ -6,6 +6,8 @@ import (
 	"cim-backend/pkg"
 	"encoding/json"
 	"fmt"
+	"image"
+	"image/color"
 	"io"
 	"mime/multipart"
 	"net/http"
@@ -107,6 +109,51 @@ func WithContentType(contentType string) RequestOptions {
 	}
 }
 
+// MultipartFormData represents multipart form data for testing
+type MultipartFormData struct {
+	Fields map[string]string
+	Files  map[string]struct {
+		Filename string
+		Content  io.Reader
+	}
+}
+
+// WithMultipartFormData creates a RequestOptions that sets up multipart/form-data with fields and files
+func WithMultipartFormData(data *MultipartFormData) RequestOptions {
+	return func(client *Client, req *http.Request) {
+		var bodyBuffer bytes.Buffer
+		writer := multipart.NewWriter(&bodyBuffer)
+
+		// Add form fields
+		for key, value := range data.Fields {
+			err := writer.WriteField(key, value)
+			if err != nil {
+				Fail(fmt.Sprintf("failed to write form field %s: %v", key, err))
+			}
+		}
+
+		// Add file fields
+		for fieldName, fileData := range data.Files {
+			part, err := writer.CreateFormFile(fieldName, fileData.Filename)
+			if err != nil {
+				Fail(fmt.Sprintf("failed to create form file %s: %v", fieldName, err))
+			}
+			_, err = io.Copy(part, fileData.Content)
+			if err != nil {
+				Fail(fmt.Sprintf("failed to copy file content for %s: %v", fieldName, err))
+			}
+		}
+
+		err := writer.Close()
+		if err != nil {
+			Fail(fmt.Sprintf("failed to close multipart writer: %v", err))
+		}
+
+		req.Body = io.NopCloser(&bodyBuffer)
+		req.Header.Set("Content-Type", writer.FormDataContentType())
+	}
+}
+
 // MakeRequest makes an HTTP request to the test server with auth headers
 func (c *Client) MakeRequest(
 	method, path string,
@@ -156,10 +203,18 @@ func (c *Client) MakeRequest(
 		Fail("failed to create request: " + err.Error())
 	}
 
-	req.Header.Set("Content-Type", "application/json")
-
+	// Set default Content-Type only if not already set by options
+	// This allows multipart forms to set their own content type
+	defaultContentType := true
 	for _, opt := range opts {
 		opt(c, req)
+		// Check if Content-Type was set by the option
+		if req.Header.Get("Content-Type") != "" && req.Header.Get("Content-Type") != "application/json" {
+			defaultContentType = false
+		}
+	}
+	if defaultContentType {
+		req.Header.Set("Content-Type", "application/json")
 	}
 
 	resp, err := http.DefaultClient.Do(req)
@@ -259,4 +314,14 @@ func MakeMultipartRequest(method, url, token string, filePath, fieldName string)
 	}
 
 	return resp, nil
+}
+
+func CreateImage(width, height int) image.Image {
+	img := image.NewRGBA(image.Rect(0, 0, width, height))
+	for x := 0; x < width; x++ {
+		for y := 0; y < height; y++ {
+			img.Set(x, y, color.RGBA{uint8(x), uint8(y), 0, 255})
+		}
+	}
+	return img
 }

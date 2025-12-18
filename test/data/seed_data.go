@@ -1520,6 +1520,467 @@ func Inventory(productIDs []uint) []models.Inventory {
 	return inventories
 }
 
+// Menus contains all test menu data
+func Menus() []models.Menu {
+	now := time.Now()
+
+	return []models.Menu{
+		{
+			Base: models.Base{
+				CreatedAt: now,
+				UpdatedAt: now,
+			},
+			Name: "Thực Đơn Chính",
+		},
+		{
+			Base: models.Base{
+				CreatedAt: now,
+				UpdatedAt: now,
+			},
+			Name: "Thực Đơn Sáng",
+		},
+		{
+			Base: models.Base{
+				CreatedAt: now,
+				UpdatedAt: now,
+			},
+			Name: "Thực Đơn Trưa",
+		},
+		{
+			Base: models.Base{
+				CreatedAt: now,
+				UpdatedAt: now,
+			},
+			Name: "Thực Đơn Tối",
+		},
+		{
+			Base: models.Base{
+				CreatedAt: now,
+				UpdatedAt: now,
+			},
+			Name: "Thực Đơn Tráng Miệng",
+		},
+		{
+			Base: models.Base{
+				CreatedAt: now,
+				UpdatedAt: now,
+			},
+			Name: "Thực Đơn Đồ Uống",
+		},
+		{
+			Base: models.Base{
+				CreatedAt: now,
+				UpdatedAt: now,
+			},
+			Name: "Thực Đơn Đặc Biệt",
+		},
+		{
+			Base: models.Base{
+				CreatedAt: now,
+				UpdatedAt: now,
+			},
+			Name: "Thực Đơn Buffet",
+		},
+	}
+}
+
+// MenuItems contains all test menu item data
+func MenuItems() []models.MenuItem {
+	now := time.Now()
+
+	return []models.MenuItem{
+		{
+			Base: models.Base{
+				CreatedAt: now,
+				UpdatedAt: now,
+			},
+			Name: "Phở Bò",
+		},
+		{
+			Base: models.Base{
+				CreatedAt: now,
+				UpdatedAt: now,
+			},
+			Name: "Phở Gà",
+		},
+		{
+			Base: models.Base{
+				CreatedAt: now,
+				UpdatedAt: now,
+			},
+			Name: "Bún Bò Huế",
+		},
+		{
+			Base: models.Base{
+				CreatedAt: now,
+				UpdatedAt: now,
+			},
+			Name: "Bún Chả",
+		},
+		{
+			Base: models.Base{
+				CreatedAt: now,
+				UpdatedAt: now,
+			},
+			Name: "Bánh Mì Thịt Nướng",
+		},
+		{
+			Base: models.Base{
+				CreatedAt: now,
+				UpdatedAt: now,
+			},
+			Name: "Bánh Mì Pate",
+		},
+		{
+			Base: models.Base{
+				CreatedAt: now,
+				UpdatedAt: now,
+			},
+			Name: "Cơm Tấm Sườn Bì Chả",
+		},
+		{
+			Base: models.Base{
+				CreatedAt: now,
+				UpdatedAt: now,
+			},
+			Name: "Cơm Gà",
+		},
+		{
+			Base: models.Base{
+				CreatedAt: now,
+				UpdatedAt: now,
+			},
+			Name: "Cơm Tôm Rang",
+		},
+		{
+			Base: models.Base{
+				CreatedAt: now,
+				UpdatedAt: now,
+			},
+			Name: "Bánh Xèo",
+		},
+		{
+			Base: models.Base{
+				CreatedAt: now,
+				UpdatedAt: now,
+			},
+			Name: "Gỏi Cuốn",
+		},
+		{
+			Base: models.Base{
+				CreatedAt: now,
+				UpdatedAt: now,
+			},
+			Name: "Chả Giò",
+		},
+		{
+			Base: models.Base{
+				CreatedAt: now,
+				UpdatedAt: now,
+			},
+			Name: "Nem Nướng",
+		},
+		{
+			Base: models.Base{
+				CreatedAt: now,
+				UpdatedAt: now,
+			},
+			Name: "Bánh Cuốn",
+		},
+		{
+			Base: models.Base{
+				CreatedAt: now,
+				UpdatedAt: now,
+			},
+			Name: "Cháo Lòng",
+		},
+		{
+			Base: models.Base{
+				CreatedAt: now,
+				UpdatedAt: now,
+			},
+			Name: "Hủ Tiếu Nam Vang",
+		},
+		{
+			Base: models.Base{
+				CreatedAt: now,
+				UpdatedAt: now,
+			},
+			Name: "Mì Quảng",
+		},
+		{
+			Base: models.Base{
+				CreatedAt: now,
+				UpdatedAt: now,
+			},
+			Name: "Bún Riêu",
+		},
+		{
+			Base: models.Base{
+				CreatedAt: now,
+				UpdatedAt: now,
+			},
+			Name: "Bún Mắm",
+		},
+		{
+			Base: models.Base{
+				CreatedAt: now,
+				UpdatedAt: now,
+			},
+			Name: "Cà Phê Đen",
+		},
+		{
+			Base: models.Base{
+				CreatedAt: now,
+				UpdatedAt: now,
+			},
+			Name: "Cà Phê Sữa",
+		},
+		{
+			Base: models.Base{
+				CreatedAt: now,
+				UpdatedAt: now,
+			},
+			Name: "Trà Đá",
+		},
+		{
+			Base: models.Base{
+				CreatedAt: now,
+				UpdatedAt: now,
+			},
+			Name: "Nước Mía",
+		},
+		{
+			Base: models.Base{
+				CreatedAt: now,
+				UpdatedAt: now,
+			},
+			Name: "Sinh Tố",
+		},
+		{
+			Base: models.Base{
+				CreatedAt: now,
+				UpdatedAt: now,
+			},
+			Name: "Chè Đậu Xanh",
+		},
+		{
+			Base: models.Base{
+				CreatedAt: now,
+				UpdatedAt: now,
+			},
+			Name: "Chè Ba Màu",
+		},
+		{
+			Base: models.Base{
+				CreatedAt: now,
+				UpdatedAt: now,
+			},
+			Name: "Bánh Flan",
+		},
+		{
+			Base: models.Base{
+				CreatedAt: now,
+				UpdatedAt: now,
+			},
+			Name: "Kem Dừa",
+		},
+		{
+			Base: models.Base{
+				CreatedAt: now,
+				UpdatedAt: now,
+			},
+			Name: "Bánh Mì Chả Cá",
+		},
+		{
+			Base: models.Base{
+				CreatedAt: now,
+				UpdatedAt: now,
+			},
+			Name: "Bánh Mì Xíu Mại",
+		},
+		{
+			Base: models.Base{
+				CreatedAt: now,
+				UpdatedAt: now,
+			},
+			Name: "Cơm Cháy",
+		},
+		{
+			Base: models.Base{
+				CreatedAt: now,
+				UpdatedAt: now,
+			},
+			Name: "Canh Chua Cá",
+		},
+		{
+			Base: models.Base{
+				CreatedAt: now,
+				UpdatedAt: now,
+			},
+			Name: "Lẩu Thái",
+		},
+		{
+			Base: models.Base{
+				CreatedAt: now,
+				UpdatedAt: now,
+			},
+			Name: "Lẩu Hải Sản",
+		},
+	}
+}
+
+// createMenuItemMenuRelationships creates many-to-many relationships between menu items and menus
+func createMenuItemMenuRelationships(tx *gorm.DB, menuItemIDs, menuIDs []uint) error {
+	type MenuMenuItem struct {
+		MenuItemID uint `gorm:"primaryKey"`
+		MenuID     uint `gorm:"primaryKey"`
+	}
+	var menuMenuItems []MenuMenuItem
+
+	// Distribute menu items across menus logically
+	// Breakfast items go to morning menu, drinks to drink menu, etc.
+	for i, menuItemID := range menuItemIDs {
+		// Each menu item can belong to 1-3 menus
+		numMenus := 1 + (i % 3)
+
+		// Map menu items to appropriate menus based on their type
+		var assignedMenus []uint
+		if i < 5 {
+			// Breakfast items (Phở, Bún, Bánh Mì) -> Thực Đơn Sáng, Thực Đơn Chính
+			assignedMenus = []uint{menuIDs[1], menuIDs[0]} // Sáng, Chính
+		} else if i < 19 {
+			// Main dishes -> Thực Đơn Trưa, Thực Đơn Tối, Thực Đơn Chính
+			assignedMenus = []uint{menuIDs[2], menuIDs[3], menuIDs[0]} // Trưa, Tối, Chính
+		} else if i < 25 {
+			// Drinks -> Thực Đơn Đồ Uống, Thực Đơn Chính
+			assignedMenus = []uint{menuIDs[5], menuIDs[0]} // Đồ Uống, Chính
+		} else if i < 30 {
+			// Desserts -> Thực Đơn Tráng Miệng, Thực Đơn Chính
+			assignedMenus = []uint{menuIDs[4], menuIDs[0]} // Tráng Miệng, Chính
+		} else {
+			// Special items -> Thực Đơn Đặc Biệt, Thực Đơn Chính
+			assignedMenus = []uint{menuIDs[6], menuIDs[0]} // Đặc Biệt, Chính
+		}
+
+		// Assign to menus
+		for j := 0; j < numMenus && j < len(assignedMenus); j++ {
+			menuMenuItems = append(menuMenuItems, MenuMenuItem{
+				MenuItemID: menuItemID,
+				MenuID:     assignedMenus[j],
+			})
+		}
+	}
+
+	if err := tx.Table("menu_menu_items").Create(&menuMenuItems).Error; err != nil {
+		return fmt.Errorf("failed to create menu-item-menu relationships: %w", err)
+	}
+
+	return nil
+}
+
+// createMenuItemProductRelationships creates many-to-many relationships between menu items and products
+func createMenuItemProductRelationships(tx *gorm.DB, menuItemIDs, productIDs []uint, products []models.Product) error {
+	type MenuItemProduct struct {
+		MenuItemID uint `gorm:"primaryKey"`
+		ProductID  uint `gorm:"primaryKey"`
+	}
+	var menuItemProducts []MenuItemProduct
+
+	// Map menu items to relevant products based on Vietnamese cuisine
+	// Each menu item gets 2-6 products that are typically used in that dish
+	for i, menuItemID := range menuItemIDs {
+		numProducts := 2 + (i % 5) // 2-6 products per menu item
+
+		// Find relevant products based on menu item name patterns
+		var relevantProductIndices []int
+		menuItemName := MenuItems()[i].Name
+
+		// Map menu items to product types based on dish characteristics
+		if contains(menuItemName, []string{"Phở", "Bún", "Hủ Tiếu", "Mì"}) {
+			// Noodle dishes need: noodles, meat, vegetables, spices
+			relevantProductIndices = findProductsByType(products, []string{"Cơm", "Ăn nhẹ"})
+		} else if contains(menuItemName, []string{"Bánh Mì", "Bánh"}) {
+			// Bread items need: bread, meat, vegetables
+			relevantProductIndices = findProductsByType(products, []string{"Ăn nhẹ"})
+		} else if contains(menuItemName, []string{"Cơm"}) {
+			// Rice dishes need: rice, meat, vegetables
+			relevantProductIndices = findProductsByType(products, []string{"Cơm", "Ăn nhẹ"})
+		} else if contains(menuItemName, []string{"Cà Phê", "Trà", "Nước", "Sinh Tố"}) {
+			// Drinks need: beverages, sugar, etc.
+			relevantProductIndices = findProductsByType(products, []string{"Nước", "Ăn nhẹ"})
+		} else if contains(menuItemName, []string{"Chè", "Kem", "Bánh Flan"}) {
+			// Desserts need: sugar, milk, fruits
+			relevantProductIndices = findProductsByType(products, []string{"Ăn nhẹ"})
+		} else {
+			// Default: mix of products
+			relevantProductIndices = findProductsByType(products, []string{"Cơm", "Ăn nhẹ"})
+		}
+
+		// If no specific products found, use a general selection
+		if len(relevantProductIndices) == 0 {
+			for j := 0; j < len(productIDs) && j < 20; j++ {
+				relevantProductIndices = append(relevantProductIndices, j)
+			}
+		}
+
+		// Assign products to menu item
+		for j := 0; j < numProducts && j < len(relevantProductIndices); j++ {
+			productIndex := relevantProductIndices[(i+j)%len(relevantProductIndices)]
+			if productIndex < len(productIDs) {
+				menuItemProducts = append(menuItemProducts, MenuItemProduct{
+					MenuItemID: menuItemID,
+					ProductID:  productIDs[productIndex],
+				})
+			}
+		}
+	}
+
+	if err := tx.Table("menu_item_products").Create(&menuItemProducts).Error; err != nil {
+		return fmt.Errorf("failed to create menu-item-product relationships: %w", err)
+	}
+
+	return nil
+}
+
+// contains checks if a string contains any of the substrings
+func contains(s string, substrings []string) bool {
+	for _, substr := range substrings {
+		if len(s) >= len(substr) {
+			for i := 0; i <= len(s)-len(substr); i++ {
+				if s[i:i+len(substr)] == substr {
+					return true
+				}
+			}
+		}
+	}
+	return false
+}
+
+// findProductsByType finds product indices that match the given product types
+func findProductsByType(products []models.Product, productTypes []string) []int {
+	var indices []int
+	for i, product := range products {
+		for _, productType := range productTypes {
+			if product.ProductType == productType {
+				indices = append(indices, i)
+				break
+			}
+		}
+	}
+	// If no matches found, return first 20 products as fallback
+	if len(indices) == 0 {
+		max := 20
+		if len(products) < max {
+			max = len(products)
+		}
+		for i := 0; i < max; i++ {
+			indices = append(indices, i)
+		}
+	}
+	return indices
+}
+
 // createProductSupplierRelationships creates many-to-many relationships between products and suppliers
 func createProductSupplierRelationships(tx *gorm.DB, productIDs, supplierIDs []uint) error {
 	// F&B products supplied by multiple F&B suppliers (each product gets 3-5 suppliers)
@@ -1633,6 +2094,42 @@ func SeedDatabase() error {
 		return fmt.Errorf("failed to create inventories: %w", err)
 	}
 
+	// 4. MenuItems
+	menuItems := MenuItems()
+	if err := tx.Create(&menuItems).Error; err != nil {
+		tx.Rollback()
+		return fmt.Errorf("failed to create menu items: %w", err)
+	}
+	// Collect menu item IDs after batch creation
+	var menuItemIDs []uint
+	for _, menuItem := range menuItems {
+		menuItemIDs = append(menuItemIDs, menuItem.ID)
+	}
+
+	// 5. Menus
+	menus := Menus()
+	if err := tx.Create(&menus).Error; err != nil {
+		tx.Rollback()
+		return fmt.Errorf("failed to create menus: %w", err)
+	}
+	// Collect menu IDs after batch creation
+	var menuIDs []uint
+	for _, menu := range menus {
+		menuIDs = append(menuIDs, menu.ID)
+	}
+
+	// 5.5. Create menu-item-menu relationships
+	if err := createMenuItemMenuRelationships(tx, menuItemIDs, menuIDs); err != nil {
+		tx.Rollback()
+		return fmt.Errorf("failed to create menu-item-menu relationships: %w", err)
+	}
+
+	// 5.6. Create menu-item-product relationships
+	if err := createMenuItemProductRelationships(tx, menuItemIDs, productIDs, products); err != nil {
+		tx.Rollback()
+		return fmt.Errorf("failed to create menu-item-product relationships: %w", err)
+	}
+
 	// Commit transaction
 	if err := tx.Commit().Error; err != nil {
 		return fmt.Errorf("failed to commit transaction: %w", err)
@@ -1696,6 +2193,24 @@ func seedUsers(db *gorm.DB, casbinCfg config.CasbinConfig) error {
 			Email: "staff@cim.local",
 			Name:  "Staff User",
 			Role:  string(models.RoleStaff),
+		},
+		{
+			UID:   "demoSeedUidB0000000000000000",
+			Email: "cashier@cim.local",
+			Name:  "Cashier User",
+			Role:  string(models.RoleCashier),
+		},
+		{
+			UID:   "demoSeedUidC0000000000000000",
+			Email: "chef@cim.local",
+			Name:  "Chef User",
+			Role:  string(models.RoleChef),
+		},
+		{
+			UID:   "demoSeedUidA0000000000000000",
+			Email: "waiter@cim.local",
+			Name:  "Waiter User",
+			Role:  string(models.RoleWaiter),
 		},
 	}
 

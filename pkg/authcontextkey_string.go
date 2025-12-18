@@ -20,8 +20,9 @@ const _AuthContextKey_name = "AuthContextKeyUserIDAuthContextKeyUserEmailAuthCon
 var _AuthContextKey_index = [...]uint8{0, 20, 43, 65, 87, 116}
 
 func (i AuthContextKey) String() string {
-	if i < 0 || i >= AuthContextKey(len(_AuthContextKey_index)-1) {
+	idx := int(i) - 0
+	if i < 0 || idx >= len(_AuthContextKey_index)-1 {
 		return "AuthContextKey(" + strconv.FormatInt(int64(i), 10) + ")"
 	}
-	return _AuthContextKey_name[_AuthContextKey_index[i]:_AuthContextKey_index[i+1]]
+	return _AuthContextKey_name[_AuthContextKey_index[idx]:_AuthContextKey_index[idx+1]]
 }

@@ -3,10 +3,13 @@ package apptest
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/csv"
 	"encoding/json"
 	"fmt"
+	"image/png"
 	"io"
+	"strconv"
 	"strings"
 
 	"github.com/google/uuid"
@@ -121,6 +124,56 @@ var _ = Describe("Product API", func() {
 				errorResp := testutil.ParseResponse(resp)
 				Expect(errorResp["error"]).To(Equal(fmt.Sprintf("Access denied: %s role cannot create products", models.RoleBotForm)))
 			})
+		})
+
+		Context("Image in payload", func() {
+			It("should create product with image in form data request", func() {
+				client := testutil.NewClient(tenv, models.RoleAdmin)
+				productName := fmt.Sprintf("Test Product %s", uuid.New().String())
+				productDescription := fmt.Sprintf("Test Description %s", uuid.New().String())
+
+				// Create test image
+				img := testutil.CreateImage(100, 100)
+				imageData := bytes.NewBuffer(nil)
+				err := png.Encode(imageData, img)
+				Expect(err).NotTo(HaveOccurred())
+				imageDataBase64 := base64.StdEncoding.EncodeToString(imageData.Bytes())
+				expectedImageDataURL := fmt.Sprintf("data:image/png;base64,%s", imageDataBase64)
+
+				// Create multipart form data
+				imageDataForUpload := bytes.NewBuffer(imageData.Bytes())
+				multipartData := &testutil.MultipartFormData{
+					Fields: map[string]string{
+						"name":         productName,
+						"description":  productDescription,
+						"product_type": "test",
+						"unit_id":      strconv.Itoa(int(testUnit.ID)),
+						"status":       "active",
+					},
+					Files: map[string]struct {
+						Filename string
+						Content  io.Reader
+					}{
+						"image": {
+							Filename: "test.png",
+							Content:  imageDataForUpload,
+						},
+					},
+				}
+
+				// Make request
+				resp, err := client.MakeRequest("POST", "/api/v1/products", nil, testutil.WithAuth(), testutil.WithMultipartFormData(multipartData))
+				Expect(err).NotTo(HaveOccurred())
+				Expect(resp.StatusCode).To(Equal(201))
+
+				// Verify response
+				productResp := testutil.ParseResponse(resp)
+				Expect(productResp["id"]).NotTo(BeNil())
+				Expect(productResp["name"]).To(Equal(productName))
+				Expect(productResp["description"]).To(Equal(productDescription))
+				Expect(productResp["product_image"]).To(Equal(expectedImageDataURL))
+			})
+
 		})
 	})
 
@@ -254,6 +307,100 @@ var _ = Describe("Product API", func() {
 
 				errorResp := testutil.ParseResponse(resp)
 				Expect(errorResp["error"]).To(Equal(fmt.Sprintf("Access denied: %s role cannot update products", models.RoleBotForm)))
+			})
+		})
+
+		When("Image in payload", func() {
+			It("should update product with image in form data request", func() {
+				client := testutil.NewClient(tenv, models.RoleAdmin)
+				newProductName := fmt.Sprintf("Test Product Edited %s", uuid.New().String())
+				newProductDescription := fmt.Sprintf("Test Description Edited %s", uuid.New().String())
+
+				img := testutil.CreateImage(100, 100)
+				imageData := bytes.NewBuffer(nil)
+				err := png.Encode(imageData, img)
+				Expect(err).NotTo(HaveOccurred())
+				imageDataBase64 := base64.StdEncoding.EncodeToString(imageData.Bytes())
+				expectedImageDataURL := fmt.Sprintf("data:image/png;base64,%s", imageDataBase64)
+
+				// Create fresh buffer for file upload (imageData was already read for base64)
+				imageDataForUpload := bytes.NewBuffer(imageData.Bytes())
+
+				multipartData := &testutil.MultipartFormData{
+					Fields: map[string]string{
+						"name":         newProductName,
+						"description":  newProductDescription,
+						"product_type": "test_edited",
+						"unit_id":      strconv.Itoa(int(testUnit.ID)),
+						"status":       "active",
+					},
+					Files: map[string]struct {
+						Filename string
+						Content  io.Reader
+					}{
+						"image": {
+							Filename: "test.png",
+							Content:  imageDataForUpload,
+						},
+					},
+				}
+
+				urlPath := fmt.Sprintf("/api/v1/products/%d", testProduct.ID)
+				resp, err := client.MakeRequest("PUT", urlPath, nil, testutil.WithAuth(), testutil.WithMultipartFormData(multipartData))
+				Expect(err).NotTo(HaveOccurred())
+				Expect(resp.StatusCode).To(Equal(200))
+
+				updatedProductResp := testutil.ParseResponse(resp)
+				Expect(updatedProductResp["name"]).To(Equal(newProductName))
+				Expect(updatedProductResp["description"]).To(Equal(newProductDescription))
+				Expect(updatedProductResp["product_image"]).To(Equal(expectedImageDataURL))
+
+				// Should not clear image
+				multipartData = &testutil.MultipartFormData{
+					Fields: map[string]string{
+						"name":         newProductName,
+						"description":  newProductDescription,
+						"product_type": "test_edited",
+						"unit_id":      strconv.Itoa(int(testUnit.ID)),
+						"status":       "inactive",
+					},
+				}
+				resp, err = client.MakeRequest("PUT", urlPath, nil, testutil.WithAuth(), testutil.WithMultipartFormData(multipartData))
+				Expect(err).NotTo(HaveOccurred())
+				Expect(resp.StatusCode).To(Equal(200))
+
+				updatedProductResp = testutil.ParseResponse(resp)
+				Expect(updatedProductResp["product_image"]).To(Equal(expectedImageDataURL))
+
+				// Verify in database
+				var updatedProduct models.Product
+				err = tenv.ContextfulDB().First(&updatedProduct, "id = ?", testProduct.ID).Error
+				Expect(err).NotTo(HaveOccurred())
+				Expect(updatedProductResp["product_image"]).To(Equal(expectedImageDataURL))
+
+				// Should clear image
+				multipartData = &testutil.MultipartFormData{
+					Fields: map[string]string{
+						"name":         newProductName,
+						"description":  newProductDescription,
+						"product_type": "test_edited",
+						"unit_id":      strconv.Itoa(int(testUnit.ID)),
+						"status":       "inactive",
+						"clear_image":  "true",
+					},
+				}
+				resp, err = client.MakeRequest("PUT", urlPath, nil, testutil.WithAuth(), testutil.WithMultipartFormData(multipartData))
+				Expect(err).NotTo(HaveOccurred())
+				Expect(resp.StatusCode).To(Equal(200))
+
+				updatedProductResp = testutil.ParseResponse(resp)
+				Expect(updatedProductResp["product_image"]).To(BeNil())
+
+				// Verify in database
+				var updatedProduct2 models.Product
+				err = tenv.ContextfulDB().First(&updatedProduct2, "id = ?", testProduct.ID).Error
+				Expect(err).NotTo(HaveOccurred())
+				Expect(updatedProduct2.ProductImage).To(BeEmpty())
 			})
 		})
 	})
@@ -421,69 +568,6 @@ var _ = Describe("Product API", func() {
 			pkg.TranslateCallerRelativePath("data/excel/Products_template.xlsx"),
 		}
 
-		BeforeAll(func() {
-			// Create units required by the import test
-			fixture.WithUnits(tenv.ContextfulDB(), []*models.Unit{
-				{
-					UnitType:         "general",
-					Name:             "CHAI",
-					Symbol:           "CHAI",
-					ConversionFactor: 1,
-				},
-				{
-					UnitType:         "general",
-					Name:             "THÙNG",
-					Symbol:           "THÙNG",
-					ConversionFactor: 1,
-				},
-				{
-					UnitType:         "general",
-					Name:             "LỐC",
-					Symbol:           "LỐC",
-					ConversionFactor: 1,
-				},
-				{
-					UnitType:         "general",
-					Name:             "PHẦN",
-					Symbol:           "PHẦN",
-					ConversionFactor: 1,
-				},
-			})
-
-			// Create suppliers required by the import test
-			fixture.WithSupplier(tenv.ContextfulDB(), models.Supplier{
-				Name: "SỮA THÁI SƠN",
-			})
-
-			fixture.WithSupplier(tenv.ContextfulDB(), models.Supplier{
-				Name: "TH TRUE MILK",
-			})
-
-			fixture.WithSupplier(tenv.ContextfulDB(), models.Supplier{
-				Name:         "NHÀ HÀNG 5 SAO",
-				ContactEmail: "5stars@example.com",
-				ContactPhone: "028-3896100",
-				Address:      "1, Tân Kỳ Tân Quý, TPHCM",
-			})
-
-			fixture.WithSupplier(tenv.ContextfulDB(), models.Supplier{
-				Name:         "PEPSI",
-				ContactPhone: "098-7513328",
-				Address:      "202,QUỐC LỘ 13,PHƯỜNG HIỆP BÌNH THÀNH PHỐ HỒ CHÍ MINH VIỆT NAM",
-			})
-
-			fixture.WithSupplier(tenv.ContextfulDB(), models.Supplier{
-				Name:         "COCACOLA",
-				ContactPhone: "028-3896100",
-				Address:      "LÔ C 12,ĐƯỜNG DỌC 2,KHU CÔNG NGHIỆP PHÚ AN,XÃ BẾN LỨC,TỈNH TÂY NINH,VIỆT NAM",
-			})
-
-			fixture.WithSupplier(tenv.ContextfulDB(), models.Supplier{
-				Name:    "SỮA MILO",
-				Address: "415/4 A HOÀNG VĂN THỤ, PHƯỜNG TÂN SƠN HÒA, THÀNH PH",
-			})
-		})
-
 		DescribeTableSubtree("should import products from CSV and Excel", func(file string) {
 			var importedProductIDs []uint
 
@@ -576,83 +660,38 @@ var _ = Describe("Product API", func() {
 				Expect(p7.Suppliers[0].Address).To(Equal("1, Tân Kỳ Tân Quý, TPHCM"))
 
 				// Verify Supplier: PEPSI
-				var suppliers []*models.Supplier
-				err = tenv.DB.WithContext(testCtx).Preload("Products").Where("name = ?", "PEPSI").Find(&suppliers).Error
-				Expect(err).NotTo(HaveOccurred())
-				Expect(suppliers).To(HaveLen(1))
-				Expect(suppliers[0].Name).To(Equal("PEPSI"))
-				Expect(suppliers[0].ContactEmail).To(Equal(""))
-				Expect(suppliers[0].ContactPhone).To(Equal("098-7513328"))
-				Expect(suppliers[0].Address).To(Equal("202,QUỐC LỘ 13,PHƯỜNG HIỆP BÌNH THÀNH PHỐ HỒ CHÍ MINH VIỆT NAM"))
-				// Verify PEPSI supplier has 2 products
-				Expect(suppliers[0].Products).To(HaveLen(2))
+				verifySupplier := func(name string, expectedContactEmail, expectedContactPhone, expectedAddress string, expectedLinkedProducts int) {
+					var suppliers []*models.Supplier
+					err = tenv.DB.WithContext(testCtx).Preload("Products").Where("name = ?", name).Find(&suppliers).Error
+					Expect(err).NotTo(HaveOccurred())
+					Expect(suppliers).To(HaveLen(1))
+					Expect(suppliers[0].Name).To(Equal(name))
+					Expect(suppliers[0].ContactEmail).To(Equal(expectedContactEmail))
+					Expect(suppliers[0].ContactPhone).To(Equal(expectedContactPhone))
+					Expect(suppliers[0].Address).To(Equal(expectedAddress))
+					Expect(suppliers[0].Products).To(HaveLen(expectedLinkedProducts))
+				}
+				verifySupplier("PEPSI", "", "098-7513328", "202,QUỐC LỘ 13,PHƯỜNG HIỆP BÌNH THÀNH PHỐ HỒ CHÍ MINH VIỆT NAM", 2)
+				verifySupplier("COCACOLA", "", "028-3896100", "LÔ C 12,ĐƯỜNG DỌC 2,KHU CÔNG NGHIỆP PHÚ AN,XÃ BẾN LỨC,TỈNH TÂY NINH,VIỆT NAM", 3)
+				verifySupplier("SỮA MILO", "", "", "415/4 A HOÀNG VĂN THỤ, PHƯỜNG TÂN SƠN HÒA, THÀNH PH", 2)
+				verifySupplier("SỮA THÁI SƠN", "", "", "", 4)
+				verifySupplier("TH TRUE MILK", "", "028-3896100", "LÔ C 12,ĐƯỜNG DỌC 2,KHU CÔNG NGHIỆP PHÚ AN,XÃ BẾN LỨC,TỈNH TÂY NINH,VIỆT NAM", 0)
+				verifySupplier("NHÀ HÀNG 5 SAO", "5stars@example.com", "028-3896100", "1, Tân Kỳ Tân Quý, TPHCM", 1)
 
-				// Verify Supplier: COCACOLA
-				var suppliers2 []*models.Supplier
-				err = tenv.DB.WithContext(testCtx).Preload("Products").Where("name = ?", "COCACOLA").Find(&suppliers2).Error
-				Expect(err).NotTo(HaveOccurred())
-				Expect(suppliers2).To(HaveLen(1))
-				Expect(suppliers2[0].Name).To(Equal("COCACOLA"))
-				Expect(suppliers2[0].ContactEmail).To(Equal(""))
-				Expect(suppliers2[0].ContactPhone).To(Equal("028-3896100"))
-				Expect(suppliers2[0].Address).To(Equal("LÔ C 12,ĐƯỜNG DỌC 2,KHU CÔNG NGHIỆP PHÚ AN,XÃ BẾN LỨC,TỈNH TÂY NINH,VIỆT NAM"))
-				// Verify COCACOLA supplier has 3 products
-				Expect(suppliers2[0].Products).To(HaveLen(3))
-
-				// Verify Supplier: SỮA MILO
-				var suppliers3 []*models.Supplier
-				err = tenv.DB.WithContext(testCtx).Preload("Products").Where("name = ?", "SỮA MILO").Find(&suppliers3).Error
-				Expect(err).NotTo(HaveOccurred())
-				Expect(suppliers3).To(HaveLen(1))
-				Expect(suppliers3[0].Name).To(Equal("SỮA MILO"))
-				Expect(suppliers3[0].ContactEmail).To(Equal(""))
-				Expect(suppliers3[0].ContactPhone).To(Equal(""))
-				Expect(suppliers3[0].Address).To(Equal("415/4 A HOÀNG VĂN THỤ, PHƯỜNG TÂN SƠN HÒA, THÀNH PH"))
-				// Verify SỮA MILO supplier has 2 products
-				Expect(suppliers3[0].Products).To(HaveLen(2))
-
-				// Verify Supplier: SỮA THÁI SƠN
-				var suppliers4 []*models.Supplier
-				err = tenv.DB.WithContext(testCtx).Preload("Products").Where("name = ?", "SỮA THÁI SƠN").Find(&suppliers4).Error
-				Expect(err).NotTo(HaveOccurred())
-				Expect(suppliers4).To(HaveLen(1))
-				Expect(suppliers4[0].Name).To(Equal("SỮA THÁI SƠN"))
-				Expect(suppliers4[0].ContactEmail).To(Equal(""))
-				Expect(suppliers4[0].ContactPhone).To(Equal(""))
-				Expect(suppliers4[0].Address).To(Equal(""))
-				// Verify SỮA THÁI SƠN supplier has 4 products
-				Expect(suppliers4[0].Products).To(HaveLen(4))
-
-				// Verify Supplier: TH TRUE MILK (created from line 14 which has supplier name but no product name)
-				var suppliers5 []*models.Supplier
-				err = tenv.DB.WithContext(testCtx).Preload("Products").Where("name = ?", "TH TRUE MILK").Find(&suppliers5).Error
-				Expect(err).NotTo(HaveOccurred())
-				Expect(suppliers5).To(HaveLen(1))
-				Expect(suppliers5[0].Name).To(Equal("TH TRUE MILK"))
-				Expect(suppliers5[0].ContactEmail).To(Equal(""))
-				Expect(suppliers5[0].ContactPhone).To(Equal("028-3896100"))
-				Expect(suppliers5[0].Address).To(Equal("LÔ C 12,ĐƯỜNG DỌC 2,KHU CÔNG NGHIỆP PHÚ AN,XÃ BẾN LỨC,TỈNH TÂY NINH,VIỆT NAM"))
-				// Verify TH TRUE MILK supplier has 0 products
-				Expect(suppliers5[0].Products).To(HaveLen(0))
-
-				var suppliers6 []*models.Supplier
-				err = tenv.DB.WithContext(testCtx).Preload("Products").Where("name = ?", "NHÀ HÀNG 5 SAO").Find(&suppliers6).Error
-				Expect(err).NotTo(HaveOccurred())
-				Expect(suppliers6).To(HaveLen(1))
-				Expect(suppliers6[0].Name).To(Equal("NHÀ HÀNG 5 SAO"))
-				Expect(suppliers6[0].ContactEmail).To(Equal("5stars@example.com"))
-				Expect(suppliers6[0].ContactPhone).To(Equal("028-3896100"))
-				Expect(suppliers6[0].Address).To(Equal("1, Tân Kỳ Tân Quý, TPHCM"))
-				Expect(suppliers6[0].Products).To(HaveLen(1))
-				Expect(suppliers6[0].Products[0].Name).To(Equal("CƠM THỊT KHO TRỨNG"))
-
-				// Verify number of products by supplier
-				Expect(suppliers[0].Products).To(HaveLen(2))
-				Expect(suppliers2[0].Products).To(HaveLen(3))
-				Expect(suppliers3[0].Products).To(HaveLen(2))
-				Expect(suppliers4[0].Products).To(HaveLen(4))
-				Expect(suppliers5[0].Products).To(HaveLen(0))
-				Expect(suppliers6[0].Products).To(HaveLen(1))
+				// Verify units are created
+				verifyUnit := func(name string, symbol string, conversionFactor float64) {
+					var units []*models.Unit
+					err = tenv.DB.WithContext(testCtx).Where("name = ?", name).Find(&units).Error
+					Expect(err).NotTo(HaveOccurred())
+					Expect(units).To(HaveLen(1))
+					Expect(units[0].Name).To(Equal(name))
+					Expect(units[0].Symbol).To(Equal(symbol))
+					Expect(units[0].ConversionFactor).To(Equal(conversionFactor))
+				}
+				verifyUnit("CHAI", "chai", 1)
+				verifyUnit("THÙNG", "thùng", 1)
+				verifyUnit("LỐC", "lốc", 1)
+				verifyUnit("PHẦN", "phần", 1)
 
 				// Verify number of product types
 				var productTypeSettings models.Settings
