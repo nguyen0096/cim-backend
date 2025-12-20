@@ -56,6 +56,14 @@ p, admin, users, view, allow
 p, admin, users, create, allow
 p, admin, users, update, allow
 p, admin, users, delete, allow
+p, admin, menus, view, allow
+p, admin, menus, create, allow
+p, admin, menus, update, allow
+p, admin, menus, delete, allow
+p, admin, menu-items, view, allow
+p, admin, menu-items, create, allow
+p, admin, menu-items, update, allow
+p, admin, menu-items, delete, allow
 
 p, restaurant-admin, menus, view, allow
 p, restaurant-admin, menus, create, allow
