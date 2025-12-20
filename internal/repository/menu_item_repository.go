@@ -13,7 +13,7 @@ type MenuItemRepository interface {
 	GetByID(ctx context.Context, id uint) (*models.MenuItem, error)
 	Update(ctx context.Context, menuItem *models.MenuItem) error
 	Delete(ctx context.Context, id uint) error
-	List(ctx context.Context, limit, offset int) ([]models.MenuItem, error)
+	List(ctx context.Context, limit, offset int, search string) ([]models.MenuItem, error)
 }
 
 type menuItemRepository struct {
@@ -86,11 +86,26 @@ func (r *menuItemRepository) Delete(ctx context.Context, id uint) error {
 	return r.db.WithContext(ctx).Delete(&models.MenuItem{}, "id = ?", id).Error
 }
 
-func (r *menuItemRepository) List(ctx context.Context, limit, offset int) ([]models.MenuItem, error) {
+func (r *menuItemRepository) List(ctx context.Context, limit, offset int, search string) ([]models.MenuItem, error) {
 	var menuItems []models.MenuItem
-	err := r.db.WithContext(ctx).
+	query := r.db.WithContext(ctx).
 		Preload("Menus").
-		Preload("Products").
+		Preload("Products")
+
+	// Apply search filter if provided
+	if search != "" {
+		searchPattern := "%" + search + "%"
+		// Use unaccent for Vietnamese fuzzy search (handles accents)
+		// This allows searching "pho" to match "Phở", "phở", "PHỞ", etc.
+		// Note: Requires PostgreSQL unaccent extension to be installed
+		// The OR clause provides fallback matching even if unaccent normalization differs
+		query = query.Where(
+			"unaccent(LOWER(name)) ILIKE unaccent(LOWER(?)) OR name ILIKE ?",
+			searchPattern, searchPattern,
+		)
+	}
+
+	err := query.
 		Limit(limit).
 		Offset(offset).
 		Find(&menuItems).Error

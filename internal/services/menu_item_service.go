@@ -14,7 +14,7 @@ type MenuItemService interface {
 	GetMenuItemByID(ctx context.Context, id uint) (*models.MenuItem, error)
 	UpdateMenuItem(ctx context.Context, menuItem *models.MenuItem) error
 	DeleteMenuItem(ctx context.Context, id uint) error
-	ListMenuItems(ctx context.Context, limit, offset int) ([]models.MenuItem, error)
+	ListMenuItems(ctx context.Context, limit, offset int, search string) ([]models.MenuItem, error)
 }
 
 type menuItemService struct {
@@ -128,6 +128,6 @@ func (s *menuItemService) DeleteMenuItem(ctx context.Context, id uint) error {
 	return s.menuItemRepo.Delete(ctx, id)
 }
 
-func (s *menuItemService) ListMenuItems(ctx context.Context, limit, offset int) ([]models.MenuItem, error) {
-	return s.menuItemRepo.List(ctx, limit, offset)
+func (s *menuItemService) ListMenuItems(ctx context.Context, limit, offset int, search string) ([]models.MenuItem, error) {
+	return s.menuItemRepo.List(ctx, limit, offset, search)
 }

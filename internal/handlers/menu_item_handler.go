@@ -121,12 +121,13 @@ func (h *MenuItemHandler) GetMenuItem(c echo.Context) error {
 
 // ListMenuItems lists all menu items with pagination
 // @Summary List menu items
-// @Description List all menu items with pagination
+// @Description List all menu items with pagination and search
 // @Tags menu-items
 // @Accept json
 // @Produce json
 // @Param page query int false "Page number" default(1)
 // @Param limit query int false "Items per page" default(20)
+// @Param q query string false "Search query (searches by name)"
 // @Success 200 {object} map[string]interface{}
 // @Failure 500 {object} map[string]string
 // @Security BearerAuth
@@ -135,6 +136,7 @@ func (h *MenuItemHandler) ListMenuItems(c echo.Context) error {
 	// Parse query parameters
 	limit, _ := strconv.Atoi(c.QueryParam("limit"))
 	page, _ := strconv.Atoi(c.QueryParam("page"))
+	search := c.QueryParam("q")
 
 	// Set defaults
 	if limit == 0 {
@@ -148,7 +150,7 @@ func (h *MenuItemHandler) ListMenuItems(c echo.Context) error {
 	offset := (page - 1) * limit
 
 	// Get menu items
-	menuItems, err := h.menuItemService.ListMenuItems(c.Request().Context(), limit, offset)
+	menuItems, err := h.menuItemService.ListMenuItems(c.Request().Context(), limit, offset, search)
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to fetch menu items", "details": err.Error()})
 	}
