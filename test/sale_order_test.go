@@ -88,35 +88,23 @@ var _ = Describe("Sale Order API", func() {
 			// Then create sale order items with menu items
 			item1 := &models.SaleOrderItem{
 				SaleOrderID: pkg.Ptr(testSaleOrders[0].ID),
+				MenuItems:   []*models.MenuItem{testMenuItem1},
 			}
 			err = tenv.ContextfulDB().WithContext(ctx).Create(item1).Error
-			Expect(err).NotTo(HaveOccurred())
-			err = tenv.ContextfulDB().WithContext(ctx).Exec(
-				"INSERT INTO sale_order_item_menu_items (sale_order_item_id, menu_item_id) VALUES (?, ?)",
-				item1.ID, testMenuItem1.ID,
-			).Error
 			Expect(err).NotTo(HaveOccurred())
 
 			item2 := &models.SaleOrderItem{
 				SaleOrderID: pkg.Ptr(testSaleOrders[1].ID),
+				MenuItems:   []*models.MenuItem{testMenuItem2},
 			}
 			err = tenv.ContextfulDB().WithContext(ctx).Create(item2).Error
-			Expect(err).NotTo(HaveOccurred())
-			err = tenv.ContextfulDB().WithContext(ctx).Exec(
-				"INSERT INTO sale_order_item_menu_items (sale_order_item_id, menu_item_id) VALUES (?, ?)",
-				item2.ID, testMenuItem2.ID,
-			).Error
 			Expect(err).NotTo(HaveOccurred())
 
 			item3 := &models.SaleOrderItem{
 				SaleOrderID: pkg.Ptr(testSaleOrders[2].ID),
+				MenuItems:   []*models.MenuItem{testMenuItem1},
 			}
 			err = tenv.ContextfulDB().WithContext(ctx).Create(item3).Error
-			Expect(err).NotTo(HaveOccurred())
-			err = tenv.ContextfulDB().WithContext(ctx).Exec(
-				"INSERT INTO sale_order_item_menu_items (sale_order_item_id, menu_item_id) VALUES (?, ?)",
-				item3.ID, testMenuItem1.ID,
-			).Error
 			Expect(err).NotTo(HaveOccurred())
 
 			DeferCleanup(func() {
@@ -225,13 +213,9 @@ var _ = Describe("Sale Order API", func() {
 			// Create sale order item with menu item
 			testSaleOrderItem := &models.SaleOrderItem{
 				SaleOrderID: pkg.Ptr(testSaleOrder.ID),
+				MenuItems:   []*models.MenuItem{testMenuItem},
 			}
 			err = tenv.ContextfulDB().WithContext(ctx).Create(testSaleOrderItem).Error
-			Expect(err).NotTo(HaveOccurred())
-			err = tenv.ContextfulDB().WithContext(ctx).Exec(
-				"INSERT INTO sale_order_item_menu_items (sale_order_item_id, menu_item_id) VALUES (?, ?)",
-				testSaleOrderItem.ID, testMenuItem.ID,
-			).Error
 			Expect(err).NotTo(HaveOccurred())
 
 			DeferCleanup(func() {
@@ -243,7 +227,7 @@ var _ = Describe("Sale Order API", func() {
 		})
 
 		Context("when user has authorized role", func() {
-			It("should update sale order and check DB must exist 2 records", func() {
+			It("should update sale order by create new record referencing the previous one and check DB must exist 2 records", func() {
 				client := testutil.NewClient(tenv, models.RoleRestaurantAdmin)
 
 				updateData := map[string]interface{}{
@@ -251,11 +235,7 @@ var _ = Describe("Sale Order API", func() {
 					"notes":  "Updated notes",
 					"items": []map[string]interface{}{
 						{
-							"menu_items": []map[string]interface{}{
-								{
-									"id": testMenuItem.ID,
-								},
-							},
+							"menu_item_ids": []uint{testMenuItem.ID},
 						},
 					},
 				}
@@ -306,11 +286,7 @@ var _ = Describe("Sale Order API", func() {
 					"notes":  "Updated notes",
 					"items": []map[string]interface{}{
 						{
-							"menu_items": []map[string]interface{}{
-								{
-									"id": testMenuItem.ID,
-								},
-							},
+							"menu_item_ids": []uint{testMenuItem.ID},
 						},
 					},
 				}
@@ -368,13 +344,9 @@ var _ = Describe("Sale Order API", func() {
 			// Create sale order item with menu item
 			testSaleOrderItem := &models.SaleOrderItem{
 				SaleOrderID: pkg.Ptr(testSaleOrder.ID),
+				MenuItems:   []*models.MenuItem{testMenuItem},
 			}
 			err = tenv.ContextfulDB().WithContext(ctx).Create(testSaleOrderItem).Error
-			Expect(err).NotTo(HaveOccurred())
-			err = tenv.ContextfulDB().WithContext(ctx).Exec(
-				"INSERT INTO sale_order_item_menu_items (sale_order_item_id, menu_item_id) VALUES (?, ?)",
-				testSaleOrderItem.ID, testMenuItem.ID,
-			).Error
 			Expect(err).NotTo(HaveOccurred())
 
 			DeferCleanup(func() {
@@ -466,13 +438,9 @@ var _ = Describe("Sale Order API", func() {
 			// Create sale order item with menu item
 			testSaleOrderItem := &models.SaleOrderItem{
 				SaleOrderID: pkg.Ptr(testSaleOrder.ID),
+				MenuItems:   []*models.MenuItem{testMenuItem},
 			}
 			err = tenv.ContextfulDB().WithContext(ctx).Create(testSaleOrderItem).Error
-			Expect(err).NotTo(HaveOccurred())
-			err = tenv.ContextfulDB().WithContext(ctx).Exec(
-				"INSERT INTO sale_order_item_menu_items (sale_order_item_id, menu_item_id) VALUES (?, ?)",
-				testSaleOrderItem.ID, testMenuItem.ID,
-			).Error
 			Expect(err).NotTo(HaveOccurred())
 
 			DeferCleanup(func() {
@@ -493,11 +461,7 @@ var _ = Describe("Sale Order API", func() {
 					"notes":  "Order served",
 					"items": []map[string]interface{}{
 						{
-							"menu_items": []map[string]interface{}{
-								{
-									"id": testMenuItem.ID,
-								},
-							},
+							"menu_item_ids": []uint{testMenuItem.ID},
 						},
 					},
 				}
@@ -574,13 +538,9 @@ var _ = Describe("Sale Order API", func() {
 			// Create sale order item with menu item
 			testSaleOrderItem := &models.SaleOrderItem{
 				SaleOrderID: pkg.Ptr(testSaleOrder.ID),
+				MenuItems:   []*models.MenuItem{testMenuItem},
 			}
 			err = tenv.ContextfulDB().WithContext(ctx).Create(testSaleOrderItem).Error
-			Expect(err).NotTo(HaveOccurred())
-			err = tenv.ContextfulDB().WithContext(ctx).Exec(
-				"INSERT INTO sale_order_item_menu_items (sale_order_item_id, menu_item_id) VALUES (?, ?)",
-				testSaleOrderItem.ID, testMenuItem.ID,
-			).Error
 			Expect(err).NotTo(HaveOccurred())
 
 			DeferCleanup(func() {
