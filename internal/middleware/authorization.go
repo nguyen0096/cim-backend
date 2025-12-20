@@ -198,6 +198,13 @@ var customRouteMappings = []RouteMapping{
 		Resource:    "purchase-orders",
 		Action:      "retry_excel",
 	},
+	// Sale Order Status Update
+	{
+		Method:      "PUT",
+		PathPattern: "/sale-orders/*/status",
+		Resource:    "sale-orders",
+		Action:      "update_status",
+	},
 }
 
 // matchPathPattern checks if a path matches a pattern (supports * as wildcard for path segments)

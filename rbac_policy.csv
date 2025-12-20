@@ -65,6 +65,23 @@ p, admin, menu-items, create, allow
 p, admin, menu-items, update, allow
 p, admin, menu-items, delete, allow
 
+p, restaurant-admin, menus, view, allow
+p, restaurant-admin, menus, create, allow
+p, restaurant-admin, menus, update, allow
+p, restaurant-admin, menus, delete, allow
+p, restaurant-admin, menu-items, view, allow
+p, restaurant-admin, menu-items, create, allow
+p, restaurant-admin, menu-items, update, allow
+p, restaurant-admin, menu-items, delete, allow
+p, restaurant-admin, sale-orders, view, allow
+p, restaurant-admin, sale-orders, create, allow
+p, restaurant-admin, sale-orders, update, allow
+p, restaurant-admin, sale-orders, update_status, allow
+p, restaurant-admin, sale-order-items, view, allow
+p, restaurant-admin, sale-order-items, create, allow
+p, restaurant-admin, sale-order-items, update, allow
+p, restaurant-admin, sale-order-items, update_status, allow
+
 p, accountant, permissions, view, allow
 p, accountant, products, view, allow
 p, accountant, products, create, allow
@@ -120,15 +137,33 @@ p, bot_form, units, view, allow
 
 p, chef, menus, view, allow
 p, chef, menu-items, view, allow
+p, chef, sale-orders, view, allow
+p, chef, sale-orders, update_status, allow
+p, chef, sale-order-items, view, allow
+p, chef, sale-order-items, update_status, allow
 
 p, waiter, menus, view, allow
 p, waiter, menu-items, view, allow
+p, waiter, sale-orders, view, allow
+p, waiter, sale-orders, update, allow
+p, waiter, sale-orders, update_status, allow
+p, waiter, sale-order-items, view, allow
+p, waiter, sale-order-items, update, allow
+p, waiter, sale-order-items, update_status, allow
 
 p, cashier, menus, view, allow
 p, cashier, menu-items, view, allow
+p, cashier, sale-orders, view, allow
+p, cashier, sale-orders, update, allow
+p, cashier, sale-orders, update_status, allow
+p, cashier, sale-order-items, view, allow
+p, cashier, sale-order-items, update, allow
+p, cashier, sale-order-items, update_status, allow
 
 g, demoAdminUid0000000000000000, admin
+g, demoAdminUid0000000000000000, restaurant-admin
+g, demoMaintAdminUid00000000000, admin
+g, demoMaintAdminUid00000000000, restaurant-admin
 g, demoAccountantUid00000000000, accountant
 g, demoStaffUid0000000000000000, staff
-g, demoMaintAdminUid00000000000, admin
 g, demoBotFormUid00000000000000, bot_form

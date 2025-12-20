@@ -50,6 +50,7 @@ func SetupServer(
 	paymentReceiptFormRepo := repository.NewPaymentReceiptFormRepository(db)
 	menuRepo := repository.NewMenuRepository(db)
 	menuItemRepo := repository.NewMenuItemRepository(db)
+	saleOrderRepo := repository.NewSaleOrderRepository(db)
 
 	// Initialize S3 client for R2
 	s3Client, err := services.NewS3Client(cfg)
@@ -71,6 +72,7 @@ func SetupServer(
 	paymentReceiptFormService := services.NewPaymentReceiptFormService(paymentReceiptFormRepo, db, settingsService)
 	menuService := services.NewMenuService(menuRepo, menuItemRepo, inventoryRepo)
 	menuItemService := services.NewMenuItemService(menuItemRepo, menuRepo, productRepo)
+	saleOrderService := services.NewSaleOrderService(saleOrderRepo, db)
 
 	// Initialize handlers
 	userHandler := handlers.NewUserHandler(userService, firebaseAuth)
@@ -86,6 +88,7 @@ func SetupServer(
 	revenueExpenseHandler := handlers.NewRevenueExpenseHandler(excelService, settingsService)
 	menuHandler := handlers.NewMenuHandler(menuService)
 	menuItemHandler := handlers.NewMenuItemHandler(menuItemService)
+	saleOrderHandler := handlers.NewSaleOrderHandler(saleOrderService)
 
 	// Initialize Echo
 	e := echo.New()
@@ -318,6 +321,14 @@ func SetupServer(
 	menuItems.GET("/:id", menuItemHandler.GetMenuItem)
 	menuItems.PUT("/:id", menuItemHandler.UpdateMenuItem)
 	menuItems.DELETE("/:id", menuItemHandler.DeleteMenuItem)
+
+	// Sale Order routes
+	saleOrders := api.Group("/sale-orders")
+	saleOrders.GET("", saleOrderHandler.ListSaleOrders)
+	saleOrders.POST("", saleOrderHandler.CreateSaleOrder)
+	saleOrders.GET("/:id", saleOrderHandler.GetSaleOrder)
+	saleOrders.PUT("/:id", saleOrderHandler.UpdateSaleOrder)
+	saleOrders.PUT("/:id/status", saleOrderHandler.UpdateSaleOrderStatus)
 
 	return e, nil
 }

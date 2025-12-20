@@ -13,110 +13,78 @@ import (
 	"log"
 	"time"
 
+	"github.com/lib/pq"
 	"gorm.io/gorm"
 )
 
 // Suppliers contains all test supplier data
 func Suppliers() []models.Supplier {
-	now := time.Now()
-
 	return []models.Supplier{
 		// F&B Suppliers (Vietnam)
 		{
-			Base: models.Base{
-				CreatedAt: now,
-				UpdatedAt: now,
-			},
 			Name:         "Công ty Nông Sản Sạch Việt Nam",
 			ContactEmail: "contact@nongsansach.vn",
 			ContactPhone: "+84-28-3821-5001",
 			Address:      "123 Đường Nguyễn Văn Linh, Quận 7, TP.HCM",
 		},
 		{
-			Base: models.Base{
-				CreatedAt: now,
-				UpdatedAt: now,
-			},
+
 			Name:         "Vinamilk - Công ty Sữa Việt Nam",
 			ContactEmail: "sales@vinamilk.com.vn",
 			ContactPhone: "+84-28-5413-8888",
 			Address:      "10 Đường Tân Trào, Phường Tân Phú, Quận 7, TP.HCM",
 		},
 		{
-			Base: models.Base{
-				CreatedAt: now,
-				UpdatedAt: now,
-			},
+
 			Name:         "Công ty Thủy Sản Miền Trung",
 			ContactEmail: "info@thuysanmientrung.vn",
 			ContactPhone: "+84-236-3827-100",
 			Address:      "45 Đường Nguyễn Văn Linh, TP. Đà Nẵng",
 		},
 		{
-			Base: models.Base{
-				CreatedAt: now,
-				UpdatedAt: now,
-			},
+
 			Name:         "Trung Nguyên Coffee",
 			ContactEmail: "order@trungnguyen.com.vn",
 			ContactPhone: "+84-500-6789",
 			Address:      "12 Đường Thảo Điền, Quận 2, TP.HCM",
 		},
 		{
-			Base: models.Base{
-				CreatedAt: now,
-				UpdatedAt: now,
-			},
+
 			Name:         "Công ty Gạo Thiên Long",
 			ContactEmail: "sales@gaothienlong.vn",
 			ContactPhone: "+84-292-3821-456",
 			Address:      "234 Quốc Lộ 1A, TP. Cần Thơ",
 		},
 		{
-			Base: models.Base{
-				CreatedAt: now,
-				UpdatedAt: now,
-			},
+
 			Name:         "Công ty Gia Vị Việt",
 			ContactEmail: "contact@giaviviet.com",
 			ContactPhone: "+84-28-3920-7777",
 			Address:      "678 Đường Lê Văn Việt, Quận 9, TP.HCM",
 		},
 		{
-			Base: models.Base{
-				CreatedAt: now,
-				UpdatedAt: now,
-			},
+
 			Name:         "Vissan - Công ty Thực Phẩm Sài Gòn",
 			ContactEmail: "orders@vissan.com.vn",
 			ContactPhone: "+84-28-3812-5555",
 			Address:      "520 Đường Cách Mạng Tháng Tám, Quận 3, TP.HCM",
 		},
 		{
-			Base: models.Base{
-				CreatedAt: now,
-				UpdatedAt: now,
-			},
+
 			Name:         "Công ty Rau Quả Đà Lạt",
 			ContactEmail: "sales@rauquadalat.vn",
 			ContactPhone: "+84-263-3821-999",
 			Address:      "89 Đường Trần Hưng Đạo, TP. Đà Lạt",
 		},
 		{
-			Base: models.Base{
-				CreatedAt: now,
-				UpdatedAt: now,
-			},
+
 			Name:         "Công ty Nước Mắm Nam Ngư",
 			ContactEmail: "info@namngu.com.vn",
 			ContactPhone: "+84-297-3871-234",
 			Address:      "101 Đường Trần Phú, TP. Phú Quốc",
 		},
 		{
-			Base: models.Base{
-				CreatedAt: now,
-				UpdatedAt: now,
-			},
+
 			Name:         "Công ty Bánh Kẹo Kinh Đô",
 			ContactEmail: "contact@kinhdo.com.vn",
 			ContactPhone: "+84-28-5413-7000",
@@ -136,104 +104,71 @@ type ProductSeed struct {
 
 // Units returns the measurement units used in test data
 func Units() []models.Unit {
-	now := time.Now()
-
 	return []models.Unit{
 		{
-			Base: models.Base{
-				CreatedAt: now,
-				UpdatedAt: now,
-			},
 			UnitType:         "mass",
 			Name:             "KILOGRAM",
 			Symbol:           "kg",
 			ConversionFactor: 1,
 		},
 		{
-			Base: models.Base{
-				CreatedAt: now,
-				UpdatedAt: now,
-			},
+
 			UnitType:         "volume",
 			Name:             "LITER",
 			Symbol:           "liter",
 			ConversionFactor: 1,
 		},
 		{
-			Base: models.Base{
-				CreatedAt: now,
-				UpdatedAt: now,
-			},
+
 			UnitType:         "count",
 			Name:             "PIECE",
 			Symbol:           "piece",
 			ConversionFactor: 1,
 		},
 		{
-			Base: models.Base{
-				CreatedAt: now,
-				UpdatedAt: now,
-			},
+
 			UnitType:         "count",
 			Name:             "BOX",
 			Symbol:           "box",
 			ConversionFactor: 1,
 		},
 		{
-			Base: models.Base{
-				CreatedAt: now,
-				UpdatedAt: now,
-			},
+
 			UnitType:         "count",
 			Name:             "CARTON",
 			Symbol:           "carton",
 			ConversionFactor: 1,
 		},
 		{
-			Base: models.Base{
-				CreatedAt: now,
-				UpdatedAt: now,
-			},
+
 			UnitType:         "count",
 			Name:             "BOTTLE",
 			Symbol:           "bottle",
 			ConversionFactor: 1,
 		},
 		{
-			Base: models.Base{
-				CreatedAt: now,
-				UpdatedAt: now,
-			},
+
 			UnitType:         "count",
 			Name:             "CAN",
 			Symbol:           "can",
 			ConversionFactor: 1,
 		},
 		{
-			Base: models.Base{
-				CreatedAt: now,
-				UpdatedAt: now,
-			},
+
 			UnitType:         "count",
 			Name:             "PACK",
 			Symbol:           "pack",
 			ConversionFactor: 1,
 		},
 		{
-			Base: models.Base{
-				CreatedAt: now,
-				UpdatedAt: now,
-			},
+
 			UnitType:         "count",
 			Name:             "LOAF",
 			Symbol:           "loaf",
 			ConversionFactor: 1,
 		},
 		{
-			Base: models.Base{
-				CreatedAt: now,
-				UpdatedAt: now,
-			},
+
 			UnitType:         "count",
 			Name:             "TRAY",
 			Symbol:           "tray",
@@ -244,15 +179,10 @@ func Units() []models.Unit {
 
 // productSeeds contains all test product data
 func productSeeds() []ProductSeed {
-	now := time.Now()
-
 	return []ProductSeed{
 		// F&B Products (Vietnam)
 		{
-			Base: models.Base{
-				CreatedAt: now,
-				UpdatedAt: now,
-			},
+
 			Name:        "Gạo Tám Thơm ST25",
 			Description: "Gạo thơm ST25 đặc sản xuất khẩu, loại 1",
 			ProductType: "Cơm",
@@ -260,10 +190,7 @@ func productSeeds() []ProductSeed {
 			Status:      "active",
 		},
 		{
-			Base: models.Base{
-				CreatedAt: now,
-				UpdatedAt: now,
-			},
+
 			Name:        "Cà Phê Robusta Đắk Lắk",
 			Description: "Hạt cà phê Robusta nguyên chất từ Tây Nguyên",
 			ProductType: "Nước",
@@ -271,10 +198,7 @@ func productSeeds() []ProductSeed {
 			Status:      "active",
 		},
 		{
-			Base: models.Base{
-				CreatedAt: now,
-				UpdatedAt: now,
-			},
+
 			Name:        "Nước Mắm Phú Quốc 40 Độ Đạm",
 			Description: "Nước mắm truyền thống Phú Quốc, 40 độ đạm đạm protein",
 			ProductType: "Ăn nhẹ",
@@ -282,10 +206,7 @@ func productSeeds() []ProductSeed {
 			Status:      "active",
 		},
 		{
-			Base: models.Base{
-				CreatedAt: now,
-				UpdatedAt: now,
-			},
+
 			Name:        "Bánh Mì Tươi Sài Gòn",
 			Description: "Bánh mì que giòn tươi ngon mỗi ngày",
 			ProductType: "Ăn nhẹ",
@@ -293,10 +214,7 @@ func productSeeds() []ProductSeed {
 			Status:      "active",
 		},
 		{
-			Base: models.Base{
-				CreatedAt: now,
-				UpdatedAt: now,
-			},
+
 			Name:        "Rau Xà Lách Đà Lạt",
 			Description: "Rau xà lách tươi hữu cơ từ Đà Lạt",
 			ProductType: "Ăn nhẹ",
@@ -304,10 +222,7 @@ func productSeeds() []ProductSeed {
 			Status:      "active",
 		},
 		{
-			Base: models.Base{
-				CreatedAt: now,
-				UpdatedAt: now,
-			},
+
 			Name:        "Sữa Tươi Vinamilk 100%",
 			Description: "Sữa tươi thanh trùng không đường",
 			ProductType: "Ăn nhẹ",
@@ -315,10 +230,7 @@ func productSeeds() []ProductSeed {
 			Status:      "active",
 		},
 		{
-			Base: models.Base{
-				CreatedAt: now,
-				UpdatedAt: now,
-			},
+
 			Name:        "Tôm Càng Xanh Cần Thơ",
 			Description: "Tôm càng xanh tươi sống từ đồng bằng sông Cửu Long",
 			ProductType: "Cơm",
@@ -326,10 +238,7 @@ func productSeeds() []ProductSeed {
 			Status:      "active",
 		},
 		{
-			Base: models.Base{
-				CreatedAt: now,
-				UpdatedAt: now,
-			},
+
 			Name:        "Chả Lụa Đặc Biệt",
 			Description: "Chả lụa thượng hạng chất lượng cao",
 			ProductType: "Cơm",
@@ -337,10 +246,7 @@ func productSeeds() []ProductSeed {
 			Status:      "active",
 		},
 		{
-			Base: models.Base{
-				CreatedAt: now,
-				UpdatedAt: now,
-			},
+
 			Name:        "Trà Ô Long Đài Loan",
 			Description: "Trà ô long cao cấp nhập khẩu từ Đài Loan",
 			ProductType: "Nước",
@@ -348,10 +254,7 @@ func productSeeds() []ProductSeed {
 			Status:      "active",
 		},
 		{
-			Base: models.Base{
-				CreatedAt: now,
-				UpdatedAt: now,
-			},
+
 			Name:        "Bánh Quy Bơ Kinh Đô",
 			Description: "Bánh quy bơ thơm ngon đặc biệt",
 			ProductType: "Ăn nhẹ",
@@ -360,10 +263,7 @@ func productSeeds() []ProductSeed {
 		},
 		// Additional F&B Products
 		{
-			Base: models.Base{
-				CreatedAt: now,
-				UpdatedAt: now,
-			},
+
 			Name:        "Bún Tươi",
 			Description: "Bún tươi dai ngon từ gạo tẻ",
 			ProductType: "Cơm",
@@ -371,10 +271,7 @@ func productSeeds() []ProductSeed {
 			Status:      "active",
 		},
 		{
-			Base: models.Base{
-				CreatedAt: now,
-				UpdatedAt: now,
-			},
+
 			Name:        "Phở Khô",
 			Description: "Bánh phở khô loại 1",
 			ProductType: "Cơm",
@@ -382,10 +279,7 @@ func productSeeds() []ProductSeed {
 			Status:      "active",
 		},
 		{
-			Base: models.Base{
-				CreatedAt: now,
-				UpdatedAt: now,
-			},
+
 			Name:        "Mì Gói Hảo Hảo",
 			Description: "Mì ăn liền vị tôm chua cay",
 			ProductType: "Cơm",
@@ -393,10 +287,7 @@ func productSeeds() []ProductSeed {
 			Status:      "active",
 		},
 		{
-			Base: models.Base{
-				CreatedAt: now,
-				UpdatedAt: now,
-			},
+
 			Name:        "Dầu Ăn Simply",
 			Description: "Dầu ăn cao cấp chai 1L",
 			ProductType: "Ăn nhẹ",
@@ -404,10 +295,7 @@ func productSeeds() []ProductSeed {
 			Status:      "active",
 		},
 		{
-			Base: models.Base{
-				CreatedAt: now,
-				UpdatedAt: now,
-			},
+
 			Name:        "Nước Tương Chinsu",
 			Description: "Nước tương đậm đà hương vị truyền thống",
 			ProductType: "Ăn nhẹ",
@@ -415,10 +303,7 @@ func productSeeds() []ProductSeed {
 			Status:      "active",
 		},
 		{
-			Base: models.Base{
-				CreatedAt: now,
-				UpdatedAt: now,
-			},
+
 			Name:        "Tương Ớt Cholimex",
 			Description: "Tương ớt cay đặc biệt",
 			ProductType: "Ăn nhẹ",
@@ -426,10 +311,7 @@ func productSeeds() []ProductSeed {
 			Status:      "active",
 		},
 		{
-			Base: models.Base{
-				CreatedAt: now,
-				UpdatedAt: now,
-			},
+
 			Name:        "Đường Trắng Biên Hòa",
 			Description: "Đường cát trắng tinh luyện",
 			ProductType: "Ăn nhẹ",
@@ -437,10 +319,7 @@ func productSeeds() []ProductSeed {
 			Status:      "active",
 		},
 		{
-			Base: models.Base{
-				CreatedAt: now,
-				UpdatedAt: now,
-			},
+
 			Name:        "Muối I-ốt",
 			Description: "Muối tinh I-ốt sạch",
 			ProductType: "Ăn nhẹ",
@@ -448,10 +327,7 @@ func productSeeds() []ProductSeed {
 			Status:      "active",
 		},
 		{
-			Base: models.Base{
-				CreatedAt: now,
-				UpdatedAt: now,
-			},
+
 			Name:        "Bột Ngọt Aji-ngon",
 			Description: "Bột ngọt tăng vị tự nhiên",
 			ProductType: "Ăn nhẹ",
@@ -459,10 +335,7 @@ func productSeeds() []ProductSeed {
 			Status:      "active",
 		},
 		{
-			Base: models.Base{
-				CreatedAt: now,
-				UpdatedAt: now,
-			},
+
 			Name:        "Hạt Nêm Knorr",
 			Description: "Hạt nêm thịt thăn xương ống heo",
 			ProductType: "Ăn nhẹ",
@@ -470,10 +343,7 @@ func productSeeds() []ProductSeed {
 			Status:      "active",
 		},
 		{
-			Base: models.Base{
-				CreatedAt: now,
-				UpdatedAt: now,
-			},
+
 			Name:        "Cá Ngừ Đóng Hộp VisanFoods",
 			Description: "Cá ngừ xốt cà chua 170g",
 			ProductType: "Ăn nhẹ",
@@ -481,10 +351,7 @@ func productSeeds() []ProductSeed {
 			Status:      "active",
 		},
 		{
-			Base: models.Base{
-				CreatedAt: now,
-				UpdatedAt: now,
-			},
+
 			Name:        "Sữa Đặc Ông Thọ",
 			Description: "Sữa đặc có đường truyền thống",
 			ProductType: "Ăn nhẹ",
@@ -492,10 +359,7 @@ func productSeeds() []ProductSeed {
 			Status:      "active",
 		},
 		{
-			Base: models.Base{
-				CreatedAt: now,
-				UpdatedAt: now,
-			},
+
 			Name:        "Sữa Chua Vinamilk",
 			Description: "Sữa chua có đường lốc 4 hộp",
 			ProductType: "Ăn nhẹ",
@@ -503,10 +367,7 @@ func productSeeds() []ProductSeed {
 			Status:      "active",
 		},
 		{
-			Base: models.Base{
-				CreatedAt: now,
-				UpdatedAt: now,
-			},
+
 			Name:        "Trứng Gà Tươi",
 			Description: "Trứng gà sạch các loại",
 			ProductType: "Cơm",
@@ -514,10 +375,7 @@ func productSeeds() []ProductSeed {
 			Status:      "active",
 		},
 		{
-			Base: models.Base{
-				CreatedAt: now,
-				UpdatedAt: now,
-			},
+
 			Name:        "Thịt Ba Chỉ Heo",
 			Description: "Thịt ba chỉ heo tươi VietGAP",
 			ProductType: "Cơm",
@@ -525,10 +383,7 @@ func productSeeds() []ProductSeed {
 			Status:      "active",
 		},
 		{
-			Base: models.Base{
-				CreatedAt: now,
-				UpdatedAt: now,
-			},
+
 			Name:        "Thịt Nạc Vai Heo",
 			Description: "Thịt nạc vai heo tươi",
 			ProductType: "Cơm",
@@ -536,10 +391,7 @@ func productSeeds() []ProductSeed {
 			Status:      "active",
 		},
 		{
-			Base: models.Base{
-				CreatedAt: now,
-				UpdatedAt: now,
-			},
+
 			Name:        "Thịt Gà Ta",
 			Description: "Thịt gà ta sạch",
 			ProductType: "Cơm",
@@ -547,10 +399,7 @@ func productSeeds() []ProductSeed {
 			Status:      "active",
 		},
 		{
-			Base: models.Base{
-				CreatedAt: now,
-				UpdatedAt: now,
-			},
+
 			Name:        "Cá Basa Phi Lê",
 			Description: "Cá basa phi lê đông lạnh",
 			ProductType: "Cơm",
@@ -558,10 +407,7 @@ func productSeeds() []ProductSeed {
 			Status:      "active",
 		},
 		{
-			Base: models.Base{
-				CreatedAt: now,
-				UpdatedAt: now,
-			},
+
 			Name:        "Cá Thu Tươi",
 			Description: "Cá thu biển tươi ngon",
 			ProductType: "Cơm",
@@ -569,10 +415,7 @@ func productSeeds() []ProductSeed {
 			Status:      "active",
 		},
 		{
-			Base: models.Base{
-				CreatedAt: now,
-				UpdatedAt: now,
-			},
+
 			Name:        "Mực Ống Đông Lạnh",
 			Description: "Mực ống sạch đông lạnh",
 			ProductType: "Cơm",
@@ -580,10 +423,7 @@ func productSeeds() []ProductSeed {
 			Status:      "active",
 		},
 		{
-			Base: models.Base{
-				CreatedAt: now,
-				UpdatedAt: now,
-			},
+
 			Name:        "Rau Muống",
 			Description: "Rau muống tươi",
 			ProductType: "Ăn nhẹ",
@@ -591,10 +431,7 @@ func productSeeds() []ProductSeed {
 			Status:      "active",
 		},
 		{
-			Base: models.Base{
-				CreatedAt: now,
-				UpdatedAt: now,
-			},
+
 			Name:        "Cải Thảo",
 			Description: "Cải thảo Đà Lạt",
 			ProductType: "Ăn nhẹ",
@@ -602,10 +439,7 @@ func productSeeds() []ProductSeed {
 			Status:      "active",
 		},
 		{
-			Base: models.Base{
-				CreatedAt: now,
-				UpdatedAt: now,
-			},
+
 			Name:        "Cà Chua",
 			Description: "Cà chua chín đỏ",
 			ProductType: "Ăn nhẹ",
@@ -613,10 +447,7 @@ func productSeeds() []ProductSeed {
 			Status:      "active",
 		},
 		{
-			Base: models.Base{
-				CreatedAt: now,
-				UpdatedAt: now,
-			},
+
 			Name:        "Hành Tây",
 			Description: "Hành tây tím Đà Lạt",
 			ProductType: "Ăn nhẹ",
@@ -624,10 +455,7 @@ func productSeeds() []ProductSeed {
 			Status:      "active",
 		},
 		{
-			Base: models.Base{
-				CreatedAt: now,
-				UpdatedAt: now,
-			},
+
 			Name:        "Tỏi",
 			Description: "Tỏi tươi Lý Sơn",
 			ProductType: "Ăn nhẹ",
@@ -635,10 +463,7 @@ func productSeeds() []ProductSeed {
 			Status:      "active",
 		},
 		{
-			Base: models.Base{
-				CreatedAt: now,
-				UpdatedAt: now,
-			},
+
 			Name:        "Ớt",
 			Description: "Ớt hiểm các loại",
 			ProductType: "Ăn nhẹ",
@@ -646,10 +471,7 @@ func productSeeds() []ProductSeed {
 			Status:      "active",
 		},
 		{
-			Base: models.Base{
-				CreatedAt: now,
-				UpdatedAt: now,
-			},
+
 			Name:        "Khoai Tây",
 			Description: "Khoai tây Đà Lạt",
 			ProductType: "Ăn nhẹ",
@@ -657,10 +479,7 @@ func productSeeds() []ProductSeed {
 			Status:      "active",
 		},
 		{
-			Base: models.Base{
-				CreatedAt: now,
-				UpdatedAt: now,
-			},
+
 			Name:        "Su Su",
 			Description: "Su su tươi Đà Lạt",
 			ProductType: "Ăn nhẹ",
@@ -668,10 +487,7 @@ func productSeeds() []ProductSeed {
 			Status:      "active",
 		},
 		{
-			Base: models.Base{
-				CreatedAt: now,
-				UpdatedAt: now,
-			},
+
 			Name:        "Cà Rốt",
 			Description: "Cà rốt Đà Lạt",
 			ProductType: "Ăn nhẹ",
@@ -679,10 +495,7 @@ func productSeeds() []ProductSeed {
 			Status:      "active",
 		},
 		{
-			Base: models.Base{
-				CreatedAt: now,
-				UpdatedAt: now,
-			},
+
 			Name:        "Bí Đỏ",
 			Description: "Bí đỏ ngọt tự nhiên",
 			ProductType: "Ăn nhẹ",
@@ -690,10 +503,7 @@ func productSeeds() []ProductSeed {
 			Status:      "active",
 		},
 		{
-			Base: models.Base{
-				CreatedAt: now,
-				UpdatedAt: now,
-			},
+
 			Name:        "Chuối Già",
 			Description: "Chuối già chín tự nhiên",
 			ProductType: "Ăn nhẹ",
@@ -701,10 +511,7 @@ func productSeeds() []ProductSeed {
 			Status:      "active",
 		},
 		{
-			Base: models.Base{
-				CreatedAt: now,
-				UpdatedAt: now,
-			},
+
 			Name:        "Cam Sành",
 			Description: "Cam sành Hà Giang",
 			ProductType: "Ăn nhẹ",
@@ -712,10 +519,7 @@ func productSeeds() []ProductSeed {
 			Status:      "active",
 		},
 		{
-			Base: models.Base{
-				CreatedAt: now,
-				UpdatedAt: now,
-			},
+
 			Name:        "Xoài Cát Hòa Lộc",
 			Description: "Xoài cát Hòa Lộc Tiền Giang",
 			ProductType: "Ăn nhẹ",
@@ -723,10 +527,7 @@ func productSeeds() []ProductSeed {
 			Status:      "active",
 		},
 		{
-			Base: models.Base{
-				CreatedAt: now,
-				UpdatedAt: now,
-			},
+
 			Name:        "Thanh Long Ruột Đỏ",
 			Description: "Thanh long ruột đỏ Bình Thuận",
 			ProductType: "Ăn nhẹ",
@@ -734,10 +535,7 @@ func productSeeds() []ProductSeed {
 			Status:      "active",
 		},
 		{
-			Base: models.Base{
-				CreatedAt: now,
-				UpdatedAt: now,
-			},
+
 			Name:        "Sầu Riêng Monthong",
 			Description: "Sầu riêng Monthong chuẩn xuất khẩu",
 			ProductType: "Ăn nhẹ",
@@ -745,10 +543,7 @@ func productSeeds() []ProductSeed {
 			Status:      "active",
 		},
 		{
-			Base: models.Base{
-				CreatedAt: now,
-				UpdatedAt: now,
-			},
+
 			Name:        "Măng Cụt",
 			Description: "Măng cụt tươi miền Tây",
 			ProductType: "Ăn nhẹ",
@@ -756,10 +551,7 @@ func productSeeds() []ProductSeed {
 			Status:      "active",
 		},
 		{
-			Base: models.Base{
-				CreatedAt: now,
-				UpdatedAt: now,
-			},
+
 			Name:        "Chôm Chôm",
 			Description: "Chôm chôm tươi ngọt",
 			ProductType: "Ăn nhẹ",
@@ -767,10 +559,7 @@ func productSeeds() []ProductSeed {
 			Status:      "active",
 		},
 		{
-			Base: models.Base{
-				CreatedAt: now,
-				UpdatedAt: now,
-			},
+
 			Name:        "Dưa Hấu Không Hạt",
 			Description: "Dưa hấu không hạt ngọt lịm",
 			ProductType: "Ăn nhẹ",
@@ -778,10 +567,7 @@ func productSeeds() []ProductSeed {
 			Status:      "active",
 		},
 		{
-			Base: models.Base{
-				CreatedAt: now,
-				UpdatedAt: now,
-			},
+
 			Name:        "Bơ Booth",
 			Description: "Bơ Booth Đắk Lắk",
 			ProductType: "Ăn nhẹ",
@@ -789,10 +575,7 @@ func productSeeds() []ProductSeed {
 			Status:      "active",
 		},
 		{
-			Base: models.Base{
-				CreatedAt: now,
-				UpdatedAt: now,
-			},
+
 			Name:        "Dừa Xiêm",
 			Description: "Dừa xiêm tươi mát",
 			ProductType: "Ăn nhẹ",
@@ -800,10 +583,7 @@ func productSeeds() []ProductSeed {
 			Status:      "active",
 		},
 		{
-			Base: models.Base{
-				CreatedAt: now,
-				UpdatedAt: now,
-			},
+
 			Name:        "Bia Sài Gòn Xanh",
 			Description: "Bia Sài Gòn xanh lager chai 330ml",
 			ProductType: "Nước",
@@ -811,10 +591,7 @@ func productSeeds() []ProductSeed {
 			Status:      "active",
 		},
 		{
-			Base: models.Base{
-				CreatedAt: now,
-				UpdatedAt: now,
-			},
+
 			Name:        "Bia Tiger",
 			Description: "Bia Tiger lon 330ml",
 			ProductType: "Nước",
@@ -822,10 +599,7 @@ func productSeeds() []ProductSeed {
 			Status:      "active",
 		},
 		{
-			Base: models.Base{
-				CreatedAt: now,
-				UpdatedAt: now,
-			},
+
 			Name:        "Nước Suối Lavie",
 			Description: "Nước khoáng thiên nhiên Lavie 500ml",
 			ProductType: "Nước",
@@ -833,10 +607,7 @@ func productSeeds() []ProductSeed {
 			Status:      "active",
 		},
 		{
-			Base: models.Base{
-				CreatedAt: now,
-				UpdatedAt: now,
-			},
+
 			Name:        "Nước Ngọt Coca Cola",
 			Description: "Coca Cola lon 330ml",
 			ProductType: "Nước",
@@ -844,10 +615,7 @@ func productSeeds() []ProductSeed {
 			Status:      "active",
 		},
 		{
-			Base: models.Base{
-				CreatedAt: now,
-				UpdatedAt: now,
-			},
+
 			Name:        "Nước Ngọt Pepsi",
 			Description: "Pepsi Cola lon 330ml",
 			ProductType: "Nước",
@@ -855,10 +623,7 @@ func productSeeds() []ProductSeed {
 			Status:      "active",
 		},
 		{
-			Base: models.Base{
-				CreatedAt: now,
-				UpdatedAt: now,
-			},
+
 			Name:        "Trà Xanh Không Độ",
 			Description: "Trà xanh không độ C2 chai 455ml",
 			ProductType: "Nước",
@@ -866,10 +631,7 @@ func productSeeds() []ProductSeed {
 			Status:      "active",
 		},
 		{
-			Base: models.Base{
-				CreatedAt: now,
-				UpdatedAt: now,
-			},
+
 			Name:        "Nước Cam Ép Minute Maid",
 			Description: "Nước cam ép 100% chai 1L",
 			ProductType: "Nước",
@@ -877,10 +639,7 @@ func productSeeds() []ProductSeed {
 			Status:      "active",
 		},
 		{
-			Base: models.Base{
-				CreatedAt: now,
-				UpdatedAt: now,
-			},
+
 			Name:        "Sữa Tươi TH True Milk",
 			Description: "Sữa tươi tiệt trùng hộp 1L",
 			ProductType: "Ăn nhẹ",
@@ -888,10 +647,7 @@ func productSeeds() []ProductSeed {
 			Status:      "active",
 		},
 		{
-			Base: models.Base{
-				CreatedAt: now,
-				UpdatedAt: now,
-			},
+
 			Name:        "Yaourt Uống Dutch Lady",
 			Description: "Yaourt uống lốc 4 chai",
 			ProductType: "Ăn nhẹ",
@@ -899,10 +655,7 @@ func productSeeds() []ProductSeed {
 			Status:      "active",
 		},
 		{
-			Base: models.Base{
-				CreatedAt: now,
-				UpdatedAt: now,
-			},
+
 			Name:        "Bánh Mì Sandwich",
 			Description: "Bánh mì sandwich cắt lát",
 			ProductType: "Ăn nhẹ",
@@ -910,10 +663,7 @@ func productSeeds() []ProductSeed {
 			Status:      "active",
 		},
 		{
-			Base: models.Base{
-				CreatedAt: now,
-				UpdatedAt: now,
-			},
+
 			Name:        "Bánh Bông Lan Trứng Muối",
 			Description: "Bánh bông lan trứng muối thơm ngon",
 			ProductType: "Ăn nhẹ",
@@ -921,10 +671,7 @@ func productSeeds() []ProductSeed {
 			Status:      "active",
 		},
 		{
-			Base: models.Base{
-				CreatedAt: now,
-				UpdatedAt: now,
-			},
+
 			Name:        "Bánh Mì Que Việt Nam",
 			Description: "Bánh mì que giòn tan",
 			ProductType: "Ăn nhẹ",
@@ -932,10 +679,7 @@ func productSeeds() []ProductSeed {
 			Status:      "active",
 		},
 		{
-			Base: models.Base{
-				CreatedAt: now,
-				UpdatedAt: now,
-			},
+
 			Name:        "Bánh Croissant Bơ",
 			Description: "Bánh croissant bơ thơm ngậy",
 			ProductType: "Ăn nhẹ",
@@ -943,10 +687,7 @@ func productSeeds() []ProductSeed {
 			Status:      "active",
 		},
 		{
-			Base: models.Base{
-				CreatedAt: now,
-				UpdatedAt: now,
-			},
+
 			Name:        "Bánh Pía Tân Huê Viên",
 			Description: "Bánh pía đậu xanh sầu riêng",
 			ProductType: "Ăn nhẹ",
@@ -954,10 +695,7 @@ func productSeeds() []ProductSeed {
 			Status:      "active",
 		},
 		{
-			Base: models.Base{
-				CreatedAt: now,
-				UpdatedAt: now,
-			},
+
 			Name:        "Bánh Trung Thu Kinh Đô",
 			Description: "Bánh trung thu thập cẩm cao cấp",
 			ProductType: "Ăn nhẹ",
@@ -965,10 +703,7 @@ func productSeeds() []ProductSeed {
 			Status:      "active",
 		},
 		{
-			Base: models.Base{
-				CreatedAt: now,
-				UpdatedAt: now,
-			},
+
 			Name:        "Nem Chua Thanh Hóa",
 			Description: "Nem chua thanh hóa truyền thống",
 			ProductType: "Ăn nhẹ",
@@ -976,10 +711,7 @@ func productSeeds() []ProductSeed {
 			Status:      "active",
 		},
 		{
-			Base: models.Base{
-				CreatedAt: now,
-				UpdatedAt: now,
-			},
+
 			Name:        "Kẹo Dừa Bến Tre",
 			Description: "Kẹo dừa thơm ngậy đặc sản",
 			ProductType: "Ăn nhẹ",
@@ -987,10 +719,7 @@ func productSeeds() []ProductSeed {
 			Status:      "active",
 		},
 		{
-			Base: models.Base{
-				CreatedAt: now,
-				UpdatedAt: now,
-			},
+
 			Name:        "Mứt Tết Hỗn Hợp",
 			Description: "Mứt tết gừng, bí, dừa, cà rốt",
 			ProductType: "Ăn nhẹ",
@@ -998,10 +727,7 @@ func productSeeds() []ProductSeed {
 			Status:      "active",
 		},
 		{
-			Base: models.Base{
-				CreatedAt: now,
-				UpdatedAt: now,
-			},
+
 			Name:        "Snack Oishi Vị Tôm",
 			Description: "Snack khoai tây Oishi vị tôm",
 			ProductType: "Ăn nhẹ",
@@ -1009,10 +735,7 @@ func productSeeds() []ProductSeed {
 			Status:      "active",
 		},
 		{
-			Base: models.Base{
-				CreatedAt: now,
-				UpdatedAt: now,
-			},
+
 			Name:        "Hạt Điều Rang Muối",
 			Description: "Hạt điều rang muối Bình Phước",
 			ProductType: "Ăn nhẹ",
@@ -1020,10 +743,7 @@ func productSeeds() []ProductSeed {
 			Status:      "active",
 		},
 		{
-			Base: models.Base{
-				CreatedAt: now,
-				UpdatedAt: now,
-			},
+
 			Name:        "Mực Tẩm Gia Vị",
 			Description: "Mực tẩm gia vị cay ngọt",
 			ProductType: "Ăn nhẹ",
@@ -1031,10 +751,7 @@ func productSeeds() []ProductSeed {
 			Status:      "active",
 		},
 		{
-			Base: models.Base{
-				CreatedAt: now,
-				UpdatedAt: now,
-			},
+
 			Name:        "Xúc Xích Đức Việt",
 			Description: "Xúc xích heo đặc biệt",
 			ProductType: "Cơm",
@@ -1042,10 +759,7 @@ func productSeeds() []ProductSeed {
 			Status:      "active",
 		},
 		{
-			Base: models.Base{
-				CreatedAt: now,
-				UpdatedAt: now,
-			},
+
 			Name:        "Giò Lụa",
 			Description: "Giò lụa thượng hạng",
 			ProductType: "Cơm",
@@ -1053,10 +767,7 @@ func productSeeds() []ProductSeed {
 			Status:      "active",
 		},
 		{
-			Base: models.Base{
-				CreatedAt: now,
-				UpdatedAt: now,
-			},
+
 			Name:        "Giò Thủ",
 			Description: "Giò thủ truyền thống",
 			ProductType: "Cơm",
@@ -1064,10 +775,7 @@ func productSeeds() []ProductSeed {
 			Status:      "active",
 		},
 		{
-			Base: models.Base{
-				CreatedAt: now,
-				UpdatedAt: now,
-			},
+
 			Name:        "Chả Quế",
 			Description: "Chả quế thơm ngon",
 			ProductType: "Cơm",
@@ -1075,10 +783,7 @@ func productSeeds() []ProductSeed {
 			Status:      "active",
 		},
 		{
-			Base: models.Base{
-				CreatedAt: now,
-				UpdatedAt: now,
-			},
+
 			Name:        "Pate Gan Heo",
 			Description: "Pate gan heo cao cấp",
 			ProductType: "Cơm",
@@ -1086,10 +791,7 @@ func productSeeds() []ProductSeed {
 			Status:      "active",
 		},
 		{
-			Base: models.Base{
-				CreatedAt: now,
-				UpdatedAt: now,
-			},
+
 			Name:        "Mật Ong Rừng U Minh",
 			Description: "Mật ong nguyên chất rừng U Minh",
 			ProductType: "Ăn nhẹ",
@@ -1097,10 +799,7 @@ func productSeeds() []ProductSeed {
 			Status:      "active",
 		},
 		{
-			Base: models.Base{
-				CreatedAt: now,
-				UpdatedAt: now,
-			},
+
 			Name:        "Bột Canh Heo Quay",
 			Description: "Bột canh heo quay đậm đà",
 			ProductType: "Ăn nhẹ",
@@ -1108,10 +807,7 @@ func productSeeds() []ProductSeed {
 			Status:      "active",
 		},
 		{
-			Base: models.Base{
-				CreatedAt: now,
-				UpdatedAt: now,
-			},
+
 			Name:        "Hạt Tiêu Phú Quốc",
 			Description: "Hạt tiêu đen nguyên hạt Phú Quốc",
 			ProductType: "Ăn nhẹ",
@@ -1119,10 +815,7 @@ func productSeeds() []ProductSeed {
 			Status:      "active",
 		},
 		{
-			Base: models.Base{
-				CreatedAt: now,
-				UpdatedAt: now,
-			},
+
 			Name:        "Bột Nghệ Nguyên Chất",
 			Description: "Bột nghệ nguyên chất không tẩm",
 			ProductType: "Ăn nhẹ",
@@ -1130,10 +823,7 @@ func productSeeds() []ProductSeed {
 			Status:      "active",
 		},
 		{
-			Base: models.Base{
-				CreatedAt: now,
-				UpdatedAt: now,
-			},
+
 			Name:        "Sả Tươi",
 			Description: "Sả tươi thơm mạnh",
 			ProductType: "Ăn nhẹ",
@@ -1141,10 +831,7 @@ func productSeeds() []ProductSeed {
 			Status:      "active",
 		},
 		{
-			Base: models.Base{
-				CreatedAt: now,
-				UpdatedAt: now,
-			},
+
 			Name:        "Gừng Tươi",
 			Description: "Gừng tươi cay nồng",
 			ProductType: "Ăn nhẹ",
@@ -1152,10 +839,7 @@ func productSeeds() []ProductSeed {
 			Status:      "active",
 		},
 		{
-			Base: models.Base{
-				CreatedAt: now,
-				UpdatedAt: now,
-			},
+
 			Name:        "Nước Dừa Đóng Hộp",
 			Description: "Nước dừa tươi đóng hộp Cocoxim",
 			ProductType: "Nước",
@@ -1163,10 +847,7 @@ func productSeeds() []ProductSeed {
 			Status:      "active",
 		},
 		{
-			Base: models.Base{
-				CreatedAt: now,
-				UpdatedAt: now,
-			},
+
 			Name:        "Nước Mía Đóng Chai",
 			Description: "Nước mía tươi đóng chai",
 			ProductType: "Nước",
@@ -1174,10 +855,7 @@ func productSeeds() []ProductSeed {
 			Status:      "active",
 		},
 		{
-			Base: models.Base{
-				CreatedAt: now,
-				UpdatedAt: now,
-			},
+
 			Name:        "Trà Atiso Đà Lạt",
 			Description: "Trà atiso giải nhiệt thanh lọc",
 			ProductType: "Nước",
@@ -1185,10 +863,7 @@ func productSeeds() []ProductSeed {
 			Status:      "active",
 		},
 		{
-			Base: models.Base{
-				CreatedAt: now,
-				UpdatedAt: now,
-			},
+
 			Name:        "Trà Sữa Lipton",
 			Description: "Trá sữa lon 250ml",
 			ProductType: "Nước",
@@ -1196,10 +871,7 @@ func productSeeds() []ProductSeed {
 			Status:      "active",
 		},
 		{
-			Base: models.Base{
-				CreatedAt: now,
-				UpdatedAt: now,
-			},
+
 			Name:        "Mì Chính Ajinomoto",
 			Description: "Mì chính tinh khiết 400g",
 			ProductType: "Ăn nhẹ",
@@ -1207,10 +879,7 @@ func productSeeds() []ProductSeed {
 			Status:      "active",
 		},
 		{
-			Base: models.Base{
-				CreatedAt: now,
-				UpdatedAt: now,
-			},
+
 			Name:        "Giấm Gạo Nhật Bản",
 			Description: "Giấm gạo nấu ăn Nhật Bản",
 			ProductType: "Ăn nhẹ",
@@ -1218,10 +887,7 @@ func productSeeds() []ProductSeed {
 			Status:      "active",
 		},
 		{
-			Base: models.Base{
-				CreatedAt: now,
-				UpdatedAt: now,
-			},
+
 			Name:        "Dầu Hào Lee Kum Kee",
 			Description: "Dầu hào đặc biệt Lee Kum Kee",
 			ProductType: "Ăn nhẹ",
@@ -1229,10 +895,7 @@ func productSeeds() []ProductSeed {
 			Status:      "active",
 		},
 		{
-			Base: models.Base{
-				CreatedAt: now,
-				UpdatedAt: now,
-			},
+
 			Name:        "Bột Chiên Giòn",
 			Description: "Bột chiên xù giòn lâu",
 			ProductType: "Ăn nhẹ",
@@ -1240,10 +903,7 @@ func productSeeds() []ProductSeed {
 			Status:      "active",
 		},
 		{
-			Base: models.Base{
-				CreatedAt: now,
-				UpdatedAt: now,
-			},
+
 			Name:        "Bột Mì Đa Dụng",
 			Description: "Bột mì đa dụng số 8",
 			ProductType: "Ăn nhẹ",
@@ -1251,10 +911,7 @@ func productSeeds() []ProductSeed {
 			Status:      "active",
 		},
 		{
-			Base: models.Base{
-				CreatedAt: now,
-				UpdatedAt: now,
-			},
+
 			Name:        "Bột Năng",
 			Description: "Bột năng tinh khiết",
 			ProductType: "Ăn nhẹ",
@@ -1262,10 +919,7 @@ func productSeeds() []ProductSeed {
 			Status:      "active",
 		},
 		{
-			Base: models.Base{
-				CreatedAt: now,
-				UpdatedAt: now,
-			},
+
 			Name:        "Bột Gạo",
 			Description: "Bột gạo làm bánh",
 			ProductType: "Ăn nhẹ",
@@ -1273,10 +927,7 @@ func productSeeds() []ProductSeed {
 			Status:      "active",
 		},
 		{
-			Base: models.Base{
-				CreatedAt: now,
-				UpdatedAt: now,
-			},
+
 			Name:        "Bột Nở",
 			Description: "Bột nở làm bánh",
 			ProductType: "Ăn nhẹ",
@@ -1284,10 +935,7 @@ func productSeeds() []ProductSeed {
 			Status:      "active",
 		},
 		{
-			Base: models.Base{
-				CreatedAt: now,
-				UpdatedAt: now,
-			},
+
 			Name:        "Men Nở Bánh",
 			Description: "Men nở bánh mì instant",
 			ProductType: "Ăn nhẹ",
@@ -1295,10 +943,7 @@ func productSeeds() []ProductSeed {
 			Status:      "active",
 		},
 		{
-			Base: models.Base{
-				CreatedAt: now,
-				UpdatedAt: now,
-			},
+
 			Name:        "Bơ Thực Vật",
 			Description: "Bơ thực vật làm bánh",
 			ProductType: "Ăn nhẹ",
@@ -1306,10 +951,7 @@ func productSeeds() []ProductSeed {
 			Status:      "active",
 		},
 		{
-			Base: models.Base{
-				CreatedAt: now,
-				UpdatedAt: now,
-			},
+
 			Name:        "Cream Cheese Philadelphia",
 			Description: "Phô mai kem làm bánh",
 			ProductType: "Ăn nhẹ",
@@ -1317,10 +959,7 @@ func productSeeds() []ProductSeed {
 			Status:      "active",
 		},
 		{
-			Base: models.Base{
-				CreatedAt: now,
-				UpdatedAt: now,
-			},
+
 			Name:        "Phô Mai Lát Cheddar",
 			Description: "Phô mai lát Cheddar hộp 200g",
 			ProductType: "Ăn nhẹ",
@@ -1328,10 +967,7 @@ func productSeeds() []ProductSeed {
 			Status:      "active",
 		},
 		{
-			Base: models.Base{
-				CreatedAt: now,
-				UpdatedAt: now,
-			},
+
 			Name:        "Dừa Nạo Khô",
 			Description: "Dừa nạo sợi khô",
 			ProductType: "Ăn nhẹ",
@@ -1339,10 +975,7 @@ func productSeeds() []ProductSeed {
 			Status:      "active",
 		},
 		{
-			Base: models.Base{
-				CreatedAt: now,
-				UpdatedAt: now,
-			},
+
 			Name:        "Đậu Phộng Rang",
 			Description: "Đậu phộng rang giòn",
 			ProductType: "Ăn nhẹ",
@@ -1350,10 +983,7 @@ func productSeeds() []ProductSeed {
 			Status:      "active",
 		},
 		{
-			Base: models.Base{
-				CreatedAt: now,
-				UpdatedAt: now,
-			},
+
 			Name:        "Mè Rang",
 			Description: "Mè rang trắng thơm",
 			ProductType: "Ăn nhẹ",
@@ -1361,10 +991,7 @@ func productSeeds() []ProductSeed {
 			Status:      "active",
 		},
 		{
-			Base: models.Base{
-				CreatedAt: now,
-				UpdatedAt: now,
-			},
+
 			Name:        "Đậu Xanh Hạt",
 			Description: "Đậu xanh hạt nguyên vỏ",
 			ProductType: "Ăn nhẹ",
@@ -1372,10 +999,7 @@ func productSeeds() []ProductSeed {
 			Status:      "active",
 		},
 		{
-			Base: models.Base{
-				CreatedAt: now,
-				UpdatedAt: now,
-			},
+
 			Name:        "Đậu Đen",
 			Description: "Đậu đen hạt nguyên chất",
 			ProductType: "Ăn nhẹ",
@@ -1383,10 +1007,7 @@ func productSeeds() []ProductSeed {
 			Status:      "active",
 		},
 		{
-			Base: models.Base{
-				CreatedAt: now,
-				UpdatedAt: now,
-			},
+
 			Name:        "Đậu Đỏ",
 			Description: "Đậu đỏ hạt làm chè",
 			ProductType: "Ăn nhẹ",
@@ -1394,10 +1015,7 @@ func productSeeds() []ProductSeed {
 			Status:      "active",
 		},
 		{
-			Base: models.Base{
-				CreatedAt: now,
-				UpdatedAt: now,
-			},
+
 			Name:        "Nấm Hương Khô",
 			Description: "Nấm hương khô cao cấp",
 			ProductType: "Ăn nhẹ",
@@ -1405,10 +1023,7 @@ func productSeeds() []ProductSeed {
 			Status:      "active",
 		},
 		{
-			Base: models.Base{
-				CreatedAt: now,
-				UpdatedAt: now,
-			},
+
 			Name:        "Miến Dong",
 			Description: "Miến dong miền Bắc",
 			ProductType: "Cơm",
@@ -1416,10 +1031,7 @@ func productSeeds() []ProductSeed {
 			Status:      "active",
 		},
 		{
-			Base: models.Base{
-				CreatedAt: now,
-				UpdatedAt: now,
-			},
+
 			Name:        "Hủ Tiếu Khô Nam Vang",
 			Description: "Hủ tiếu khô Nam Vang đặc biệt",
 			ProductType: "Cơm",
@@ -1427,10 +1039,7 @@ func productSeeds() []ProductSeed {
 			Status:      "active",
 		},
 		{
-			Base: models.Base{
-				CreatedAt: now,
-				UpdatedAt: now,
-			},
+
 			Name:        "Bánh Đa Nem",
 			Description: "Bánh đa nem cuốn loại 1",
 			ProductType: "Ăn nhẹ",
@@ -1481,35 +1090,25 @@ type InventoryData struct {
 
 // Inventory contains all test inventory data
 func Inventory(productIDs []uint) []models.Inventory {
-	now := time.Now()
 
 	// Create inventory locations
 	inventories := []models.Inventory{
 		{
-			Base: models.Base{
-				CreatedAt: now,
-				UpdatedAt: now,
-			},
+
 			Name:        "Main Warehouse A",
 			Description: "Primary storage facility for electronics and office supplies",
 			Location:    "123 Industrial Blvd, San Francisco, CA 94107",
 			Status:      models.InventoryStatusActive,
 		},
 		{
-			Base: models.Base{
-				CreatedAt: now,
-				UpdatedAt: now,
-			},
+
 			Name:        "Secondary Warehouse B",
 			Description: "Secondary storage facility for bulk items",
 			Location:    "456 Storage Way, Oakland, CA 94607",
 			Status:      models.InventoryStatusActive,
 		},
 		{
-			Base: models.Base{
-				CreatedAt: now,
-				UpdatedAt: now,
-			},
+
 			Name:        "Distribution Center C",
 			Description: "Distribution center for fast-moving items",
 			Location:    "789 Logistics Ave, San Jose, CA 95110",
@@ -1522,63 +1121,38 @@ func Inventory(productIDs []uint) []models.Inventory {
 
 // Menus contains all test menu data
 func Menus() []models.Menu {
-	now := time.Now()
 
 	return []models.Menu{
 		{
-			Base: models.Base{
-				CreatedAt: now,
-				UpdatedAt: now,
-			},
+
 			Name: "Thực Đơn Chính",
 		},
 		{
-			Base: models.Base{
-				CreatedAt: now,
-				UpdatedAt: now,
-			},
+
 			Name: "Thực Đơn Sáng",
 		},
 		{
-			Base: models.Base{
-				CreatedAt: now,
-				UpdatedAt: now,
-			},
+
 			Name: "Thực Đơn Trưa",
 		},
 		{
-			Base: models.Base{
-				CreatedAt: now,
-				UpdatedAt: now,
-			},
+
 			Name: "Thực Đơn Tối",
 		},
 		{
-			Base: models.Base{
-				CreatedAt: now,
-				UpdatedAt: now,
-			},
+
 			Name: "Thực Đơn Tráng Miệng",
 		},
 		{
-			Base: models.Base{
-				CreatedAt: now,
-				UpdatedAt: now,
-			},
+
 			Name: "Thực Đơn Đồ Uống",
 		},
 		{
-			Base: models.Base{
-				CreatedAt: now,
-				UpdatedAt: now,
-			},
+
 			Name: "Thực Đơn Đặc Biệt",
 		},
 		{
-			Base: models.Base{
-				CreatedAt: now,
-				UpdatedAt: now,
-			},
+
 			Name: "Thực Đơn Buffet",
 		},
 	}
@@ -1586,245 +1160,142 @@ func Menus() []models.Menu {
 
 // MenuItems contains all test menu item data
 func MenuItems() []models.MenuItem {
-	now := time.Now()
 
 	return []models.MenuItem{
 		{
-			Base: models.Base{
-				CreatedAt: now,
-				UpdatedAt: now,
-			},
+
 			Name: "Phở Bò",
 		},
 		{
-			Base: models.Base{
-				CreatedAt: now,
-				UpdatedAt: now,
-			},
+
 			Name: "Phở Gà",
 		},
 		{
-			Base: models.Base{
-				CreatedAt: now,
-				UpdatedAt: now,
-			},
+
 			Name: "Bún Bò Huế",
 		},
 		{
-			Base: models.Base{
-				CreatedAt: now,
-				UpdatedAt: now,
-			},
+
 			Name: "Bún Chả",
 		},
 		{
-			Base: models.Base{
-				CreatedAt: now,
-				UpdatedAt: now,
-			},
+
 			Name: "Bánh Mì Thịt Nướng",
 		},
 		{
-			Base: models.Base{
-				CreatedAt: now,
-				UpdatedAt: now,
-			},
+
 			Name: "Bánh Mì Pate",
 		},
 		{
-			Base: models.Base{
-				CreatedAt: now,
-				UpdatedAt: now,
-			},
+
 			Name: "Cơm Tấm Sườn Bì Chả",
 		},
 		{
-			Base: models.Base{
-				CreatedAt: now,
-				UpdatedAt: now,
-			},
+
 			Name: "Cơm Gà",
 		},
 		{
-			Base: models.Base{
-				CreatedAt: now,
-				UpdatedAt: now,
-			},
+
 			Name: "Cơm Tôm Rang",
 		},
 		{
-			Base: models.Base{
-				CreatedAt: now,
-				UpdatedAt: now,
-			},
+
 			Name: "Bánh Xèo",
 		},
 		{
-			Base: models.Base{
-				CreatedAt: now,
-				UpdatedAt: now,
-			},
+
 			Name: "Gỏi Cuốn",
 		},
 		{
-			Base: models.Base{
-				CreatedAt: now,
-				UpdatedAt: now,
-			},
+
 			Name: "Chả Giò",
 		},
 		{
-			Base: models.Base{
-				CreatedAt: now,
-				UpdatedAt: now,
-			},
+
 			Name: "Nem Nướng",
 		},
 		{
-			Base: models.Base{
-				CreatedAt: now,
-				UpdatedAt: now,
-			},
+
 			Name: "Bánh Cuốn",
 		},
 		{
-			Base: models.Base{
-				CreatedAt: now,
-				UpdatedAt: now,
-			},
+
 			Name: "Cháo Lòng",
 		},
 		{
-			Base: models.Base{
-				CreatedAt: now,
-				UpdatedAt: now,
-			},
+
 			Name: "Hủ Tiếu Nam Vang",
 		},
 		{
-			Base: models.Base{
-				CreatedAt: now,
-				UpdatedAt: now,
-			},
+
 			Name: "Mì Quảng",
 		},
 		{
-			Base: models.Base{
-				CreatedAt: now,
-				UpdatedAt: now,
-			},
+
 			Name: "Bún Riêu",
 		},
 		{
-			Base: models.Base{
-				CreatedAt: now,
-				UpdatedAt: now,
-			},
+
 			Name: "Bún Mắm",
 		},
 		{
-			Base: models.Base{
-				CreatedAt: now,
-				UpdatedAt: now,
-			},
+
 			Name: "Cà Phê Đen",
 		},
 		{
-			Base: models.Base{
-				CreatedAt: now,
-				UpdatedAt: now,
-			},
+
 			Name: "Cà Phê Sữa",
 		},
 		{
-			Base: models.Base{
-				CreatedAt: now,
-				UpdatedAt: now,
-			},
+
 			Name: "Trà Đá",
 		},
 		{
-			Base: models.Base{
-				CreatedAt: now,
-				UpdatedAt: now,
-			},
+
 			Name: "Nước Mía",
 		},
 		{
-			Base: models.Base{
-				CreatedAt: now,
-				UpdatedAt: now,
-			},
+
 			Name: "Sinh Tố",
 		},
 		{
-			Base: models.Base{
-				CreatedAt: now,
-				UpdatedAt: now,
-			},
+
 			Name: "Chè Đậu Xanh",
 		},
 		{
-			Base: models.Base{
-				CreatedAt: now,
-				UpdatedAt: now,
-			},
+
 			Name: "Chè Ba Màu",
 		},
 		{
-			Base: models.Base{
-				CreatedAt: now,
-				UpdatedAt: now,
-			},
+
 			Name: "Bánh Flan",
 		},
 		{
-			Base: models.Base{
-				CreatedAt: now,
-				UpdatedAt: now,
-			},
+
 			Name: "Kem Dừa",
 		},
 		{
-			Base: models.Base{
-				CreatedAt: now,
-				UpdatedAt: now,
-			},
+
 			Name: "Bánh Mì Chả Cá",
 		},
 		{
-			Base: models.Base{
-				CreatedAt: now,
-				UpdatedAt: now,
-			},
+
 			Name: "Bánh Mì Xíu Mại",
 		},
 		{
-			Base: models.Base{
-				CreatedAt: now,
-				UpdatedAt: now,
-			},
+
 			Name: "Cơm Cháy",
 		},
 		{
-			Base: models.Base{
-				CreatedAt: now,
-				UpdatedAt: now,
-			},
+
 			Name: "Canh Chua Cá",
 		},
 		{
-			Base: models.Base{
-				CreatedAt: now,
-				UpdatedAt: now,
-			},
+
 			Name: "Lẩu Thái",
 		},
 		{
-			Base: models.Base{
-				CreatedAt: now,
-				UpdatedAt: now,
-			},
+
 			Name: "Lẩu Hải Sản",
 		},
 	}
@@ -2014,6 +1485,122 @@ func createProductSupplierRelationships(tx *gorm.DB, productIDs, supplierIDs []u
 	return nil
 }
 
+// SaleOrders contains all test sale order data
+func SaleOrders(inventoryIDs []uint) []models.SaleOrder {
+	now := time.Now()
+	orders := make([]models.SaleOrder, 0, 20)
+
+	// Generate test customer IDs (26 characters each)
+	testCustomerIDs := []string{
+		"customer0011234567890123456",
+		"customer0021234567890123456",
+		"customer0031234567890123456",
+		"customer0041234567890123456",
+		"customer0051234567890123456",
+	}
+
+	// Generate sale orders with various statuses
+	statuses := []models.SaleOrderStatus{
+		models.SaleOrderStatusOrdered,
+		models.SaleOrderStatusServed,
+		models.SaleOrderStatusCompleted,
+		models.SaleOrderStatusCompleted,
+		models.SaleOrderStatusCancelled,
+	}
+
+	for i := 0; i < 20; i++ {
+		// Use inventory IDs in round-robin fashion
+		inventoryID := inventoryIDs[i%len(inventoryIDs)]
+
+		// Generate order number: SO-YYMMDD-HHMMSS-XX
+		// Using sequential alphanumeric suffixes for simplicity in seed data
+		orderTime := now.Add(-time.Duration(i) * time.Hour)
+		// Generate 2-character alphanumeric suffix (A0-Z9)
+		suffixChars := "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+		suffix := string([]byte{
+			suffixChars[(i*2)%len(suffixChars)],
+			suffixChars[(i*2+1)%len(suffixChars)],
+		})
+		orderNumber := fmt.Sprintf("SO-%s-%s",
+			orderTime.Format("060102-150405"),
+			suffix)
+
+		// Assign status based on index
+		status := statuses[i%len(statuses)]
+
+		// Assign customer ID
+		customerID := testCustomerIDs[i%len(testCustomerIDs)]
+
+		orders = append(orders, models.SaleOrder{
+			Base: models.Base{
+				CreatedAt: orderTime,
+				UpdatedAt: orderTime,
+			},
+			CustomerID:  customerID,
+			OrderNumber: orderNumber,
+			InventoryID: &inventoryID,
+			Status:      status,
+			Tag:         i % 5, // Tags 0-4
+			IsLatest:    true,
+			Notes:       fmt.Sprintf("Test sale order %d", i+1),
+		})
+	}
+
+	return orders
+}
+
+// SaleOrderItems creates sale order items for the given sale orders
+func SaleOrderItems(saleOrderIDs []uint) []models.SaleOrderItem {
+	now := time.Now()
+	items := make([]models.SaleOrderItem, 0)
+
+	// Create 2-5 items per sale order
+	for i, saleOrderID := range saleOrderIDs {
+		numItems := 2 + (i % 4) // 2-5 items per order
+
+		for j := 0; j < numItems; j++ {
+			items = append(items, models.SaleOrderItem{
+				Base: models.Base{
+					CreatedAt: now.Add(-time.Duration(i*10+j) * time.Minute),
+					UpdatedAt: now.Add(-time.Duration(i*10+j) * time.Minute),
+				},
+				SaleOrderID: &saleOrderID,
+			})
+		}
+	}
+
+	return items
+}
+
+// createSaleOrderItemMenuRelationships creates many-to-many relationships between sale order items and menu items
+func createSaleOrderItemMenuRelationships(tx *gorm.DB, saleOrderItemIDs, menuItemIDs []uint) error {
+	type SaleOrderItemMenuItem struct {
+		SaleOrderItemID uint `gorm:"primaryKey"`
+		MenuItemID      uint `gorm:"primaryKey"`
+	}
+	var saleOrderItemMenuItems []SaleOrderItemMenuItem
+
+	// Assign 1-3 menu items to each sale order item
+	for i, saleOrderItemID := range saleOrderItemIDs {
+		numMenuItems := 1 + (i % 3) // 1-3 menu items per sale order item
+
+		for j := 0; j < numMenuItems && j < len(menuItemIDs); j++ {
+			// Distribute menu items across sale order items
+			menuItemIndex := (i*2 + j) % len(menuItemIDs)
+			saleOrderItemMenuItems = append(saleOrderItemMenuItems, SaleOrderItemMenuItem{
+				SaleOrderItemID: saleOrderItemID,
+				MenuItemID:      menuItemIDs[menuItemIndex],
+			})
+		}
+	}
+
+	if err := tx.Table("sale_order_item_menu_items").Create(&saleOrderItemMenuItems).Error; err != nil {
+		return fmt.Errorf("failed to create sale-order-item-menu-item relationships: %w", err)
+	}
+
+	return nil
+}
+
 // SeedDatabase populates the database with mock data
 func SeedDatabase() error {
 	// Load configuration
@@ -2039,8 +1626,12 @@ func SeedDatabase() error {
 	// 0. Base Units (Level 1)
 	baseUnits := Units()
 	if err := tx.Create(&baseUnits).Error; err != nil {
-		tx.Rollback()
-		return fmt.Errorf("failed to create base units: %w", err)
+		if postgresErr, ok := err.(*pq.Error); ok && postgresErr.Code != "23505" {
+			tx.Rollback()
+			return fmt.Errorf("failed to create base units: %w", err)
+		}
+
+		log.Println("Base units already exist, skipping creation...")
 	}
 
 	// 0.1. Derived Units (Levels 2-4)
@@ -2128,6 +1719,41 @@ func SeedDatabase() error {
 	if err := createMenuItemProductRelationships(tx, menuItemIDs, productIDs, products); err != nil {
 		tx.Rollback()
 		return fmt.Errorf("failed to create menu-item-product relationships: %w", err)
+	}
+
+	// 6. Sale Orders
+	// Collect inventory IDs for sale orders
+	var inventoryIDs []uint
+	for _, inventory := range inventories {
+		inventoryIDs = append(inventoryIDs, inventory.ID)
+	}
+	saleOrders := SaleOrders(inventoryIDs)
+	if err := tx.Create(&saleOrders).Error; err != nil {
+		tx.Rollback()
+		return fmt.Errorf("failed to create sale orders: %w", err)
+	}
+	// Collect sale order IDs after batch creation
+	var saleOrderIDs []uint
+	for _, saleOrder := range saleOrders {
+		saleOrderIDs = append(saleOrderIDs, saleOrder.ID)
+	}
+
+	// 6.5. Sale Order Items
+	saleOrderItems := SaleOrderItems(saleOrderIDs)
+	if err := tx.Create(&saleOrderItems).Error; err != nil {
+		tx.Rollback()
+		return fmt.Errorf("failed to create sale order items: %w", err)
+	}
+	// Collect sale order item IDs after batch creation
+	var saleOrderItemIDs []uint
+	for _, saleOrderItem := range saleOrderItems {
+		saleOrderItemIDs = append(saleOrderItemIDs, saleOrderItem.ID)
+	}
+
+	// 6.6. Create sale-order-item-menu-item relationships
+	if err := createSaleOrderItemMenuRelationships(tx, saleOrderItemIDs, menuItemIDs); err != nil {
+		tx.Rollback()
+		return fmt.Errorf("failed to create sale-order-item-menu-item relationships: %w", err)
 	}
 
 	// Commit transaction
@@ -2232,8 +1858,6 @@ func seedUsers(db *gorm.DB, casbinCfg config.CasbinConfig) error {
 
 // createDerivedUnits creates derived units (levels 2-4) based on the base units
 func createDerivedUnits(tx *gorm.DB, baseUnits []models.Unit) ([]models.Unit, error) {
-	now := time.Now()
-
 	// Build map for easy lookup of base units by symbol
 	unitMap := make(map[string]*models.Unit)
 	for i := range baseUnits {
@@ -2244,10 +1868,7 @@ func createDerivedUnits(tx *gorm.DB, baseUnits []models.Unit) ([]models.Unit, er
 	level2Units := []models.Unit{
 		// Mass hierarchy - Level 2: GRAM
 		{
-			Base: models.Base{
-				CreatedAt: now,
-				UpdatedAt: now,
-			},
+
 			UnitType:         "mass",
 			Name:             "GRAM",
 			Symbol:           "g",
@@ -2257,10 +1878,7 @@ func createDerivedUnits(tx *gorm.DB, baseUnits []models.Unit) ([]models.Unit, er
 		},
 		// Volume hierarchy - Level 2: MILLILITER
 		{
-			Base: models.Base{
-				CreatedAt: now,
-				UpdatedAt: now,
-			},
+
 			UnitType:         "volume",
 			Name:             "MILLILITER",
 			Symbol:           "ml",
@@ -2270,10 +1888,7 @@ func createDerivedUnits(tx *gorm.DB, baseUnits []models.Unit) ([]models.Unit, er
 		},
 		// Count hierarchies - Level 2
 		{
-			Base: models.Base{
-				CreatedAt: now,
-				UpdatedAt: now,
-			},
+
 			UnitType:         "count",
 			Name:             "BOX_CARTON",
 			Symbol:           "box_c",
@@ -2282,10 +1897,7 @@ func createDerivedUnits(tx *gorm.DB, baseUnits []models.Unit) ([]models.Unit, er
 			BaseUnitID:       &unitMap["carton"].ID,
 		},
 		{
-			Base: models.Base{
-				CreatedAt: now,
-				UpdatedAt: now,
-			},
+
 			UnitType:         "count",
 			Name:             "MILLILITER_BOTTLE",
 			Symbol:           "ml_btl",
@@ -2294,10 +1906,7 @@ func createDerivedUnits(tx *gorm.DB, baseUnits []models.Unit) ([]models.Unit, er
 			BaseUnitID:       &unitMap["bottle"].ID,
 		},
 		{
-			Base: models.Base{
-				CreatedAt: now,
-				UpdatedAt: now,
-			},
+
 			UnitType:         "count",
 			Name:             "MILLILITER_CAN",
 			Symbol:           "ml_can",
@@ -2306,10 +1915,7 @@ func createDerivedUnits(tx *gorm.DB, baseUnits []models.Unit) ([]models.Unit, er
 			BaseUnitID:       &unitMap["can"].ID,
 		},
 		{
-			Base: models.Base{
-				CreatedAt: now,
-				UpdatedAt: now,
-			},
+
 			UnitType:         "count",
 			Name:             "PIECE_TRAY",
 			Symbol:           "piece_t",
@@ -2318,10 +1924,7 @@ func createDerivedUnits(tx *gorm.DB, baseUnits []models.Unit) ([]models.Unit, er
 			BaseUnitID:       &unitMap["tray"].ID,
 		},
 		{
-			Base: models.Base{
-				CreatedAt: now,
-				UpdatedAt: now,
-			},
+
 			UnitType:         "count",
 			Name:             "SLICE",
 			Symbol:           "slice",
@@ -2332,7 +1935,10 @@ func createDerivedUnits(tx *gorm.DB, baseUnits []models.Unit) ([]models.Unit, er
 	}
 
 	if err := tx.Create(&level2Units).Error; err != nil {
-		return nil, fmt.Errorf("failed to create level 2 units: %w", err)
+		if postgresErr, ok := err.(*pq.Error); ok && postgresErr.Code != "23505" {
+			return nil, fmt.Errorf("failed to create level 2 units: %w", err)
+		}
+		log.Println("Level 2 units already exist, skipping creation...")
 	}
 
 	// Add level 2 units to map
@@ -2344,10 +1950,7 @@ func createDerivedUnits(tx *gorm.DB, baseUnits []models.Unit) ([]models.Unit, er
 	level3Units := []models.Unit{
 		// Mass hierarchy - Level 3: MILLIGRAM
 		{
-			Base: models.Base{
-				CreatedAt: now,
-				UpdatedAt: now,
-			},
+
 			UnitType:         "mass",
 			Name:             "MILLIGRAM",
 			Symbol:           "mg",
@@ -2357,10 +1960,7 @@ func createDerivedUnits(tx *gorm.DB, baseUnits []models.Unit) ([]models.Unit, er
 		},
 		// Volume hierarchy - Level 3: MICROLITER
 		{
-			Base: models.Base{
-				CreatedAt: now,
-				UpdatedAt: now,
-			},
+
 			UnitType:         "volume",
 			Name:             "MICROLITER",
 			Symbol:           "μl",
@@ -2370,10 +1970,7 @@ func createDerivedUnits(tx *gorm.DB, baseUnits []models.Unit) ([]models.Unit, er
 		},
 		// Count hierarchy - Level 3: PACK_CARTON
 		{
-			Base: models.Base{
-				CreatedAt: now,
-				UpdatedAt: now,
-			},
+
 			UnitType:         "count",
 			Name:             "PACK_CARTON",
 			Symbol:           "pack_c",
@@ -2384,7 +1981,10 @@ func createDerivedUnits(tx *gorm.DB, baseUnits []models.Unit) ([]models.Unit, er
 	}
 
 	if err := tx.Create(&level3Units).Error; err != nil {
-		return nil, fmt.Errorf("failed to create level 3 units: %w", err)
+		if postgresErr, ok := err.(*pq.Error); ok && postgresErr.Code != "23505" {
+			return nil, fmt.Errorf("failed to create level 3 units: %w", err)
+		}
+		log.Println("Level 3 units already exist, skipping creation...")
 	}
 
 	// Add level 3 units to map
@@ -2396,10 +1996,7 @@ func createDerivedUnits(tx *gorm.DB, baseUnits []models.Unit) ([]models.Unit, er
 	level4Units := []models.Unit{
 		// Mass hierarchy - Level 4: MICROGRAM
 		{
-			Base: models.Base{
-				CreatedAt: now,
-				UpdatedAt: now,
-			},
+
 			UnitType:         "mass",
 			Name:             "MICROGRAM",
 			Symbol:           "mcg",
@@ -2409,10 +2006,7 @@ func createDerivedUnits(tx *gorm.DB, baseUnits []models.Unit) ([]models.Unit, er
 		},
 		// Volume hierarchy - Level 4: NANOLITER
 		{
-			Base: models.Base{
-				CreatedAt: now,
-				UpdatedAt: now,
-			},
+
 			UnitType:         "volume",
 			Name:             "NANOLITER",
 			Symbol:           "nl",
@@ -2422,10 +2016,7 @@ func createDerivedUnits(tx *gorm.DB, baseUnits []models.Unit) ([]models.Unit, er
 		},
 		// Count hierarchy - Level 4: PIECE_CARTON
 		{
-			Base: models.Base{
-				CreatedAt: now,
-				UpdatedAt: now,
-			},
+
 			UnitType:         "count",
 			Name:             "PIECE_CARTON",
 			Symbol:           "piece_c",
@@ -2436,7 +2027,10 @@ func createDerivedUnits(tx *gorm.DB, baseUnits []models.Unit) ([]models.Unit, er
 	}
 
 	if err := tx.Create(&level4Units).Error; err != nil {
-		return nil, fmt.Errorf("failed to create level 4 units: %w", err)
+		if postgresErr, ok := err.(*pq.Error); ok && postgresErr.Code != "23505" {
+			return nil, fmt.Errorf("failed to create level 4 units: %w", err)
+		}
+		log.Println("Level 4 units already exist, skipping creation...")
 	}
 
 	// Combine all derived units
