@@ -424,6 +424,33 @@ var _ = Describe("MenuItem API", func() {
 				products := menuItemResp["products"].([]interface{})
 				Expect(products).To(HaveLen(2))
 			})
+
+			It("should create menu item with tags", func() {
+				client := testutil.NewClient(tenv, models.RoleAdmin)
+				menuItemName := fmt.Sprintf("Test Menu Item with Tags %s", uuid.New().String())
+
+				menuItemData := map[string]interface{}{
+					"name":        menuItemName,
+					"tags":        []string{"appetizer", "salad"},
+					"product_ids": []uint{testProduct1.ID},
+					"menu_ids":    []uint{},
+				}
+
+				resp, err := client.MakeRequest("POST", "/api/v1/menu-items", menuItemData, testutil.WithAuth())
+				Expect(err).NotTo(HaveOccurred())
+				Expect(resp.StatusCode).To(Equal(201))
+
+				menuItemResp := testutil.ParseResponse(resp)
+				Expect(menuItemResp["id"]).NotTo(BeNil())
+				Expect(menuItemResp["name"]).To(Equal(menuItemName))
+
+				// Verify tags are returned
+				tags, ok := menuItemResp["tags"].([]interface{})
+				Expect(ok).To(BeTrue())
+				Expect(tags).To(HaveLen(2))
+				Expect(tags).To(ContainElement("appetizer"))
+				Expect(tags).To(ContainElement("salad"))
+			})
 		})
 
 		Context("when user has unauthorized role", func() {
@@ -551,6 +578,213 @@ var _ = Describe("MenuItem API", func() {
 				Expect(errorResp["error"]).To(Equal(fmt.Sprintf("Access denied: %s role cannot view menu-items", models.RoleBotForm)))
 			})
 		})
+
+		Context("when filtering by tags", func() {
+			var appetizerMenuItem, mainsMenuItem, dessertsMenuItem, multiTagMenuItem *models.MenuItem
+
+			BeforeEach(func() {
+				// Create menu item with appetizer tag
+				appetizerMenuItem = &models.MenuItem{
+					Name: fmt.Sprintf("Caesar Salad %s", uuid.New().String()),
+					Tags: []string{"appetizer", "salad"},
+				}
+				err := tenv.ContextfulDB().Create(appetizerMenuItem).Error
+				Expect(err).NotTo(HaveOccurred())
+				DeferCleanup(func() {
+					tenv.ContextfulDB().Exec("DELETE FROM menu_menu_items WHERE menu_item_id = ?", appetizerMenuItem.ID)
+					tenv.ContextfulDB().Exec("DELETE FROM menu_item_products WHERE menu_item_id = ?", appetizerMenuItem.ID)
+					tenv.ContextfulDB().Delete(appetizerMenuItem)
+				})
+
+				// Create menu item with mains tag
+				mainsMenuItem = &models.MenuItem{
+					Name: fmt.Sprintf("Grilled Steak %s", uuid.New().String()),
+					Tags: []string{"mains"},
+				}
+				err = tenv.ContextfulDB().Create(mainsMenuItem).Error
+				Expect(err).NotTo(HaveOccurred())
+				DeferCleanup(func() {
+					tenv.ContextfulDB().Exec("DELETE FROM menu_menu_items WHERE menu_item_id = ?", mainsMenuItem.ID)
+					tenv.ContextfulDB().Exec("DELETE FROM menu_item_products WHERE menu_item_id = ?", mainsMenuItem.ID)
+					tenv.ContextfulDB().Delete(mainsMenuItem)
+				})
+
+				// Create menu item with desserts tag
+				dessertsMenuItem = &models.MenuItem{
+					Name: fmt.Sprintf("Chocolate Cake %s", uuid.New().String()),
+					Tags: []string{"desserts"},
+				}
+				err = tenv.ContextfulDB().Create(dessertsMenuItem).Error
+				Expect(err).NotTo(HaveOccurred())
+				DeferCleanup(func() {
+					tenv.ContextfulDB().Exec("DELETE FROM menu_menu_items WHERE menu_item_id = ?", dessertsMenuItem.ID)
+					tenv.ContextfulDB().Exec("DELETE FROM menu_item_products WHERE menu_item_id = ?", dessertsMenuItem.ID)
+					tenv.ContextfulDB().Delete(dessertsMenuItem)
+				})
+
+				// Create menu item with multiple tags
+				multiTagMenuItem = &models.MenuItem{
+					Name: fmt.Sprintf("Chicken Salad %s", uuid.New().String()),
+					Tags: []string{"appetizer", "mains", "salad"},
+				}
+				err = tenv.ContextfulDB().Create(multiTagMenuItem).Error
+				Expect(err).NotTo(HaveOccurred())
+				DeferCleanup(func() {
+					tenv.ContextfulDB().Exec("DELETE FROM menu_menu_items WHERE menu_item_id = ?", multiTagMenuItem.ID)
+					tenv.ContextfulDB().Exec("DELETE FROM menu_item_products WHERE menu_item_id = ?", multiTagMenuItem.ID)
+					tenv.ContextfulDB().Delete(multiTagMenuItem)
+				})
+			})
+
+			It("should filter menu items by single tag", func() {
+				client := testutil.NewClient(tenv, models.RoleAdmin)
+
+				resp, err := client.MakeRequest("GET", "/api/v1/menu-items?page=1&limit=20&tags=appetizer", nil, testutil.WithAuth())
+				Expect(err).NotTo(HaveOccurred())
+				Expect(resp.StatusCode).To(Equal(200))
+
+				menuItemsResp, err := testutil.ParseResponseArray(resp)
+				Expect(err).NotTo(HaveOccurred())
+
+				// Should include items with appetizer tag
+				foundAppetizer := false
+				foundMains := false
+				for _, item := range menuItemsResp {
+					itemMap := item.(map[string]interface{})
+					if itemMap["id"] != nil {
+						id := uint(itemMap["id"].(float64))
+						if id == appetizerMenuItem.ID {
+							foundAppetizer = true
+							// Verify tags are returned
+							tags, ok := itemMap["tags"].([]interface{})
+							Expect(ok).To(BeTrue())
+							Expect(tags).To(ContainElement("appetizer"))
+						}
+						if id == mainsMenuItem.ID {
+							foundMains = true
+						}
+					}
+				}
+				Expect(foundAppetizer).To(BeTrue(), "Should find appetizer menu item")
+				Expect(foundMains).To(BeFalse(), "Should not find mains menu item when filtering by appetizer")
+			})
+
+			It("should filter menu items by multiple tags", func() {
+				client := testutil.NewClient(tenv, models.RoleAdmin)
+
+				resp, err := client.MakeRequest("GET", "/api/v1/menu-items?page=1&limit=20&tags=appetizer,mains", nil, testutil.WithAuth())
+				Expect(err).NotTo(HaveOccurred())
+				Expect(resp.StatusCode).To(Equal(200))
+
+				menuItemsResp, err := testutil.ParseResponseArray(resp)
+				Expect(err).NotTo(HaveOccurred())
+
+				// Should include items with either appetizer or mains tag
+				foundAppetizer := false
+				foundMains := false
+				foundDesserts := false
+				for _, item := range menuItemsResp {
+					itemMap := item.(map[string]interface{})
+					if itemMap["id"] != nil {
+						id := uint(itemMap["id"].(float64))
+						if id == appetizerMenuItem.ID {
+							foundAppetizer = true
+						}
+						if id == mainsMenuItem.ID {
+							foundMains = true
+						}
+						if id == dessertsMenuItem.ID {
+							foundDesserts = true
+						}
+					}
+				}
+				Expect(foundAppetizer).To(BeTrue(), "Should find appetizer menu item")
+				Expect(foundMains).To(BeTrue(), "Should find mains menu item")
+				Expect(foundDesserts).To(BeFalse(), "Should not find desserts menu item when filtering by appetizer,mains")
+			})
+
+			It("should return all menu items when no tag filter is provided", func() {
+				client := testutil.NewClient(tenv, models.RoleAdmin)
+
+				resp, err := client.MakeRequest("GET", "/api/v1/menu-items?page=1&limit=100", nil, testutil.WithAuth())
+				Expect(err).NotTo(HaveOccurred())
+				Expect(resp.StatusCode).To(Equal(200))
+
+				menuItemsResp, err := testutil.ParseResponseArray(resp)
+				Expect(err).NotTo(HaveOccurred())
+
+				// Should include all items
+				foundAppetizer := false
+				foundMains := false
+				foundDesserts := false
+				for _, item := range menuItemsResp {
+					itemMap := item.(map[string]interface{})
+					if itemMap["id"] != nil {
+						id := uint(itemMap["id"].(float64))
+						if id == appetizerMenuItem.ID {
+							foundAppetizer = true
+						}
+						if id == mainsMenuItem.ID {
+							foundMains = true
+						}
+						if id == dessertsMenuItem.ID {
+							foundDesserts = true
+						}
+					}
+				}
+				Expect(foundAppetizer).To(BeTrue(), "Should find appetizer menu item")
+				Expect(foundMains).To(BeTrue(), "Should find mains menu item")
+				Expect(foundDesserts).To(BeTrue(), "Should find desserts menu item")
+			})
+
+			It("should return menu items with tags in response", func() {
+				client := testutil.NewClient(tenv, models.RoleAdmin)
+
+				resp, err := client.MakeRequest("GET", fmt.Sprintf("/api/v1/menu-items/%d", appetizerMenuItem.ID), nil, testutil.WithAuth())
+				Expect(err).NotTo(HaveOccurred())
+				Expect(resp.StatusCode).To(Equal(200))
+
+				menuItemResp := testutil.ParseResponse(resp)
+				Expect(menuItemResp["id"]).NotTo(BeNil())
+				Expect(menuItemResp["name"]).To(Equal(appetizerMenuItem.Name))
+
+				// Verify tags are returned
+				tags, ok := menuItemResp["tags"].([]interface{})
+				Expect(ok).To(BeTrue())
+				Expect(tags).To(HaveLen(2))
+				Expect(tags).To(ContainElement("appetizer"))
+				Expect(tags).To(ContainElement("salad"))
+			})
+
+			It("should filter menu items with multiple matching tags", func() {
+				client := testutil.NewClient(tenv, models.RoleAdmin)
+
+				// Filter by salad tag - should return both appetizer and multiTagMenuItem
+				resp, err := client.MakeRequest("GET", "/api/v1/menu-items?page=1&limit=20&tags=salad", nil, testutil.WithAuth())
+				Expect(err).NotTo(HaveOccurred())
+				Expect(resp.StatusCode).To(Equal(200))
+
+				menuItemsResp, err := testutil.ParseResponseArray(resp)
+				Expect(err).NotTo(HaveOccurred())
+
+				foundAppetizer := false
+				foundMultiTag := false
+				for _, item := range menuItemsResp {
+					itemMap := item.(map[string]interface{})
+					if itemMap["id"] != nil {
+						id := uint(itemMap["id"].(float64))
+						if id == appetizerMenuItem.ID {
+							foundAppetizer = true
+						}
+						if id == multiTagMenuItem.ID {
+							foundMultiTag = true
+						}
+					}
+				}
+				Expect(foundAppetizer).To(BeTrue(), "Should find appetizer menu item with salad tag")
+				Expect(foundMultiTag).To(BeTrue(), "Should find multi-tag menu item with salad tag")
+			})
+		})
 	})
 
 	Describe("Update MenuItem", func() {
@@ -630,6 +864,72 @@ var _ = Describe("MenuItem API", func() {
 
 				menus := updatedMenuItemResp["menus"].([]interface{})
 				Expect(menus).To(HaveLen(1))
+			})
+
+			It("should update menu item with tags", func() {
+				client := testutil.NewClient(tenv, models.RoleAdmin)
+				newMenuItemName := fmt.Sprintf("Updated Menu Item with Tags %s", uuid.New().String())
+
+				updatedMenuItemData := map[string]interface{}{
+					"name":        newMenuItemName,
+					"tags":        []string{"mains", "desserts"},
+					"product_ids": []uint{testProduct1.ID},
+					"menu_ids":    []uint{},
+				}
+
+				urlPath := fmt.Sprintf("/api/v1/menu-items/%d", testMenuItem.ID)
+				resp, err := client.MakeRequest("PUT", urlPath, updatedMenuItemData, testutil.WithAuth())
+				Expect(err).NotTo(HaveOccurred())
+				Expect(resp.StatusCode).To(Equal(200))
+
+				updatedMenuItemResp := testutil.ParseResponse(resp)
+				Expect(updatedMenuItemResp["name"]).To(Equal(newMenuItemName))
+
+				// Verify tags are updated
+				tags, ok := updatedMenuItemResp["tags"].([]interface{})
+				Expect(ok).To(BeTrue())
+				Expect(tags).To(HaveLen(2))
+				Expect(tags).To(ContainElement("mains"))
+				Expect(tags).To(ContainElement("desserts"))
+			})
+
+			It("should clear tags when empty array is provided", func() {
+				// First create a menu item with tags
+				menuItemWithTags := &models.MenuItem{
+					Name: fmt.Sprintf("Menu Item with Tags %s", uuid.New().String()),
+					Tags: []string{"appetizer", "salad"},
+				}
+				err := tenv.ContextfulDB().Create(menuItemWithTags).Error
+				Expect(err).NotTo(HaveOccurred())
+				DeferCleanup(func() {
+					tenv.ContextfulDB().Exec("DELETE FROM menu_menu_items WHERE menu_item_id = ?", menuItemWithTags.ID)
+					tenv.ContextfulDB().Exec("DELETE FROM menu_item_products WHERE menu_item_id = ?", menuItemWithTags.ID)
+					tenv.ContextfulDB().Delete(menuItemWithTags)
+				})
+
+				client := testutil.NewClient(tenv, models.RoleAdmin)
+				newMenuItemName := fmt.Sprintf("Updated Menu Item No Tags %s", uuid.New().String())
+
+				updatedMenuItemData := map[string]interface{}{
+					"name":        newMenuItemName,
+					"tags":        []string{},
+					"product_ids": []uint{},
+					"menu_ids":    []uint{},
+				}
+
+				urlPath := fmt.Sprintf("/api/v1/menu-items/%d", menuItemWithTags.ID)
+				resp, err := client.MakeRequest("PUT", urlPath, updatedMenuItemData, testutil.WithAuth())
+				Expect(err).NotTo(HaveOccurred())
+				Expect(resp.StatusCode).To(Equal(200))
+
+				updatedMenuItemResp := testutil.ParseResponse(resp)
+				Expect(updatedMenuItemResp["name"]).To(Equal(newMenuItemName))
+
+				// Verify tags are cleared
+				tags, ok := updatedMenuItemResp["tags"].([]interface{})
+				if ok {
+					Expect(tags).To(BeEmpty())
+				}
 			})
 		})
 

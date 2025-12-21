@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/lib/pq"
 	"gorm.io/gorm"
 )
 
@@ -13,7 +14,7 @@ type MenuItemRepository interface {
 	GetByID(ctx context.Context, id uint) (*models.MenuItem, error)
 	Update(ctx context.Context, menuItem *models.MenuItem) error
 	Delete(ctx context.Context, id uint) error
-	List(ctx context.Context, limit, offset int, search string) ([]models.MenuItem, error)
+	List(ctx context.Context, limit, offset int, search string, tags []string) ([]models.MenuItem, error)
 }
 
 type menuItemRepository struct {
@@ -50,6 +51,9 @@ func (r *menuItemRepository) Update(ctx context.Context, menuItem *models.MenuIt
 
 		// Update base fields
 		existing.Name = menuItem.Name
+		if menuItem.Tags != nil {
+			existing.Tags = menuItem.Tags
+		}
 		if err := tx.Save(&existing).Error; err != nil {
 			return fmt.Errorf("failed to update menu item: %w", err)
 		}
@@ -86,7 +90,7 @@ func (r *menuItemRepository) Delete(ctx context.Context, id uint) error {
 	return r.db.WithContext(ctx).Delete(&models.MenuItem{}, "id = ?", id).Error
 }
 
-func (r *menuItemRepository) List(ctx context.Context, limit, offset int, search string) ([]models.MenuItem, error) {
+func (r *menuItemRepository) List(ctx context.Context, limit, offset int, search string, tags []string) ([]models.MenuItem, error) {
 	var menuItems []models.MenuItem
 	query := r.db.WithContext(ctx).
 		Preload("Menus").
@@ -103,6 +107,13 @@ func (r *menuItemRepository) List(ctx context.Context, limit, offset int, search
 			"unaccent(LOWER(name)) ILIKE unaccent(LOWER(?)) OR name ILIKE ?",
 			searchPattern, searchPattern,
 		)
+	}
+
+	// Apply tag filter if provided
+	if len(tags) > 0 {
+		// Use PostgreSQL array overlap operator (&&) to find items with any matching tag
+		// pq.Array converts Go slice to PostgreSQL array format
+		query = query.Where("tags && ?", pq.Array(tags))
 	}
 
 	err := query.

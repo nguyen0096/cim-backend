@@ -6,6 +6,7 @@ import (
 	"cim-backend/pkg"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/labstack/echo/v4"
 )
@@ -22,9 +23,10 @@ func NewMenuItemHandler(menuItemService services.MenuItemService) *MenuItemHandl
 
 // CreateMenuItemRequest represents the request body for creating a menu item
 type CreateMenuItemRequest struct {
-	Name       string `json:"name" validate:"required"`
-	ProductIDs []uint `json:"product_ids,omitempty"`
-	MenuIDs    []uint `json:"menu_ids,omitempty"`
+	Name       string   `json:"name" validate:"required"`
+	Tags       []string `json:"tags,omitempty"`
+	ProductIDs []uint   `json:"product_ids,omitempty"`
+	MenuIDs    []uint   `json:"menu_ids,omitempty"`
 }
 
 // CreateMenuItem creates a new menu item
@@ -51,6 +53,9 @@ func (h *MenuItemHandler) CreateMenuItem(c echo.Context) error {
 
 	menuItem := models.MenuItem{
 		Name: req.Name,
+	}
+	if len(req.Tags) > 0 {
+		menuItem.Tags = req.Tags
 	}
 
 	// Set products
@@ -121,13 +126,14 @@ func (h *MenuItemHandler) GetMenuItem(c echo.Context) error {
 
 // ListMenuItems lists all menu items with pagination
 // @Summary List menu items
-// @Description List all menu items with pagination and search
+// @Description List all menu items with pagination, search, and tag filtering
 // @Tags menu-items
 // @Accept json
 // @Produce json
 // @Param page query int false "Page number" default(1)
 // @Param limit query int false "Items per page" default(20)
 // @Param q query string false "Search query (searches by name)"
+// @Param tags query string false "Comma-separated list of tags to filter by (e.g., appetizer,mains,desserts)"
 // @Success 200 {object} map[string]interface{}
 // @Failure 500 {object} map[string]string
 // @Security BearerAuth
@@ -137,6 +143,7 @@ func (h *MenuItemHandler) ListMenuItems(c echo.Context) error {
 	limit, _ := strconv.Atoi(c.QueryParam("limit"))
 	page, _ := strconv.Atoi(c.QueryParam("page"))
 	search := c.QueryParam("q")
+	tagsParam := c.QueryParam("tags")
 
 	// Set defaults
 	if limit == 0 {
@@ -149,8 +156,20 @@ func (h *MenuItemHandler) ListMenuItems(c echo.Context) error {
 	// Calculate offset
 	offset := (page - 1) * limit
 
+	// Parse tags from comma-separated string
+	var tags []string
+	if tagsParam != "" {
+		tagList := strings.Split(tagsParam, ",")
+		for _, tag := range tagList {
+			trimmedTag := strings.TrimSpace(tag)
+			if trimmedTag != "" {
+				tags = append(tags, trimmedTag)
+			}
+		}
+	}
+
 	// Get menu items
-	menuItems, err := h.menuItemService.ListMenuItems(c.Request().Context(), limit, offset, search)
+	menuItems, err := h.menuItemService.ListMenuItems(c.Request().Context(), limit, offset, search, tags)
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to fetch menu items", "details": err.Error()})
 	}
@@ -160,9 +179,10 @@ func (h *MenuItemHandler) ListMenuItems(c echo.Context) error {
 
 // UpdateMenuItemRequest represents the request body for updating a menu item
 type UpdateMenuItemRequest struct {
-	Name       string `json:"name" validate:"required"`
-	ProductIDs []uint `json:"product_ids,omitempty"`
-	MenuIDs    []uint `json:"menu_ids,omitempty"`
+	Name       string   `json:"name" validate:"required"`
+	Tags       []string `json:"tags,omitempty"`
+	ProductIDs []uint   `json:"product_ids,omitempty"`
+	MenuIDs    []uint   `json:"menu_ids,omitempty"`
 }
 
 // UpdateMenuItem updates a menu item
@@ -197,6 +217,9 @@ func (h *MenuItemHandler) UpdateMenuItem(c echo.Context) error {
 	menuItem := models.MenuItem{
 		Base: models.Base{ID: id},
 		Name: req.Name,
+	}
+	if req.Tags != nil {
+		menuItem.Tags = req.Tags
 	}
 
 	// Set products
