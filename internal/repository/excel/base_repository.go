@@ -192,11 +192,15 @@ func (r *BaseExcelRepository) FindLastTransactionRow(rows [][]string) ([]string,
 	}
 
 	headerRowData := rows[headerRow]
-	targetColumnIndex := -1
+	RevenueExpenseColumnIndex := -1
+	ordinalNumberColumnIndex := -1
 	for idx, cell := range headerRowData {
 		if cell == pkg.RevenueExpenseColumnName {
-			targetColumnIndex = idx
-			break
+			RevenueExpenseColumnIndex = idx
+		}
+
+		if cell == pkg.RevenueExpenseColumnOrdinalNumber {
+			ordinalNumberColumnIndex = idx
 		}
 	}
 
@@ -204,7 +208,7 @@ func (r *BaseExcelRepository) FindLastTransactionRow(rows [][]string) ([]string,
 	var lastRow []string
 	var lastRowIndex int
 	for i := len(rows) - 1; i >= headerRow+1; i-- {
-		if rows[i][0] == "" && rows[i][targetColumnIndex] == "" {
+		if rows[i][0] == "" && rows[i][RevenueExpenseColumnIndex] == "" && rows[i][ordinalNumberColumnIndex] == "" {
 			continue
 		}
 
@@ -360,7 +364,7 @@ func (r *BaseExcelRepository) AddDataRowWithColor(file *excelize.File, sheetName
 		if !exists {
 			continue
 		}
-		
+
 		if column.ColumnName == pkg.RevenueExpenseColumnWater || column.ColumnName == pkg.RevenueExpenseColumnSnackAndRice {
 			if err := file.SetCellValue(sheetName, cellName, value); err != nil {
 				return fmt.Errorf("failed to set cell value: %w", err)
