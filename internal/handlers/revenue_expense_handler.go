@@ -7,6 +7,7 @@ import (
 	"cim-backend/pkg/log"
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"time"
 
@@ -102,6 +103,57 @@ func (h *RevenueExpenseHandler) FinalizeRevenueExpense(c echo.Context) error {
 	response := FinalizeRevenueExpenseResponse{
 		Message: "Revenue expense finalized successfully",
 		Date:    lastFinalizedDate.Format("2006-01-02"),
+		NextDay: finalizedDate.Format("2006-01-02"),
+	}
+
+	return c.JSON(http.StatusOK, response)
+}
+
+// FinalizeRevenueExpenseByDate finalizes revenue expense by date from path parameter
+// @Summary Finalize revenue expense by date
+// @Description Creates a new row with the next day's date in the revenue-expense excel/sheet based on the provided date in path parameter
+// @Tags revenue-expenses
+// @Accept json
+// @Produce json
+// @Param date path string true "Date in YYYY-MM-DD format"
+// @Success 200 {object} FinalizeRevenueExpenseResponse "Successfully finalized"
+// @Failure 400 {object} map[string]string "Invalid request"
+// @Failure 500 {object} map[string]string "Internal server error"
+// @Security BearerAuth
+// @Router /revenue-expenses/finalize/{date} [post]
+func (h *RevenueExpenseHandler) FinalizeRevenueExpenseByDate(c echo.Context) error {
+	ctx := c.Request().Context()
+
+	// Get date from path parameter
+	dateStr := c.Param("date")
+	if dateStr == "" {
+		return pkg.ErrValidationI18n(ctx, errors.New("date parameter is required"))
+	}
+
+	// Parse date
+	finalizeDate, err := time.Parse("2006-01-02", dateStr)
+	if err != nil {
+		return pkg.ErrValidationI18n(ctx, fmt.Errorf("invalid date format, expected YYYY-MM-DD: %w", err))
+	}
+
+	// Truncate to start of day
+	finalizeDate = finalizeDate.Truncate(24 * time.Hour)
+	today := time.Now().Truncate(24 * time.Hour)
+
+	// Call service to finalize
+	finalizedDate, err := h.excelService.FinalizeRevenueExpense(ctx, finalizeDate, today)
+	if err != nil {
+		// Check if error is already an AppError, return it directly
+		var appErr *pkg.AppError
+		if errors.As(err, &appErr) {
+			return err
+		}
+		return pkg.ErrFailedToFinalizeRevenueExpense(ctx, err)
+	}
+
+	response := FinalizeRevenueExpenseResponse{
+		Message: "Revenue expense finalized successfully",
+		Date:    finalizeDate.Format("2006-01-02"),
 		NextDay: finalizedDate.Format("2006-01-02"),
 	}
 

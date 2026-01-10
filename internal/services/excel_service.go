@@ -408,18 +408,6 @@ func (s *excelService) FinalizeRevenueExpense(ctx context.Context, date time.Tim
 			}
 		}()
 
-		// Add new date row, the date when user click finalize button, not the last finalized date
-		addDateRowStart := time.Now()
-		if err := s.revenueExpenseExcelRepo.AddNewDateRow(ctx, sheetName, today); err != nil {
-			return nil, pkg.ErrFailedToAddNewDateRowExcel(ctx, err)
-		}
-		log.WithContext(ctx).WithFields(logrus.Fields{
-			"operation":  "FinalizeRevenueExpense",
-			"step":       "AddNewDateRow",
-			"sheetName":  sheetName,
-			"elapsed_ms": time.Since(addDateRowStart).Milliseconds(),
-		}).Info("added new date row to excel sheet")
-
 		expensesStart := time.Now()
 		expensesData, cellColors := s.createExpenseDataFromForms(forms)
 		log.WithContext(ctx).WithFields(logrus.Fields{
@@ -431,10 +419,23 @@ func (s *excelService) FinalizeRevenueExpense(ctx context.Context, date time.Tim
 			"expense_rows":         len(expensesData),
 		}).Info("prepared expense rows for excel sheet")
 		if len(expensesData) > 0 {
+			// Add new date row, the date when user click finalize button, not the last finalized date
+			addDateRowStart := time.Now()
+			if err := s.revenueExpenseExcelRepo.AddNewDateRow(ctx, sheetName, today); err != nil {
+				return nil, pkg.ErrFailedToAddNewDateRowExcel(ctx, err)
+			}
+			log.WithContext(ctx).WithFields(logrus.Fields{
+				"operation":  "FinalizeRevenueExpense",
+				"step":       "AddNewDateRow",
+				"sheetName":  sheetName,
+				"elapsed_ms": time.Since(addDateRowStart).Milliseconds(),
+			}).Info("added new date row to excel sheet")
+
 			writeStart := time.Now()
 			if err := s.AddExpenses(ctx, sheetName, expensesData, cellColors); err != nil {
 				return nil, pkg.ErrFailedToAddExpensesToExcel(ctx, err)
 			}
+
 			log.WithContext(ctx).WithFields(logrus.Fields{
 				"operation":    "FinalizeRevenueExpense",
 				"step":         "AddExpenses",

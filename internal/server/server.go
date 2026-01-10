@@ -299,6 +299,7 @@ func SetupServer(
 	// Revenue Expense routes
 	revenueExpenses := api.Group("/revenue-expenses")
 	revenueExpenses.POST("/finalize", revenueExpenseHandler.FinalizeRevenueExpense)
+	revenueExpenses.POST("/finalize/:date", revenueExpenseHandler.FinalizeRevenueExpenseByDate)
 
 	// Reports routes
 	reports := api.Group("/reports")
