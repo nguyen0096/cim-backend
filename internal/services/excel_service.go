@@ -156,7 +156,7 @@ type ExcelService interface {
 	AddExpenses(ctx context.Context, sheetName string, expensesData []map[string]interface{}, cellColors []string) error
 	GetRevenueExpenseSchema(ctx context.Context) *models.FileMetadata
 	VerifyFileAndSheet(ctx context.Context, filePath string, sheetName string) error
-	FinalizeRevenueExpense(ctx context.Context, lastFinalizedDate time.Time) error
+	FinalizeRevenueExpense(ctx context.Context, prefixDate, dateInExcel time.Time) error
 	// Revenue/Expense Google Sheets operations
 	InitializeRevenueExpenseGoogleSheets(ctx context.Context, spreadsheetID string) error
 	AddExpensesToGoogleSheets(ctx context.Context, sheetName string, expensesData []map[string]interface{}, cellColors []string) error
@@ -309,7 +309,7 @@ func (s *excelService) createExpenseDataFromForms(paymentReceiptForms []models.P
 }
 
 // FinalizeRevenueExpense adds a new date row to the revenue expense file/sheet and writes payment receipt forms
-func (s *excelService) FinalizeRevenueExpense(ctx context.Context, lastFinalizedDate time.Time) error {
+func (s *excelService) FinalizeRevenueExpense(ctx context.Context, prefixDate, dateInExcel time.Time) error {
 	// Get settings to determine file type and sheet name
 	settings, err := s.settingsService.GetSetting(ctx, config.RevenueExpenseExcelSettingsKey)
 	if err != nil {
@@ -335,8 +335,6 @@ func (s *excelService) FinalizeRevenueExpense(ctx context.Context, lastFinalized
 		return pkg.ErrSheetNameNotFoundInSettings(ctx)
 	}
 
-	// Query payment receipt forms from lastFinalizedDate to today
-	// Only get approved forms for finalization
 	req := &dto.PaymentReceiptFormListRequest{
 		ListParams: models.ListParams{
 			Page:  1,
@@ -344,14 +342,14 @@ func (s *excelService) FinalizeRevenueExpense(ctx context.Context, lastFinalized
 			Sort:  "form_number",
 			Order: "asc",
 		},
-		FinalizedDate: lastFinalizedDate,
+		FinalizedDate: prefixDate,
 		Statuses:      []models.PaymentReceiptFormStatus{models.PaymentReceiptFormStatusApproved},
 	}
 	req.ValidateAndSetDefaults()
 
 	forms, _, err := s.paymentReceiptFormRepo.List(ctx, req, "PurchaseOrder.Items", "PurchaseOrder.Items.Supplier", "PurchaseOrder.Items.Product")
 	if err != nil {
-		return pkg.ErrFailedToQueryPaymentReceiptForms(ctx, lastFinalizedDate.Format("2006-01-02"), err)
+		return pkg.ErrFailedToQueryPaymentReceiptForms(ctx, prefixDate.Format("2006-01-02"), err)
 	}
 
 	// Detect if filePath is a Google Sheets URL or local file path
@@ -420,8 +418,8 @@ func (s *excelService) FinalizeRevenueExpense(ctx context.Context, lastFinalized
 		if len(expensesData) > 0 {
 			// Add new date row, the date when user click finalize button, not the last finalized date
 			addDateRowStart := time.Now()
-			if err := s.revenueExpenseExcelRepo.AddNewDateRow(ctx, sheetName, today); err != nil {
-				return nil, pkg.ErrFailedToAddNewDateRowExcel(ctx, err)
+			if err := s.revenueExpenseExcelRepo.AddNewDateRow(ctx, sheetName, dateInExcel); err != nil {
+				return pkg.ErrFailedToAddNewDateRowExcel(ctx, err)
 			}
 			log.WithContext(ctx).WithFields(logrus.Fields{
 				"operation":  "FinalizeRevenueExpense",

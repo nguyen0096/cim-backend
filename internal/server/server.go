@@ -51,6 +51,7 @@ func SetupServer(
 	menuRepo := repository.NewMenuRepository(db)
 	menuItemRepo := repository.NewMenuItemRepository(db)
 	saleOrderRepo := repository.NewSaleOrderRepository(db)
+	revenueExpenseFinalizationRepo := repository.NewRevenueExpenseFinalizationRepository(db)
 
 	// Initialize S3 client for R2
 	s3Client, err := services.NewS3Client(cfg)
@@ -69,7 +70,7 @@ func SetupServer(
 	inventoryItemService := services.NewInventoryItemService(inventoryItemRepo, inventoryRepo, productRepo)
 	excelService := services.NewExcelService(productRepo, inventoryRepo, paymentReceiptFormRepo, settingsService)
 	purchaseOrderService := services.NewPurchaseOrderService(purchaseOrderRepo, paymentReceiptFormRepo, unitRepo, productRepo, inventoryService, excelService, settingsService, db, supplierRepo, inventoryRepo, unitService, productService)
-	paymentReceiptFormService := services.NewPaymentReceiptFormService(paymentReceiptFormRepo, db, settingsService)
+	paymentReceiptFormService := services.NewPaymentReceiptFormService(paymentReceiptFormRepo, db, settingsService, revenueExpenseFinalizationRepo)
 	menuService := services.NewMenuService(menuRepo, menuItemRepo, inventoryRepo)
 	menuItemService := services.NewMenuItemService(menuItemRepo, menuRepo, productRepo)
 	saleOrderService := services.NewSaleOrderService(saleOrderRepo, db)
@@ -85,7 +86,7 @@ func SetupServer(
 	excelHandler := handlers.NewExcelHandler(excelService)
 	settingsHandler := handlers.NewSettingsHandler(settingsService)
 	paymentReceiptFormHandler := handlers.NewPaymentReceiptFormHandler(paymentReceiptFormService, purchaseOrderService, settingsService)
-	revenueExpenseHandler := handlers.NewRevenueExpenseHandler(excelService, settingsService)
+	revenueExpenseHandler := handlers.NewRevenueExpenseHandler(excelService, settingsService, revenueExpenseFinalizationRepo)
 	menuHandler := handlers.NewMenuHandler(menuService)
 	menuItemHandler := handlers.NewMenuItemHandler(menuItemService)
 	saleOrderHandler := handlers.NewSaleOrderHandler(saleOrderService)

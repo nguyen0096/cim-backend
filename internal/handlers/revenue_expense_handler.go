@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"cim-backend/internal/config"
 	"cim-backend/internal/models"
 	"cim-backend/internal/repository"
 	"cim-backend/internal/services"
@@ -34,7 +35,8 @@ func NewRevenueExpenseHandler(excelService services.ExcelService, settingsServic
 
 // FinalizeRevenueExpenseRequest represents the request to finalize revenue expense
 type FinalizeRevenueExpenseRequest struct {
-	Date string `json:"date"`
+	PrefixDate  string `json:"prefix_date"`
+	DateInExcel string `json:"date_in_excel"`
 }
 
 // FinalizeRevenueExpenseResponse represents the response after finalizing
@@ -69,18 +71,30 @@ func (h *RevenueExpenseHandler) FinalizeRevenueExpense(c echo.Context) error {
 		return pkg.ErrValidationI18n(ctx, err)
 	}
 
-	if req.Date == "" {
-		req.Date = time.Now().Format("2006-01-02")
+	var lastFinalizedDate time.Time
+	if req.PrefixDate != "" {
+		prefixDateParsed, err := time.Parse("2006-01-02", req.PrefixDate)
+		if err != nil {
+			return pkg.ErrInvalidRequestBodyI18n(ctx, err)
+		}
+
+		lastFinalizedDate = prefixDateParsed
 	}
 
-	parsedDate, err := time.Parse("2006-01-02", req.Date)
-	if err != nil {
-		return pkg.ErrInvalidRequestBodyI18n(ctx, err)
+	if lastFinalizedDate.IsZero() {
+		if err := h.settingsService.GetSettingValue(ctx, config.LastFinalizedDateSettingsKey, &lastFinalizedDate); err != nil {
+			log.WithFields(logrus.Fields{
+				"error":   err.Error(),
+				"details": "Failed to get last finalized date",
+			}).Error("Failed to get last finalized date")
+			// Continue with the current date
+			lastFinalizedDate = time.Now()
+		}
 	}
 
 	// Create finalization record without status first
 	finalization := &models.RevenueExpenseFinalization{
-		FinalizedDate: parsedDate,
+		FinalizedDate: lastFinalizedDate,
 		Status:        nil,
 	}
 	if err := h.revenueExpenseFinalizationRepo.Create(ctx, finalization); err != nil {
@@ -107,22 +121,43 @@ func (h *RevenueExpenseHandler) FinalizeRevenueExpense(c echo.Context) error {
 		}
 	}()
 
-	// Get last successful finalization date from database
-	lastSuccessfulFinalization, err := h.revenueExpenseFinalizationRepo.GetLastSuccessful(ctx)
-	lastFinalizedDate := time.Now().Truncate(24 * time.Hour) // Default to today
-	if err != nil {
-		// If error occurred (other than not found), log it but continue with fallback
-		log.WithFields(logrus.Fields{
-			"error":   err.Error(),
-			"details": "Failed to get last successful finalization, using today's date",
-		}).Warn("Failed to get last successful finalization")
-	} else if lastSuccessfulFinalization != nil {
-		// Use the finalized_date from the last successful finalization
-		lastFinalizedDate = lastSuccessfulFinalization.FinalizedDate.Truncate(24 * time.Hour)
+	defer func() {
+		settingsCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 30*time.Second)
+		defer cancel()
+		if err := h.settingsService.SetSetting(settingsCtx, config.LastFinalizedDateSettingsKey, time.Now()); err != nil {
+			log.WithFields(logrus.Fields{
+				"error":   err.Error(),
+				"details": "Failed to set last finalized date to now",
+			}).Error("Failed to set last finalized date")
+		}
+	}()
+
+	// // Get last successful finalization date from database
+	// lastSuccessfulFinalization, err := h.revenueExpenseFinalizationRepo.GetLastSuccessful(ctx)
+	// lastFinalizedDate := time.Now().Truncate(24 * time.Hour) // Default to today
+	// if err != nil {
+	// 	// If error occurred (other than not found), log it but continue with fallback
+	// 	log.WithFields(logrus.Fields{
+	// 		"error":   err.Error(),
+	// 		"details": "Failed to get last successful finalization, using today's date",
+	// 	}).Warn("Failed to get last successful finalization")
+	// } else if lastSuccessfulFinalization != nil {
+	// 	// Use the finalized_date from the last successful finalization
+	// 	lastFinalizedDate = lastSuccessfulFinalization.FinalizedDate.Truncate(24 * time.Hour)
+	// }
+
+	var dateInExcel time.Time = time.Now()
+	if req.DateInExcel != "" {
+		dateInExcelParsed, err := time.Parse("2006-01-02", req.DateInExcel)
+		if err != nil {
+			return pkg.ErrInvalidRequestBodyI18n(ctx, err)
+		}
+
+		dateInExcel = dateInExcelParsed
 	}
 
 	// Call service to finalize
-	err = h.excelService.FinalizeRevenueExpense(ctx, lastFinalizedDate)
+	err := h.excelService.FinalizeRevenueExpense(ctx, lastFinalizedDate, dateInExcel)
 	if err != nil {
 		// Check if error is already an AppError, return it directly
 		var appErr *pkg.AppError
@@ -202,57 +237,6 @@ func (h *RevenueExpenseHandler) ListFinalizedDates(c echo.Context) error {
 		"page":       page,
 		"limit":      limit,
 		"totalPages": totalPages,
-	}
-
-	return c.JSON(http.StatusOK, response)
-}
-
-// FinalizeRevenueExpenseByDate finalizes revenue expense by date from path parameter
-// @Summary Finalize revenue expense by date
-// @Description Creates a new row with the next day's date in the revenue-expense excel/sheet based on the provided date in path parameter
-// @Tags revenue-expenses
-// @Accept json
-// @Produce json
-// @Param date path string true "Date in YYYY-MM-DD format"
-// @Success 200 {object} FinalizeRevenueExpenseResponse "Successfully finalized"
-// @Failure 400 {object} map[string]string "Invalid request"
-// @Failure 500 {object} map[string]string "Internal server error"
-// @Security BearerAuth
-// @Router /revenue-expenses/finalize/{date} [post]
-func (h *RevenueExpenseHandler) FinalizeRevenueExpenseByDate(c echo.Context) error {
-	ctx := c.Request().Context()
-
-	// Get date from path parameter
-	dateStr := c.Param("date")
-	if dateStr == "" {
-		return pkg.ErrValidationI18n(ctx, errors.New("date parameter is required"))
-	}
-
-	// Parse date
-	finalizeDate, err := time.Parse("2006-01-02", dateStr)
-	if err != nil {
-		return pkg.ErrValidationI18n(ctx, fmt.Errorf("invalid date format, expected YYYY-MM-DD: %w", err))
-	}
-
-	// Truncate to start of day
-	finalizeDate = finalizeDate.Truncate(24 * time.Hour)
-	today := time.Now().Truncate(24 * time.Hour)
-
-	// Call service to finalize
-	finalizedDate, err := h.excelService.FinalizeRevenueExpense(ctx, finalizeDate, today)
-	if err != nil {
-		// Check if error is already an AppError, return it directly
-		var appErr *pkg.AppError
-		if errors.As(err, &appErr) {
-			return err
-		}
-		return pkg.ErrFailedToFinalizeRevenueExpense(ctx, err)
-	}
-
-	response := FinalizeRevenueExpenseResponse{
-		Message: "Revenue expense finalized successfully",
-		Date:    finalizeDate.Format("2006-01-02"),
-		NextDay: finalizedDate.Format("2006-01-02"),
 	}
 
 	return c.JSON(http.StatusOK, response)
