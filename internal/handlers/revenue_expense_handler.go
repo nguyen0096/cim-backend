@@ -88,6 +88,9 @@ func (h *RevenueExpenseHandler) FinalizeRevenueExpense(c echo.Context) error {
 				"details": "Failed to get last finalized date",
 			}).Error("Failed to get last finalized date")
 			// Continue with the current date
+		}
+
+		if lastFinalizedDate.IsZero() {
 			lastFinalizedDate = time.Now()
 		}
 	}
