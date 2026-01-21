@@ -34,7 +34,7 @@ func NewRevenueExpenseHandler(excelService services.ExcelService, settingsServic
 
 // FinalizeRevenueExpenseRequest represents the request to finalize revenue expense
 type FinalizeRevenueExpenseRequest struct {
-	Date string `json:"date" validate:"required"`
+	Date string `json:"date"`
 }
 
 // FinalizeRevenueExpenseResponse represents the response after finalizing
@@ -69,9 +69,18 @@ func (h *RevenueExpenseHandler) FinalizeRevenueExpense(c echo.Context) error {
 		return pkg.ErrValidationI18n(ctx, err)
 	}
 
+	if req.Date == "" {
+		req.Date = time.Now().Format("2006-01-02")
+	}
+
+	parsedDate, err := time.Parse("2006-01-02", req.Date)
+	if err != nil {
+		return pkg.ErrInvalidRequestBodyI18n(ctx, err)
+	}
+
 	// Create finalization record without status first
 	finalization := &models.RevenueExpenseFinalization{
-		FinalizedDate: time.Now(),
+		FinalizedDate: parsedDate,
 		Status:        nil,
 	}
 	if err := h.revenueExpenseFinalizationRepo.Create(ctx, finalization); err != nil {

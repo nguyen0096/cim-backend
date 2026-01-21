@@ -198,12 +198,23 @@ var customRouteMappings = []RouteMapping{
 		Resource:    "purchase-orders",
 		Action:      "retry_excel",
 	},
-	// Sale Order Status Update
 	{
 		Method:      "PUT",
 		PathPattern: "/sale-orders/*/status",
 		Resource:    "sale-orders",
 		Action:      "update_status",
+	},
+	{
+		Method:      "GET",
+		PathPattern: "/revenue-expenses/finalize",
+		Resource:    "revenue-expenses",
+		Action:      "view",
+	},
+	{
+		Method:      "POST",
+		PathPattern: "/revenue-expenses/finalize",
+		Resource:    "revenue-expenses",
+		Action:      "create",
 	},
 }
 
