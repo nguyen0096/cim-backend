@@ -156,7 +156,7 @@ type ExcelService interface {
 	AddExpenses(ctx context.Context, sheetName string, expensesData []map[string]interface{}, cellColors []string) error
 	GetRevenueExpenseSchema(ctx context.Context) *models.FileMetadata
 	VerifyFileAndSheet(ctx context.Context, filePath string, sheetName string) error
-	FinalizeRevenueExpense(ctx context.Context, date time.Time, today time.Time) (*time.Time, error)
+	FinalizeRevenueExpense(ctx context.Context, prefixDate, dateInExcel time.Time) error
 	// Revenue/Expense Google Sheets operations
 	InitializeRevenueExpenseGoogleSheets(ctx context.Context, spreadsheetID string) error
 	AddExpensesToGoogleSheets(ctx context.Context, sheetName string, expensesData []map[string]interface{}, cellColors []string) error
@@ -309,35 +309,32 @@ func (s *excelService) createExpenseDataFromForms(paymentReceiptForms []models.P
 }
 
 // FinalizeRevenueExpense adds a new date row to the revenue expense file/sheet and writes payment receipt forms
-func (s *excelService) FinalizeRevenueExpense(ctx context.Context, date time.Time, today time.Time) (*time.Time, error) {
+func (s *excelService) FinalizeRevenueExpense(ctx context.Context, prefixDate, dateInExcel time.Time) error {
 	// Get settings to determine file type and sheet name
 	settings, err := s.settingsService.GetSetting(ctx, config.RevenueExpenseExcelSettingsKey)
 	if err != nil {
-		return nil, pkg.ErrFailedToGetRevenueExpenseSettings(ctx, err)
+		return pkg.ErrFailedToGetRevenueExpenseSettings(ctx, err)
 	}
 
 	if settings == nil {
-		return nil, pkg.ErrRevenueExpenseSettingsNotConfigured(ctx)
+		return pkg.ErrRevenueExpenseSettingsNotConfigured(ctx)
 	}
 
 	var settingsValue map[string]interface{}
 	if err := json.Unmarshal([]byte(settings.Value), &settingsValue); err != nil {
-		return nil, pkg.ErrFailedToParseRevenueExpenseSettings(ctx, err)
+		return pkg.ErrFailedToParseRevenueExpenseSettings(ctx, err)
 	}
 
 	filePath, ok := settingsValue["filePath"].(string)
 	if !ok || filePath == "" {
-		return nil, pkg.ErrFilePathNotFoundInSettings(ctx)
+		return pkg.ErrFilePathNotFoundInSettings(ctx)
 	}
 
 	sheetName, ok := settingsValue["sheetName"].(string)
 	if !ok || sheetName == "" {
-		return nil, pkg.ErrSheetNameNotFoundInSettings(ctx)
+		return pkg.ErrSheetNameNotFoundInSettings(ctx)
 	}
 
-	// Query payment receipt forms from lastFinalizedDate to today
-	// Only get approved forms for finalization
-	lastFinalizedDate := date.Truncate(24 * time.Hour)
 	req := &dto.PaymentReceiptFormListRequest{
 		ListParams: models.ListParams{
 			Page:  1,
@@ -345,14 +342,14 @@ func (s *excelService) FinalizeRevenueExpense(ctx context.Context, date time.Tim
 			Sort:  "form_number",
 			Order: "asc",
 		},
-		FinalizedDate: lastFinalizedDate,
+		FinalizedDate: prefixDate,
 		Statuses:      []models.PaymentReceiptFormStatus{models.PaymentReceiptFormStatusApproved},
 	}
 	req.ValidateAndSetDefaults()
 
 	forms, _, err := s.paymentReceiptFormRepo.List(ctx, req, "PurchaseOrder.Items", "PurchaseOrder.Items.Supplier", "PurchaseOrder.Items.Product")
 	if err != nil {
-		return nil, pkg.ErrFailedToQueryPaymentReceiptForms(ctx, lastFinalizedDate.Format("2006-01-02"), err)
+		return pkg.ErrFailedToQueryPaymentReceiptForms(ctx, prefixDate.Format("2006-01-02"), err)
 	}
 
 	// Detect if filePath is a Google Sheets URL or local file path
@@ -362,26 +359,26 @@ func (s *excelService) FinalizeRevenueExpense(ctx context.Context, date time.Tim
 		// Handle Google Sheets
 		spreadsheetID, err := pkg.ExtractSpreadsheetID(filePath)
 		if err != nil {
-			return nil, pkg.ErrInvalidGoogleSheetsURL(ctx, err)
+			return pkg.ErrInvalidGoogleSheetsURL(ctx, err)
 		}
 
 		// Initialize repository
 		if s.googleServiceAccount == "" {
-			return nil, pkg.ErrServiceAccountNotConfigured(ctx)
+			return pkg.ErrServiceAccountNotConfigured(ctx)
 		}
 		if err := s.revenueExpenseGoogleSheetsRepo.InitializeWithSpreadsheet(ctx, s.googleServiceAccount, spreadsheetID, sheetName); err != nil {
-			return nil, pkg.ErrFailedToInitializeGoogleSheetsRepo(ctx, err)
+			return pkg.ErrFailedToInitializeGoogleSheetsRepo(ctx, err)
 		}
 
 		// Add new date row, the date when user click finalize button, not the last finalized date
-		if err := s.revenueExpenseGoogleSheetsRepo.AddNewDateRow(ctx, sheetName, today); err != nil {
-			return nil, pkg.ErrFailedToAddNewDateRowGoogleSheets(ctx, err)
+		if err := s.revenueExpenseGoogleSheetsRepo.AddNewDateRow(ctx, sheetName, time.Now()); err != nil {
+			return pkg.ErrFailedToAddNewDateRowGoogleSheets(ctx, err)
 		}
 
 		expensesData, cellColors := s.createExpenseDataFromForms(forms)
 		if len(expensesData) > 0 {
 			if err := s.AddExpensesToGoogleSheets(ctx, sheetName, expensesData, cellColors); err != nil {
-				return nil, pkg.ErrFailedToAddExpensesToGoogleSheets(ctx, err)
+				return pkg.ErrFailedToAddExpensesToGoogleSheets(ctx, err)
 			}
 		}
 	} else {
@@ -389,7 +386,7 @@ func (s *excelService) FinalizeRevenueExpense(ctx context.Context, date time.Tim
 		// Initialize repository
 		initStart := time.Now()
 		if err := s.revenueExpenseExcelRepo.InitializeWithFile(ctx, filePath, sheetName); err != nil {
-			return nil, pkg.ErrFailedToInitializeExcelRepo(ctx, err)
+			return pkg.ErrFailedToInitializeExcelRepo(ctx, err)
 		}
 		log.WithContext(ctx).WithFields(logrus.Fields{
 			"operation":    "FinalizeRevenueExpense",
@@ -421,8 +418,8 @@ func (s *excelService) FinalizeRevenueExpense(ctx context.Context, date time.Tim
 		if len(expensesData) > 0 {
 			// Add new date row, the date when user click finalize button, not the last finalized date
 			addDateRowStart := time.Now()
-			if err := s.revenueExpenseExcelRepo.AddNewDateRow(ctx, sheetName, today); err != nil {
-				return nil, pkg.ErrFailedToAddNewDateRowExcel(ctx, err)
+			if err := s.revenueExpenseExcelRepo.AddNewDateRow(ctx, sheetName, dateInExcel); err != nil {
+				return pkg.ErrFailedToAddNewDateRowExcel(ctx, err)
 			}
 			log.WithContext(ctx).WithFields(logrus.Fields{
 				"operation":  "FinalizeRevenueExpense",
@@ -433,7 +430,7 @@ func (s *excelService) FinalizeRevenueExpense(ctx context.Context, date time.Tim
 
 			writeStart := time.Now()
 			if err := s.AddExpenses(ctx, sheetName, expensesData, cellColors); err != nil {
-				return nil, pkg.ErrFailedToAddExpensesToExcel(ctx, err)
+				return pkg.ErrFailedToAddExpensesToExcel(ctx, err)
 			}
 
 			log.WithContext(ctx).WithFields(logrus.Fields{
@@ -446,9 +443,7 @@ func (s *excelService) FinalizeRevenueExpense(ctx context.Context, date time.Tim
 		}
 	}
 
-	nextDay := today.AddDate(0, 0, 1)
-
-	return &nextDay, nil
+	return nil
 }
 
 // InitializeRevenueExpenseGoogleSheets initializes the Google Sheets repository for revenue/expense tracking

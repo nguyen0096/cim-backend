@@ -39,6 +39,7 @@ p, admin, payment-receipt-forms, create, allow
 p, admin, payment-receipt-forms, update, allow
 p, admin, payment-receipt-forms, delete, allow
 
+p, admin, revenue-expenses, view, allow
 p, admin, revenue-expenses, create, allow
 
 p, admin, permissions, view, allow
@@ -81,6 +82,8 @@ p, restaurant-admin, sale-order-items, view, allow
 p, restaurant-admin, sale-order-items, create, allow
 p, restaurant-admin, sale-order-items, update, allow
 p, restaurant-admin, sale-order-items, update_status, allow
+
+p, admin, admin-tools, view, allow
 
 p, accountant, permissions, view, allow
 p, accountant, products, view, allow

@@ -119,7 +119,7 @@ func TestPaymentReceiptFormService_CreatePaymentReceiptForm(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			// Arrange
 			mockRepo := repositorymocks.NewPaymentReceiptFormRepository(t)
-			service := NewPaymentReceiptFormService(mockRepo, nil, nil)
+			service := NewPaymentReceiptFormService(mockRepo, nil, nil, nil)
 
 			if !tt.expectError {
 				mockRepo.On("Create", mock.Anything, mock.MatchedBy(func(form *models.PaymentReceiptForm) bool {
@@ -195,7 +195,7 @@ func TestPaymentReceiptFormService_GetLatestPaymentReceiptForms(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			mockRepo := repositorymocks.NewPaymentReceiptFormRepository(t)
-			service := NewPaymentReceiptFormService(mockRepo, nil, nil)
+			service := NewPaymentReceiptFormService(mockRepo, nil, nil, nil)
 
 			mockRepo.On("GetLatestPaymentReceiptForms", mock.Anything, uint(0), models.PaymentReceiptFormStatusPending, 5).Return(tt.expectedForms, nil)
 
@@ -217,7 +217,7 @@ func TestPaymentReceiptFormService_GetLatestPaymentReceiptForms(t *testing.T) {
 func TestPaymentReceiptFormService_GetPaymentReceiptForm(t *testing.T) {
 	// Arrange
 	mockRepo := repositorymocks.NewPaymentReceiptFormRepository(t)
-	service := NewPaymentReceiptFormService(mockRepo, nil, nil)
+	service := NewPaymentReceiptFormService(mockRepo, nil, nil, nil)
 
 	expectedForm := &models.PaymentReceiptForm{
 		FullName:    "John Doe",
@@ -239,7 +239,7 @@ func TestPaymentReceiptFormService_GetPaymentReceiptForm(t *testing.T) {
 func TestPaymentReceiptFormService_ListPaymentReceiptForms(t *testing.T) {
 	// Arrange
 	mockRepo := repositorymocks.NewPaymentReceiptFormRepository(t)
-	service := NewPaymentReceiptFormService(mockRepo, nil, nil)
+	service := NewPaymentReceiptFormService(mockRepo, nil, nil, nil)
 
 	expectedForms := []models.PaymentReceiptForm{
 		{

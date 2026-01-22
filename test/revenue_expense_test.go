@@ -70,6 +70,8 @@ var _ = Describe("Revenue Expense API", func() {
 			err = settingsRepo.Set(ctx, config.RevenueExpenseExcelSettingsKey, settingsValue)
 			Expect(err).NotTo(HaveOccurred())
 
+			tenv.ContextfulDB().Exec("TRUNCATE TABLE revenue_expense_finalizations")
+
 			DeferCleanup(func() {
 				// Clean up temp file
 				if err := os.Remove(tempExcelFile); err != nil && !os.IsNotExist(err) {
@@ -79,19 +81,14 @@ var _ = Describe("Revenue Expense API", func() {
 				if err := os.RemoveAll(filepath.Dir(tempExcelFile)); err != nil {
 					GinkgoWriter.Printf("Warning: failed to delete temp dir: %v\n", err)
 				}
+				// Clean up finalization table
+				tenv.ContextfulDB().Exec("TRUNCATE TABLE revenue_expense_finalizations")
 			})
 		})
 
 		Context("when user has authorized role", func() {
 			role := models.RoleAdmin
 			It(fmt.Sprintf("should finalize revenue expense successfully with %s role", role), func(ctx SpecContext) {
-				// Set lastFinalizedDate to yesterday before the test
-				settingsCtx := pkg.WithUserEmail(tenv.DefaultContext, "test@cim.local")
-				settingsRepo := repository.NewSettingsRepository(tenv.ContextfulDB())
-				randomDate := time.Now().AddDate(0, 0, -1-rand.Intn(30))
-				err := settingsRepo.Set(settingsCtx, config.LastFinalizedDateSettingsKey, randomDate)
-				Expect(err).NotTo(HaveOccurred())
-
 				inventory := fixture.WithInventory(tenv.ContextfulDB(), models.Inventory{
 					Name:   "Inventory",
 					Status: models.InventoryStatusActive,
@@ -134,8 +131,8 @@ var _ = Describe("Revenue Expense API", func() {
 				approvedPaymentReceiptForms := []*models.PaymentReceiptForm{}
 				for i := 0; i < totalForms; i++ {
 					approvedPaymentReceiptForms = append(approvedPaymentReceiptForms, &models.PaymentReceiptForm{
-						FormNumber:    pkg.Ptr(fmt.Sprintf("%s-1-%d", randomDate.Format("20060102"), i+1)),
-						Date:          randomDate,
+						FormNumber:    pkg.Ptr(fmt.Sprintf("%s-%d-%d", pkg.GetTodayDate().Format("20060102"), 100+rand.Intn(1000000), i+1)),
+						Date:          pkg.GetTodayDate(),
 						FullName:      "John Doe",
 						Department:    "Finance",
 						Details:       "Office supplies",
@@ -145,8 +142,8 @@ var _ = Describe("Revenue Expense API", func() {
 					})
 				}
 				notApprovedPaymentReceiptForms := &models.PaymentReceiptForm{
-					FormNumber:    pkg.Ptr(fmt.Sprintf("%s-1-%d", randomDate.Format("20060102"), len(approvedPaymentReceiptForms)+1)),
-					Date:          randomDate,
+					FormNumber:    pkg.Ptr(fmt.Sprintf("%s-%d-%d", pkg.GetTodayDate().Format("20060102"), 100+rand.Intn(1000000), len(approvedPaymentReceiptForms)+1)),
+					Date:          pkg.GetTodayDate(),
 					FullName:      "Jane Doe",
 					Department:    "HR",
 					Details:       "HR expenses",
@@ -160,7 +157,7 @@ var _ = Describe("Revenue Expense API", func() {
 
 				// Use randomDate's date as the date to finalize
 				payload := map[string]interface{}{
-					"date": randomDate.Format("2006-01-02"),
+					"date": pkg.GetTodayDate().Format("2006-01-02"),
 				}
 
 				resp, err := client.MakeRequest("POST", "/api/v1/revenue-expenses/finalize", payload, testutil.WithAuth())
@@ -170,7 +167,7 @@ var _ = Describe("Revenue Expense API", func() {
 				// Validate response structure
 				finalizeResp := testutil.ParseResponse(resp)
 				Expect(finalizeResp["message"]).To(Equal("Revenue expense finalized successfully"))
-				Expect(finalizeResp["date"]).To(Equal(randomDate.Format("2006-01-02")))
+				Expect(finalizeResp["date"]).To(Equal(pkg.GetTodayDate().Format("2006-01-02")))
 
 				// Verify next_day is the day after the finalized date
 				nextDay, ok := finalizeResp["next_day"].(string)
@@ -292,22 +289,7 @@ var _ = Describe("Revenue Expense API", func() {
 		})
 
 		Context("when request validation fails", func() {
-			It("should return 400 when date is missing", func(ctx SpecContext) {
-				client := testutil.NewClient(tenv, models.RoleAdmin)
-
-				payload := map[string]interface{}{}
-
-				resp, err := client.MakeRequest("POST", "/api/v1/revenue-expenses/finalize", payload, testutil.WithAuth())
-				Expect(err).NotTo(HaveOccurred())
-				Expect(resp.StatusCode).To(Equal(400))
-
-				errorResp := testutil.ParseResponse(resp)
-				Expect(errorResp["message"]).NotTo(BeEmpty())
-			})
-
 			It("should return 200 when date format is invalid (validation only checks required)", func(ctx SpecContext) {
-				// Note: The current validation only checks if date is required, not if it's a valid date format
-				// The handler will use lastFinalizedDate from settings or time.Now() if not set
 				client := testutil.NewClient(tenv, models.RoleAdmin)
 
 				payload := map[string]interface{}{
@@ -322,7 +304,22 @@ var _ = Describe("Revenue Expense API", func() {
 			})
 		})
 
-		Context("when settings are not configured", func() {
+		Context("when user is unauthorized", func() {
+			It("should return 403 when user has staff role", func(ctx SpecContext) {
+				client := testutil.NewClient(tenv, models.RoleStaff)
+
+				randomDate := time.Now().AddDate(0, 0, rand.Intn(30))
+				payload := map[string]interface{}{
+					"date": randomDate.Format("2006-01-02"),
+				}
+
+				resp, err := client.MakeRequest("POST", "/api/v1/revenue-expenses/finalize", payload, testutil.WithAuth())
+				Expect(err).NotTo(HaveOccurred())
+				Expect(resp.StatusCode).To(Equal(403))
+			})
+		})
+
+		Context("when finalization fails", func() {
 			It("should return error when revenue expense settings are missing", func(ctx SpecContext) {
 				// Remove the settings
 				settingsCtx := pkg.WithUserEmail(tenv.DefaultContext, "test@cim.local")
@@ -346,36 +343,129 @@ var _ = Describe("Revenue Expense API", func() {
 				errorResp := testutil.ParseResponse(resp)
 				Expect(errorResp["message"]).NotTo(BeEmpty())
 			})
-		})
 
-		Context("when user is unauthorized", func() {
-			It("should return 403 when user has staff role", func(ctx SpecContext) {
-				client := testutil.NewClient(tenv, models.RoleStaff)
-
-				randomDate := time.Now().AddDate(0, 0, rand.Intn(30))
-				payload := map[string]interface{}{
-					"date": randomDate.Format("2006-01-02"),
-				}
-
-				resp, err := client.MakeRequest("POST", "/api/v1/revenue-expenses/finalize", payload, testutil.WithAuth())
-				Expect(err).NotTo(HaveOccurred())
-				Expect(resp.StatusCode).To(Equal(403))
-			})
-		})
-
-		Context("when finalizing with existing Excel file", func() {
-			It("should successfully finalize even when no payment receipt forms exist", func(ctx SpecContext) {
-				// Set lastFinalizedDate to yesterday before the test
+			It("should create finalization record with failed status and reason", func(ctx SpecContext) {
+				// Set lastFinalizedDate
 				settingsCtx := pkg.WithUserEmail(tenv.DefaultContext, "test@cim.local")
 				settingsRepo := repository.NewSettingsRepository(tenv.ContextfulDB())
-				randomDate := time.Now().AddDate(0, 0, rand.Intn(30))
-				err := settingsRepo.Set(settingsCtx, config.LastFinalizedDateSettingsKey, randomDate)
+
+				// Configure revenue expense settings with invalid file path to cause failure
+				invalidFilePath := "/nonexistent/path/to/file.xlsx"
+				settingsValue := map[string]interface{}{
+					"filePath":  invalidFilePath,
+					"sheetName": "TIỀN MẶT",
+				}
+				err := settingsRepo.Set(settingsCtx, config.RevenueExpenseExcelSettingsKey, settingsValue)
 				Expect(err).NotTo(HaveOccurred())
 
 				client := testutil.NewClient(tenv, models.RoleAdmin)
 
 				payload := map[string]interface{}{
-					"date": randomDate.Format("2006-01-02"),
+					"date": pkg.GetTodayDate().Format("2006-01-02"),
+				}
+
+				// Make request that will fail
+				resp, err := client.MakeRequest("POST", "/api/v1/revenue-expenses/finalize", payload, testutil.WithAuth())
+				Expect(err).NotTo(HaveOccurred())
+				Expect(resp.StatusCode).To(Equal(500))
+
+				// Query finalization repository to verify record was created
+				finalizationRepo := repository.NewRevenueExpenseFinalizationRepository(tenv.ContextfulDB())
+				finalizations, _, err := finalizationRepo.List(tenv.DefaultContext, 10, 0)
+				Expect(err).NotTo(HaveOccurred())
+				Expect(finalizations).NotTo(BeEmpty())
+
+				// Get the most recent finalization record (should be the one we just created)
+				latestFinalization := finalizations[0]
+				Expect(latestFinalization.Status).NotTo(BeNil())
+				Expect(*latestFinalization.Status).To(Equal(models.RevenueExpenseFinalizationStatusFailed))
+				Expect(latestFinalization.Reason).NotTo(BeNil())
+				Expect(*latestFinalization.Reason).NotTo(BeEmpty())
+				// Check that reason contains error information (case-insensitive)
+				reasonLower := strings.ToLower(*latestFinalization.Reason)
+				Expect(reasonLower).To(
+					ContainSubstring("failed to initialize excel repository: failed to open file"),
+				)
+			})
+		})
+
+		Context("when finalization is successful", Ordered, func() {
+			It("should successfully finalize even when no payment receipt forms exist", func(ctx SpecContext) {
+				client := testutil.NewClient(tenv, models.RoleAdmin)
+
+				payload := map[string]interface{}{
+					"date": pkg.GetTodayDate().Format("2006-01-02"),
+				}
+
+				resp, err := client.MakeRequest("POST", "/api/v1/revenue-expenses/finalize", payload, testutil.WithAuth())
+				Expect(err).NotTo(HaveOccurred())
+				Expect(resp.StatusCode).To(Equal(200))
+
+				// Verify response
+				finalizeResp := testutil.ParseResponse(resp)
+				Expect(finalizeResp["message"]).To(Equal("Revenue expense finalized successfully"))
+				Expect(finalizeResp["date"]).To(Equal(pkg.GetTodayDate().Format("2006-01-02")))
+
+				// Verify next_day is the day after the finalized date
+				nextDay, ok := finalizeResp["next_day"].(string)
+				Expect(ok).To(BeTrue())
+				expectedNextDay := pkg.GetTodayDate().AddDate(0, 0, 1).Format("2006-01-02")
+				Expect(nextDay).To(Equal(expectedNextDay))
+			})
+
+			It("should create finalization record with success status and today's date when finalization is successful and no record found in finalization table", func(ctx SpecContext) {
+				// Set lastFinalizedDate
+				client := testutil.NewClient(tenv, models.RoleAdmin)
+
+				payload := map[string]interface{}{
+					"date": pkg.GetTodayDate().Format("2006-01-02"),
+				}
+
+				resp, err := client.MakeRequest("POST", "/api/v1/revenue-expenses/finalize", payload, testutil.WithAuth())
+				Expect(err).NotTo(HaveOccurred())
+				Expect(resp.StatusCode).To(Equal(200))
+
+				// Verify response
+				finalizeResp := testutil.ParseResponse(resp)
+				Expect(finalizeResp["message"]).To(Equal("Revenue expense finalized successfully"))
+				Expect(finalizeResp["date"]).To(Equal(pkg.GetTodayDate().Format("2006-01-02")))
+
+				// Verify next_day is the day after the finalized date
+				nextDay, ok := finalizeResp["next_day"].(string)
+				Expect(ok).To(BeTrue())
+				expectedNextDay := pkg.GetTodayDate().AddDate(0, 0, 1).Format("2006-01-02")
+				Expect(nextDay).To(Equal(expectedNextDay))
+
+				// Verify finalization record was created with success status
+				finalizationRepo := repository.NewRevenueExpenseFinalizationRepository(tenv.ContextfulDB())
+				finalizations, _, err := finalizationRepo.List(tenv.DefaultContext, 10, 0)
+				Expect(err).NotTo(HaveOccurred())
+				Expect(finalizations).NotTo(BeEmpty())
+				latestFinalization := finalizations[0]
+				Expect(latestFinalization.Status).NotTo(BeNil())
+				Expect(*latestFinalization.Status).To(Equal(models.RevenueExpenseFinalizationStatusSuccess))
+				Expect(latestFinalization.FinalizedDate).NotTo(BeNil())
+				Expect(latestFinalization.FinalizedDate.Year()).To(Equal(pkg.GetTodayDate().Year()))
+				Expect(latestFinalization.FinalizedDate.Month()).To(Equal(pkg.GetTodayDate().Month()))
+				Expect(latestFinalization.FinalizedDate.Day()).To(Equal(pkg.GetTodayDate().Day()))
+				DeferCleanup(func() {
+					tenv.ContextfulDB().Exec("DELETE FROM revenue_expense_finalizations WHERE id = ?", latestFinalization.ID)
+				})
+			})
+
+			It("should create finalization record with success status when finalization is successful and last finalized date is not today's date", func(ctx SpecContext) {
+				// Set lastFinalizedDate
+				finalizationRepo := repository.NewRevenueExpenseFinalizationRepository(tenv.ContextfulDB())
+				randomDate := time.Now().AddDate(0, 0, -rand.Intn(30))
+				settingsRepo := repository.NewSettingsRepository(tenv.ContextfulDB())
+				err := settingsRepo.Set(ctx, config.LastFinalizedDateSettingsKey, randomDate)
+				Expect(err).NotTo(HaveOccurred())
+
+				client := testutil.NewClient(tenv, models.RoleAdmin)
+
+				payload := map[string]interface{}{
+					"prefix_date":   randomDate.Format("2006-01-02"),
+					"date_in_excel": randomDate.Add(time.Hour * 24).Format("2006-01-02"),
 				}
 
 				resp, err := client.MakeRequest("POST", "/api/v1/revenue-expenses/finalize", payload, testutil.WithAuth())
@@ -386,12 +476,18 @@ var _ = Describe("Revenue Expense API", func() {
 				finalizeResp := testutil.ParseResponse(resp)
 				Expect(finalizeResp["message"]).To(Equal("Revenue expense finalized successfully"))
 				Expect(finalizeResp["date"]).To(Equal(randomDate.Format("2006-01-02")))
+				Expect(finalizeResp["next_day"]).To(Equal(pkg.GetTodayDate().AddDate(0, 0, 1).Format("2006-01-02")))
 
-				// Verify next_day is the day after the finalized date
-				nextDay, ok := finalizeResp["next_day"].(string)
-				Expect(ok).To(BeTrue())
-				expectedNextDay := pkg.GetTodayDate().AddDate(0, 0, 1).Format("2006-01-02")
-				Expect(nextDay).To(Equal(expectedNextDay))
+				// Verify finalization record was created with failed status
+				lastSuccessfulFinalization, err := finalizationRepo.GetLastSuccessful(tenv.DefaultContext)
+				Expect(err).NotTo(HaveOccurred())
+				Expect(lastSuccessfulFinalization).NotTo(BeNil())
+				Expect(*lastSuccessfulFinalization.Status).To(Equal(models.RevenueExpenseFinalizationStatusSuccess))
+				Expect(lastSuccessfulFinalization.FinalizedDate).NotTo(BeNil())
+				Expect(lastSuccessfulFinalization.FinalizedDate.Year()).To(Equal(randomDate.Year()))
+				Expect(lastSuccessfulFinalization.FinalizedDate.Month()).To(Equal(randomDate.Month()))
+				Expect(lastSuccessfulFinalization.FinalizedDate.Day()).To(Equal(randomDate.Day()))
+				Expect(lastSuccessfulFinalization.Reason).To(BeNil())
 			})
 		})
 	})
