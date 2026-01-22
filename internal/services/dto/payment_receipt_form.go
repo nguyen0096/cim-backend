@@ -13,7 +13,7 @@ type PaymentReceiptFormListRequest struct {
 	PurchaseOrderID uint                              `json:"purchase_order_id" query:"purchase_order_id"`
 	InventoryID     uint                              `json:"inventory_id" query:"inventory_id"`
 	Date            string                            `json:"date" query:"date"`
-	FinalizedDate   time.Time                         `json:"finalized_date" query:"finalized_date"`
+	FinalizedDate   string                         `json:"finalized_date" query:"finalized_date"`
 	Statuses        []models.PaymentReceiptFormStatus `json:"statuses" query:"statuses"`
 }
 

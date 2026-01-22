@@ -81,6 +81,16 @@ func (h *RevenueExpenseHandler) FinalizeRevenueExpense(c echo.Context) error {
 		lastFinalizedDate = prefixDateParsed
 	}
 
+	var dateInExcel time.Time = time.Now()
+	if req.DateInExcel != "" {
+		dateInExcelParsed, err := time.Parse("2006-01-02", req.DateInExcel)
+		if err != nil {
+			return pkg.ErrInvalidRequestBodyI18n(ctx, err)
+		}
+
+		dateInExcel = dateInExcelParsed
+	}
+
 	if lastFinalizedDate.IsZero() {
 		if err := h.settingsService.GetSettingValue(ctx, config.LastFinalizedDateSettingsKey, &lastFinalizedDate); err != nil {
 			log.WithFields(logrus.Fields{
@@ -148,16 +158,6 @@ func (h *RevenueExpenseHandler) FinalizeRevenueExpense(c echo.Context) error {
 	// 	// Use the finalized_date from the last successful finalization
 	// 	lastFinalizedDate = lastSuccessfulFinalization.FinalizedDate.Truncate(24 * time.Hour)
 	// }
-
-	var dateInExcel time.Time = time.Now()
-	if req.DateInExcel != "" {
-		dateInExcelParsed, err := time.Parse("2006-01-02", req.DateInExcel)
-		if err != nil {
-			return pkg.ErrInvalidRequestBodyI18n(ctx, err)
-		}
-
-		dateInExcel = dateInExcelParsed
-	}
 
 	// Call service to finalize
 	err := h.excelService.FinalizeRevenueExpense(ctx, lastFinalizedDate, dateInExcel)

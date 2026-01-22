@@ -335,6 +335,7 @@ func (s *excelService) FinalizeRevenueExpense(ctx context.Context, prefixDate, d
 		return pkg.ErrSheetNameNotFoundInSettings(ctx)
 	}
 
+	finalizedDate := prefixDate.Truncate(24 * time.Hour).Format("20060102")
 	req := &dto.PaymentReceiptFormListRequest{
 		ListParams: models.ListParams{
 			Page:  1,
@@ -342,7 +343,7 @@ func (s *excelService) FinalizeRevenueExpense(ctx context.Context, prefixDate, d
 			Sort:  "form_number",
 			Order: "asc",
 		},
-		FinalizedDate: prefixDate,
+		FinalizedDate: finalizedDate,
 		Statuses:      []models.PaymentReceiptFormStatus{models.PaymentReceiptFormStatusApproved},
 	}
 	req.ValidateAndSetDefaults()
@@ -371,7 +372,7 @@ func (s *excelService) FinalizeRevenueExpense(ctx context.Context, prefixDate, d
 		}
 
 		// Add new date row, the date when user click finalize button, not the last finalized date
-		if err := s.revenueExpenseGoogleSheetsRepo.AddNewDateRow(ctx, sheetName, time.Now()); err != nil {
+		if err := s.revenueExpenseGoogleSheetsRepo.AddNewDateRow(ctx, sheetName, dateInExcel); err != nil {
 			return pkg.ErrFailedToAddNewDateRowGoogleSheets(ctx, err)
 		}
 

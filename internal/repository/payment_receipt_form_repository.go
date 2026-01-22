@@ -127,9 +127,8 @@ func (r *paymentReceiptFormRepository) List(ctx context.Context, req *dto.Paymen
 	}
 
 	// Apply finalized date filter if provided
-	if !req.FinalizedDate.IsZero() {
-		finalizedDate := req.FinalizedDate.Truncate(24 * time.Hour).Format("20060102")
-		query = query.Where("payment_receipt_forms.form_number LIKE ?", finalizedDate+"-%")
+	if req.FinalizedDate != "" {
+		query = query.Where("payment_receipt_forms.form_number LIKE ?", req.FinalizedDate+"-%")
 	}
 
 	// Apply date filter if provided

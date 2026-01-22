@@ -169,7 +169,11 @@ func (s *paymentReceiptFormService) GetPaymentReceiptForm(ctx context.Context, i
 
 // ListPaymentReceiptForms retrieves a paginated list of payment receipt forms
 func (s *paymentReceiptFormService) ListPaymentReceiptForms(ctx context.Context, req *dto.PaymentReceiptFormListRequest) ([]models.PaymentReceiptForm, int64, error) {
-	forms, total, err := s.paymentReceiptFormRepo.List(ctx, req)
+	preloads := make([]string, 0, 5)
+	if req.FinalizedDate != "" {
+		preloads = append(preloads, "PurchaseOrder.Items", "PurchaseOrder.Items.Supplier", "PurchaseOrder.Items.Product")
+	}
+	forms, total, err := s.paymentReceiptFormRepo.List(ctx, req, preloads...)
 	if err != nil {
 		return nil, 0, fmt.Errorf("failed to list payment receipt forms: %w", err)
 	}
