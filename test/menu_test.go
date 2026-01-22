@@ -58,7 +58,7 @@ var _ = Describe("Menu API", func() {
 
 		Context("when user has authorized role", func() {
 			It("should create menu with admin role", func() {
-				client := testutil.NewClient(tenv, models.RoleAdmin)
+				client := testutil.NewClient(tenv, models.RoleRestaurantAdmin)
 				menuName := fmt.Sprintf("Test Menu %s", uuid.New().String())
 
 				menuData := map[string]interface{}{
@@ -146,7 +146,7 @@ var _ = Describe("Menu API", func() {
 
 		Context("when user has authorized role", func() {
 			It("should get menu with admin role", func() {
-				client := testutil.NewClient(tenv, models.RoleAdmin)
+				client := testutil.NewClient(tenv, models.RoleRestaurantAdmin)
 
 				urlPath := fmt.Sprintf("/api/v1/menus/%d", testMenu.ID)
 				resp, err := client.MakeRequest("GET", urlPath, nil, testutil.WithAuth())
@@ -192,7 +192,7 @@ var _ = Describe("Menu API", func() {
 
 		Context("when user has authorized role", func() {
 			It("should list menus with admin role", func() {
-				client := testutil.NewClient(tenv, models.RoleAdmin)
+				client := testutil.NewClient(tenv, models.RoleRestaurantAdmin)
 
 				resp, err := client.MakeRequest("GET", "/api/v1/menus?page=1&limit=20", nil, testutil.WithAuth())
 				Expect(err).NotTo(HaveOccurred())
@@ -279,7 +279,7 @@ var _ = Describe("Menu API", func() {
 
 		Context("when user has authorized role", func() {
 			It("should update menu with admin role", func() {
-				client := testutil.NewClient(tenv, models.RoleAdmin)
+				client := testutil.NewClient(tenv, models.RoleRestaurantAdmin)
 				newMenuName := fmt.Sprintf("Updated Menu %s", uuid.New().String())
 
 				updatedMenuData := map[string]interface{}{
@@ -344,7 +344,7 @@ var _ = Describe("Menu API", func() {
 
 		Context("when user has authorized role", func() {
 			It("should delete menu with admin role", func(ctx SpecContext) {
-				client := testutil.NewClient(tenv, models.RoleAdmin)
+				client := testutil.NewClient(tenv, models.RoleRestaurantAdmin)
 
 				urlPath := fmt.Sprintf("/api/v1/menus/%d", testMenu.ID)
 				resp, err := client.MakeRequest("DELETE", urlPath, nil, testutil.WithAuth())
@@ -403,7 +403,7 @@ var _ = Describe("MenuItem API", func() {
 
 		Context("when user has authorized role", func() {
 			It("should create menu item with admin role", func() {
-				client := testutil.NewClient(tenv, models.RoleAdmin)
+				client := testutil.NewClient(tenv, models.RoleRestaurantAdmin)
 				menuItemName := fmt.Sprintf("Test Menu Item %s", uuid.New().String())
 
 				menuItemData := map[string]interface{}{
@@ -426,7 +426,7 @@ var _ = Describe("MenuItem API", func() {
 			})
 
 			It("should create menu item with tags", func() {
-				client := testutil.NewClient(tenv, models.RoleAdmin)
+				client := testutil.NewClient(tenv, models.RoleRestaurantAdmin)
 				menuItemName := fmt.Sprintf("Test Menu Item with Tags %s", uuid.New().String())
 
 				menuItemData := map[string]interface{}{
@@ -508,7 +508,7 @@ var _ = Describe("MenuItem API", func() {
 
 		Context("when user has authorized role", func() {
 			It("should get menu item with admin role", func() {
-				client := testutil.NewClient(tenv, models.RoleAdmin)
+				client := testutil.NewClient(tenv, models.RoleRestaurantAdmin)
 
 				urlPath := fmt.Sprintf("/api/v1/menu-items/%d", testMenuItem.ID)
 				resp, err := client.MakeRequest("GET", urlPath, nil, testutil.WithAuth())
@@ -554,7 +554,7 @@ var _ = Describe("MenuItem API", func() {
 
 		Context("when user has authorized role", func() {
 			It("should list menu items with admin role", func() {
-				client := testutil.NewClient(tenv, models.RoleAdmin)
+				client := testutil.NewClient(tenv, models.RoleRestaurantAdmin)
 
 				resp, err := client.MakeRequest("GET", "/api/v1/menu-items?page=1&limit=20", nil, testutil.WithAuth())
 				Expect(err).NotTo(HaveOccurred())
@@ -637,7 +637,7 @@ var _ = Describe("MenuItem API", func() {
 			})
 
 			It("should filter menu items by single tag", func() {
-				client := testutil.NewClient(tenv, models.RoleAdmin)
+				client := testutil.NewClient(tenv, models.RoleRestaurantAdmin)
 
 				resp, err := client.MakeRequest("GET", "/api/v1/menu-items?page=1&limit=20&tags=appetizer", nil, testutil.WithAuth())
 				Expect(err).NotTo(HaveOccurred())
@@ -670,7 +670,7 @@ var _ = Describe("MenuItem API", func() {
 			})
 
 			It("should filter menu items by multiple tags", func() {
-				client := testutil.NewClient(tenv, models.RoleAdmin)
+				client := testutil.NewClient(tenv, models.RoleRestaurantAdmin)
 
 				resp, err := client.MakeRequest("GET", "/api/v1/menu-items?page=1&limit=20&tags=appetizer,mains", nil, testutil.WithAuth())
 				Expect(err).NotTo(HaveOccurred())
@@ -704,7 +704,7 @@ var _ = Describe("MenuItem API", func() {
 			})
 
 			It("should return all menu items when no tag filter is provided", func() {
-				client := testutil.NewClient(tenv, models.RoleAdmin)
+				client := testutil.NewClient(tenv, models.RoleRestaurantAdmin)
 
 				resp, err := client.MakeRequest("GET", "/api/v1/menu-items?page=1&limit=100", nil, testutil.WithAuth())
 				Expect(err).NotTo(HaveOccurred())
@@ -738,7 +738,7 @@ var _ = Describe("MenuItem API", func() {
 			})
 
 			It("should return menu items with tags in response", func() {
-				client := testutil.NewClient(tenv, models.RoleAdmin)
+				client := testutil.NewClient(tenv, models.RoleRestaurantAdmin)
 
 				resp, err := client.MakeRequest("GET", fmt.Sprintf("/api/v1/menu-items/%d", appetizerMenuItem.ID), nil, testutil.WithAuth())
 				Expect(err).NotTo(HaveOccurred())
@@ -757,7 +757,7 @@ var _ = Describe("MenuItem API", func() {
 			})
 
 			It("should filter menu items with multiple matching tags", func() {
-				client := testutil.NewClient(tenv, models.RoleAdmin)
+				client := testutil.NewClient(tenv, models.RoleRestaurantAdmin)
 
 				// Filter by salad tag - should return both appetizer and multiTagMenuItem
 				resp, err := client.MakeRequest("GET", "/api/v1/menu-items?page=1&limit=20&tags=salad", nil, testutil.WithAuth())
@@ -841,7 +841,7 @@ var _ = Describe("MenuItem API", func() {
 
 		Context("when user has authorized role", func() {
 			It("should update menu item with admin role", func() {
-				client := testutil.NewClient(tenv, models.RoleAdmin)
+				client := testutil.NewClient(tenv, models.RoleRestaurantAdmin)
 				newMenuItemName := fmt.Sprintf("Updated Menu Item %s", uuid.New().String())
 
 				updatedMenuItemData := map[string]interface{}{
@@ -867,7 +867,7 @@ var _ = Describe("MenuItem API", func() {
 			})
 
 			It("should update menu item with tags", func() {
-				client := testutil.NewClient(tenv, models.RoleAdmin)
+				client := testutil.NewClient(tenv, models.RoleRestaurantAdmin)
 				newMenuItemName := fmt.Sprintf("Updated Menu Item with Tags %s", uuid.New().String())
 
 				updatedMenuItemData := map[string]interface{}{
@@ -907,7 +907,7 @@ var _ = Describe("MenuItem API", func() {
 					tenv.ContextfulDB().Delete(menuItemWithTags)
 				})
 
-				client := testutil.NewClient(tenv, models.RoleAdmin)
+				client := testutil.NewClient(tenv, models.RoleRestaurantAdmin)
 				newMenuItemName := fmt.Sprintf("Updated Menu Item No Tags %s", uuid.New().String())
 
 				updatedMenuItemData := map[string]interface{}{
@@ -973,7 +973,7 @@ var _ = Describe("MenuItem API", func() {
 
 		Context("when user has authorized role", func() {
 			It("should delete menu item with admin role", func(ctx SpecContext) {
-				client := testutil.NewClient(tenv, models.RoleAdmin)
+				client := testutil.NewClient(tenv, models.RoleRestaurantAdmin)
 
 				urlPath := fmt.Sprintf("/api/v1/menu-items/%d", testMenuItem.ID)
 				resp, err := client.MakeRequest("DELETE", urlPath, nil, testutil.WithAuth())
