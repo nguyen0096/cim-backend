@@ -17,6 +17,7 @@ import (
 )
 
 // RevenueExpenseExcelRepository handles data access for revenue/expense Excel operations
+//go:generate mockery --name=RevenueExpenseExcelRepository --structname=RevenueExpenseExcelRepository --output=../../mocks/repositorymocks --outpkg=repositorymocks
 type RevenueExpenseExcelRepository interface {
 	InitializeWithFile(ctx context.Context, filePath string, sheetNames ...string) error
 	AddExpenses(ctx context.Context, sheetName string, expensesData []map[string]interface{}, cellColors []string) error

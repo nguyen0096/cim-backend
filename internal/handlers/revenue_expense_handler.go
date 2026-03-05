@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"sync"
 	"time"
 
 	"github.com/labstack/echo/v4"
@@ -71,6 +72,8 @@ func (h *RevenueExpenseHandler) FinalizeRevenueExpense(c echo.Context) error {
 		return pkg.ErrValidationI18n(ctx, err)
 	}
 
+	today := time.Now()
+
 	var lastFinalizedDate time.Time
 	if req.PrefixDate != "" {
 		prefixDateParsed, err := time.Parse("2006-01-02", req.PrefixDate)
@@ -81,7 +84,7 @@ func (h *RevenueExpenseHandler) FinalizeRevenueExpense(c echo.Context) error {
 		lastFinalizedDate = prefixDateParsed
 	}
 
-	var dateInExcel time.Time = time.Now()
+	var dateInExcel time.Time = today
 	if req.DateInExcel != "" {
 		dateInExcelParsed, err := time.Parse("2006-01-02", req.DateInExcel)
 		if err != nil {
@@ -101,7 +104,7 @@ func (h *RevenueExpenseHandler) FinalizeRevenueExpense(c echo.Context) error {
 		}
 
 		if lastFinalizedDate.IsZero() {
-			lastFinalizedDate = time.Now()
+			lastFinalizedDate = today
 		}
 	}
 
@@ -115,29 +118,10 @@ func (h *RevenueExpenseHandler) FinalizeRevenueExpense(c echo.Context) error {
 	}
 
 	// Update status to failed on error, success on completion
-	var finalizationErr *pkg.AppError
-	defer func() {
-		if finalizationErr != nil {
-			repoCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 30*time.Second)
-			defer cancel()
-			// Update status to failed and write error reason
-			failedStatus := models.RevenueExpenseFinalizationStatusFailed
-			finalization.Status = &failedStatus
-			reason := finalizationErr.Error()
-			finalization.Reason = &reason
-			if updateErr := h.revenueExpenseFinalizationRepo.Update(repoCtx, finalization); updateErr != nil {
-				log.WithFields(logrus.Fields{
-					"error":   updateErr.Error(),
-					"details": "Failed to update finalization status to failed",
-				}).Error("Failed to update finalization status")
-			}
-		}
-	}()
-
 	defer func() {
 		settingsCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 30*time.Second)
 		defer cancel()
-		if err := h.settingsService.SetSetting(settingsCtx, config.LastFinalizedDateSettingsKey, time.Now()); err != nil {
+		if err := h.settingsService.SetSetting(settingsCtx, config.LastFinalizedDateSettingsKey, pkg.GetTodayDate()); err != nil {
 			log.WithFields(logrus.Fields{
 				"error":   err.Error(),
 				"details": "Failed to set last finalized date to now",
@@ -160,23 +144,50 @@ func (h *RevenueExpenseHandler) FinalizeRevenueExpense(c echo.Context) error {
 	// }
 
 	// Call service to finalize
-	err := h.excelService.FinalizeRevenueExpense(ctx, lastFinalizedDate, dateInExcel)
-	if err != nil {
-		// Check if error is already an AppError, return it directly
-		var appErr *pkg.AppError
-		if errors.As(err, &appErr) {
-			finalizationErr = appErr
-			return err
-		}
-		finalizationErr = pkg.ErrFailedToFinalizeRevenueExpense(ctx, err)
-		return finalizationErr
-	}
+	wg := sync.WaitGroup{}
+	wg.Add(1)
+	var finalizationErr *pkg.AppError
+	go func() {
+		defer wg.Done()
+		serviceCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 90*time.Second)
+		defer cancel()
+		err := h.excelService.FinalizeRevenueExpense(serviceCtx, lastFinalizedDate, dateInExcel)
+		if err != nil {
+			// Check if error is already an AppError, return it directly
+			var appErr *pkg.AppError
+			if errors.As(err, &appErr) {
+				finalizationErr = appErr
+			} else {
+				finalizationErr = pkg.ErrFailedToFinalizeRevenueExpense(serviceCtx, err)
+			}
 
-	// Update finalization status to success
-	successStatus := models.RevenueExpenseFinalizationStatusSuccess
-	finalization.Status = &successStatus
-	if err := h.revenueExpenseFinalizationRepo.Update(ctx, finalization); err != nil {
-		return fmt.Errorf("failed to update finalization status: %w", err)
+			failedStatus := models.RevenueExpenseFinalizationStatusFailed
+			finalization.Status = &failedStatus
+			reason := finalizationErr.Error()
+			finalization.Reason = &reason
+		} else {
+			successStatus := models.RevenueExpenseFinalizationStatusSuccess
+			finalization.Status = &successStatus
+		}
+
+		if finalizationErr != nil {
+			log.WithFields(logrus.Fields{
+				"error":   finalizationErr.Error(),
+				"details": "Failed to finalize revenue expense",
+			}).Error("Failed to finalize revenue expense")
+		}
+
+		if updateErr := h.revenueExpenseFinalizationRepo.Update(serviceCtx, finalization); updateErr != nil {
+			log.WithFields(logrus.Fields{
+				"error":   updateErr.Error(),
+				"details": "Failed to update finalization status to failed",
+			}).Error("Failed to update finalization status")
+		}
+	}()
+	wg.Wait()
+
+	if finalizationErr != nil {
+		return c.JSON(http.StatusInternalServerError, finalizationErr)
 	}
 
 	response := FinalizeRevenueExpenseResponse{

@@ -17,10 +17,8 @@ import (
 	"cim-backend/pkg/testutil"
 	"cim-backend/pkg/testutil/fixture"
 
-	"github.com/google/uuid"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
-	"github.com/shopspring/decimal"
 )
 
 var _ = Describe("Revenue Expense API", func() {
@@ -88,77 +86,15 @@ var _ = Describe("Revenue Expense API", func() {
 
 		Context("when user has authorized role", func() {
 			role := models.RoleAdmin
-			It(fmt.Sprintf("should finalize revenue expense successfully with %s role", role), func(ctx SpecContext) {
-				inventory := fixture.WithInventory(tenv.ContextfulDB(), models.Inventory{
-					Name:   "Inventory",
-					Status: models.InventoryStatusActive,
+			It("should finalize revenue expense successfully with role admin", func(ctx SpecContext) {
+				preparation := fixture.WithRevenueExpenseFinalizationsPreparation(tenv.ContextfulDB(), pkg.GetTodayDate())
+				DeferCleanup(func() {
+					fixture.CleanupRevenueExpenseFinalizationsPreparation(tenv.ContextfulDB(), preparation)
 				})
-				suppliers := fixture.WithSuppliers(tenv.ContextfulDB(), []*models.Supplier{
-					{
-						Name: fmt.Sprintf("SUPPLIER %s", strings.ToUpper(uuid.New().String())),
-					},
-					{
-						Name: fmt.Sprintf("SUPPLIER %s", strings.ToUpper(uuid.New().String())),
-					},
-				})
-				units := fixture.WithUnits(tenv.ContextfulDB(), []*models.Unit{
-					{Name: "Pack"},
-				})
-				products := fixture.WithProducts(tenv.ContextfulDB(), []*models.Product{
-					{Name: "Snack and Rice", ProductType: pkg.RevenueExpenseColumnSnackAndRice, Unit: units[0], Suppliers: suppliers},
-					{Name: "Water", ProductType: pkg.RevenueExpenseColumnWater, Unit: units[0], Suppliers: suppliers},
-				})
-				purchaseOrders := fixture.WithPurchaseOrders(tenv.ContextfulDB(), []*models.PurchaseOrder{
-					{
-						Inventory:   inventory,
-						OrderNumber: uuid.New().String(),
-						Items: []*models.PurchaseOrderItem{
-							{Product: products[0], Supplier: suppliers[0], Quantity: decimal.NewFromFloat(1), UnitPrice: 1000, Unit: units[0]},
-							{Product: products[1], Supplier: suppliers[0], Quantity: decimal.NewFromFloat(2), UnitPrice: 2000, Unit: units[0]},
-						},
-					},
-					{
-						Inventory:   inventory,
-						OrderNumber: uuid.New().String(),
-						Items: []*models.PurchaseOrderItem{
-							{Product: products[0], Supplier: suppliers[1], Quantity: decimal.NewFromFloat(1), UnitPrice: 1000, Unit: units[0]},
-						},
-					},
-				})
-
-				// Set payment receipt forms
-				totalForms := 1
-				approvedPaymentReceiptForms := []*models.PaymentReceiptForm{}
-				for i := 0; i < totalForms; i++ {
-					approvedPaymentReceiptForms = append(approvedPaymentReceiptForms, &models.PaymentReceiptForm{
-						FormNumber:    pkg.Ptr(fmt.Sprintf("%s-%d-%d", pkg.GetTodayDate().Format("20060102"), 100+rand.Intn(1000000), i+1)),
-						Date:          pkg.GetTodayDate(),
-						FullName:      "John Doe",
-						Department:    "Finance",
-						Details:       "Office supplies",
-						TotalAmount:   100000,
-						Status:        models.PaymentReceiptFormStatusApproved,
-						PurchaseOrder: purchaseOrders[0],
-					})
-				}
-				notApprovedPaymentReceiptForms := &models.PaymentReceiptForm{
-					FormNumber:    pkg.Ptr(fmt.Sprintf("%s-%d-%d", pkg.GetTodayDate().Format("20060102"), 100+rand.Intn(1000000), len(approvedPaymentReceiptForms)+1)),
-					Date:          pkg.GetTodayDate(),
-					FullName:      "Jane Doe",
-					Department:    "HR",
-					Details:       "HR expenses",
-					TotalAmount:   200000,
-					Status:        models.PaymentReceiptFormStatusSubmitted,
-					PurchaseOrder: purchaseOrders[1],
-				}
-				fixture.WithPaymentReceiptForms(tenv.ContextfulDB(), append(approvedPaymentReceiptForms, notApprovedPaymentReceiptForms))
-
 				client := testutil.NewClient(tenv, role)
 
 				// Use randomDate's date as the date to finalize
-				payload := map[string]interface{}{
-					"date": pkg.GetTodayDate().Format("2006-01-02"),
-				}
+				payload := map[string]interface{}{}
 
 				resp, err := client.MakeRequest("POST", "/api/v1/revenue-expenses/finalize", payload, testutil.WithAuth())
 				Expect(err).NotTo(HaveOccurred())
@@ -187,10 +123,10 @@ var _ = Describe("Revenue Expense API", func() {
 				Expect(err).NotTo(HaveOccurred())
 				// Convert Excel row number (1-based) to array index (0-based)
 				lastRowArrayIndex := lastRowIndex - 1
-				for i, approvedPaymentReceiptForm := range approvedPaymentReceiptForms {
-					expenseData, err := excelRepo.MapRowToExpense(sheetName, rows[lastRowArrayIndex-totalForms+i+1])
+				for i, approvedPaymentReceiptForm := range preparation.ApprovedPaymentReceiptForms {
+					expenseData, err := excelRepo.MapRowToExpense(sheetName, rows[lastRowArrayIndex-preparation.TotalForms+i+1])
 					Expect(err).NotTo(HaveOccurred())
-					Expect(expenseData[pkg.RevenueExpenseColumnName]).To(Equal(suppliers[0].Name))
+					Expect(expenseData[pkg.RevenueExpenseColumnName]).To(Equal(preparation.Suppliers[0].Name))
 					Expect(expenseData[pkg.RevenueExpenseColumnOrdinalNumber]).To(Equal(fmt.Sprintf("%d", i+1)))
 					// MapRowToExpense returns values as strings (Excel stores them as text after uppercase conversion)
 					// Convert string to float64 for comparison

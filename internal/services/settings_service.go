@@ -9,6 +9,7 @@ import (
 )
 
 // SettingsService defines the interface for settings business logic
+//go:generate mockery --name=SettingsService --structname=SettingsService --output=../mocks/servicemocks --outpkg=servicemocks
 type SettingsService interface {
 	GetSetting(ctx context.Context, key string) (*models.Settings, error)
 	SetSetting(ctx context.Context, key string, value interface{}) error
