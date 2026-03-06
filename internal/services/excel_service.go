@@ -174,13 +174,20 @@ type excelService struct {
 	googleServiceAccount           string
 }
 
-func NewExcelService(productRepo repository.ProductRepository, inventoryRepo repository.InventoryRepository, paymentReceiptFormRepo repository.PaymentReceiptFormRepository, settingsService SettingsService) ExcelService {
+func NewExcelService(
+	productRepo repository.ProductRepository,
+	inventoryRepo repository.InventoryRepository,
+	paymentReceiptFormRepo repository.PaymentReceiptFormRepository,
+	revenueExpenseExcelRepo excel.RevenueExpenseExcelRepository,
+	revenueExpenseGoogleSheetsRepo googlesheets.RevenueExpenseGoogleSheetsRepository,
+	settingsService SettingsService,
+) ExcelService {
 	return &excelService{
 		productRepo:                    productRepo,
 		inventoryRepo:                  inventoryRepo,
 		paymentReceiptFormRepo:         paymentReceiptFormRepo,
-		revenueExpenseExcelRepo:        excel.NewRevenueExpenseExcelRepository(),
-		revenueExpenseGoogleSheetsRepo: googlesheets.NewRevenueExpenseGoogleSheetsRepository(),
+		revenueExpenseExcelRepo:        revenueExpenseExcelRepo,
+		revenueExpenseGoogleSheetsRepo: revenueExpenseGoogleSheetsRepo,
 		settingsService:                settingsService,
 		googleServiceAccount:           os.Getenv("GOOGLE_SERVICE_ACCOUNT"),
 	}
@@ -335,7 +342,7 @@ func (s *excelService) FinalizeRevenueExpense(ctx context.Context, prefixDate, d
 		return pkg.ErrSheetNameNotFoundInSettings(ctx)
 	}
 
-	finalizedDate := prefixDate.Truncate(24 * time.Hour).Format("20060102")
+	finalizedDate := prefixDate.Format("20060102")
 	req := &dto.PaymentReceiptFormListRequest{
 		ListParams: models.ListParams{
 			Page:  1,

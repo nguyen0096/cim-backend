@@ -2,13 +2,17 @@ package repository
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
+	"math/rand"
 	"time"
 
 	"cim-backend/internal/models"
 	"cim-backend/internal/services/dto"
 	"cim-backend/pkg"
+	"cim-backend/pkg/log"
 
+	"github.com/sirupsen/logrus"
 	"gorm.io/gorm"
 )
 
@@ -24,6 +28,7 @@ type PaymentReceiptFormRepository interface {
 	Delete(ctx context.Context, id uint) error
 	DeletePermanently(ctx context.Context, id uint) error
 	GetLatestPaymentReceiptForms(ctx context.Context, purchaseOrderID uint, status models.PaymentReceiptFormStatus, limit int) ([]*models.PaymentReceiptForm, error)
+	GenerateNextFormNumber(ctx context.Context, date time.Time, inventoryID uint) (string, error)
 }
 
 type paymentReceiptFormRepository struct {
@@ -224,4 +229,97 @@ func (r *paymentReceiptFormRepository) GetLatestPaymentReceiptForms(ctx context.
 		return nil, fmt.Errorf("failed to get latest payment receipt forms: %w", err)
 	}
 	return forms, nil
+}
+
+// GenerateNextFormNumber generates the next available form number in date-increment format
+func (r *paymentReceiptFormRepository) GenerateNextFormNumber(ctx context.Context, date time.Time, inventoryID uint) (string, error) {
+	dateString := date.Format("20060102")
+
+	// Use retry logic to handle race conditions
+	maxRetries := 10
+
+	for attempt := 0; attempt < maxRetries; attempt++ {
+		// Find the maximum increment number for this date and inventory
+		// Using MAX(SPLIT_PART) is more reliable than COUNT because it handles gaps correctly
+		// If a form is deleted or a number is skipped, MAX will still find the highest number
+		var maxIncrement sql.NullInt64
+		pattern := fmt.Sprintf("%s-%d-%%", dateString, inventoryID)
+
+		// Use raw SQL to extract and find MAX increment
+		// SPLIT_PART splits form_number by '-' and gets the 3rd part (the increment)
+		// We include soft-deleted records (Unscoped) to ensure we don't reuse their numbers
+		err := r.db.WithContext(ctx).
+			Raw(`
+				SELECT COALESCE(MAX(CAST(SPLIT_PART(form_number, '-', 3) AS INTEGER)), 0)
+				FROM payment_receipt_forms
+				WHERE form_number LIKE ?
+			`, pattern).
+			Scan(&maxIncrement).Error
+
+		if err != nil {
+			// Fallback to COUNT if MAX extraction fails (e.g., invalid form_number format)
+			var count int64
+			countErr := r.db.WithContext(ctx).
+				Unscoped().
+				Model(&models.PaymentReceiptForm{}).
+				Where("form_number LIKE ?", pattern).
+				Count(&count).Error
+
+			if countErr != nil {
+				return "", fmt.Errorf("failed to get next form number: %w", countErr)
+			}
+			maxIncrement = sql.NullInt64{Int64: count, Valid: true}
+		}
+
+		// Generate form number with next increment
+		var increment int64
+		if maxIncrement.Valid {
+			increment = maxIncrement.Int64 + 1
+		} else {
+			increment = 1
+		}
+
+		formNumber := fmt.Sprintf("%s-%d-%d", dateString, inventoryID, increment)
+		logger := log.WithFields(logrus.Fields{
+			"formNumber":  formNumber,
+			"inventoryID": inventoryID,
+			"date":        date,
+			"increment":   increment,
+		})
+
+		// Verify this form number doesn't exist
+		var existingCount int64
+		err = r.db.WithContext(ctx).
+			Unscoped().
+			Model(&models.PaymentReceiptForm{}).
+			Where("form_number = ?", formNumber).
+			Count(&existingCount).Error
+
+		if err != nil {
+			logger.WithFields(logrus.Fields{
+				"error": err.Error(),
+			}).Error("Failed to verify form number uniqueness")
+			return "", fmt.Errorf("failed to verify form number uniqueness: %w", err)
+		}
+
+		// If form number is unique, return it
+		if existingCount == 0 {
+			return formNumber, nil
+		}
+
+		// If we reach here, there's a race condition, retry
+		if attempt == maxRetries-1 {
+			logger.WithFields(logrus.Fields{
+				"error": fmt.Errorf("failed to generate unique form number after %d attempts", maxRetries),
+			}).Error("Failed to generate unique form number")
+			return "", fmt.Errorf("failed to generate unique form number after %d attempts", maxRetries)
+		}
+
+		// Exponential backoff with jitter before retry
+		baseDelay := time.Millisecond * time.Duration(20*(1<<uint(attempt))) // Exponential: 20ms, 40ms, 80ms...
+		jitter := time.Millisecond * time.Duration(rand.Intn(20))            // Random jitter up to 20ms
+		time.Sleep(baseDelay + jitter)
+	}
+
+	return "", fmt.Errorf("failed to generate form number after %d attempts", maxRetries)
 }

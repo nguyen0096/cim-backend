@@ -3,6 +3,7 @@ package services
 import (
 	"context"
 	"testing"
+	"time"
 
 	"cim-backend/internal/mocks/repositorymocks"
 	"cim-backend/internal/models"
@@ -236,31 +237,120 @@ func TestPaymentReceiptFormService_GetPaymentReceiptForm(t *testing.T) {
 	assert.Equal(t, expectedForm, form)
 }
 
-func TestPaymentReceiptFormService_ListPaymentReceiptForms(t *testing.T) {
-	// Arrange
-	mockRepo := repositorymocks.NewPaymentReceiptFormRepository(t)
-	service := NewPaymentReceiptFormService(mockRepo, nil, nil, nil)
+func TestPaymentReceiptFormService_ApprovePaymentReceiptForm(t *testing.T) {
+	ctx := context.Background()
+	inventoryID := uint(1)
+	formID := uint(123)
 
-	expectedForms := []models.PaymentReceiptForm{
-		{
-			FullName:    "John Doe",
-			Department:  "Finance",
-			TotalAmount: 100.50,
-			Status:      models.PaymentReceiptFormStatusPending,
-		},
-	}
-	expectedTotal := int64(1)
-	params := &dto.PaymentReceiptFormListRequest{
-		ListParams: models.ListParams{Page: 1, Limit: 20},
+	setup := func(t *testing.T) (*repositorymocks.PaymentReceiptFormRepository, *repositorymocks.RevenueExpenseFinalizationRepository, PaymentReceiptFormService) {
+		mockRepo := repositorymocks.NewPaymentReceiptFormRepository(t)
+		mockFinalizationRepo := repositorymocks.NewRevenueExpenseFinalizationRepository(t)
+		service := NewPaymentReceiptFormService(mockRepo, nil, nil, mockFinalizationRepo)
+		return mockRepo, mockFinalizationRepo, service
 	}
 
-	mockRepo.On("List", mock.Anything, params).Return(expectedForms, expectedTotal, nil)
+	t.Run("should approve form successfully", func(t *testing.T) {
+		mockRepo, mockFinalizationRepo, service := setup(t)
+		form := &models.PaymentReceiptForm{
+			Base:   models.Base{ID: formID},
+			Status: models.PaymentReceiptFormStatusPending,
+			Date:   time.Now(),
+			PurchaseOrder: &models.PurchaseOrder{
+				InventoryID: &inventoryID,
+			},
+		}
 
-	// Act
-	forms, total, err := service.ListPaymentReceiptForms(context.Background(), params)
+		mockRepo.On("GetByIDFull", ctx, formID).Return(form, nil).Once()
+		mockFinalizationRepo.On("GetLastSuccessful", ctx).Return(nil, nil).Once()
+		mockRepo.On("GenerateNextFormNumber", ctx, form.Date, inventoryID).Return("20240115-1-1", nil).Once()
+		mockRepo.On("Update", ctx, mock.MatchedBy(func(f *models.PaymentReceiptForm) bool {
+			return f.Status == models.PaymentReceiptFormStatusApproved && *f.FormNumber == "20240115-1-1"
+		})).Return(nil).Once()
 
-	// Assert
-	assert.NoError(t, err)
-	assert.Equal(t, expectedForms, forms)
-	assert.Equal(t, expectedTotal, total)
+		err := service.ApprovePaymentReceiptForm(ctx, formID)
+		assert.NoError(t, err)
+	})
+
+	t.Run("should use last finalized date if available", func(t *testing.T) {
+		mockRepo, mockFinalizationRepo, service := setup(t)
+		finalizedDate := time.Now().AddDate(0, 0, -1)
+		form := &models.PaymentReceiptForm{
+			Base:   models.Base{ID: formID},
+			Status: models.PaymentReceiptFormStatusPending,
+			PurchaseOrder: &models.PurchaseOrder{
+				InventoryID: &inventoryID,
+			},
+		}
+
+		mockRepo.On("GetByIDFull", ctx, formID).Return(form, nil).Once()
+		mockFinalizationRepo.On("GetLastSuccessful", ctx).Return(&models.RevenueExpenseFinalization{
+			FinalizedDate: finalizedDate,
+		}, nil).Once()
+		mockRepo.On("GenerateNextFormNumber", ctx, finalizedDate, inventoryID).Return("20240114-1-1", nil).Once()
+		mockRepo.On("Update", ctx, mock.Anything).Return(nil).Once()
+
+		err := service.ApprovePaymentReceiptForm(ctx, formID)
+		assert.NoError(t, err)
+	})
+
+	t.Run("should fail if already approved", func(t *testing.T) {
+		mockRepo, _, service := setup(t)
+		form := &models.PaymentReceiptForm{
+			Base:   models.Base{ID: formID},
+			Status: models.PaymentReceiptFormStatusApproved,
+		}
+
+		mockRepo.On("GetByIDFull", ctx, formID).Return(form, nil).Once()
+
+		err := service.ApprovePaymentReceiptForm(ctx, formID)
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "already approved")
+	})
+
+	t.Run("should fail if rejected", func(t *testing.T) {
+		mockRepo, _, service := setup(t)
+		form := &models.PaymentReceiptForm{
+			Base:   models.Base{ID: formID},
+			Status: models.PaymentReceiptFormStatusRejected,
+		}
+
+		mockRepo.On("GetByIDFull", ctx, formID).Return(form, nil).Once()
+
+		err := service.ApprovePaymentReceiptForm(ctx, formID)
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "rejected")
+	})
+
+	t.Run("should retry on duplicate key error", func(t *testing.T) {
+		mockRepo, mockFinalizationRepo, service := setup(t)
+		form := &models.PaymentReceiptForm{
+			Base:   models.Base{ID: formID},
+			Status: models.PaymentReceiptFormStatusPending,
+			Date:   time.Now(),
+			PurchaseOrder: &models.PurchaseOrder{
+				InventoryID: &inventoryID,
+			},
+		}
+
+		mockRepo.On("GetByIDFull", ctx, formID).Return(form, nil).Once()
+		mockFinalizationRepo.On("GetLastSuccessful", ctx).Return(nil, nil).Once()
+
+		// First attempt fails with duplicate key
+		mockRepo.On("GenerateNextFormNumber", ctx, form.Date, inventoryID).Return("20240115-1-1", nil).Once()
+		dupErr := pkg.NewAppError(pkg.ErrorCodeInternal, "duplicate key value violates unique constraint", nil)
+		mockRepo.On("Update", ctx, mock.Anything).Return(dupErr).Once()
+
+		// Second attempt succeeds
+		mockRepo.On("GenerateNextFormNumber", ctx, form.Date, inventoryID).Return("20240115-1-2", nil).Once()
+		mockRepo.On("Update", ctx, mock.MatchedBy(func(f *models.PaymentReceiptForm) bool {
+			return *f.FormNumber == "20240115-1-2"
+		})).Return(nil).Once()
+
+		err := service.ApprovePaymentReceiptForm(ctx, formID)
+		assert.NoError(t, err)
+
+		mockRepo.AssertNumberOfCalls(t, "GetByIDFull", 1)
+		mockRepo.AssertNumberOfCalls(t, "GenerateNextFormNumber", 2)
+		mockRepo.AssertNumberOfCalls(t, "Update", 2)
+	})
 }

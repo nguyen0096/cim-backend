@@ -11,6 +11,8 @@ import (
 	"cim-backend/internal/handlers"
 	"cim-backend/internal/middleware"
 	"cim-backend/internal/repository"
+	"cim-backend/internal/repository/excel"
+	"cim-backend/internal/repository/googlesheets"
 	"cim-backend/internal/services"
 	"cim-backend/pkg"
 	"cim-backend/pkg/log"
@@ -68,7 +70,9 @@ func SetupServer(
 	productService := services.NewProductService(productRepo, supplierRepo, unitRepo, unitService, settingsService)
 	inventoryService := services.NewInventoryService(inventoryRepo, inventoryItemRepo, inventorySubmissionRepo, productRepo, fileStorageService, db)
 	inventoryItemService := services.NewInventoryItemService(inventoryItemRepo, inventoryRepo, productRepo)
-	excelService := services.NewExcelService(productRepo, inventoryRepo, paymentReceiptFormRepo, settingsService)
+	revenueExpenseExcelRepo := excel.NewRevenueExpenseExcelRepository()
+	revenueExpenseGoogleSheetsRepo := googlesheets.NewRevenueExpenseGoogleSheetsRepository()
+	excelService := services.NewExcelService(productRepo, inventoryRepo, paymentReceiptFormRepo, revenueExpenseExcelRepo, revenueExpenseGoogleSheetsRepo, settingsService)
 	purchaseOrderService := services.NewPurchaseOrderService(purchaseOrderRepo, paymentReceiptFormRepo, unitRepo, productRepo, inventoryService, excelService, settingsService, db, supplierRepo, inventoryRepo, unitService, productService)
 	paymentReceiptFormService := services.NewPaymentReceiptFormService(paymentReceiptFormRepo, db, settingsService, revenueExpenseFinalizationRepo)
 	menuService := services.NewMenuService(menuRepo, menuItemRepo, inventoryRepo)

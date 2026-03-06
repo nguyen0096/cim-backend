@@ -12,6 +12,8 @@ import (
 )
 
 // RevenueExpenseGoogleSheetsRepository handles data access for revenue/expense Google Sheets operations
+//
+//go:generate mockery --name=RevenueExpenseGoogleSheetsRepository --structname=RevenueExpenseGoogleSheetsRepository --output=../../mocks/repositorymocks --outpkg=repositorymocks
 type RevenueExpenseGoogleSheetsRepository interface {
 	InitializeWithSpreadsheet(ctx context.Context, serviceAccountFilePath string, spreadsheetID string, sheetNames ...string) error
 	AddExpenses(ctx context.Context, sheetName string, expensesData []map[string]interface{}, cellColors []string) error

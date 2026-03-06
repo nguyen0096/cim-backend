@@ -11,6 +11,7 @@ import (
 	"gorm.io/gorm"
 )
 
+//go:generate mockery --name=InventoryRepository --structname=InventoryRepository --output=../mocks/repositorymocks --outpkg=repositorymocks
 type InventoryRepository interface {
 	Create(ctx context.Context, inventory *models.Inventory) error
 	Update(ctx context.Context, inventory *models.Inventory) error

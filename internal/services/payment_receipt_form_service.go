@@ -2,7 +2,6 @@ package services
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"fmt"
 	"math/rand"
@@ -13,9 +12,7 @@ import (
 	"cim-backend/internal/repository"
 	"cim-backend/internal/services/dto"
 	"cim-backend/pkg"
-	"cim-backend/pkg/log"
 
-	"github.com/sirupsen/logrus"
 	"gorm.io/gorm"
 )
 
@@ -51,99 +48,6 @@ func NewPaymentReceiptFormService(
 		settingsService:                settingsService,
 		revenueExpenseFinalizationRepo: revenueExpenseFinalizationRepo,
 	}
-}
-
-// generateNextFormNumber generates the next available form number in date-increment format
-func (s *paymentReceiptFormService) generateNextFormNumber(ctx context.Context, date time.Time, inventoryID uint) (string, error) {
-	dateString := date.Format("20060102")
-
-	// Use retry logic to handle race conditions
-	maxRetries := 10
-
-	for attempt := 0; attempt < maxRetries; attempt++ {
-		// Find the maximum increment number for this date and inventory
-		// Using MAX(SPLIT_PART) is more reliable than COUNT because it handles gaps correctly
-		// If a form is deleted or a number is skipped, MAX will still find the highest number
-		var maxIncrement sql.NullInt64
-		pattern := fmt.Sprintf("%s-%d-%%", dateString, inventoryID)
-
-		// Use raw SQL to extract and find MAX increment
-		// SPLIT_PART splits form_number by '-' and gets the 3rd part (the increment)
-		// We include soft-deleted records (Unscoped) to ensure we don't reuse their numbers
-		err := s.db.WithContext(ctx).
-			Raw(`
-				SELECT COALESCE(MAX(CAST(SPLIT_PART(form_number, '-', 3) AS INTEGER)), 0)
-				FROM payment_receipt_forms
-				WHERE form_number LIKE ?
-			`, pattern).
-			Scan(&maxIncrement).Error
-
-		if err != nil {
-			// Fallback to COUNT if MAX extraction fails (e.g., invalid form_number format)
-			var count int64
-			countErr := s.db.WithContext(ctx).
-				Unscoped().
-				Model(&models.PaymentReceiptForm{}).
-				Where("form_number LIKE ?", pattern).
-				Count(&count).Error
-
-			if countErr != nil {
-				return "", fmt.Errorf("failed to get next form number: %w", countErr)
-			}
-			maxIncrement = sql.NullInt64{Int64: count, Valid: true}
-		}
-
-		// Generate form number with next increment
-		var increment int64
-		if maxIncrement.Valid {
-			increment = maxIncrement.Int64 + 1
-		} else {
-			increment = 1
-		}
-
-		formNumber := fmt.Sprintf("%s-%d-%d", dateString, inventoryID, increment)
-		logger := log.WithFields(logrus.Fields{
-			"formNumber":  formNumber,
-			"inventoryID": inventoryID,
-			"date":        date,
-			"increment":   increment,
-		})
-
-		// Verify this form number doesn't exist
-		var existingCount int64
-		err = s.db.WithContext(ctx).
-			Unscoped().
-			Model(&models.PaymentReceiptForm{}).
-			Where("form_number = ?", formNumber).
-			Count(&existingCount).Error
-
-		if err != nil {
-			logger.WithFields(logrus.Fields{
-				"error": err.Error(),
-			}).Error("Failed to verify form number uniqueness")
-			return "", fmt.Errorf("failed to verify form number uniqueness: %w", err)
-		}
-
-		// If form number is unique, return it
-		if existingCount == 0 {
-			return formNumber, nil
-		}
-
-		// If we reach here, there's a race condition, retry
-		if attempt == maxRetries-1 {
-			logger.WithFields(logrus.Fields{
-				"error": fmt.Errorf("failed to generate unique form number after %d attempts", maxRetries),
-			}).Error("Failed to generate unique form number")
-			return "", fmt.Errorf("failed to generate unique form number after %d attempts", maxRetries)
-		}
-
-		// Exponential backoff with jitter before retry
-		baseDelay := time.Millisecond * time.Duration(20*(1<<uint(attempt))) // Exponential: 20ms, 40ms, 80ms...
-		jitter := time.Millisecond * time.Duration(rand.Intn(20))            // Random jitter up to 20ms
-		time.Sleep(baseDelay + jitter)
-	}
-
-	return "", fmt.Errorf("failed to generate form number after %d attempts", maxRetries)
 }
 
 // CreatePaymentReceiptForm creates a new payment receipt form
@@ -297,7 +201,7 @@ func (s *paymentReceiptFormService) ApprovePaymentReceiptForm(ctx context.Contex
 	// Retry logic to handle concurrent form number generation
 	maxRetries := 5
 	for attempt := 0; attempt < maxRetries; attempt++ {
-		formNumber, err := s.generateNextFormNumber(ctx, finalizedDate, *form.PurchaseOrder.InventoryID)
+		formNumber, err := s.paymentReceiptFormRepo.GenerateNextFormNumber(ctx, finalizedDate, *form.PurchaseOrder.InventoryID)
 		if err != nil {
 			return fmt.Errorf("failed to generate form number: %w", err)
 		}
