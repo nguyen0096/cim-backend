@@ -7,7 +7,7 @@ import (
 // GetTodayDate returns today's date with time set to midnight
 func GetTodayDate() time.Time {
 	now := time.Now()
-	return time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+	return time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC)
 }
 
 // GetMonthStart returns the first day of the current month with the given offset.

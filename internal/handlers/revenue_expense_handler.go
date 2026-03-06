@@ -72,7 +72,7 @@ func (h *RevenueExpenseHandler) FinalizeRevenueExpense(c echo.Context) error {
 		return pkg.ErrValidationI18n(ctx, err)
 	}
 
-	today := time.Now()
+	today := pkg.GetTodayDate()
 
 	var lastFinalizedDate time.Time
 	if req.PrefixDate != "" {

@@ -5,6 +5,7 @@ import (
 	"cim-backend/internal/mocks/repositorymocks"
 	"cim-backend/internal/mocks/servicemocks"
 	"cim-backend/internal/models"
+	"cim-backend/pkg"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -34,15 +35,15 @@ func TestRevenueExpenseHandler_FinalizeRevenueExpense(t *testing.T) {
 		c := e.NewContext(req, rec)
 
 		// Mock Expectations
-		today := time.Now()
+		today := pkg.GetTodayDate()
 		mockSettingsService.On("GetSettingValue", mock.Anything, config.LastFinalizedDateSettingsKey, mock.Anything).Return(nil)
 		mockRepo.On("Create", mock.Anything, mock.AnythingOfType("*models.RevenueExpenseFinalization")).Return(nil)
 		mockExcelService.On("FinalizeRevenueExpense", mock.Anything,
-			mock.MatchedBy(func(t time.Time) bool { return t.Format("2006-01-02") == today.Format("2006-01-02") }),
-			mock.MatchedBy(func(t time.Time) bool { return t.Format("2006-01-02") == today.Format("2006-01-02") }),
+			mock.MatchedBy(func(t time.Time) bool { return t.Format("2006-01-02 -0700") == today.Format("2006-01-02 -0700") }),
+			mock.MatchedBy(func(t time.Time) bool { return t.Format("2006-01-02 -0700") == today.Format("2006-01-02 -0700") }),
 		).Return(nil)
 		mockRepo.On("Update", mock.Anything, mock.AnythingOfType("*models.RevenueExpenseFinalization")).Return(nil)
-		mockSettingsService.On("SetSetting", mock.Anything, config.LastFinalizedDateSettingsKey, mock.Anything).Return(nil)
+		mockSettingsService.On("SetSetting", mock.Anything, config.LastFinalizedDateSettingsKey, pkg.GetTodayDate()).Return(nil)
 
 		assert.NoError(t, handler.FinalizeRevenueExpense(c))
 		assert.Equal(t, http.StatusOK, rec.Code)
@@ -88,7 +89,7 @@ func TestRevenueExpenseHandler_FinalizeRevenueExpense(t *testing.T) {
 			return f.FinalizedDate.Equal(expectedPrefixDate) && *f.Status == models.RevenueExpenseFinalizationStatusSuccess
 		})).Return(nil)
 
-		mockSettingsService.On("SetSetting", mock.Anything, config.LastFinalizedDateSettingsKey, mock.Anything).Return(nil)
+		mockSettingsService.On("SetSetting", mock.Anything, config.LastFinalizedDateSettingsKey, pkg.GetTodayDate()).Return(nil)
 
 		if assert.NoError(t, handler.FinalizeRevenueExpense(c)) {
 			assert.Equal(t, http.StatusOK, rec.Code)
