@@ -3,7 +3,6 @@ package services
 import (
 	"context"
 	"testing"
-	"time"
 
 	"cim-backend/internal/mocks/repositorymocks"
 	"cim-backend/internal/models"
@@ -254,14 +253,14 @@ func TestPaymentReceiptFormService_ApprovePaymentReceiptForm(t *testing.T) {
 		form := &models.PaymentReceiptForm{
 			Base:   models.Base{ID: formID},
 			Status: models.PaymentReceiptFormStatusPending,
-			Date:   time.Now(),
+			Date:   pkg.GetTodayDate(),
 			PurchaseOrder: &models.PurchaseOrder{
 				InventoryID: &inventoryID,
 			},
 		}
 
 		mockRepo.On("GetByIDFull", ctx, formID).Return(form, nil).Once()
-		mockFinalizationRepo.On("GetLastSuccessful", ctx).Return(nil, nil).Once()
+		mockFinalizationRepo.On("GetLastest", ctx).Return(nil, nil).Once()
 		mockRepo.On("GenerateNextFormNumber", ctx, form.Date, inventoryID).Return("20240115-1-1", nil).Once()
 		mockRepo.On("Update", ctx, mock.MatchedBy(func(f *models.PaymentReceiptForm) bool {
 			return f.Status == models.PaymentReceiptFormStatusApproved && *f.FormNumber == "20240115-1-1"
@@ -273,7 +272,7 @@ func TestPaymentReceiptFormService_ApprovePaymentReceiptForm(t *testing.T) {
 
 	t.Run("should use last finalized date if available", func(t *testing.T) {
 		mockRepo, mockFinalizationRepo, service := setup(t)
-		finalizedDate := time.Now().AddDate(0, 0, -1)
+		finalizedDate := pkg.GetTodayDate().AddDate(0, 0, -1)
 		form := &models.PaymentReceiptForm{
 			Base:   models.Base{ID: formID},
 			Status: models.PaymentReceiptFormStatusPending,
@@ -283,8 +282,8 @@ func TestPaymentReceiptFormService_ApprovePaymentReceiptForm(t *testing.T) {
 		}
 
 		mockRepo.On("GetByIDFull", ctx, formID).Return(form, nil).Once()
-		mockFinalizationRepo.On("GetLastSuccessful", ctx).Return(&models.RevenueExpenseFinalization{
-			FinalizedDate: finalizedDate,
+		mockFinalizationRepo.On("GetLastest", ctx).Return(&models.RevenueExpenseFinalization{
+			Base: models.Base{CreatedAt: finalizedDate},
 		}, nil).Once()
 		mockRepo.On("GenerateNextFormNumber", ctx, finalizedDate, inventoryID).Return("20240114-1-1", nil).Once()
 		mockRepo.On("Update", ctx, mock.Anything).Return(nil).Once()
@@ -326,14 +325,14 @@ func TestPaymentReceiptFormService_ApprovePaymentReceiptForm(t *testing.T) {
 		form := &models.PaymentReceiptForm{
 			Base:   models.Base{ID: formID},
 			Status: models.PaymentReceiptFormStatusPending,
-			Date:   time.Now(),
+			Date:   pkg.GetTodayDate(),
 			PurchaseOrder: &models.PurchaseOrder{
 				InventoryID: &inventoryID,
 			},
 		}
 
 		mockRepo.On("GetByIDFull", ctx, formID).Return(form, nil).Once()
-		mockFinalizationRepo.On("GetLastSuccessful", ctx).Return(nil, nil).Once()
+		mockFinalizationRepo.On("GetLastest", ctx).Return(nil, nil).Once()
 
 		// First attempt fails with duplicate key
 		mockRepo.On("GenerateNextFormNumber", ctx, form.Date, inventoryID).Return("20240115-1-1", nil).Once()

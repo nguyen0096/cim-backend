@@ -1,7 +1,6 @@
 package handlers
 
 import (
-	"cim-backend/internal/config"
 	"cim-backend/internal/mocks/repositorymocks"
 	"cim-backend/internal/mocks/servicemocks"
 	"cim-backend/internal/models"
@@ -21,12 +20,11 @@ import (
 func TestRevenueExpenseHandler_FinalizeRevenueExpense(t *testing.T) {
 	e := echo.New()
 
-	t.Run("Should finalize successfully with current date when payload is empty", func(t *testing.T) {
+	t.Run("Should finalize successfully with latest finalization date when payload is empty", func(t *testing.T) {
 		mockExcelService := new(servicemocks.ExcelService)
-		mockSettingsService := new(servicemocks.SettingsService)
 		mockRepo := new(repositorymocks.RevenueExpenseFinalizationRepository)
 
-		handler := NewRevenueExpenseHandler(mockExcelService, mockSettingsService, mockRepo)
+		handler := NewRevenueExpenseHandler(mockExcelService, mockRepo)
 
 		reqBody := ""
 		req := httptest.NewRequest(http.MethodPost, "/revenue-expenses/finalize", strings.NewReader(reqBody))
@@ -36,14 +34,21 @@ func TestRevenueExpenseHandler_FinalizeRevenueExpense(t *testing.T) {
 
 		// Mock Expectations
 		today := pkg.GetTodayDate()
-		mockSettingsService.On("GetSettingValue", mock.Anything, config.LastFinalizedDateSettingsKey, mock.Anything).Return(nil)
-		mockRepo.On("Create", mock.Anything, mock.AnythingOfType("*models.RevenueExpenseFinalization")).Return(nil)
+		lastCreatedAt := today.AddDate(0, 0, -1)
+		mockRepo.On("GetLastest", mock.Anything).Return(&models.RevenueExpenseFinalization{
+			FinalizedDate: today.AddDate(0, 0, -2),
+			Base:          models.Base{CreatedAt: lastCreatedAt},
+		}, nil)
+		mockRepo.On("Create", mock.Anything, mock.MatchedBy(func(f *models.RevenueExpenseFinalization) bool {
+			return f.FinalizedDate.Equal(lastCreatedAt) && f.Status == nil
+		})).Return(nil)
 		mockExcelService.On("FinalizeRevenueExpense", mock.Anything,
-			mock.MatchedBy(func(t time.Time) bool { return t.Format("2006-01-02 -0700") == today.Format("2006-01-02 -0700") }),
-			mock.MatchedBy(func(t time.Time) bool { return t.Format("2006-01-02 -0700") == today.Format("2006-01-02 -0700") }),
+			mock.MatchedBy(func(t time.Time) bool { return t.Equal(lastCreatedAt) }),
+			mock.MatchedBy(func(t time.Time) bool { return t.Equal(today) }),
 		).Return(nil)
-		mockRepo.On("Update", mock.Anything, mock.AnythingOfType("*models.RevenueExpenseFinalization")).Return(nil)
-		mockSettingsService.On("SetSetting", mock.Anything, config.LastFinalizedDateSettingsKey, pkg.GetTodayDate()).Return(nil)
+		mockRepo.On("Update", mock.Anything, mock.MatchedBy(func(r *models.RevenueExpenseFinalization) bool {
+			return r.FinalizedDate.Equal(lastCreatedAt) && *r.Status == models.RevenueExpenseFinalizationStatusSuccess
+		})).Return(nil)
 
 		assert.NoError(t, handler.FinalizeRevenueExpense(c))
 		assert.Equal(t, http.StatusOK, rec.Code)
@@ -55,16 +60,14 @@ func TestRevenueExpenseHandler_FinalizeRevenueExpense(t *testing.T) {
 		mockRepo.AssertNumberOfCalls(t, "Create", 1)
 		mockRepo.AssertNumberOfCalls(t, "Update", 1)
 		mockExcelService.AssertNumberOfCalls(t, "FinalizeRevenueExpense", 1)
-		mockSettingsService.AssertNumberOfCalls(t, "GetSettingValue", 1)
-		mockSettingsService.AssertNumberOfCalls(t, "SetSetting", 1)
+		mockRepo.AssertNumberOfCalls(t, "GetLastest", 1)
 	})
 
 	t.Run("Should finalize successfully when payload is valid", func(t *testing.T) {
 		mockExcelService := new(servicemocks.ExcelService)
-		mockSettingsService := new(servicemocks.SettingsService)
 		mockRepo := new(repositorymocks.RevenueExpenseFinalizationRepository)
 
-		handler := NewRevenueExpenseHandler(mockExcelService, mockSettingsService, mockRepo)
+		handler := NewRevenueExpenseHandler(mockExcelService, mockRepo)
 
 		reqBody := `{"prefix_date": "2024-03-05", "date_in_excel": "2024-03-05"}`
 		req := httptest.NewRequest(http.MethodPost, "/revenue-expenses/finalize", strings.NewReader(reqBody))
@@ -89,8 +92,6 @@ func TestRevenueExpenseHandler_FinalizeRevenueExpense(t *testing.T) {
 			return f.FinalizedDate.Equal(expectedPrefixDate) && *f.Status == models.RevenueExpenseFinalizationStatusSuccess
 		})).Return(nil)
 
-		mockSettingsService.On("SetSetting", mock.Anything, config.LastFinalizedDateSettingsKey, pkg.GetTodayDate()).Return(nil)
-
 		if assert.NoError(t, handler.FinalizeRevenueExpense(c)) {
 			assert.Equal(t, http.StatusOK, rec.Code)
 			var resp FinalizeRevenueExpenseResponse
@@ -103,15 +104,14 @@ func TestRevenueExpenseHandler_FinalizeRevenueExpense(t *testing.T) {
 		mockRepo.AssertNumberOfCalls(t, "Create", 1)
 		mockRepo.AssertNumberOfCalls(t, "Update", 1)
 		mockExcelService.AssertNumberOfCalls(t, "FinalizeRevenueExpense", 1)
-		mockSettingsService.AssertNumberOfCalls(t, "SetSetting", 1)
+		mockRepo.AssertNumberOfCalls(t, "GetLastest", 0)
 	})
 
-	t.Run("Should ignore payload and finalize with current date when body is invalid", func(t *testing.T) {
+	t.Run("Should return error when body is invalid", func(t *testing.T) {
 		mockExcelService := new(servicemocks.ExcelService)
-		mockSettingsService := new(servicemocks.SettingsService)
 		mockRepo := new(repositorymocks.RevenueExpenseFinalizationRepository)
 
-		handler := NewRevenueExpenseHandler(mockExcelService, mockSettingsService, mockRepo)
+		handler := NewRevenueExpenseHandler(mockExcelService, mockRepo)
 
 		reqBody := `invalid json`
 		req := httptest.NewRequest(http.MethodPost, "/revenue-expenses/finalize", strings.NewReader(reqBody))
@@ -124,16 +124,14 @@ func TestRevenueExpenseHandler_FinalizeRevenueExpense(t *testing.T) {
 		mockRepo.AssertNumberOfCalls(t, "Create", 0)
 		mockRepo.AssertNumberOfCalls(t, "Update", 0)
 		mockExcelService.AssertNumberOfCalls(t, "FinalizeRevenueExpense", 0)
-		mockSettingsService.AssertNumberOfCalls(t, "GetSettingValue", 0)
-		mockSettingsService.AssertNumberOfCalls(t, "SetSetting", 0)
+		mockRepo.AssertNumberOfCalls(t, "GetLastest", 0)
 	})
 
 	t.Run("Should return error and not update settings when repository fails", func(t *testing.T) {
 		mockExcelService := new(servicemocks.ExcelService)
-		mockSettingsService := new(servicemocks.SettingsService)
 		mockRepo := new(repositorymocks.RevenueExpenseFinalizationRepository)
 
-		handler := NewRevenueExpenseHandler(mockExcelService, mockSettingsService, mockRepo)
+		handler := NewRevenueExpenseHandler(mockExcelService, mockRepo)
 
 		reqBody := `{"prefix_date": "2024-03-05", "date_in_excel": "2024-03-05"}`
 		req := httptest.NewRequest(http.MethodPost, "/revenue-expenses/finalize", strings.NewReader(reqBody))
@@ -141,26 +139,23 @@ func TestRevenueExpenseHandler_FinalizeRevenueExpense(t *testing.T) {
 		rec := httptest.NewRecorder()
 		c := e.NewContext(req, rec)
 
-		mockSettingsService.On("GetSettingValue", mock.Anything, config.LastFinalizedDateSettingsKey, mock.Anything).Return(nil)
 		mockRepo.On("Create", mock.Anything, mock.AnythingOfType("*models.RevenueExpenseFinalization")).Return(assert.AnError)
 		mockExcelService.On("FinalizeRevenueExpense", mock.Anything, mock.AnythingOfType("time.Time"), mock.AnythingOfType("time.Time")).Return(nil)
 		mockRepo.On("Update", mock.Anything, mock.AnythingOfType("*models.RevenueExpenseFinalization")).Return(nil)
-		mockSettingsService.On("SetSetting", mock.Anything, config.LastFinalizedDateSettingsKey, mock.Anything).Return(nil)
 
 		assert.Error(t, handler.FinalizeRevenueExpense(c))
 
 		mockRepo.AssertNumberOfCalls(t, "Create", 1)
 		mockRepo.AssertNumberOfCalls(t, "Update", 0)
 		mockExcelService.AssertNumberOfCalls(t, "FinalizeRevenueExpense", 0)
-		mockSettingsService.AssertNumberOfCalls(t, "SetSetting", 0)
+		mockRepo.AssertNumberOfCalls(t, "GetLastest", 0)
 	})
 
 	t.Run("Should create finalization record with failed status, update settings and return error response when finalize is failed", func(t *testing.T) {
 		mockExcelService := new(servicemocks.ExcelService)
-		mockSettingsService := new(servicemocks.SettingsService)
 		mockRepo := new(repositorymocks.RevenueExpenseFinalizationRepository)
 
-		handler := NewRevenueExpenseHandler(mockExcelService, mockSettingsService, mockRepo)
+		handler := NewRevenueExpenseHandler(mockExcelService, mockRepo)
 
 		expectedPrefixDate, _ := time.Parse("2006-01-02", "2024-03-05")
 		reqBody := `{"prefix_date": "2024-03-05", "date_in_excel": "2024-03-05"}`
@@ -169,7 +164,6 @@ func TestRevenueExpenseHandler_FinalizeRevenueExpense(t *testing.T) {
 		rec := httptest.NewRecorder()
 		c := e.NewContext(req, rec)
 
-		mockSettingsService.On("GetSettingValue", mock.Anything, config.LastFinalizedDateSettingsKey, mock.Anything).Return(nil)
 		mockRepo.On("Create", mock.Anything, mock.MatchedBy(func(f *models.RevenueExpenseFinalization) bool {
 			return f.FinalizedDate.Equal(expectedPrefixDate)
 		})).Return(nil)
@@ -177,7 +171,6 @@ func TestRevenueExpenseHandler_FinalizeRevenueExpense(t *testing.T) {
 		mockRepo.On("Update", mock.Anything, mock.MatchedBy(func(f *models.RevenueExpenseFinalization) bool {
 			return *f.Status == models.RevenueExpenseFinalizationStatusFailed
 		})).Return(nil)
-		mockSettingsService.On("SetSetting", mock.Anything, config.LastFinalizedDateSettingsKey, mock.Anything).Return(nil)
 
 		assert.NoError(t, handler.FinalizeRevenueExpense(c))
 		assert.Equal(t, http.StatusInternalServerError, rec.Code)
@@ -186,11 +179,10 @@ func TestRevenueExpenseHandler_FinalizeRevenueExpense(t *testing.T) {
 		assert.NoError(t, err)
 		assert.Equal(t, "Failed to finalize revenue expense", resp.Message)
 
-		mockSettingsService.AssertNumberOfCalls(t, "GetSettingValue", 0)
 		mockRepo.AssertNumberOfCalls(t, "Create", 1)
 		mockExcelService.AssertNumberOfCalls(t, "FinalizeRevenueExpense", 1)
 		mockRepo.AssertNumberOfCalls(t, "Update", 1)
-		mockSettingsService.AssertNumberOfCalls(t, "SetSetting", 1)
+		mockRepo.AssertNumberOfCalls(t, "GetLastest", 0)
 	})
 }
 
@@ -199,10 +191,9 @@ func TestRevenueExpenseHandler_ListFinalizedDates(t *testing.T) {
 
 	t.Run("Success", func(t *testing.T) {
 		mockExcelService := new(servicemocks.ExcelService)
-		mockSettingsService := new(servicemocks.SettingsService)
 		mockRepo := new(repositorymocks.RevenueExpenseFinalizationRepository)
 
-		handler := NewRevenueExpenseHandler(mockExcelService, mockSettingsService, mockRepo)
+		handler := NewRevenueExpenseHandler(mockExcelService, mockRepo)
 
 		req := httptest.NewRequest(http.MethodGet, "/revenue-expenses/finalized-dates?page=1&limit=10", nil)
 		rec := httptest.NewRecorder()
@@ -225,10 +216,9 @@ func TestRevenueExpenseHandler_ListFinalizedDates(t *testing.T) {
 
 	t.Run("Repository Error", func(t *testing.T) {
 		mockExcelService := new(servicemocks.ExcelService)
-		mockSettingsService := new(servicemocks.SettingsService)
 		mockRepo := new(repositorymocks.RevenueExpenseFinalizationRepository)
 
-		handler := NewRevenueExpenseHandler(mockExcelService, mockSettingsService, mockRepo)
+		handler := NewRevenueExpenseHandler(mockExcelService, mockRepo)
 
 		req := httptest.NewRequest(http.MethodGet, "/revenue-expenses/finalized-dates", nil)
 		rec := httptest.NewRecorder()

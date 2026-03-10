@@ -90,7 +90,7 @@ func SetupServer(
 	excelHandler := handlers.NewExcelHandler(excelService)
 	settingsHandler := handlers.NewSettingsHandler(settingsService)
 	paymentReceiptFormHandler := handlers.NewPaymentReceiptFormHandler(paymentReceiptFormService, purchaseOrderService, settingsService)
-	revenueExpenseHandler := handlers.NewRevenueExpenseHandler(excelService, settingsService, revenueExpenseFinalizationRepo)
+	revenueExpenseHandler := handlers.NewRevenueExpenseHandler(excelService, revenueExpenseFinalizationRepo)
 	menuHandler := handlers.NewMenuHandler(menuService)
 	menuItemHandler := handlers.NewMenuItemHandler(menuItemService)
 	saleOrderHandler := handlers.NewSaleOrderHandler(saleOrderService)

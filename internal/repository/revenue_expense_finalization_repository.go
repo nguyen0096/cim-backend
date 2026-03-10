@@ -12,7 +12,7 @@ type RevenueExpenseFinalizationRepository interface {
 	Create(ctx context.Context, finalization *models.RevenueExpenseFinalization) error
 	Update(ctx context.Context, finalization *models.RevenueExpenseFinalization) error
 	List(ctx context.Context, limit, offset int) ([]models.RevenueExpenseFinalization, int64, error)
-	GetLastSuccessful(ctx context.Context) (*models.RevenueExpenseFinalization, error)
+	GetLastest(ctx context.Context) (*models.RevenueExpenseFinalization, error)
 }
 
 type revenueExpenseFinalizationRepository struct {
@@ -56,17 +56,12 @@ func (r *revenueExpenseFinalizationRepository) List(ctx context.Context, limit, 
 	return finalizations, total, nil
 }
 
-// GetLastSuccessful retrieves the most recent successful finalization
-func (r *revenueExpenseFinalizationRepository) GetLastSuccessful(ctx context.Context) (*models.RevenueExpenseFinalization, error) {
+// GetLastest retrieves the most recent successful finalization
+func (r *revenueExpenseFinalizationRepository) GetLastest(ctx context.Context) (*models.RevenueExpenseFinalization, error) {
 	var finalization models.RevenueExpenseFinalization
-	successStatus := models.RevenueExpenseFinalizationStatusSuccess
 	err := r.db.WithContext(ctx).
-		Where("status = ?", successStatus).
 		Order("finalized_date DESC").
 		First(&finalization).Error
-	if err == gorm.ErrRecordNotFound {
-		return nil, nil
-	}
 	if err != nil {
 		return nil, err
 	}

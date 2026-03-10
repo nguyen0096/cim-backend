@@ -249,6 +249,27 @@ func WithPaymentReceiptForms(db *gorm.DB, paymentReceiptForms []*models.PaymentR
 	return paymentReceiptForms
 }
 
+// WithRevenueExpenseFinalizations creates test revenue expense finalizations and returns them
+func WithRevenueExpenseFinalizations(db *gorm.DB, finalizations []*models.RevenueExpenseFinalization) []*models.RevenueExpenseFinalization {
+	// reset the id incase the client set it.
+	// let the DB generate the id.
+	for i := range finalizations {
+		finalizations[i].ID = 0
+	}
+
+	if err := db.Create(&finalizations).Error; err != nil {
+		panic(fmt.Sprintf("failed to create test revenue expense finalizations: %v", err))
+	}
+	DeferCleanup(func() {
+		ids := make([]uint, len(finalizations))
+		for i, finalization := range finalizations {
+			ids[i] = finalization.ID
+		}
+		db.Exec("DELETE FROM revenue_expense_finalizations WHERE id IN (?)", ids)
+	})
+	return finalizations
+}
+
 type RevenueExpenseFinalizationsPreparation struct {
 	Inventory           *models.Inventory
 	Suppliers           []*models.Supplier

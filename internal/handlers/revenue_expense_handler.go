@@ -1,7 +1,6 @@
 package handlers
 
 import (
-	"cim-backend/internal/config"
 	"cim-backend/internal/models"
 	"cim-backend/internal/repository"
 	"cim-backend/internal/services"
@@ -21,15 +20,13 @@ import (
 
 type RevenueExpenseHandler struct {
 	excelService                   services.ExcelService
-	settingsService                services.SettingsService
 	revenueExpenseFinalizationRepo repository.RevenueExpenseFinalizationRepository
 }
 
 // NewRevenueExpenseHandler creates a new RevenueExpenseHandler
-func NewRevenueExpenseHandler(excelService services.ExcelService, settingsService services.SettingsService, revenueExpenseFinalizationRepo repository.RevenueExpenseFinalizationRepository) *RevenueExpenseHandler {
+func NewRevenueExpenseHandler(excelService services.ExcelService, revenueExpenseFinalizationRepo repository.RevenueExpenseFinalizationRepository) *RevenueExpenseHandler {
 	return &RevenueExpenseHandler{
 		excelService:                   excelService,
-		settingsService:                settingsService,
 		revenueExpenseFinalizationRepo: revenueExpenseFinalizationRepo,
 	}
 }
@@ -95,16 +92,18 @@ func (h *RevenueExpenseHandler) FinalizeRevenueExpense(c echo.Context) error {
 	}
 
 	if lastFinalizedDate.IsZero() {
-		if err := h.settingsService.GetSettingValue(ctx, config.LastFinalizedDateSettingsKey, &lastFinalizedDate); err != nil {
+		// // Get last finalization date from database
+		lastFinalization, err := h.revenueExpenseFinalizationRepo.GetLastest(ctx)
+		if err != nil {
+			// If error occurred (other than not found), log it but continue with fallback
 			log.WithFields(logrus.Fields{
 				"error":   err.Error(),
-				"details": "Failed to get last finalized date",
-			}).Error("Failed to get last finalized date")
-			// Continue with the current date
-		}
-
-		if lastFinalizedDate.IsZero() {
+				"details": "Failed to get last finalization, using today's date",
+			}).Warn("Failed to get last finalization")
 			lastFinalizedDate = today
+		} else if lastFinalization != nil {
+			// Use the finalized_date from the last finalization
+			lastFinalizedDate = lastFinalization.CreatedAt
 		}
 	}
 
@@ -116,32 +115,6 @@ func (h *RevenueExpenseHandler) FinalizeRevenueExpense(c echo.Context) error {
 	if err := h.revenueExpenseFinalizationRepo.Create(ctx, finalization); err != nil {
 		return fmt.Errorf("failed to create finalization record: %w", err)
 	}
-
-	// Update status to failed on error, success on completion
-	defer func() {
-		settingsCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 30*time.Second)
-		defer cancel()
-		if err := h.settingsService.SetSetting(settingsCtx, config.LastFinalizedDateSettingsKey, pkg.GetTodayDate()); err != nil {
-			log.WithFields(logrus.Fields{
-				"error":   err.Error(),
-				"details": "Failed to set last finalized date to now",
-			}).Error("Failed to set last finalized date")
-		}
-	}()
-
-	// // Get last successful finalization date from database
-	// lastSuccessfulFinalization, err := h.revenueExpenseFinalizationRepo.GetLastSuccessful(ctx)
-	// lastFinalizedDate := time.Now().Truncate(24 * time.Hour) // Default to today
-	// if err != nil {
-	// 	// If error occurred (other than not found), log it but continue with fallback
-	// 	log.WithFields(logrus.Fields{
-	// 		"error":   err.Error(),
-	// 		"details": "Failed to get last successful finalization, using today's date",
-	// 	}).Warn("Failed to get last successful finalization")
-	// } else if lastSuccessfulFinalization != nil {
-	// 	// Use the finalized_date from the last successful finalization
-	// 	lastFinalizedDate = lastSuccessfulFinalization.FinalizedDate.Truncate(24 * time.Hour)
-	// }
 
 	// Call service to finalize
 	wg := sync.WaitGroup{}

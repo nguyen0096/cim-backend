@@ -390,12 +390,14 @@ var _ = Describe("Revenue Expense API", func() {
 			})
 
 			It("should create finalization record with success status when finalization is successful and last finalized date is not today's date", func(ctx SpecContext) {
-				// Set lastFinalizedDate
-				finalizationRepo := repository.NewRevenueExpenseFinalizationRepository(tenv.ContextfulDB())
-				randomDate := time.Now().AddDate(0, 0, -rand.Intn(30))
-				settingsRepo := repository.NewSettingsRepository(tenv.ContextfulDB())
-				err := settingsRepo.Set(ctx, config.LastFinalizedDateSettingsKey, randomDate)
-				Expect(err).NotTo(HaveOccurred())
+				// Set lastFinalizedDate using fixture
+				randomDate := pkg.GetTodayDate().AddDate(0, 0, -5)
+				fixture.WithRevenueExpenseFinalizations(tenv.ContextfulDB(), []*models.RevenueExpenseFinalization{
+					{
+						FinalizedDate: randomDate,
+						Status:        pkg.Ptr(models.RevenueExpenseFinalizationStatusSuccess),
+					},
+				})
 
 				client := testutil.NewClient(tenv, models.RoleAdmin)
 
@@ -414,8 +416,9 @@ var _ = Describe("Revenue Expense API", func() {
 				Expect(finalizeResp["date"]).To(Equal(randomDate.Format("2006-01-02")))
 				Expect(finalizeResp["next_day"]).To(Equal(pkg.GetTodayDate().AddDate(0, 0, 1).Format("2006-01-02")))
 
-				// Verify finalization record was created with failed status
-				lastSuccessfulFinalization, err := finalizationRepo.GetLastSuccessful(tenv.DefaultContext)
+				// Verify finalization record was created with success status
+				finalizationRepo := repository.NewRevenueExpenseFinalizationRepository(tenv.ContextfulDB())
+				lastSuccessfulFinalization, err := finalizationRepo.GetLastest(tenv.DefaultContext)
 				Expect(err).NotTo(HaveOccurred())
 				Expect(lastSuccessfulFinalization).NotTo(BeNil())
 				Expect(*lastSuccessfulFinalization.Status).To(Equal(models.RevenueExpenseFinalizationStatusSuccess))
