@@ -344,17 +344,20 @@ var _ = Describe("Payment Receipt Form API", func() {
 			adminClient := testutil.NewClient(tenv, models.RoleAdmin)
 
 			// Create a successful finalization record with finalized date (different from form date)
-			finalizedDate := time.Now().AddDate(0, 0, -5) // 5 days ago
+			lastFinalizedDate := time.Now().AddDate(0, 0, -5) // 5 days ago
 			finalizationRepo := repository.NewRevenueExpenseFinalizationRepository(tenv.ContextfulDB())
 			finalization := &models.RevenueExpenseFinalization{
-				FinalizedDate: finalizedDate,
+				FinalizedDate: lastFinalizedDate.AddDate(0, 0, -1),
 				Status:        pkg.Ptr(models.RevenueExpenseFinalizationStatusSuccess),
+				Base: models.Base{
+					CreatedAt: lastFinalizedDate,
+				},
 			}
 			err := finalizationRepo.Create(ctx, finalization)
 			Expect(err).NotTo(HaveOccurred())
 			DeferCleanup(func() {
 				cleanupCtx := pkg.WithUserEmail(context.Background(), "test@cim.local")
-				tenv.DB.WithContext(cleanupCtx).Delete(&models.RevenueExpenseFinalization{}, finalization.ID)
+				tenv.DB.WithContext(cleanupCtx).Unscoped().Delete(&models.RevenueExpenseFinalization{}, finalization.ID)
 			})
 
 			// Create a form with a different date (today)
@@ -393,7 +396,7 @@ var _ = Describe("Payment Receipt Form API", func() {
 			Expect(formNumber).NotTo(BeEmpty(), "form_number should not be empty")
 
 			// Verify form number uses finalized date from finalization table, not form.Date
-			expectedDatePrefix := finalizedDate.Format("20060102")
+			expectedDatePrefix := lastFinalizedDate.Format("20060102")
 			expectedInventoryID := *testPurchaseOrder.InventoryID
 			expectedFormNumber := fmt.Sprintf("%s-%d-1", expectedDatePrefix, expectedInventoryID)
 			Expect(formNumber).To(Equal(expectedFormNumber), "Form number should use finalized date from revenue expense finalization table, not form date")

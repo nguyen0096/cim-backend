@@ -186,7 +186,7 @@ func (s *paymentReceiptFormService) ApprovePaymentReceiptForm(ctx context.Contex
 	// Get last successful finalized date from table
 	var finalizedDate time.Time
 	lastFinalization, err := s.revenueExpenseFinalizationRepo.GetLastest(ctx)
-	if err != nil {
+	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
 		return fmt.Errorf("failed to get last successful finalized date: %w", err)
 	}
 	if lastFinalization != nil {
