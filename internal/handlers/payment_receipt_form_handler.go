@@ -37,7 +37,6 @@ func (c *ClientConnection) Close() {
 
 type PaymentReceiptFormHandler struct {
 	paymentReceiptFormService services.PaymentReceiptFormService
-	settingsService           services.SettingsService
 	purchaseOrderService      services.PurchaseOrderService
 	// Notification system
 	clients   sync.Map
@@ -45,11 +44,10 @@ type PaymentReceiptFormHandler struct {
 }
 
 // NewPaymentReceiptFormHandler creates a new payment receipt form handler
-func NewPaymentReceiptFormHandler(paymentReceiptFormService services.PaymentReceiptFormService, purchaseOrderService services.PurchaseOrderService, settingsService services.SettingsService) *PaymentReceiptFormHandler {
+func NewPaymentReceiptFormHandler(paymentReceiptFormService services.PaymentReceiptFormService, purchaseOrderService services.PurchaseOrderService) *PaymentReceiptFormHandler {
 	handler := &PaymentReceiptFormHandler{
 		paymentReceiptFormService: paymentReceiptFormService,
 		purchaseOrderService:      purchaseOrderService,
-		settingsService:           settingsService,
 		broadcast:                 make(chan NotificationMessage),
 	}
 
@@ -155,14 +153,6 @@ func (h *PaymentReceiptFormHandler) CreatePaymentReceiptForm(c echo.Context) err
 	}
 
 	form.Date = pkg.GetTodayDate()
-
-	// if err := h.settingsService.GetSettingValue(c.Request().Context(), config.LastFinalizedDateSettingsKey, &form.Date); err != nil {
-	// 	h.logger.WithFields(logrus.Fields{
-	// 		"error":   err.Error(),
-	// 		"details": "Failed to get last finalized date",
-	// 	}).Error("Failed to get last finalized date")
-	// 	// Continue with the current date
-	// }
 
 	form, err = h.paymentReceiptFormService.CreatePaymentReceiptForm(c.Request().Context(), form)
 	if err != nil {

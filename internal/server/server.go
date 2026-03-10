@@ -89,7 +89,7 @@ func SetupServer(
 	purchaseOrderHandler := handlers.NewPurchaseOrderHandler(purchaseOrderRepo, purchaseOrderService, paymentReceiptFormService, fileStorageService)
 	excelHandler := handlers.NewExcelHandler(excelService)
 	settingsHandler := handlers.NewSettingsHandler(settingsService)
-	paymentReceiptFormHandler := handlers.NewPaymentReceiptFormHandler(paymentReceiptFormService, purchaseOrderService, settingsService)
+	paymentReceiptFormHandler := handlers.NewPaymentReceiptFormHandler(paymentReceiptFormService, purchaseOrderService)
 	revenueExpenseHandler := handlers.NewRevenueExpenseHandler(excelService, revenueExpenseFinalizationRepo)
 	menuHandler := handlers.NewMenuHandler(menuService)
 	menuItemHandler := handlers.NewMenuItemHandler(menuItemService)
