@@ -75,6 +75,11 @@ p, restaurant-admin, sale-order-items, create, allow
 p, restaurant-admin, sale-order-items, update, allow
 p, restaurant-admin, sale-order-items, update_status, allow
 
+p, admin, selling-prices, view, allow
+p, admin, selling-prices, create, allow
+p, admin, selling-prices, update, allow
+p, admin, selling-prices, delete, allow
+
 p, admin, admin-tools, view, allow
 
 p, accountant, permissions, view, allow

@@ -21,7 +21,7 @@ func Test_generatePurchaseOrderNumber(t *testing.T) {
 	// Setup
 	mockRepo := repositorymocks.NewPurchaseOrderRepository(t)
 	// Note: Service mocks are not used in this test as it's not needed for generatePurchaseOrderNumber
-	service := NewPurchaseOrderService(mockRepo, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil).(*purchaseOrderService)
+	service := NewPurchaseOrderService(mockRepo, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil).(*purchaseOrderService)
 
 	t.Run("should generate valid purchase order number format", func(t *testing.T) {
 		// Execute
@@ -60,7 +60,7 @@ func TestCreatePurchaseOrder(t *testing.T) {
 		mockRepo := repositorymocks.NewPurchaseOrderRepository(t)
 		mockProductRepo := repositorymocks.NewProductRepository(t)
 		mockUnitRepo := repositorymocks.NewUnitRepository(t)
-		service := NewPurchaseOrderService(mockRepo, nil, mockUnitRepo, mockProductRepo, nil, nil, nil, nil, nil, nil, nil, nil)
+		service := NewPurchaseOrderService(mockRepo, nil, mockUnitRepo, mockProductRepo, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 
 		inventory := fixture.ValidInventory()
 		unit := fixture.ValidBaseUnit()
@@ -102,7 +102,7 @@ func TestCreatePurchaseOrder(t *testing.T) {
 		mockRepo := repositorymocks.NewPurchaseOrderRepository(t)
 		mockProductRepo := repositorymocks.NewProductRepository(t)
 		mockUnitRepo := repositorymocks.NewUnitRepository(t)
-		service := NewPurchaseOrderService(mockRepo, nil, mockUnitRepo, mockProductRepo, nil, nil, nil, nil, nil, nil, nil, nil)
+		service := NewPurchaseOrderService(mockRepo, nil, mockUnitRepo, mockProductRepo, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 
 		inventory := fixture.ValidInventory()
 		unit := fixture.ValidBaseUnit()
@@ -149,7 +149,7 @@ func TestCreatePurchaseOrder(t *testing.T) {
 		mockRepo := repositorymocks.NewPurchaseOrderRepository(t)
 		mockProductRepo := repositorymocks.NewProductRepository(t)
 		mockUnitRepo := repositorymocks.NewUnitRepository(t)
-		service := NewPurchaseOrderService(mockRepo, nil, mockUnitRepo, mockProductRepo, nil, nil, nil, nil, nil, nil, nil, nil)
+		service := NewPurchaseOrderService(mockRepo, nil, mockUnitRepo, mockProductRepo, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 
 		purchaseOrder := &models.PurchaseOrder{
 			InventoryID: pkg.Ptr(uint(1)),
@@ -161,6 +161,7 @@ func TestCreatePurchaseOrder(t *testing.T) {
 					ProductID:  pkg.Ptr(product.ID),
 					SupplierID: pkg.Ptr(uint(1)),
 					UnitID:     pkg.Ptr(unit.ID),
+					Quantity:   decimal.NewFromInt(1),
 				},
 			},
 		}
@@ -190,7 +191,7 @@ func TestUpdatePurchaseOrderStatus_WithApprovalCheck(t *testing.T) {
 		// Setup
 		mockRepo := repositorymocks.NewPurchaseOrderRepository(t)
 		mockPaymentRepo := repositorymocks.NewPaymentReceiptFormRepository(t)
-		service := NewPurchaseOrderService(mockRepo, mockPaymentRepo, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+		service := NewPurchaseOrderService(mockRepo, mockPaymentRepo, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 
 		// Mock payment receipt form repository to return empty slice (no approved form found)
 		mockPaymentRepo.On("GetLatestPaymentReceiptForms", mock.Anything, uint(1), models.PaymentReceiptFormStatusApproved, 0).Return([]*models.PaymentReceiptForm{}, nil)
@@ -210,7 +211,7 @@ func TestUpdatePurchaseOrderStatus_WithApprovalCheck(t *testing.T) {
 		// Setup
 		mockRepo := repositorymocks.NewPurchaseOrderRepository(t)
 		mockPaymentRepo := repositorymocks.NewPaymentReceiptFormRepository(t)
-		service := NewPurchaseOrderService(mockRepo, mockPaymentRepo, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+		service := NewPurchaseOrderService(mockRepo, mockPaymentRepo, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 
 		// Mock payment receipt form repository to return an approved form
 		approvedForm := &models.PaymentReceiptForm{

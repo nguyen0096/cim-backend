@@ -12,6 +12,21 @@ const (
 	InventoryTransactionTypeTransferIn  InventoryTransactionType = "transfer_in"
 )
 
+// StockDelta returns the signed quantity for this transaction type.
+// Positive for types that increase stock (purchase, transfer_in),
+// negative for types that decrease stock (sell, disposal, transfer_out).
+// Returns zero for unknown types.
+func (t InventoryTransactionType) StockDelta(qty decimal.Decimal) decimal.Decimal {
+	switch t {
+	case InventoryTransactionTypePurchase, InventoryTransactionTypeTransferIn:
+		return qty
+	case InventoryTransactionTypeSell, InventoryTransactionTypeDisposal, InventoryTransactionTypeTransferOut:
+		return qty.Neg()
+	default:
+		return decimal.Zero
+	}
+}
+
 // GetConsumableTransactionTypes returns the transaction types that can be consumed by an inventory item.
 func GetConsumableTransactionTypes() []InventoryTransactionType {
 	return []InventoryTransactionType{
@@ -43,17 +58,8 @@ func AggTxnQuantities(
 	quantities := make(map[uint]decimal.Decimal)
 
 	for _, txn := range txns {
-		current, exists := quantities[txn.InventoryItemID]
-		if !exists {
-			current = decimal.Zero
-		}
-
-		switch txn.TransactionType {
-		case InventoryTransactionTypePurchase, InventoryTransactionTypeTransferIn:
-			quantities[txn.InventoryItemID] = current.Add(txn.Quantity)
-		case InventoryTransactionTypeSell, InventoryTransactionTypeDisposal, InventoryTransactionTypeTransferOut:
-			quantities[txn.InventoryItemID] = current.Sub(txn.Quantity)
-		}
+		current := quantities[txn.InventoryItemID]
+		quantities[txn.InventoryItemID] = current.Add(txn.TransactionType.StockDelta(txn.Quantity))
 	}
 
 	return quantities

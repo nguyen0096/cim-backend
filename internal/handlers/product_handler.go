@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"cim-backend/internal/models"
+	"cim-backend/internal/repository"
 	"cim-backend/internal/services"
 	"cim-backend/pkg"
 	"cim-backend/pkg/log"
@@ -15,6 +16,7 @@ import (
 	"github.com/go-playground/validator/v10"
 	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
+	"github.com/shopspring/decimal"
 	"github.com/sirupsen/logrus"
 )
 
@@ -68,12 +70,14 @@ func (r *ProductSearchRequest) SetDefaults() {
 }
 
 type ProductHandler struct {
-	productService services.ProductService
+	productService   services.ProductService
+	sellingPriceRepo repository.SellingPriceRepository
 }
 
-func NewProductHandler(productService services.ProductService) *ProductHandler {
+func NewProductHandler(productService services.ProductService, sellingPriceRepo repository.SellingPriceRepository) *ProductHandler {
 	return &ProductHandler{
-		productService: productService,
+		productService:   productService,
+		sellingPriceRepo: sellingPriceRepo,
 	}
 }
 
@@ -136,6 +140,7 @@ type ProductResponse struct {
 	ProductImage   *string                 `json:"product_image,omitempty"`
 	Suppliers      []*models.Supplier      `json:"suppliers,omitempty"`
 	InventoryItems []*models.InventoryItem `json:"inventory_items,omitempty"`
+	SellingPrice   *decimal.Decimal        `json:"selling_price"`
 }
 
 // convertProductToResponse converts a Product model to ProductResponse with base64 image
@@ -171,6 +176,30 @@ func convertProductsToResponse(products []models.Product) []*ProductResponse {
 		responses[i] = convertProductToResponse(&products[i])
 	}
 	return responses
+}
+
+// attachSellingPrices batch-fetches the latest global selling price for each product
+// and sets it on the response. Products without a selling price get nil (serialized as null).
+func (h *ProductHandler) attachSellingPrices(c echo.Context, responses []*ProductResponse) {
+	if h.sellingPriceRepo == nil || len(responses) == 0 {
+		return
+	}
+
+	productIDs := make([]uint, len(responses))
+	for i, r := range responses {
+		productIDs[i] = r.ID
+	}
+
+	priceMap, err := h.sellingPriceRepo.GetLatestForProducts(c.Request().Context(), productIDs, nil, time.Now())
+	if err != nil {
+		return // non-fatal: products still return, just without selling price
+	}
+
+	for _, r := range responses {
+		if sp, ok := priceMap[r.ID]; ok {
+			r.SellingPrice = &sp.Price
+		}
+	}
 }
 
 // GetProducts godoc
@@ -244,6 +273,7 @@ func (h *ProductHandler) GetProducts(c echo.Context) error {
 
 	// Convert products to response format with base64 image data URLs
 	productResponses := convertProductsToResponse(products)
+	h.attachSellingPrices(c, productResponses)
 
 	// Create response
 	response := map[string]interface{}{
@@ -338,6 +368,7 @@ func (h *ProductHandler) SearchProducts(c echo.Context) error {
 
 	// Convert products to response format with base64 image data URLs
 	productResponses := convertProductsToResponse(products)
+	h.attachSellingPrices(c, productResponses)
 
 	// Create response
 	response := map[string]interface{}{
@@ -485,6 +516,7 @@ func (h *ProductHandler) GetProduct(c echo.Context) error {
 
 	// Convert product to response format with base64 image data URL
 	productResponse := convertProductToResponse(product)
+	h.attachSellingPrices(c, []*ProductResponse{productResponse})
 
 	return c.JSON(http.StatusOK, productResponse)
 }

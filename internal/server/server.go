@@ -54,6 +54,7 @@ func SetupServer(
 	menuItemRepo := repository.NewMenuItemRepository(db)
 	saleOrderRepo := repository.NewSaleOrderRepository(db)
 	revenueExpenseFinalizationRepo := repository.NewRevenueExpenseFinalizationRepository(db)
+	sellingPriceRepo := repository.NewSellingPriceRepository(db)
 
 	// Initialize S3 client for R2
 	s3Client, err := services.NewS3Client(cfg)
@@ -73,17 +74,19 @@ func SetupServer(
 	revenueExpenseExcelRepo := excel.NewRevenueExpenseExcelRepository()
 	revenueExpenseGoogleSheetsRepo := googlesheets.NewRevenueExpenseGoogleSheetsRepository()
 	excelService := services.NewExcelService(productRepo, inventoryRepo, paymentReceiptFormRepo, revenueExpenseExcelRepo, revenueExpenseGoogleSheetsRepo, settingsService)
-	purchaseOrderService := services.NewPurchaseOrderService(purchaseOrderRepo, paymentReceiptFormRepo, unitRepo, productRepo, inventoryService, excelService, settingsService, db, supplierRepo, inventoryRepo, unitService, productService)
+	purchaseOrderService := services.NewPurchaseOrderService(purchaseOrderRepo, paymentReceiptFormRepo, unitRepo, productRepo, inventoryService, excelService, settingsService, db, supplierRepo, inventoryRepo, unitService, productService, sellingPriceRepo)
 	paymentReceiptFormService := services.NewPaymentReceiptFormService(paymentReceiptFormRepo, db, settingsService, revenueExpenseFinalizationRepo)
 	menuService := services.NewMenuService(menuRepo, menuItemRepo, inventoryRepo)
 	menuItemService := services.NewMenuItemService(menuItemRepo, menuRepo, productRepo)
 	saleOrderService := services.NewSaleOrderService(saleOrderRepo, db)
+	sellingPriceService := services.NewSellingPriceService(sellingPriceRepo, productRepo, db)
+	inventoryTimelineService := services.NewInventoryTimelineService(inventoryRepo, sellingPriceRepo, db)
 
 	// Initialize handlers
 	userHandler := handlers.NewUserHandler(userService, firebaseAuth)
 	supplierHandler := handlers.NewSupplierHandler(supplierService)
 	unitHandler := handlers.NewUnitHandler(unitService)
-	productHandler := handlers.NewProductHandler(productService)
+	productHandler := handlers.NewProductHandler(productService, sellingPriceRepo)
 	inventoryHandler := handlers.NewInventoryHandler(inventoryService)
 	inventoryItemHandler := handlers.NewInventoryItemHandler(inventoryItemService)
 	purchaseOrderHandler := handlers.NewPurchaseOrderHandler(purchaseOrderRepo, purchaseOrderService, paymentReceiptFormService, fileStorageService)
@@ -94,6 +97,8 @@ func SetupServer(
 	menuHandler := handlers.NewMenuHandler(menuService)
 	menuItemHandler := handlers.NewMenuItemHandler(menuItemService)
 	saleOrderHandler := handlers.NewSaleOrderHandler(saleOrderService)
+	sellingPriceHandler := handlers.NewSellingPriceHandler(sellingPriceService)
+	inventoryTimelineHandler := handlers.NewInventoryTimelineHandler(inventoryTimelineService)
 
 	// Initialize Echo
 	e := echo.New()
@@ -231,6 +236,7 @@ func SetupServer(
 	inventories.POST("/:id/dispose", inventoryHandler.DisposeInventoryItems)
 	inventories.POST("/:id/reconcile", inventoryHandler.ReconcileInventory)
 	inventories.GET("/:id/export/monthly-transaction", inventoryHandler.ExportMonthlyTransactionReport)
+	inventories.GET("/:id/timeline", inventoryTimelineHandler.GetInventoryTimeline)
 
 	// Nested inventory items routes
 	inventories.GET("/:id/inventory-items", inventoryItemHandler.GetInventoryItemsByInventoryID)
@@ -274,6 +280,7 @@ func SetupServer(
 	purchaseOrders.PUT("/:id/receive", purchaseOrderHandler.ReceiveInventory)
 	purchaseOrders.PUT("/:id/status", purchaseOrderHandler.UpdatePurchaseOrderStatus)
 	purchaseOrders.POST("/:id/revenue-expense/retry", purchaseOrderHandler.RetryQueueRevenueExpenseRequest)
+	purchaseOrders.PUT("/:id/items/:itemId/selling-price", sellingPriceHandler.UpdatePOItemSellingPrice)
 	purchaseOrders.POST("/upload", purchaseOrderHandler.UploadPurchaseOrderFile)
 	purchaseOrders.POST("/upload-files/:uid/process", purchaseOrderHandler.ProcessImportPurchaseOrder)
 
@@ -335,6 +342,15 @@ func SetupServer(
 	saleOrders.GET("/:id", saleOrderHandler.GetSaleOrder)
 	saleOrders.PUT("/:id", saleOrderHandler.UpdateSaleOrder)
 	saleOrders.PUT("/:id/status", saleOrderHandler.UpdateSaleOrderStatus)
+
+	// Selling Price routes
+	sellingPrices := api.Group("/selling-prices")
+	sellingPrices.GET("", sellingPriceHandler.ListByProductID)
+	sellingPrices.POST("", sellingPriceHandler.CreateSellingPrice)
+	sellingPrices.GET("/:id", sellingPriceHandler.GetSellingPrice)
+	sellingPrices.PUT("/:id", sellingPriceHandler.UpdateSellingPrice)
+	sellingPrices.DELETE("/:id", sellingPriceHandler.DeleteSellingPrice)
+	sellingPrices.POST("/:id/backfill", sellingPriceHandler.BackfillPOItems)
 
 	return e, nil
 }

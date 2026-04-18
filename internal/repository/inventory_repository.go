@@ -45,7 +45,7 @@ func (r *inventoryRepository) Create(ctx context.Context, inventory *models.Inve
 
 func (r *inventoryRepository) GetByID(ctx context.Context, id uint) (*models.Inventory, error) {
 	var inventory models.Inventory
-	err := r.db.WithContext(ctx).Preload("Items").Preload("Items.Product").First(&inventory, "id = ?", id).Error
+	err := r.db.WithContext(ctx).Preload("Items").Preload("Items.Product").Preload("Items.Unit").First(&inventory, "id = ?", id).Error
 	if err != nil {
 		return nil, err
 	}

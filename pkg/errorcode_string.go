@@ -32,9 +32,8 @@ const _ErrorCode_name = "internalinvalid-request-bodynot-foundunauthorizedforbid
 var _ErrorCode_index = [...]uint16{0, 8, 28, 37, 49, 58, 68, 77, 100, 124, 132, 159, 184, 210, 229, 271, 294, 312}
 
 func (i ErrorCode) String() string {
-	idx := int(i) - 0
-	if i < 0 || idx >= len(_ErrorCode_index)-1 {
+	if i < 0 || i >= ErrorCode(len(_ErrorCode_index)-1) {
 		return "ErrorCode(" + strconv.FormatInt(int64(i), 10) + ")"
 	}
-	return _ErrorCode_name[_ErrorCode_index[idx]:_ErrorCode_index[idx+1]]
+	return _ErrorCode_name[_ErrorCode_index[i]:_ErrorCode_index[i+1]]
 }

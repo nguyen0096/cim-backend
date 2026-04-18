@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/lib/pq"
+	"github.com/shopspring/decimal"
 	"gorm.io/gorm"
 )
 
@@ -1492,11 +1493,11 @@ func SaleOrders(inventoryIDs []uint) []models.SaleOrder {
 
 	// Generate test customer IDs (26 characters each)
 	testCustomerIDs := []string{
-		"customer0011234567890123456",
-		"customer0021234567890123456",
-		"customer0031234567890123456",
-		"customer0041234567890123456",
-		"customer0051234567890123456",
+		"customer001123456789012345",
+		"customer002123456789012345",
+		"customer003123456789012345",
+		"customer004123456789012345",
+		"customer005123456789012345",
 	}
 
 	// Generate sale orders with various statuses
@@ -1602,6 +1603,74 @@ func createSaleOrderItemMenuRelationships(tx *gorm.DB, saleOrderItemIDs, menuIte
 }
 
 // SeedDatabase populates the database with mock data
+// SellingPrices generates selling price seed data for the first 5 products.
+// Includes multiple effective_from dates to show price history on the timeline.
+func SellingPrices(productIDs []uint) []models.SellingPrice {
+	var prices []models.SellingPrice
+
+	// Create global selling prices (inventory_id = nil) for up to 5 products
+	// with price history (2-3 entries per product)
+	priceData := []struct {
+		priceHistory []struct {
+			price         float64
+			effectiveFrom time.Time
+		}
+	}{
+		{priceHistory: []struct {
+			price         float64
+			effectiveFrom time.Time
+		}{
+			{price: 15.00, effectiveFrom: time.Date(2025, 11, 1, 0, 0, 0, 0, time.UTC)},
+			{price: 18.00, effectiveFrom: time.Date(2026, 1, 15, 0, 0, 0, 0, time.UTC)},
+			{price: 20.00, effectiveFrom: time.Date(2026, 3, 1, 0, 0, 0, 0, time.UTC)},
+		}},
+		{priceHistory: []struct {
+			price         float64
+			effectiveFrom time.Time
+		}{
+			{price: 25.50, effectiveFrom: time.Date(2025, 12, 1, 0, 0, 0, 0, time.UTC)},
+			{price: 28.00, effectiveFrom: time.Date(2026, 2, 1, 0, 0, 0, 0, time.UTC)},
+		}},
+		{priceHistory: []struct {
+			price         float64
+			effectiveFrom time.Time
+		}{
+			{price: 8.00, effectiveFrom: time.Date(2025, 10, 1, 0, 0, 0, 0, time.UTC)},
+			{price: 9.50, effectiveFrom: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)},
+			{price: 10.00, effectiveFrom: time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC)},
+		}},
+		{priceHistory: []struct {
+			price         float64
+			effectiveFrom time.Time
+		}{
+			{price: 45.00, effectiveFrom: time.Date(2025, 11, 15, 0, 0, 0, 0, time.UTC)},
+			{price: 50.00, effectiveFrom: time.Date(2026, 3, 15, 0, 0, 0, 0, time.UTC)},
+		}},
+		{priceHistory: []struct {
+			price         float64
+			effectiveFrom time.Time
+		}{
+			{price: 12.00, effectiveFrom: time.Date(2025, 12, 15, 0, 0, 0, 0, time.UTC)},
+		}},
+	}
+
+	for i, pd := range priceData {
+		if i >= len(productIDs) {
+			break
+		}
+		for _, ph := range pd.priceHistory {
+			prices = append(prices, models.SellingPrice{
+				ProductID:     productIDs[i],
+				Price:         decimal.NewFromFloat(ph.price),
+				EffectiveFrom: ph.effectiveFrom,
+				Notes:         fmt.Sprintf("Seed price for product %d", productIDs[i]),
+			})
+		}
+	}
+
+	return prices
+}
+
 func SeedDatabase() error {
 	// Load configuration
 	cfg := config.Load()
@@ -1683,6 +1752,13 @@ func SeedDatabase() error {
 	if err := tx.Create(&inventories).Error; err != nil {
 		tx.Rollback()
 		return fmt.Errorf("failed to create inventories: %w", err)
+	}
+
+	// 3.5. Selling Prices
+	sellingPrices := SellingPrices(productIDs)
+	if err := tx.Create(&sellingPrices).Error; err != nil {
+		tx.Rollback()
+		return fmt.Errorf("failed to create selling prices: %w", err)
 	}
 
 	// 4. MenuItems

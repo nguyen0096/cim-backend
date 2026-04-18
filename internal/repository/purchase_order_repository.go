@@ -325,7 +325,7 @@ func (r *purchaseOrderRepository) ReceiveInventory(ctx context.Context, req dto.
 				TransactionType:     models.InventoryTransactionTypePurchase,
 				Price:               poi.UnitPrice,
 				Quantity:            reqItem.ReceivedQuantity,
-				PurchaseOrderItemID: poi.PurchaseOrderID,
+				PurchaseOrderItemID: &poi.ID,
 				SupplierID:          poi.SupplierID,
 			}
 			transactions = append(transactions, transaction)

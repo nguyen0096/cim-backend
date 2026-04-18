@@ -28,6 +28,9 @@ type PurchaseOrderItem struct {
 	ReceivedQuantity decimal.Decimal         `json:"received_quantity" gorm:"type:decimal(10,2);default:0"`
 	Status           PurchaseOrderItemStatus `json:"status" gorm:"default:awaiting_delivery;check:status IN ('awaiting_delivery', 'partially_delivered', 'delivered', 'over_delivered', 'cancelled')" example:"delivering"`
 
+	// Relationships
+	POItemSellingPrice *POItemSellingPrice `json:"po_item_selling_price,omitempty" gorm:"foreignKey:PurchaseOrderItemID"`
+
 	// Display fields, not stored in DB
 
 	TotalAmount decimal.Decimal `json:"total_amount" gorm:"-"`

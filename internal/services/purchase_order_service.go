@@ -58,6 +58,7 @@ type purchaseOrderService struct {
 	revenueExpenseRequestQueue chan revenueExpenseRequest
 	supplierRepo               repository.SupplierRepository
 	inventoryRepo              repository.InventoryRepository
+	sellingPriceRepo           repository.SellingPriceRepository
 }
 
 // revenueExpenseRequest represents a queued request to process revenue expense
@@ -78,6 +79,7 @@ func NewPurchaseOrderService(
 	inventoryRepo repository.InventoryRepository,
 	unitService UnitService,
 	productService ProductService,
+	sellingPriceRepo repository.SellingPriceRepository,
 ) PurchaseOrderService {
 	// Create a buffered channel to queue revenue expense requests
 	// Buffer size of 100 allows queuing up to 100 requests without blocking
@@ -96,6 +98,7 @@ func NewPurchaseOrderService(
 		unitService:                unitService,
 		inventoryService:           inventoryService,
 		productService:             productService,
+		sellingPriceRepo:           sellingPriceRepo,
 		revenueExpenseRequestQueue: requestQueue,
 	}
 
@@ -210,6 +213,9 @@ func (s *purchaseOrderService) CreatePurchaseOrder(ctx context.Context, purchase
 
 	// Validate and convert quantities to base unit for each item
 	for _, item := range purchaseOrder.Items {
+		if item != nil && item.Quantity.LessThanOrEqual(decimal.Zero) {
+			return pkg.ErrValidation("quantity must be greater than 0", nil)
+		}
 		if item != nil && item.UnitID != nil && item.ProductID != nil {
 			// Get product to check its unit
 			product, err := s.productRepo.GetByID(ctx, *item.ProductID)
@@ -284,6 +290,21 @@ func (s *purchaseOrderService) CreatePurchaseOrder(ctx context.Context, purchase
 		return err
 	}
 
+	// Auto-create POItemSellingPrice records from the selling price ledger
+	if err := s.createPOItemSellingPrices(ctx, purchaseOrder); err != nil {
+		log.WithFields(logrus.Fields{
+			"operation":         "CreatePurchaseOrder",
+			"purchase_order_id": purchaseOrder.ID,
+			"error":             err.Error(),
+		}).Error("Failed to create PO item selling prices")
+	} else {
+		log.WithFields(logrus.Fields{
+			"operation":         "CreatePurchaseOrder",
+			"purchase_order_id": purchaseOrder.ID,
+			"items_count":       len(purchaseOrder.Items),
+		}).Info("Successfully created PO item selling prices")
+	}
+
 	// Reload purchase order with relationships
 	reloadedPO, err := s.purchaseOrderRepo.GetByID(purchaseOrder.ID)
 	if err != nil {
@@ -302,6 +323,64 @@ func (s *purchaseOrderService) CreatePurchaseOrder(ctx context.Context, purchase
 		"order_number":      purchaseOrder.OrderNumber,
 		"purchase_order_id": purchaseOrder.ID,
 	}).Info("Successfully created purchase order")
+
+	return nil
+}
+
+// createPOItemSellingPrices creates POItemSellingPrice records for each item in the PO,
+// defaulting selling_price_id from the selling price ledger (inventory-specific → global fallback).
+// selling_price is left NULL (not overridden).
+func (s *purchaseOrderService) createPOItemSellingPrices(ctx context.Context, po *models.PurchaseOrder) error {
+	if s.sellingPriceRepo == nil {
+		return fmt.Errorf("sellingPriceRepo is nil")
+	}
+	if len(po.Items) == 0 {
+		return fmt.Errorf("PO has no items")
+	}
+
+	// Collect product IDs from PO items
+	productIDs := make([]uint, 0, len(po.Items))
+	for _, item := range po.Items {
+		if item != nil && item.ProductID != nil {
+			productIDs = append(productIDs, *item.ProductID)
+		}
+	}
+	if len(productIDs) == 0 {
+		return fmt.Errorf("no product IDs found in PO items (items: %d)", len(po.Items))
+	}
+
+	log.WithFields(logrus.Fields{
+		"operation":   "createPOItemSellingPrices",
+		"product_ids": productIDs,
+		"po_id":       po.ID,
+	}).Info("Looking up selling prices for products")
+
+	// Look up latest selling prices
+	sellingPriceMap, err := s.sellingPriceRepo.GetLatestForProducts(ctx, productIDs, po.InventoryID, time.Now())
+	if err != nil {
+		return fmt.Errorf("failed to get latest selling prices: %w", err)
+	}
+
+	log.WithFields(logrus.Fields{
+		"operation":        "createPOItemSellingPrices",
+		"prices_found":     len(sellingPriceMap),
+	}).Info("Selling prices lookup result")
+
+	// Create POItemSellingPrice records
+	for _, item := range po.Items {
+		if item == nil || item.ProductID == nil {
+			continue
+		}
+		poItemSP := &models.POItemSellingPrice{
+			PurchaseOrderItemID: item.ID,
+		}
+		if sp, ok := sellingPriceMap[*item.ProductID]; ok {
+			poItemSP.SellingPriceID = &sp.ID
+		}
+		if err := s.db.WithContext(ctx).Create(poItemSP).Error; err != nil {
+			return fmt.Errorf("failed to create PO item selling price for item %d: %w", item.ID, err)
+		}
+	}
 
 	return nil
 }
