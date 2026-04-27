@@ -34,6 +34,12 @@ type SellingPriceRepository interface {
 	// Resolves through: sell txn → counter txn (purchase) → PO item → POItemSellingPrice.
 	// Uses COALESCE(pisp.selling_price, sp.price) for the fallback logic.
 	GetSellingPricesForSellTransactions(ctx context.Context, sellTxnIDs []uint) (map[uint]decimal.Decimal, error)
+
+	// GetPOItemSellingPricesByPOItemIDs returns POItemSellingPrice rows for the given purchase_order_item_ids.
+	GetPOItemSellingPricesByPOItemIDs(ctx context.Context, poItemIDs []uint) ([]*models.POItemSellingPrice, error)
+
+	// CreatePOItemSellingPrice inserts a POItemSellingPrice row.
+	CreatePOItemSellingPrice(ctx context.Context, record *models.POItemSellingPrice) error
 }
 
 type sellingPriceRepository struct {
@@ -206,4 +212,21 @@ func (r *sellingPriceRepository) GetSellingPricesForSellTransactions(ctx context
 		priceMap[r.ID] = r.SellingPrice
 	}
 	return priceMap, nil
+}
+
+func (r *sellingPriceRepository) GetPOItemSellingPricesByPOItemIDs(ctx context.Context, poItemIDs []uint) ([]*models.POItemSellingPrice, error) {
+	if len(poItemIDs) == 0 {
+		return nil, nil
+	}
+	var rows []*models.POItemSellingPrice
+	if err := r.db.WithContext(ctx).
+		Where("purchase_order_item_id IN ?", poItemIDs).
+		Find(&rows).Error; err != nil {
+		return nil, err
+	}
+	return rows, nil
+}
+
+func (r *sellingPriceRepository) CreatePOItemSellingPrice(ctx context.Context, record *models.POItemSellingPrice) error {
+	return r.db.WithContext(ctx).Create(record).Error
 }

@@ -327,9 +327,11 @@ func (s *purchaseOrderService) CreatePurchaseOrder(ctx context.Context, purchase
 	return nil
 }
 
-// createPOItemSellingPrices creates POItemSellingPrice records for each item in the PO,
-// defaulting selling_price_id from the selling price ledger (inventory-specific → global fallback).
-// selling_price is left NULL (not overridden).
+// createPOItemSellingPrices ensures every PO item has a POItemSellingPrice row.
+// Idempotent: items that already have a row are skipped, so this is safe to call
+// from both CreatePurchaseOrder (all items new) and UpdatePurchaseOrder (some items
+// pre-existing). selling_price_id defaults from the selling price ledger
+// (inventory-specific → global fallback); selling_price (override) is left NULL.
 func (s *purchaseOrderService) createPOItemSellingPrices(ctx context.Context, po *models.PurchaseOrder) error {
 	if s.sellingPriceRepo == nil {
 		return fmt.Errorf("sellingPriceRepo is nil")
@@ -338,37 +340,53 @@ func (s *purchaseOrderService) createPOItemSellingPrices(ctx context.Context, po
 		return fmt.Errorf("PO has no items")
 	}
 
-	// Collect product IDs from PO items
+	// Collect candidate item + product IDs
+	itemIDs := make([]uint, 0, len(po.Items))
 	productIDs := make([]uint, 0, len(po.Items))
 	for _, item := range po.Items {
-		if item != nil && item.ProductID != nil {
-			productIDs = append(productIDs, *item.ProductID)
+		if item == nil || item.ProductID == nil {
+			continue
 		}
+		itemIDs = append(itemIDs, item.ID)
+		productIDs = append(productIDs, *item.ProductID)
 	}
 	if len(productIDs) == 0 {
 		return fmt.Errorf("no product IDs found in PO items (items: %d)", len(po.Items))
 	}
 
+	// Skip items that already have a pisp row (idempotency)
+	existing, err := s.sellingPriceRepo.GetPOItemSellingPricesByPOItemIDs(ctx, itemIDs)
+	if err != nil {
+		return fmt.Errorf("failed to check existing PO item selling prices: %w", err)
+	}
+	existingByItemID := make(map[uint]bool, len(existing))
+	for _, e := range existing {
+		existingByItemID[e.PurchaseOrderItemID] = true
+	}
+
 	log.WithFields(logrus.Fields{
-		"operation":   "createPOItemSellingPrices",
-		"product_ids": productIDs,
-		"po_id":       po.ID,
+		"operation":         "createPOItemSellingPrices",
+		"po_id":             po.ID,
+		"product_ids":       productIDs,
+		"existing_count":    len(existing),
 	}).Info("Looking up selling prices for products")
 
-	// Look up latest selling prices
+	// Look up latest selling prices for the products that still need a pisp row
 	sellingPriceMap, err := s.sellingPriceRepo.GetLatestForProducts(ctx, productIDs, po.InventoryID, time.Now())
 	if err != nil {
 		return fmt.Errorf("failed to get latest selling prices: %w", err)
 	}
 
 	log.WithFields(logrus.Fields{
-		"operation":        "createPOItemSellingPrices",
-		"prices_found":     len(sellingPriceMap),
+		"operation":    "createPOItemSellingPrices",
+		"prices_found": len(sellingPriceMap),
 	}).Info("Selling prices lookup result")
 
-	// Create POItemSellingPrice records
 	for _, item := range po.Items {
 		if item == nil || item.ProductID == nil {
+			continue
+		}
+		if existingByItemID[item.ID] {
 			continue
 		}
 		poItemSP := &models.POItemSellingPrice{
@@ -377,7 +395,7 @@ func (s *purchaseOrderService) createPOItemSellingPrices(ctx context.Context, po
 		if sp, ok := sellingPriceMap[*item.ProductID]; ok {
 			poItemSP.SellingPriceID = &sp.ID
 		}
-		if err := s.db.WithContext(ctx).Create(poItemSP).Error; err != nil {
+		if err := s.sellingPriceRepo.CreatePOItemSellingPrice(ctx, poItemSP); err != nil {
 			return fmt.Errorf("failed to create PO item selling price for item %d: %w", item.ID, err)
 		}
 	}
@@ -1337,6 +1355,16 @@ func (s *purchaseOrderService) UpdatePurchaseOrder(ctx context.Context, id uint,
 			return nil, err
 		}
 		return nil, pkg.ErrFailedToUpdatePurchaseOrder(ctx, err)
+	}
+
+	// Ensure every PO item has a POItemSellingPrice row. Idempotent — existing items
+	// are skipped, so this only inserts rows for items added by this update.
+	if err := s.createPOItemSellingPrices(ctx, po); err != nil {
+		log.WithFields(logrus.Fields{
+			"operation":         "UpdatePurchaseOrder",
+			"purchase_order_id": po.ID,
+			"error":             err.Error(),
+		}).Error("Failed to ensure PO item selling prices")
 	}
 
 	// Calculate total amount based on items

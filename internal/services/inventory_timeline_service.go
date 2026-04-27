@@ -192,7 +192,7 @@ func (s *inventoryTimelineService) GetInventoryTimeline(ctx context.Context, req
 				poi.quantity as quantity_ordered, poi.received_quantity as quantity_received,
 				poi.status as status, po.status as po_status,
 				COALESCE(pisp.selling_price, sp.price) as selling_price,
-				(pisp.id IS NOT NULL) as has_selling_price
+				(COALESCE(pisp.selling_price, sp.price) IS NOT NULL) as has_selling_price
 			FROM purchase_order_items poi
 			JOIN purchase_orders po ON po.id = poi.purchase_order_id
 			LEFT JOIN purchase_order_item_selling_prices pisp ON pisp.purchase_order_item_id = poi.id

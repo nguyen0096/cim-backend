@@ -13,6 +13,7 @@ import (
 
 	"cim-backend/internal/mocks/repositorymocks"
 	"cim-backend/internal/models"
+	"cim-backend/internal/services/dto"
 	"cim-backend/pkg"
 	"cim-backend/pkg/testutil/fixture"
 )
@@ -229,5 +230,202 @@ func TestUpdatePurchaseOrderStatus_WithApprovalCheck(t *testing.T) {
 
 		// Assert
 		assert.NoError(t, err)
+	})
+}
+
+func Test_createPOItemSellingPrices(t *testing.T) {
+	t.Run("creates pisp rows for all items when none exist", func(t *testing.T) {
+		ctx := context.Background()
+		spRepo := repositorymocks.NewSellingPriceRepository(t)
+		service := &purchaseOrderService{sellingPriceRepo: spRepo}
+
+		invID := uint(10)
+		po := &models.PurchaseOrder{
+			Base:        models.Base{ID: 1},
+			InventoryID: &invID,
+			Items: []*models.PurchaseOrderItem{
+				{Base: models.Base{ID: 100}, ProductID: pkg.Ptr(uint(1))},
+				{Base: models.Base{ID: 101}, ProductID: pkg.Ptr(uint(2))},
+			},
+		}
+
+		spRepo.On("GetPOItemSellingPricesByPOItemIDs", ctx, []uint{100, 101}).Return(nil, nil).Once()
+		spRepo.On("GetLatestForProducts", ctx, []uint{1, 2}, &invID, mock.Anything).Return(map[uint]*models.SellingPrice{
+			1: {Base: models.Base{ID: 50}, ProductID: 1, Price: decimal.NewFromInt(20)},
+			2: {Base: models.Base{ID: 51}, ProductID: 2, Price: decimal.NewFromInt(30)},
+		}, nil).Once()
+		spRepo.On("CreatePOItemSellingPrice", ctx, mock.MatchedBy(func(p *models.POItemSellingPrice) bool {
+			return p.PurchaseOrderItemID == 100 && p.SellingPriceID != nil && *p.SellingPriceID == 50 && p.SellingPrice == nil
+		})).Return(nil).Once()
+		spRepo.On("CreatePOItemSellingPrice", ctx, mock.MatchedBy(func(p *models.POItemSellingPrice) bool {
+			return p.PurchaseOrderItemID == 101 && p.SellingPriceID != nil && *p.SellingPriceID == 51 && p.SellingPrice == nil
+		})).Return(nil).Once()
+
+		err := service.createPOItemSellingPrices(ctx, po)
+		require.NoError(t, err)
+	})
+
+	t.Run("idempotent: skips items that already have a pisp row", func(t *testing.T) {
+		ctx := context.Background()
+		spRepo := repositorymocks.NewSellingPriceRepository(t)
+		service := &purchaseOrderService{sellingPriceRepo: spRepo}
+
+		invID := uint(10)
+		po := &models.PurchaseOrder{
+			Base:        models.Base{ID: 1},
+			InventoryID: &invID,
+			Items: []*models.PurchaseOrderItem{
+				{Base: models.Base{ID: 100}, ProductID: pkg.Ptr(uint(1))},
+				{Base: models.Base{ID: 101}, ProductID: pkg.Ptr(uint(2))},
+			},
+		}
+
+		spRepo.On("GetPOItemSellingPricesByPOItemIDs", ctx, []uint{100, 101}).Return([]*models.POItemSellingPrice{
+			{PurchaseOrderItemID: 100},
+		}, nil).Once()
+		spRepo.On("GetLatestForProducts", ctx, []uint{1, 2}, &invID, mock.Anything).Return(map[uint]*models.SellingPrice{
+			2: {Base: models.Base{ID: 51}, ProductID: 2, Price: decimal.NewFromInt(30)},
+		}, nil).Once()
+		// Only item 101 should get inserted; item 100 already has a pisp row.
+		spRepo.On("CreatePOItemSellingPrice", ctx, mock.MatchedBy(func(p *models.POItemSellingPrice) bool {
+			return p.PurchaseOrderItemID == 101
+		})).Return(nil).Once()
+
+		err := service.createPOItemSellingPrices(ctx, po)
+		require.NoError(t, err)
+	})
+
+	t.Run("inserts pisp with nil selling_price_id when no ledger price exists", func(t *testing.T) {
+		ctx := context.Background()
+		spRepo := repositorymocks.NewSellingPriceRepository(t)
+		service := &purchaseOrderService{sellingPriceRepo: spRepo}
+
+		invID := uint(10)
+		po := &models.PurchaseOrder{
+			Base:        models.Base{ID: 1},
+			InventoryID: &invID,
+			Items: []*models.PurchaseOrderItem{
+				{Base: models.Base{ID: 100}, ProductID: pkg.Ptr(uint(1))},
+			},
+		}
+
+		spRepo.On("GetPOItemSellingPricesByPOItemIDs", ctx, []uint{100}).Return(nil, nil).Once()
+		spRepo.On("GetLatestForProducts", ctx, []uint{1}, &invID, mock.Anything).Return(map[uint]*models.SellingPrice{}, nil).Once()
+		spRepo.On("CreatePOItemSellingPrice", ctx, mock.MatchedBy(func(p *models.POItemSellingPrice) bool {
+			return p.PurchaseOrderItemID == 100 && p.SellingPriceID == nil && p.SellingPrice == nil
+		})).Return(nil).Once()
+
+		err := service.createPOItemSellingPrices(ctx, po)
+		require.NoError(t, err)
+	})
+
+	t.Run("no inserts when every item already has a pisp row", func(t *testing.T) {
+		ctx := context.Background()
+		spRepo := repositorymocks.NewSellingPriceRepository(t)
+		service := &purchaseOrderService{sellingPriceRepo: spRepo}
+
+		invID := uint(10)
+		po := &models.PurchaseOrder{
+			Base:        models.Base{ID: 1},
+			InventoryID: &invID,
+			Items: []*models.PurchaseOrderItem{
+				{Base: models.Base{ID: 100}, ProductID: pkg.Ptr(uint(1))},
+			},
+		}
+
+		spRepo.On("GetPOItemSellingPricesByPOItemIDs", ctx, []uint{100}).Return([]*models.POItemSellingPrice{
+			{PurchaseOrderItemID: 100},
+		}, nil).Once()
+		spRepo.On("GetLatestForProducts", ctx, []uint{1}, &invID, mock.Anything).Return(map[uint]*models.SellingPrice{}, nil).Once()
+		// No CreatePOItemSellingPrice expected — all items already have pisp.
+
+		err := service.createPOItemSellingPrices(ctx, po)
+		require.NoError(t, err)
+	})
+
+	t.Run("returns error when sellingPriceRepo is nil", func(t *testing.T) {
+		service := &purchaseOrderService{sellingPriceRepo: nil}
+		po := &models.PurchaseOrder{
+			Items: []*models.PurchaseOrderItem{
+				{Base: models.Base{ID: 100}, ProductID: pkg.Ptr(uint(1))},
+			},
+		}
+		err := service.createPOItemSellingPrices(context.Background(), po)
+		require.Error(t, err)
+	})
+
+	t.Run("returns error when PO has no items", func(t *testing.T) {
+		spRepo := repositorymocks.NewSellingPriceRepository(t)
+		service := &purchaseOrderService{sellingPriceRepo: spRepo}
+		err := service.createPOItemSellingPrices(context.Background(), &models.PurchaseOrder{})
+		require.Error(t, err)
+	})
+}
+
+func TestUpdatePurchaseOrder_EnsuresPOItemSellingPrices(t *testing.T) {
+	t.Run("calls createPOItemSellingPrices after successful repo update", func(t *testing.T) {
+		ctx := context.Background()
+		mockPORepo := repositorymocks.NewPurchaseOrderRepository(t)
+		spRepo := repositorymocks.NewSellingPriceRepository(t)
+		service := NewPurchaseOrderService(mockPORepo, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, spRepo)
+
+		invID := uint(10)
+		// Items have UnitID nil → service skips the unit-conversion path entirely.
+		req := dto.UpdatePurchaseOrderRequest{
+			InventoryID: &invID,
+			Items: []dto.UpdatePurchaseOrderItemRequest{
+				{ProductID: pkg.Ptr(uint(1)), SupplierID: pkg.Ptr(uint(2)), Quantity: decimal.NewFromInt(5)},
+			},
+		}
+		// Repo returns a PO with one new item whose pisp doesn't yet exist.
+		updatedPO := &models.PurchaseOrder{
+			Base:        models.Base{ID: 1},
+			InventoryID: &invID,
+			Items: []*models.PurchaseOrderItem{
+				{Base: models.Base{ID: 100}, ProductID: pkg.Ptr(uint(1))},
+			},
+		}
+		mockPORepo.On("UpdatePurchaseOrder", ctx, uint(1), req).Return(updatedPO, nil).Once()
+
+		spRepo.On("GetPOItemSellingPricesByPOItemIDs", ctx, []uint{100}).Return(nil, nil).Once()
+		spRepo.On("GetLatestForProducts", ctx, []uint{1}, &invID, mock.Anything).Return(map[uint]*models.SellingPrice{
+			1: {Base: models.Base{ID: 50}, ProductID: 1, Price: decimal.NewFromInt(20)},
+		}, nil).Once()
+		spRepo.On("CreatePOItemSellingPrice", ctx, mock.MatchedBy(func(p *models.POItemSellingPrice) bool {
+			return p.PurchaseOrderItemID == 100 && p.SellingPriceID != nil && *p.SellingPriceID == 50
+		})).Return(nil).Once()
+
+		po, err := service.UpdatePurchaseOrder(ctx, 1, req)
+		require.NoError(t, err)
+		require.NotNil(t, po)
+	})
+
+	t.Run("update succeeds even if createPOItemSellingPrices fails (logged, not propagated)", func(t *testing.T) {
+		ctx := context.Background()
+		mockPORepo := repositorymocks.NewPurchaseOrderRepository(t)
+		spRepo := repositorymocks.NewSellingPriceRepository(t)
+		service := NewPurchaseOrderService(mockPORepo, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, spRepo)
+
+		invID := uint(10)
+		req := dto.UpdatePurchaseOrderRequest{
+			InventoryID: &invID,
+			Items: []dto.UpdatePurchaseOrderItemRequest{
+				{ProductID: pkg.Ptr(uint(1)), SupplierID: pkg.Ptr(uint(2)), Quantity: decimal.NewFromInt(5)},
+			},
+		}
+		updatedPO := &models.PurchaseOrder{
+			Base:        models.Base{ID: 1},
+			InventoryID: &invID,
+			Items: []*models.PurchaseOrderItem{
+				{Base: models.Base{ID: 100}, ProductID: pkg.Ptr(uint(1))},
+			},
+		}
+		mockPORepo.On("UpdatePurchaseOrder", ctx, uint(1), req).Return(updatedPO, nil).Once()
+		// Existing-pisp lookup fails — UpdatePurchaseOrder must still succeed.
+		spRepo.On("GetPOItemSellingPricesByPOItemIDs", ctx, []uint{100}).Return(nil, errors.New("db down")).Once()
+
+		po, err := service.UpdatePurchaseOrder(ctx, 1, req)
+		require.NoError(t, err)
+		require.NotNil(t, po)
 	})
 }
