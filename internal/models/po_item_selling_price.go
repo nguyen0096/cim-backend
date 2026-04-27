@@ -14,6 +14,10 @@ type POItemSellingPrice struct {
 	SellingPriceRef     *SellingPrice    `json:"selling_price_ref,omitempty" gorm:"foreignKey:SellingPriceID" validate:"-"`
 }
 
+func (POItemSellingPrice) TableName() string {
+	return "purchase_order_item_selling_prices"
+}
+
 // GetEffectiveSellingPrice returns the effective selling price.
 // Returns SellingPrice if non-nil (user override), else SellingPriceRef.Price if loaded, else nil.
 func (p *POItemSellingPrice) GetEffectiveSellingPrice() *decimal.Decimal {
