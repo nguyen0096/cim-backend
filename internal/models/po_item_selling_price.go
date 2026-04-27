@@ -14,6 +14,8 @@ type POItemSellingPrice struct {
 	SellingPriceRef     *SellingPrice    `json:"selling_price_ref,omitempty" gorm:"foreignKey:SellingPriceID" validate:"-"`
 }
 
+// TableName overrides GORM's default (po_item_selling_prices) to match the
+// migration-created table name purchase_order_item_selling_prices.
 func (POItemSellingPrice) TableName() string {
 	return "purchase_order_item_selling_prices"
 }

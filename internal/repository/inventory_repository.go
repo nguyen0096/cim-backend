@@ -29,6 +29,19 @@ type InventoryRepository interface {
 	GetTransactionsByInventoryItemIDs(ctx context.Context, inventoryItemIDs []uint) ([]models.InventoryTransaction, error)
 	GetTransactionsByInventoryIDs(ctx context.Context, inventoryID uint, from, to *time.Time) ([]*models.InventoryTransaction, error)
 	GetTransactionsByIDs(ctx context.Context, txnIDs []uint) ([]*models.InventoryTransaction, error)
+
+	// GetTransactionsByInventoryIDsWithCounter returns transactions for an inventory in [from, to)
+	// along with the counter transaction's purchase_order_item_id (if any). For sells, disposals,
+	// and transfers, this exposes the originating purchase POI without a follow-up query — the
+	// timeline service uses it to attribute every txn to its source PO.
+	GetTransactionsByInventoryIDsWithCounter(ctx context.Context, inventoryID uint, from, to *time.Time) ([]*InventoryTransactionWithCounter, error)
+}
+
+// InventoryTransactionWithCounter is an InventoryTransaction with its counter transaction's
+// purchase_order_item_id resolved in the same query.
+type InventoryTransactionWithCounter struct {
+	*models.InventoryTransaction
+	CounterPOIID *uint
 }
 
 type inventoryRepository struct {
@@ -194,6 +207,45 @@ func (r *inventoryRepository) GetTransactionsByInventoryIDs(ctx context.Context,
 		return nil, fmt.Errorf("failed to get inventory transactions before date: %w", err)
 	}
 	return txns, nil
+}
+
+func (r *inventoryRepository) GetTransactionsByInventoryIDsWithCounter(ctx context.Context, inventoryID uint, from, to *time.Time) ([]*InventoryTransactionWithCounter, error) {
+	type row struct {
+		models.InventoryTransaction
+		CounterPOIID *uint `gorm:"column:counter_poi_id"`
+	}
+
+	// Soft-delete filters: it/ii in WHERE (INNER JOIN-equivalent), counter in JOIN
+	// ON clause to preserve LEFT JOIN semantics (soft-deleted counter → main txn
+	// still returned, CounterPOIID is nil).
+	q := r.db.WithContext(ctx).
+		Table("inventory_transactions it").
+		Select("it.*, counter.purchase_order_item_id AS counter_poi_id").
+		Joins("INNER JOIN inventory_items ii ON it.inventory_item_id = ii.id AND ii.deleted_at IS NULL").
+		Joins("LEFT JOIN inventory_transactions counter ON counter.id = it.counter_transaction_id AND counter.deleted_at IS NULL").
+		Where("ii.inventory_id = ? AND it.deleted_at IS NULL", inventoryID)
+
+	if from != nil {
+		q = q.Where("it.created_at >= ?", from)
+	}
+	if to != nil {
+		q = q.Where("it.created_at < ?", to)
+	}
+
+	var rows []row
+	if err := q.Scan(&rows).Error; err != nil {
+		return nil, fmt.Errorf("failed to get inventory transactions with counter: %w", err)
+	}
+
+	result := make([]*InventoryTransactionWithCounter, 0, len(rows))
+	for i := range rows {
+		txn := rows[i].InventoryTransaction
+		result = append(result, &InventoryTransactionWithCounter{
+			InventoryTransaction: &txn,
+			CounterPOIID:         rows[i].CounterPOIID,
+		})
+	}
+	return result, nil
 }
 
 func (r *inventoryRepository) GetTransactionsByIDs(ctx context.Context, txnIDs []uint) ([]*models.InventoryTransaction, error) {

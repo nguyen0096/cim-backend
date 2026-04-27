@@ -28,15 +28,6 @@ type TimelinePurchaseOrder struct {
 	QuantityOrdered  float64  `json:"quantity_ordered"`
 	QuantityReceived float64  `json:"quantity_received"`
 	SellingPrice     *float64 `json:"selling_price"`
-	HasSellingPrice  bool     `json:"has_selling_price"`
-}
-
-type TimelineSellingPriceChange struct {
-	ID            uint     `json:"id"`
-	Price         float64  `json:"price"`
-	PreviousPrice *float64 `json:"previous_price,omitempty"`
-	EffectiveFrom string   `json:"effective_from"`
-	Notes         string   `json:"notes,omitempty"`
 }
 
 type TimelineProductMetrics struct {
@@ -49,15 +40,14 @@ type TimelineProductMetrics struct {
 }
 
 type ProductTimeline struct {
-	ProductID           uint                         `json:"product_id"`
-	ProductName         string                       `json:"product_name"`
-	ProductUnit         string                       `json:"product_unit"`
-	BeginningStock      float64                      `json:"beginning_stock"`
-	EndingStock         float64                      `json:"ending_stock"`
-	PurchaseOrders      []TimelinePurchaseOrder      `json:"purchase_orders"`
-	Transactions        []TimelineTransaction        `json:"transactions"`
-	SellingPriceChanges []TimelineSellingPriceChange  `json:"selling_price_changes"`
-	Metrics             TimelineProductMetrics        `json:"metrics"`
+	ProductID      uint                    `json:"product_id"`
+	ProductName    string                  `json:"product_name"`
+	ProductUnit    string                  `json:"product_unit"`
+	BeginningStock float64                 `json:"beginning_stock"`
+	EndingStock    float64                 `json:"ending_stock"`
+	PurchaseOrders []TimelinePurchaseOrder `json:"purchase_orders"`
+	Transactions   []TimelineTransaction   `json:"transactions"`
+	Metrics        TimelineProductMetrics  `json:"metrics"`
 }
 
 type InventoryTimelineResponse struct {

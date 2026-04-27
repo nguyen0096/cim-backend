@@ -9,6 +9,21 @@ import (
 	"gorm.io/gorm"
 )
 
+// POItemSellingPriceInfo bundles PO/POI metadata with its effective selling price.
+// EffectivePrice is COALESCE(pisp.selling_price, sp.price) — nil when both are null
+// or when no pisp row exists for the POI.
+type POItemSellingPriceInfo struct {
+	POItemID         uint
+	POID             uint
+	PONumber         string
+	POStatus         string // delivery status of the PO (purchase_orders.status)
+	POItemStatus     string // delivery status of the POI (purchase_order_items.status)
+	ProductID        uint
+	QuantityOrdered  decimal.Decimal
+	QuantityReceived decimal.Decimal
+	EffectivePrice   *decimal.Decimal
+}
+
 //go:generate mockery --name=SellingPriceRepository --structname=SellingPriceRepository --output=../mocks/repositorymocks --outpkg=repositorymocks
 type SellingPriceRepository interface {
 	Create(ctx context.Context, sp *models.SellingPrice) error
@@ -26,10 +41,6 @@ type SellingPriceRepository interface {
 	// Same fallback logic as GetLatestForProduct, applied per product.
 	GetLatestForProducts(ctx context.Context, productIDs []uint, inventoryID *uint, asOfDate time.Time) (map[uint]*models.SellingPrice, error)
 
-	// GetByProductIDsInDateRange returns all selling price entries for the given products
-	// with effective_from within [from, to). Used for timeline display.
-	GetByProductIDsInDateRange(ctx context.Context, productIDs []uint, from, to time.Time) ([]*models.SellingPrice, error)
-
 	// GetSellingPricesForSellTransactions returns the effective selling price for each sell transaction ID.
 	// Resolves through: sell txn → counter txn (purchase) → PO item → POItemSellingPrice.
 	// Uses COALESCE(pisp.selling_price, sp.price) for the fallback logic.
@@ -40,6 +51,13 @@ type SellingPriceRepository interface {
 
 	// CreatePOItemSellingPrice inserts a POItemSellingPrice row.
 	CreatePOItemSellingPrice(ctx context.Context, record *models.POItemSellingPrice) error
+
+	// GetPOItemsWithPriceByIDs returns PO + POI metadata and the effective selling price
+	// for the given purchase_order_item_ids, scoped to the given inventoryID.
+	// POIs whose parent PO belongs to a different inventory are filtered out (handles
+	// e.g. transfer-in transactions whose counter purchase is in another inventory).
+	// Soft-deleted POIs and POs are excluded.
+	GetPOItemsWithPriceByIDs(ctx context.Context, poItemIDs []uint, inventoryID uint) (map[uint]*POItemSellingPriceInfo, error)
 }
 
 type sellingPriceRepository struct {
@@ -170,19 +188,6 @@ func (r *sellingPriceRepository) GetLatestForProducts(ctx context.Context, produ
 	return result, nil
 }
 
-func (r *sellingPriceRepository) GetByProductIDsInDateRange(ctx context.Context, productIDs []uint, from, to time.Time) ([]*models.SellingPrice, error) {
-	if len(productIDs) == 0 {
-		return nil, nil
-	}
-
-	var prices []*models.SellingPrice
-	err := r.db.WithContext(ctx).
-		Where("product_id IN ? AND effective_from >= ? AND effective_from < ?", productIDs, from, to).
-		Order("product_id, effective_from").
-		Find(&prices).Error
-	return prices, err
-}
-
 func (r *sellingPriceRepository) GetSellingPricesForSellTransactions(ctx context.Context, sellTxnIDs []uint) (map[uint]decimal.Decimal, error) {
 	if len(sellTxnIDs) == 0 {
 		return make(map[uint]decimal.Decimal), nil
@@ -229,4 +234,68 @@ func (r *sellingPriceRepository) GetPOItemSellingPricesByPOItemIDs(ctx context.C
 
 func (r *sellingPriceRepository) CreatePOItemSellingPrice(ctx context.Context, record *models.POItemSellingPrice) error {
 	return r.db.WithContext(ctx).Create(record).Error
+}
+
+func (r *sellingPriceRepository) GetPOItemsWithPriceByIDs(ctx context.Context, poItemIDs []uint, inventoryID uint) (map[uint]*POItemSellingPriceInfo, error) {
+	if len(poItemIDs) == 0 {
+		return make(map[uint]*POItemSellingPriceInfo), nil
+	}
+
+	type row struct {
+		POItemID         uint             `gorm:"column:po_item_id"`
+		POID             uint             `gorm:"column:po_id"`
+		PONumber         string           `gorm:"column:po_number"`
+		POStatus         string           `gorm:"column:po_status"`
+		POItemStatus     string           `gorm:"column:po_item_status"`
+		ProductID        uint             `gorm:"column:product_id"`
+		QuantityOrdered  decimal.Decimal  `gorm:"column:quantity_ordered"`
+		QuantityReceived decimal.Decimal  `gorm:"column:quantity_received"`
+		EffectivePrice   *decimal.Decimal `gorm:"column:effective_price"`
+	}
+
+	// LEFT JOIN soft-delete filters live in the ON clause so soft-deleted pisp/sp
+	// rows are treated as absent (LEFT JOIN returns the POI row with NULL price)
+	// instead of converting the LEFT JOIN to INNER JOIN semantics.
+	var rows []row
+	err := r.db.WithContext(ctx).
+		Raw(`SELECT
+				poi.id AS po_item_id,
+				po.id AS po_id,
+				po.order_number AS po_number,
+				po.status AS po_status,
+				poi.status AS po_item_status,
+				poi.product_id AS product_id,
+				poi.quantity AS quantity_ordered,
+				poi.received_quantity AS quantity_received,
+				COALESCE(pisp.selling_price, sp.price) AS effective_price
+			FROM purchase_order_items poi
+			JOIN purchase_orders po ON po.id = poi.purchase_order_id
+			LEFT JOIN purchase_order_item_selling_prices pisp
+				ON pisp.purchase_order_item_id = poi.id AND pisp.deleted_at IS NULL
+			LEFT JOIN selling_prices sp
+				ON sp.id = pisp.selling_price_id AND sp.deleted_at IS NULL
+			WHERE poi.id IN ?
+			AND po.inventory_id = ?
+			AND poi.deleted_at IS NULL
+			AND po.deleted_at IS NULL`, poItemIDs, inventoryID).
+		Scan(&rows).Error
+	if err != nil {
+		return nil, err
+	}
+
+	result := make(map[uint]*POItemSellingPriceInfo, len(rows))
+	for _, r := range rows {
+		result[r.POItemID] = &POItemSellingPriceInfo{
+			POItemID:         r.POItemID,
+			POID:             r.POID,
+			PONumber:         r.PONumber,
+			POStatus:         r.POStatus,
+			POItemStatus:     r.POItemStatus,
+			ProductID:        r.ProductID,
+			QuantityOrdered:  r.QuantityOrdered,
+			QuantityReceived: r.QuantityReceived,
+			EffectivePrice:   r.EffectivePrice,
+		}
+	}
+	return result, nil
 }

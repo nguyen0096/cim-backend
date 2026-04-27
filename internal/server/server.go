@@ -80,7 +80,7 @@ func SetupServer(
 	menuItemService := services.NewMenuItemService(menuItemRepo, menuRepo, productRepo)
 	saleOrderService := services.NewSaleOrderService(saleOrderRepo, db)
 	sellingPriceService := services.NewSellingPriceService(sellingPriceRepo, productRepo, db)
-	inventoryTimelineService := services.NewInventoryTimelineService(inventoryRepo, sellingPriceRepo, db)
+	inventoryTimelineService := services.NewInventoryTimelineService(inventoryRepo, sellingPriceRepo)
 
 	// Initialize handlers
 	userHandler := handlers.NewUserHandler(userService, firebaseAuth)
