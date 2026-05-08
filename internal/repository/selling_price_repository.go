@@ -12,6 +12,9 @@ import (
 // POItemSellingPriceInfo bundles PO/POI metadata with its effective selling price.
 // EffectivePrice is COALESCE(pisp.selling_price, sp.price) — nil when both are null
 // or when no pisp row exists for the POI.
+// PurchasePrice is the POI's unit cost (purchase_order_items.unit_price) — used
+// by export consumers that need cost data for rows with no in-window purchase
+// txn (e.g. carry-over rows).
 type POItemSellingPriceInfo struct {
 	POItemID         uint
 	POID             uint
@@ -21,6 +24,7 @@ type POItemSellingPriceInfo struct {
 	ProductID        uint
 	QuantityOrdered  decimal.Decimal
 	QuantityReceived decimal.Decimal
+	PurchasePrice    decimal.Decimal
 	EffectivePrice   *decimal.Decimal
 }
 
@@ -58,6 +62,14 @@ type SellingPriceRepository interface {
 	// e.g. transfer-in transactions whose counter purchase is in another inventory).
 	// Soft-deleted POIs and POs are excluded.
 	GetPOItemsWithPriceByIDs(ctx context.Context, poItemIDs []uint, inventoryID uint) (map[uint]*POItemSellingPriceInfo, error)
+
+	// GetPOItemsWithPriceByIDsAcrossInventories returns the same payload as
+	// GetPOItemsWithPriceByIDs but without the inventory_id filter. Use this
+	// when callers need to resolve source-PO metadata across inventory
+	// boundaries — e.g. a destination-inventory transfer-in row whose source
+	// POI lives in another inventory. Soft-deleted POIs and POs are still
+	// excluded.
+	GetPOItemsWithPriceByIDsAcrossInventories(ctx context.Context, poItemIDs []uint) (map[uint]*POItemSellingPriceInfo, error)
 }
 
 type sellingPriceRepository struct {
@@ -237,6 +249,16 @@ func (r *sellingPriceRepository) CreatePOItemSellingPrice(ctx context.Context, r
 }
 
 func (r *sellingPriceRepository) GetPOItemsWithPriceByIDs(ctx context.Context, poItemIDs []uint, inventoryID uint) (map[uint]*POItemSellingPriceInfo, error) {
+	return r.queryPOItemsWithPrice(ctx, poItemIDs, &inventoryID)
+}
+
+func (r *sellingPriceRepository) GetPOItemsWithPriceByIDsAcrossInventories(ctx context.Context, poItemIDs []uint) (map[uint]*POItemSellingPriceInfo, error) {
+	return r.queryPOItemsWithPrice(ctx, poItemIDs, nil)
+}
+
+// queryPOItemsWithPrice is the shared implementation. When inventoryID is nil
+// the inventory_id predicate is omitted, returning POIs across all inventories.
+func (r *sellingPriceRepository) queryPOItemsWithPrice(ctx context.Context, poItemIDs []uint, inventoryID *uint) (map[uint]*POItemSellingPriceInfo, error) {
 	if len(poItemIDs) == 0 {
 		return make(map[uint]*POItemSellingPriceInfo), nil
 	}
@@ -250,35 +272,45 @@ func (r *sellingPriceRepository) GetPOItemsWithPriceByIDs(ctx context.Context, p
 		ProductID        uint             `gorm:"column:product_id"`
 		QuantityOrdered  decimal.Decimal  `gorm:"column:quantity_ordered"`
 		QuantityReceived decimal.Decimal  `gorm:"column:quantity_received"`
+		PurchasePrice    decimal.Decimal  `gorm:"column:purchase_price"`
 		EffectivePrice   *decimal.Decimal `gorm:"column:effective_price"`
 	}
 
 	// LEFT JOIN soft-delete filters live in the ON clause so soft-deleted pisp/sp
 	// rows are treated as absent (LEFT JOIN returns the POI row with NULL price)
 	// instead of converting the LEFT JOIN to INNER JOIN semantics.
+	const baseSQL = `SELECT
+			poi.id AS po_item_id,
+			po.id AS po_id,
+			po.order_number AS po_number,
+			po.status AS po_status,
+			poi.status AS po_item_status,
+			poi.product_id AS product_id,
+			poi.quantity AS quantity_ordered,
+			poi.received_quantity AS quantity_received,
+			poi.unit_price AS purchase_price,
+			COALESCE(pisp.selling_price, sp.price) AS effective_price
+		FROM purchase_order_items poi
+		JOIN purchase_orders po ON po.id = poi.purchase_order_id
+		LEFT JOIN purchase_order_item_selling_prices pisp
+			ON pisp.purchase_order_item_id = poi.id AND pisp.deleted_at IS NULL
+		LEFT JOIN selling_prices sp
+			ON sp.id = pisp.selling_price_id AND sp.deleted_at IS NULL
+		WHERE poi.id IN ?
+		AND poi.deleted_at IS NULL
+		AND po.deleted_at IS NULL`
+
 	var rows []row
-	err := r.db.WithContext(ctx).
-		Raw(`SELECT
-				poi.id AS po_item_id,
-				po.id AS po_id,
-				po.order_number AS po_number,
-				po.status AS po_status,
-				poi.status AS po_item_status,
-				poi.product_id AS product_id,
-				poi.quantity AS quantity_ordered,
-				poi.received_quantity AS quantity_received,
-				COALESCE(pisp.selling_price, sp.price) AS effective_price
-			FROM purchase_order_items poi
-			JOIN purchase_orders po ON po.id = poi.purchase_order_id
-			LEFT JOIN purchase_order_item_selling_prices pisp
-				ON pisp.purchase_order_item_id = poi.id AND pisp.deleted_at IS NULL
-			LEFT JOIN selling_prices sp
-				ON sp.id = pisp.selling_price_id AND sp.deleted_at IS NULL
-			WHERE poi.id IN ?
-			AND po.inventory_id = ?
-			AND poi.deleted_at IS NULL
-			AND po.deleted_at IS NULL`, poItemIDs, inventoryID).
-		Scan(&rows).Error
+	var err error
+	if inventoryID != nil {
+		err = r.db.WithContext(ctx).
+			Raw(baseSQL+` AND po.inventory_id = ?`, poItemIDs, *inventoryID).
+			Scan(&rows).Error
+	} else {
+		err = r.db.WithContext(ctx).
+			Raw(baseSQL, poItemIDs).
+			Scan(&rows).Error
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -292,8 +324,9 @@ func (r *sellingPriceRepository) GetPOItemsWithPriceByIDs(ctx context.Context, p
 			POStatus:         r.POStatus,
 			POItemStatus:     r.POItemStatus,
 			ProductID:        r.ProductID,
-			QuantityOrdered:  r.QuantityOrdered,
+			QuantityOrdered: r.QuantityOrdered,
 			QuantityReceived: r.QuantityReceived,
+			PurchasePrice:    r.PurchasePrice,
 			EffectivePrice:   r.EffectivePrice,
 		}
 	}

@@ -81,6 +81,7 @@ func SetupServer(
 	saleOrderService := services.NewSaleOrderService(saleOrderRepo, db)
 	sellingPriceService := services.NewSellingPriceService(sellingPriceRepo, productRepo, db)
 	inventoryTimelineService := services.NewInventoryTimelineService(inventoryRepo, sellingPriceRepo)
+	inventoryInOutExportService := services.NewInventoryInOutExportService(inventoryRepo, sellingPriceRepo, s3Client)
 
 	// Initialize handlers
 	userHandler := handlers.NewUserHandler(userService, firebaseAuth)
@@ -99,6 +100,7 @@ func SetupServer(
 	saleOrderHandler := handlers.NewSaleOrderHandler(saleOrderService)
 	sellingPriceHandler := handlers.NewSellingPriceHandler(sellingPriceService)
 	inventoryTimelineHandler := handlers.NewInventoryTimelineHandler(inventoryTimelineService)
+	inventoryInOutExportHandler := handlers.NewInventoryInOutExportHandler(inventoryInOutExportService)
 
 	// Initialize Echo
 	e := echo.New()
@@ -237,6 +239,7 @@ func SetupServer(
 	inventories.POST("/:id/reconcile", inventoryHandler.ReconcileInventory)
 	inventories.GET("/:id/export/monthly-transaction", inventoryHandler.ExportMonthlyTransactionReport)
 	inventories.GET("/:id/timeline", inventoryTimelineHandler.GetInventoryTimeline)
+	inventories.GET("/:id/export/inventory-in-out", inventoryInOutExportHandler.ExportInventoryInOut)
 
 	// Nested inventory items routes
 	inventories.GET("/:id/inventory-items", inventoryItemHandler.GetInventoryItemsByInventoryID)
