@@ -6,9 +6,17 @@ import (
 	"cim-backend/internal/services/dto"
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/shopspring/decimal"
+)
+
+const (
+	// defaultTimelinePageLimit is used when the request omits/zeroes limit.
+	defaultTimelinePageLimit = 50
+	// maxTimelinePageLimit caps the page size to bound response size.
+	maxTimelinePageLimit = 200
 )
 
 type InventoryTimelineService interface {
@@ -16,17 +24,20 @@ type InventoryTimelineService interface {
 }
 
 type inventoryTimelineService struct {
-	inventoryRepo    repository.InventoryRepository
-	sellingPriceRepo repository.SellingPriceRepository
+	inventoryRepo     repository.InventoryRepository
+	inventoryItemRepo repository.InventoryItemRepository
+	sellingPriceRepo  repository.SellingPriceRepository
 }
 
 func NewInventoryTimelineService(
 	inventoryRepo repository.InventoryRepository,
+	inventoryItemRepo repository.InventoryItemRepository,
 	sellingPriceRepo repository.SellingPriceRepository,
 ) InventoryTimelineService {
 	return &inventoryTimelineService{
-		inventoryRepo:    inventoryRepo,
-		sellingPriceRepo: sellingPriceRepo,
+		inventoryRepo:     inventoryRepo,
+		inventoryItemRepo: inventoryItemRepo,
+		sellingPriceRepo:  sellingPriceRepo,
 	}
 }
 
@@ -41,10 +52,42 @@ func (s *inventoryTimelineService) GetInventoryTimeline(ctx context.Context, req
 	}
 	endDateExclusive := endDate.AddDate(0, 0, 1)
 
-	// 1. Load inventory with items and build product map.
-	inventory, err := s.inventoryRepo.GetByID(ctx, req.InventoryID)
+	page, limit := normalizePageLimit(req.Page, req.Limit)
+
+	// Filters are applied once, in the repository, for both the count and the
+	// page query (shared builder) — search by name tokens, sort by product name.
+	filters := repository.InventoryItemFilters{
+		SearchTokens: searchTokens(req.Search),
+		ProductIDs:   req.ProductIDs,
+		Sort:         string(repository.InventoryItemSortFieldProductName),
+		Order:        "ASC",
+	}
+
+	// 1. Total matching products → drives pagination (and lets us short-circuit
+	// out-of-range pages without a data query, which also dodges offset overflow).
+	total, err := s.inventoryItemRepo.CountByInventoryIDWithFilters(ctx, req.InventoryID, filters)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get inventory: %w", err)
+		return nil, fmt.Errorf("failed to count inventory items: %w", err)
+	}
+
+	totalPages := 0
+	if limit > 0 {
+		totalPages = int((total + int64(limit) - 1) / int64(limit))
+	}
+
+	pagination := dto.TimelinePagination{Page: page, Limit: limit, Total: total, TotalPages: totalPages}
+
+	// No rows, or a page past the end → empty page. `int64(page) > int64(totalPages)`
+	// is a plain comparison (no multiply), so a huge page can't overflow here.
+	if total == 0 || int64(page) > int64(totalPages) {
+		return &dto.InventoryTimelineResponse{Products: []dto.ProductTimeline{}, Pagination: pagination}, nil
+	}
+
+	// 2. Fetch just this page of items (sorted by name in the DB).
+	offset := (page - 1) * limit // safe: page <= totalPages ⇒ offset < total
+	items, err := s.inventoryItemRepo.GetByInventoryIDWithFilters(ctx, req.InventoryID, filters, limit, offset)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get inventory items: %w", err)
 	}
 
 	type productInfo struct {
@@ -54,26 +97,14 @@ func (s *inventoryTimelineService) GetInventoryTimeline(ctx context.Context, req
 	}
 	productMap := make(map[uint]productInfo)
 	itemToProduct := make(map[uint]uint)
-	var productIDs []uint
+	var productIDs []uint // preserves the DB sort order (product name asc)
 	productIDSeen := make(map[uint]bool)
+	var itemIDs []uint
 
-	for _, item := range inventory.Items {
+	for _, item := range items {
 		if item.Product == nil {
 			continue
 		}
-		if len(req.ProductIDs) > 0 {
-			found := false
-			for _, pid := range req.ProductIDs {
-				if item.Product.ID == pid {
-					found = true
-					break
-				}
-			}
-			if !found {
-				continue
-			}
-		}
-
 		unitName := ""
 		if item.Unit != nil {
 			unitName = item.Unit.Name
@@ -84,6 +115,7 @@ func (s *inventoryTimelineService) GetInventoryTimeline(ctx context.Context, req
 			Unit: unitName,
 		}
 		itemToProduct[item.ID] = item.Product.ID
+		itemIDs = append(itemIDs, item.ID)
 		if !productIDSeen[item.Product.ID] {
 			productIDs = append(productIDs, item.Product.ID)
 			productIDSeen[item.Product.ID] = true
@@ -91,11 +123,11 @@ func (s *inventoryTimelineService) GetInventoryTimeline(ctx context.Context, req
 	}
 
 	if len(productIDs) == 0 {
-		return &dto.InventoryTimelineResponse{Products: []dto.ProductTimeline{}}, nil
+		return &dto.InventoryTimelineResponse{Products: []dto.ProductTimeline{}, Pagination: pagination}, nil
 	}
 
-	// 2. Historical txns → beginning stock.
-	historicalTxns, err := s.inventoryRepo.GetTransactionsByInventoryIDs(ctx, req.InventoryID, nil, &startDate)
+	// 3. Historical txns (scoped to this page's items) → beginning stock.
+	historicalTxns, err := s.inventoryRepo.GetTransactionsByInventoryIDs(ctx, req.InventoryID, nil, &startDate, itemIDs...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get historical transactions: %w", err)
 	}
@@ -108,8 +140,8 @@ func (s *inventoryTimelineService) GetInventoryTimeline(ctx context.Context, req
 		beginningStock[pid] = beginningStock[pid].Add(txn.TransactionType.StockDelta(txn.Quantity))
 	}
 
-	// 3. Period txns + counter POI for sells/disposals/transfers (single query, self-join).
-	periodTxns, err := s.inventoryRepo.GetTransactionsByInventoryIDsWithCounter(ctx, req.InventoryID, &startDate, &endDateExclusive)
+	// 4. Period txns + counter POI (scoped to this page's items).
+	periodTxns, err := s.inventoryRepo.GetTransactionsByInventoryIDsWithCounter(ctx, req.InventoryID, &startDate, &endDateExclusive, itemIDs...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get period transactions: %w", err)
 	}
@@ -136,13 +168,13 @@ func (s *inventoryTimelineService) GetInventoryTimeline(ctx context.Context, req
 		}
 	}
 
-	// 4. PO/POI metadata + effective price for all relevant POIs (one query, scoped to inventory).
+	// 5. PO/POI metadata + effective price for all relevant POIs (one query, scoped to inventory).
 	poInfoByItemID, err := s.sellingPriceRepo.GetPOItemsWithPriceByIDs(ctx, poItemIDs, req.InventoryID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get PO item info: %w", err)
 	}
 
-	// 5. Walk: assemble transactions[] and purchase_orders[] per product.
+	// 6. Walk: assemble transactions[] and purchase_orders[] per product.
 	type productData struct {
 		transactions     []dto.TimelineTransaction
 		metrics          dto.TimelineProductMetrics
@@ -240,7 +272,7 @@ func (s *inventoryTimelineService) GetInventoryTimeline(ctx context.Context, req
 		}
 	}
 
-	// 6. Assemble response.
+	// 7. Assemble response in DB sort order (product name asc).
 	products := make([]dto.ProductTimeline, 0, len(productIDs))
 	for _, pid := range productIDs {
 		info := productMap[pid]
@@ -270,5 +302,24 @@ func (s *inventoryTimelineService) GetInventoryTimeline(ctx context.Context, req
 		})
 	}
 
-	return &dto.InventoryTimelineResponse{Products: products}, nil
+	return &dto.InventoryTimelineResponse{Products: products, Pagination: pagination}, nil
+}
+
+// searchTokens lowercases and splits a search string into non-empty tokens.
+func searchTokens(search string) []string {
+	return strings.Fields(strings.ToLower(search))
+}
+
+// normalizePageLimit applies defaults and caps to the requested page/limit.
+func normalizePageLimit(page, limit int) (int, int) {
+	if page <= 0 {
+		page = 1
+	}
+	if limit <= 0 {
+		limit = defaultTimelinePageLimit
+	}
+	if limit > maxTimelinePageLimit {
+		limit = maxTimelinePageLimit
+	}
+	return page, limit
 }

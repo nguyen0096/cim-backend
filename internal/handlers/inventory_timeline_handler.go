@@ -51,11 +51,18 @@ func (h *InventoryTimelineHandler) GetInventoryTimeline(c echo.Context) error {
 		}
 	}
 
+	// Pagination + search (defaults/caps enforced in the service).
+	page, _ := strconv.Atoi(c.QueryParam("page"))
+	limit, _ := strconv.Atoi(c.QueryParam("limit"))
+
 	req := dto.InventoryTimelineRequest{
 		InventoryID: id,
 		StartDate:   startDate,
 		EndDate:     endDate,
 		ProductIDs:  productIDs,
+		Search:      strings.TrimSpace(c.QueryParam("search")),
+		Page:        page,
+		Limit:       limit,
 	}
 
 	result, err := h.inventoryTimelineService.GetInventoryTimeline(c.Request().Context(), req)

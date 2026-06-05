@@ -5,6 +5,13 @@ type InventoryTimelineRequest struct {
 	StartDate   string `query:"start_date" validate:"required"`
 	EndDate     string `query:"end_date" validate:"required"`
 	ProductIDs  []uint `query:"product_ids"`
+	// Search filters products by name: case-insensitive, whitespace-tokenized,
+	// a product matches if its name contains ANY token. Empty = no filter.
+	Search string `query:"search"`
+	// Page is 1-based. Defaults applied in the service if <= 0.
+	Page int `query:"page"`
+	// Limit is the page size. Defaults/caps applied in the service.
+	Limit int `query:"limit"`
 }
 
 type TimelineTransaction struct {
@@ -50,6 +57,15 @@ type ProductTimeline struct {
 	Metrics        TimelineProductMetrics  `json:"metrics"`
 }
 
+// TimelinePagination describes the paginated slice of products returned.
+type TimelinePagination struct {
+	Page       int   `json:"page"`
+	Limit      int   `json:"limit"`
+	Total      int64 `json:"total"`
+	TotalPages int   `json:"total_pages"`
+}
+
 type InventoryTimelineResponse struct {
-	Products []ProductTimeline `json:"products"`
+	Products   []ProductTimeline  `json:"products"`
+	Pagination TimelinePagination `json:"pagination"`
 }

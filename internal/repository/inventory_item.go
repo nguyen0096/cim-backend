@@ -33,8 +33,53 @@ type InventoryItemFilters struct {
 	Search      string
 	Sort        string
 	Order       string
+	// SearchTokens, when non-empty, matches products whose name contains ANY
+	// token (case-insensitive). Separate from Search (whole-string contains)
+	// so existing callers keep their behaviour.
+	SearchTokens []string
+	// ProductIDs, when non-empty, restricts results to these product ids.
+	ProductIDs []uint
 }
 
+// applyInventoryItemFilters applies the shared WHERE/JOIN clauses used by both
+// the list and the count queries, so the two can never diverge on filtering.
+// Ordering, preloads, and limit/offset are applied by the callers.
+func applyInventoryItemFilters(query *gorm.DB, inventoryID uint, filters InventoryItemFilters) *gorm.DB {
+	query = query.Where("inventory_items.inventory_id = ?", inventoryID)
+
+	if filters.Status != "" {
+		query = query.Where("inventory_items.status = ?", filters.Status)
+	}
+	if len(filters.ProductIDs) > 0 {
+		query = query.Where("inventory_items.product_id IN ?", filters.ProductIDs)
+	}
+
+	needsProductJoin := filters.ProductType != "" ||
+		filters.Search != "" ||
+		len(filters.SearchTokens) > 0 ||
+		filters.Sort == string(InventoryItemSortFieldProductName)
+	if needsProductJoin {
+		query = query.Joins("JOIN products ON products.id = inventory_items.product_id")
+		if filters.ProductType != "" {
+			query = query.Where("products.product_type = ?", filters.ProductType)
+		}
+		if filters.Search != "" {
+			query = query.Where("products.name ILIKE ?", "%"+filters.Search+"%")
+		}
+		if len(filters.SearchTokens) > 0 {
+			conds := make([]string, 0, len(filters.SearchTokens))
+			args := make([]interface{}, 0, len(filters.SearchTokens))
+			for _, tok := range filters.SearchTokens {
+				conds = append(conds, "products.name ILIKE ?")
+				args = append(args, "%"+tok+"%")
+			}
+			query = query.Where(strings.Join(conds, " OR "), args...)
+		}
+	}
+	return query
+}
+
+//go:generate mockery --name=InventoryItemRepository --structname=InventoryItemRepository --output=../mocks/repositorymocks --outpkg=repositorymocks
 type InventoryItemRepository interface {
 	Create(ctx context.Context, item *models.InventoryItem) error
 	GetByID(ctx context.Context, id uint) (*models.InventoryItem, error)
@@ -100,30 +145,9 @@ func (r *inventoryItemRepository) GetByInventoryIDWithFilters(ctx context.Contex
 	query := r.db.WithContext(ctx).
 		Preload("Inventory").
 		Preload("Product").
-		Preload("Unit").
-		Where("inventory_items.inventory_id = ?", inventoryID)
+		Preload("Unit")
 
-	// Apply status filter
-	if filters.Status != "" {
-		query = query.Where("inventory_items.status = ?", filters.Status)
-	}
-
-	// Determine if we need to join products table
-	needsProductJoin := filters.ProductType != "" || filters.Sort == string(InventoryItemSortFieldProductName) || filters.Search != ""
-
-	// Apply product_type filter by joining with products table
-	if needsProductJoin {
-		query = query.Joins("JOIN products ON products.id = inventory_items.product_id")
-		if filters.ProductType != "" {
-			query = query.Where("products.product_type = ?", filters.ProductType)
-		}
-	}
-
-	// Apply search filter
-	if filters.Search != "" {
-		searchPattern := "%" + filters.Search + "%"
-		query = query.Where("products.name ILIKE ?", searchPattern)
-	}
+	query = applyInventoryItemFilters(query, inventoryID, filters)
 
 	// Apply sorting
 	if filters.Sort != "" && filters.Order != "" {
@@ -179,27 +203,8 @@ func (r *inventoryItemRepository) Count(ctx context.Context) (int64, error) {
 // CountByInventoryIDWithFilters counts inventory items by inventory ID with filters
 func (r *inventoryItemRepository) CountByInventoryIDWithFilters(ctx context.Context, inventoryID uint, filters InventoryItemFilters) (int64, error) {
 	var count int64
-	query := r.db.WithContext(ctx).
-		Model(&models.InventoryItem{}).
-		Where("inventory_items.inventory_id = ?", inventoryID)
-
-	// Apply status filter
-	if filters.Status != "" {
-		query = query.Where("inventory_items.status = ?", filters.Status)
-	}
-
-	// Apply product_type filter and search filter by joining with products table
-	needsProductJoin := filters.ProductType != "" || filters.Search != ""
-	if needsProductJoin {
-		query = query.Joins("JOIN products ON products.id = inventory_items.product_id")
-		if filters.ProductType != "" {
-			query = query.Where("products.product_type = ?", filters.ProductType)
-		}
-		if filters.Search != "" {
-			searchPattern := "%" + filters.Search + "%"
-			query = query.Where("products.name ILIKE ?", searchPattern)
-		}
-	}
+	query := r.db.WithContext(ctx).Model(&models.InventoryItem{})
+	query = applyInventoryItemFilters(query, inventoryID, filters)
 
 	err := query.Count(&count).Error
 	return count, err

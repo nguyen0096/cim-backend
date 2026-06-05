@@ -80,7 +80,7 @@ func SetupServer(
 	menuItemService := services.NewMenuItemService(menuItemRepo, menuRepo, productRepo)
 	saleOrderService := services.NewSaleOrderService(saleOrderRepo, db)
 	sellingPriceService := services.NewSellingPriceService(sellingPriceRepo, productRepo, db)
-	inventoryTimelineService := services.NewInventoryTimelineService(inventoryRepo, sellingPriceRepo)
+	inventoryTimelineService := services.NewInventoryTimelineService(inventoryRepo, inventoryItemRepo, sellingPriceRepo)
 	inventoryInOutExportService := services.NewInventoryInOutExportService(inventoryRepo, sellingPriceRepo, s3Client)
 
 	// Initialize handlers

@@ -27,14 +27,18 @@ type InventoryRepository interface {
 	GetLastPurchasePrices(ctx context.Context, supplierID uint, limit uint) ([]*dto.LastPurchasePriceResponse, error)
 
 	GetTransactionsByInventoryItemIDs(ctx context.Context, inventoryItemIDs []uint) ([]models.InventoryTransaction, error)
-	GetTransactionsByInventoryIDs(ctx context.Context, inventoryID uint, from, to *time.Time) ([]*models.InventoryTransaction, error)
+	// GetTransactionsByInventoryIDs returns transactions for an inventory in [from, to).
+	// When itemIDs is non-empty the result is further scoped to those inventory_item ids
+	// (used to fetch only a page's worth of items); empty itemIDs means the whole inventory.
+	GetTransactionsByInventoryIDs(ctx context.Context, inventoryID uint, from, to *time.Time, itemIDs ...uint) ([]*models.InventoryTransaction, error)
 	GetTransactionsByIDs(ctx context.Context, txnIDs []uint) ([]*models.InventoryTransaction, error)
 
 	// GetTransactionsByInventoryIDsWithCounter returns transactions for an inventory in [from, to)
 	// along with the counter transaction's purchase_order_item_id (if any). For sells, disposals,
 	// and transfers, this exposes the originating purchase POI without a follow-up query — the
 	// timeline service uses it to attribute every txn to its source PO.
-	GetTransactionsByInventoryIDsWithCounter(ctx context.Context, inventoryID uint, from, to *time.Time) ([]*InventoryTransactionWithCounter, error)
+	// When itemIDs is non-empty the result is scoped to those inventory_item ids.
+	GetTransactionsByInventoryIDsWithCounter(ctx context.Context, inventoryID uint, from, to *time.Time, itemIDs ...uint) ([]*InventoryTransactionWithCounter, error)
 }
 
 // InventoryTransactionWithCounter is an InventoryTransaction with its counter transaction's
@@ -188,12 +192,16 @@ func (r *inventoryRepository) GetLastPurchasePrices(ctx context.Context, supplie
 	return results, nil
 }
 
-func (r *inventoryRepository) GetTransactionsByInventoryIDs(ctx context.Context, inventoryID uint, from, to *time.Time) ([]*models.InventoryTransaction, error) {
+func (r *inventoryRepository) GetTransactionsByInventoryIDs(ctx context.Context, inventoryID uint, from, to *time.Time, itemIDs ...uint) ([]*models.InventoryTransaction, error) {
 	var txns []*models.InventoryTransaction
 	q := r.db.WithContext(ctx).
 		Table("inventory_transactions it").
 		Joins("INNER JOIN inventory_items ii ON it.inventory_item_id = ii.id").
 		Where("ii.inventory_id = ?", inventoryID)
+
+	if len(itemIDs) > 0 {
+		q = q.Where("ii.id IN ?", itemIDs)
+	}
 
 	if from != nil {
 		q = q.Where("it.created_at >= ?", from)
@@ -209,7 +217,7 @@ func (r *inventoryRepository) GetTransactionsByInventoryIDs(ctx context.Context,
 	return txns, nil
 }
 
-func (r *inventoryRepository) GetTransactionsByInventoryIDsWithCounter(ctx context.Context, inventoryID uint, from, to *time.Time) ([]*InventoryTransactionWithCounter, error) {
+func (r *inventoryRepository) GetTransactionsByInventoryIDsWithCounter(ctx context.Context, inventoryID uint, from, to *time.Time, itemIDs ...uint) ([]*InventoryTransactionWithCounter, error) {
 	type row struct {
 		models.InventoryTransaction
 		CounterPOIID *uint `gorm:"column:counter_poi_id"`
@@ -224,6 +232,10 @@ func (r *inventoryRepository) GetTransactionsByInventoryIDsWithCounter(ctx conte
 		Joins("INNER JOIN inventory_items ii ON it.inventory_item_id = ii.id AND ii.deleted_at IS NULL").
 		Joins("LEFT JOIN inventory_transactions counter ON counter.id = it.counter_transaction_id AND counter.deleted_at IS NULL").
 		Where("ii.inventory_id = ? AND it.deleted_at IS NULL", inventoryID)
+
+	if len(itemIDs) > 0 {
+		q = q.Where("ii.id IN ?", itemIDs)
+	}
 
 	if from != nil {
 		q = q.Where("it.created_at >= ?", from)
