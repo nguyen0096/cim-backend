@@ -170,7 +170,12 @@ func (s *sellingPriceService) UpsertPOItemSellingPrice(ctx context.Context, poID
 // - product matches the selling price's product
 // - po.created_at >= selling price's effective_from
 // - po.created_at < next selling price's effective_from (or no upper bound if no next price)
-// - no purchase_order_item_selling_prices record exists yet
+// - the item has no effective selling price yet. This means either no
+//   purchase_order_item_selling_prices row, OR a row that is "empty": no override
+//   (selling_price) and no live linked price (selling_price_id pointing at a
+//   non-deleted selling_prices row). createPOItemSellingPrices always inserts a
+//   row at PO creation — empty when no price existed yet — so matching only on
+//   "no row" would miss those items.
 const unlinkedPOItemsSQL = `
 	FROM purchase_order_items poi
 	JOIN purchase_orders po ON po.id = poi.purchase_order_id
@@ -178,10 +183,18 @@ const unlinkedPOItemsSQL = `
 	AND poi.deleted_at IS NULL
 	AND po.deleted_at IS NULL
 	AND po.created_at >= ?::date
-	AND (? IS NULL OR po.created_at < ?::date)
+	AND (?::date IS NULL OR po.created_at < ?::date)
 	AND NOT EXISTS (
 		SELECT 1 FROM purchase_order_item_selling_prices pisp
 		WHERE pisp.purchase_order_item_id = poi.id
+		AND pisp.deleted_at IS NULL
+		AND (
+			pisp.selling_price IS NOT NULL
+			OR EXISTS (
+				SELECT 1 FROM selling_prices sp
+				WHERE sp.id = pisp.selling_price_id AND sp.deleted_at IS NULL
+			)
+		)
 	)
 `
 
@@ -222,8 +235,18 @@ func (s *sellingPriceService) BackfillPOItems(ctx context.Context, sellingPriceI
 
 	nextDate := s.getNextEffectiveFrom(ctx, sp)
 
+	// Upsert: items with no pisp row get one inserted; items that already have an
+	// empty row (no override, no link) get that row linked to this price. The
+	// WHERE on DO UPDATE guards against overwriting a real override or live link.
 	result := s.db.WithContext(ctx).Exec(
-		"INSERT INTO purchase_order_item_selling_prices (purchase_order_item_id, selling_price_id, created_by, created_at, updated_by, updated_at) SELECT poi.id, ?, po.created_by, NOW(), po.created_by, NOW() "+unlinkedPOItemsSQL,
+		"INSERT INTO purchase_order_item_selling_prices (purchase_order_item_id, selling_price_id, created_by, created_at, updated_by, updated_at) SELECT poi.id, ?, po.created_by, NOW(), po.created_by, NOW() "+unlinkedPOItemsSQL+
+			` ON CONFLICT (purchase_order_item_id) DO UPDATE
+			SET selling_price_id = EXCLUDED.selling_price_id,
+			    updated_by = EXCLUDED.updated_by,
+			    updated_at = NOW()
+			WHERE purchase_order_item_selling_prices.deleted_at IS NULL
+			AND purchase_order_item_selling_prices.selling_price IS NULL
+			AND purchase_order_item_selling_prices.selling_price_id IS NULL`,
 		sp.ID, sp.ProductID, sp.EffectiveFrom, nextDate, nextDate,
 	)
 

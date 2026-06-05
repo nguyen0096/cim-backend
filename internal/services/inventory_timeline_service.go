@@ -238,6 +238,7 @@ func (s *inventoryTimelineService) GetInventoryTimeline(ctx context.Context, req
 					qtyReceived, _ := info.QuantityReceived.Float64()
 					tlPO := dto.TimelinePurchaseOrder{
 						POID:             info.POID,
+						POItemID:         info.POItemID,
 						PONumber:         info.PONumber,
 						DeliveryStatus:   info.POItemStatus,
 						PaymentStatus:    info.POStatus,

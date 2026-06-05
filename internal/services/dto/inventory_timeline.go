@@ -27,6 +27,7 @@ type TimelineTransaction struct {
 
 type TimelinePurchaseOrder struct {
 	POID             uint     `json:"po_id"`
+	POItemID         uint     `json:"po_item_id"`
 	PONumber         string   `json:"po_number"`
 	DeliveryDate     *string  `json:"delivery_date"`
 	DeliveryStatus   string   `json:"delivery_status"`
