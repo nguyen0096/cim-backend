@@ -92,6 +92,7 @@ p, accountant, suppliers, create, allow
 p, accountant, suppliers, update, allow
 p, accountant, inventories, view, allow
 p, accountant, inventory-items, view, allow
+p, accountant, inventory-export, view, allow
 
 p, accountant, inventory-submissions, create, allow
 p, accountant, inventory-submissions, update, allow
