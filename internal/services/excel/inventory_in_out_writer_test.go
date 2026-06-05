@@ -70,6 +70,9 @@ func TestWriteInOutExport_AuditMetadataRows(t *testing.T) {
 	assert.Contains(t, read("B2"), "05/04/2026")
 	assert.Equal(t, "28/04/2026 14:30:00", read("B3"))
 	assert.Equal(t, "user@example.com", read("B4"))
+	// Currency-unit note so readers know all monetary values are in VND.
+	assert.Equal(t, "Đơn vị tiền tệ:", read("A5"))
+	assert.Equal(t, "VND", read("B5"))
 }
 
 func TestWriteInOutExport_HeaderRowsLayout(t *testing.T) {
@@ -91,13 +94,13 @@ func TestWriteInOutExport_HeaderRowsLayout(t *testing.T) {
 	assert.Equal(t, "Đơn vị tính", read("B6"))
 
 	// Daily group spans C6:G6, with dates in row 7
-	assert.Equal(t, "Nhập trong kỳ", read("C6"))
+	assert.Equal(t, "Số lượng nhập trong kì", read("C6"))
 	assert.Equal(t, "01/04", read("C7"))
 	assert.Equal(t, "05/04", read("G7"))
 
 	// Per-batch single columns (rows 6-7 merged)
-	assert.Equal(t, "Đơn giá nhập", read("H6"))
-	assert.Equal(t, "Đơn giá bán", read("I6"))
+	assert.Equal(t, "Đơn giá nhập (VND)", read("H6"))
+	assert.Equal(t, "Đơn giá bán (VND)", read("I6"))
 	assert.Equal(t, "Tồn đầu", read("J6"))
 	assert.Equal(t, "Tồn cuối", read("K6"))
 	assert.Equal(t, "Đã bán", read("L6"))
@@ -106,7 +109,7 @@ func TestWriteInOutExport_HeaderRowsLayout(t *testing.T) {
 	// Tổng nhập group has SL/TT sub-headers
 	assert.Equal(t, "Tổng nhập", read("N6"))
 	assert.Equal(t, "SL", read("N7"))
-	assert.Equal(t, "TT", read("O7"))
+	assert.Equal(t, "TT (VND)", read("O7"))
 }
 
 func TestWriteInOutExport_DataRowFormulasAndValues(t *testing.T) {
@@ -288,18 +291,35 @@ func TestWriteInOutExport_StylesApplied(t *testing.T) {
 	require.NotEmpty(t, h.Fill.Color)
 	assert.Equal(t, headerFill, h.Fill.Color[0])
 
-	// Data cell: size 14 content font.
+	// Data cell (product name, col A): size 14 content font, bold.
 	d := styleOf("A8")
 	require.NotNil(t, d.Font)
 	assert.Equal(t, 14.0, d.Font.Size)
+	assert.True(t, d.Font.Bold, "product name should be bold")
 
-	// Money cell (purchase price, col H) carries the accounting number format.
+	// Money cell (purchase price, col H): numeric with the VND number format, bold.
 	m := styleOf("H8")
 	require.NotNil(t, m.CustomNumFmt)
-	assert.Equal(t, moneyNumFmt, *m.CustomNumFmt)
+	assert.Equal(t, moneyNumFmt, *m.CustomNumFmt) // "#,##0"
+	require.NotNil(t, m.Font)
+	assert.True(t, m.Font.Bold, "numeric cells should be bold")
 
-	// Quantity cell (daily, col C) carries the 3-dp format.
+	// Quantity cell (daily, col C): numeric, up-to-6-dp format, bold.
 	q := styleOf("C8")
 	require.NotNil(t, q.CustomNumFmt)
-	assert.Equal(t, qtyNumFmt, *q.CustomNumFmt)
+	assert.Equal(t, qtyNumFmt, *q.CustomNumFmt) // "#,##0.######"
+	require.NotNil(t, q.Font)
+	assert.True(t, q.Font.Bold, "numeric cells should be bold")
+}
+
+func TestWriteInOutExport_RowHeight(t *testing.T) {
+	rows := sampleRows()
+	f, err := WriteInOutExport(rows, ExportContext{InventoryName: "Kho A"})
+	require.NoError(t, err)
+	defer f.Close()
+
+	props, err := f.GetSheetProps(inOutSheetName)
+	require.NoError(t, err)
+	require.NotNil(t, props.DefaultRowHeight)
+	assert.Equal(t, 25.0, *props.DefaultRowHeight)
 }

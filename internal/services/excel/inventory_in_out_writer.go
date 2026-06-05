@@ -27,14 +27,21 @@ import (
 const inOutSheetName = "Sheet1"
 
 // Styling constants. Font is Calibri (tabular figures align numbers cleanly);
-// all content is size 14. Money uses the accounting format (matches the XNT
-// template's numFmt 166: thousands grouping, parens for negatives, dash for
-// zero); quantities use 3 decimals like the template.
+// all content is size 14.
+//
+// Cells stay NUMERIC (so Excel formulas/SUMs recalc and there's no
+// "Number Stored as Text" warning). Number-format codes are written in the
+// canonical OOXML convention — ',' = thousands group, '.' = decimal — and
+// Excel renders the separators per the viewer's regional settings. With
+// Vietnamese regional settings (decimal ',', thousands '.') money shows as
+// 1.234.567 and quantity as 1.234.567,89.
+//   money: 0 decimals (VND has no minor unit).
+//   qty:   up to 6 decimals, trailing zeros trimmed (108,9 not 108,900000).
 const (
 	contentFont = "Calibri"
 	contentSize = 14.0
-	moneyNumFmt = `_(* #,##0_);_(* (#,##0);_(* "-"??_);_(@_)`
-	qtyNumFmt   = `#,##0.000`
+	moneyNumFmt = `#,##0`
+	qtyNumFmt   = `#,##0.######`
 	headerFill  = "305496" // deep blue, white bold text
 	footerFill  = "DDEBF7" // soft light blue
 	borderColor = "BFBFBF"
@@ -88,6 +95,15 @@ func WriteInOutExport(rows *ExportRows, ctx ExportContext) (*excelize.File, erro
 	}
 	if err := applyStyles(f, rows, dataStart, dataEnd); err != nil {
 		return nil, err
+	}
+	// Uniform 25-point height for every row.
+	rowHeight := 25.0
+	customHeight := true
+	if err := f.SetSheetProps(inOutSheetName, &excelize.SheetPropsOptions{
+		DefaultRowHeight: &rowHeight,
+		CustomHeight:     &customHeight,
+	}); err != nil {
+		return nil, fmt.Errorf("set default row height: %w", err)
 	}
 	// Freeze the header block (rows 1-7) and the Sản phẩm + Đơn vị tính columns
 	// (A-B) so both stay visible while scrolling across the daily/total columns.
@@ -176,6 +192,7 @@ func writeAuditMetadata(f *excelize.File, rows *ExportRows, ctx ExportContext) e
 			rows.StartDate.Format("02/01/2006"), rows.EndDate.Format("02/01/2006"))},
 		{3, "Thời điểm tạo:", ctx.GeneratedAt.Format("02/01/2006 15:04:05")},
 		{4, "Người tạo:", ctx.GeneratedBy},
+		{5, "Đơn vị tiền tệ:", "VND"},
 	}
 	for _, p := range pairs {
 		labelCell, _ := excelize.CoordinatesToCellName(1, p.row)
@@ -230,10 +247,10 @@ func writeHeaderRows(f *excelize.File, dayCount int, startDate time.Time) error 
 	if err := mergeAndSetL1(l.unit, "Đơn vị tính"); err != nil {
 		return err
 	}
-	if err := mergeAndSetL1(l.purchasePrice, "Đơn giá nhập"); err != nil {
+	if err := mergeAndSetL1(l.purchasePrice, "Đơn giá nhập (VND)"); err != nil {
 		return err
 	}
-	if err := mergeAndSetL1(l.sellingPrice, "Đơn giá bán"); err != nil {
+	if err := mergeAndSetL1(l.sellingPrice, "Đơn giá bán (VND)"); err != nil {
 		return err
 	}
 	if err := mergeAndSetL1(l.beginningStock, "Tồn đầu"); err != nil {
@@ -268,7 +285,7 @@ func writeHeaderRows(f *excelize.File, dayCount int, startDate time.Time) error 
 	}
 
 	// Grouped headers (level-1 spans, level-2 sub-headers on row 7)
-	if err := groupHeader(l.dailyStart, l.dailyEnd, "Nhập trong kỳ"); err != nil {
+	if err := groupHeader(l.dailyStart, l.dailyEnd, "Số lượng nhập trong kì"); err != nil {
 		return err
 	}
 	for d := 0; d < dayCount; d++ {
@@ -285,7 +302,7 @@ func writeHeaderRows(f *excelize.File, dayCount int, startDate time.Time) error 
 	if err := subHeader(l.totalPurchasedAmount, "SL"); err != nil {
 		return err
 	}
-	if err := subHeader(l.totalPurchasedTotal, "TT"); err != nil {
+	if err := subHeader(l.totalPurchasedTotal, "TT (VND)"); err != nil {
 		return err
 	}
 
@@ -295,7 +312,7 @@ func writeHeaderRows(f *excelize.File, dayCount int, startDate time.Time) error 
 	if err := subHeader(l.totalDisposedAmount, "SL"); err != nil {
 		return err
 	}
-	if err := subHeader(l.totalDisposedTotal, "TT"); err != nil {
+	if err := subHeader(l.totalDisposedTotal, "TT (VND)"); err != nil {
 		return err
 	}
 
@@ -582,8 +599,17 @@ func applyStyles(f *excelize.File, rows *ExportRows, dataStart, dataEnd int) err
 	if err != nil {
 		return err
 	}
+	// Product name is emphasized in bold (numeric cells below are bold too).
+	productNameStyle, err := f.NewStyle(&excelize.Style{
+		Font:      &boldFont,
+		Alignment: &excelize.Alignment{Horizontal: "left", Vertical: "center", WrapText: true},
+		Border:    thin,
+	})
+	if err != nil {
+		return err
+	}
 	moneyStyle, err := f.NewStyle(&excelize.Style{
-		Font:         &baseFont,
+		Font:         &boldFont,
 		Alignment:    &excelize.Alignment{Horizontal: "right", Vertical: "center"},
 		Border:       thin,
 		CustomNumFmt: &money,
@@ -592,7 +618,7 @@ func applyStyles(f *excelize.File, rows *ExportRows, dataStart, dataEnd int) err
 		return err
 	}
 	qtyStyle, err := f.NewStyle(&excelize.Style{
-		Font:         &baseFont,
+		Font:         &boldFont,
 		Alignment:    &excelize.Alignment{Horizontal: "right", Vertical: "center"},
 		Border:       thin,
 		CustomNumFmt: &qty,
@@ -630,8 +656,8 @@ func applyStyles(f *excelize.File, rows *ExportRows, dataStart, dataEnd int) err
 		return f.SetCellStyle(inOutSheetName, c, c, style)
 	}
 
-	// Audit block (rows 1-4): bold labels, normal values.
-	for r := 1; r <= 4; r++ {
+	// Audit block (rows 1-5): bold labels, normal values.
+	for r := 1; r <= 5; r++ {
 		if err := setCell(1, r, auditLabelStyle); err != nil {
 			return err
 		}
@@ -656,7 +682,7 @@ func applyStyles(f *excelize.File, rows *ExportRows, dataStart, dataEnd int) err
 			l.totalTransferredIn, l.totalTransferredOut,
 			l.totalBeginningStock, l.totalEndingStock}
 
-		if err := setCol(l.productName, textStyle, dataStart, dataEnd); err != nil {
+		if err := setCol(l.productName, productNameStyle, dataStart, dataEnd); err != nil {
 			return err
 		}
 		if err := setCol(l.unit, textStyle, dataStart, dataEnd); err != nil {
@@ -696,10 +722,10 @@ func applyStyles(f *excelize.File, rows *ExportRows, dataStart, dataEnd int) err
 	setW := func(from, to int, w float64) error {
 		return f.SetColWidth(inOutSheetName, colName(from), colName(to), w)
 	}
-	if err := setW(l.productName, l.productName, 28); err != nil {
+	if err := setW(l.productName, l.productName, 50); err != nil {
 		return err
 	}
-	if err := setW(l.unit, l.unit, 10); err != nil {
+	if err := setW(l.unit, l.unit, 30); err != nil {
 		return err
 	}
 	if err := setW(l.dailyStart, l.dailyEnd, 9); err != nil {

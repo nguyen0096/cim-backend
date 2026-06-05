@@ -22,18 +22,22 @@ import (
 // fakeS3 is a tiny in-test S3Client. Service tests can't import
 // servicemocks (it would create an import cycle through services).
 type fakeS3 struct {
-	UploadCalled  bool
-	PresignCalled bool
-	UploadErr     error
-	URL           string
+	UploadCalled    bool
+	PresignCalled   bool
+	UploadErr       error
+	URL             string
+	PresignFilename string // captures the download filename passed for Content-Disposition
 }
 
 func (f *fakeS3) UploadFile(_ context.Context, _ string, _ []byte, _ string) error {
 	f.UploadCalled = true
 	return f.UploadErr
 }
-func (f *fakeS3) GeneratePresignedURL(_ context.Context, _ string, _ time.Duration) (string, error) {
+func (f *fakeS3) GeneratePresignedURL(_ context.Context, _ string, _ time.Duration, downloadFilename ...string) (string, error) {
 	f.PresignCalled = true
+	if len(downloadFilename) > 0 {
+		f.PresignFilename = downloadFilename[0]
+	}
 	if f.URL == "" {
 		return "https://signed.example/file.xlsx", nil
 	}
@@ -117,6 +121,9 @@ func TestExport_HappyPath_UploadsAndReturnsURL(t *testing.T) {
 	assert.Contains(t, resp.Filename, "-20260401-20260430.xlsx")
 	assert.True(t, s3.UploadCalled)
 	assert.True(t, s3.PresignCalled)
+	// The meaningful filename is passed to the presigned URL (Content-Disposition)
+	// so the download isn't named after the UUID storage key.
+	assert.Equal(t, resp.Filename, s3.PresignFilename)
 }
 
 func TestExport_PreconditionMissingSellingPrice(t *testing.T) {

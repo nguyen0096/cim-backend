@@ -164,7 +164,9 @@ func (s *inventoryInOutExportService) Export(ctx context.Context, req dto.Invent
 	if err := s.s3Client.UploadFile(ctx, fileKey, xlsxBytes, contentType); err != nil {
 		return nil, fmt.Errorf("failed to upload file: %w", err)
 	}
-	url, err := s.s3Client.GeneratePresignedURL(ctx, fileKey, 15*time.Minute)
+	// Pass the meaningful filename so the download is named e.g.
+	// inventory-<name>-<ts>-<from>-<to>.xlsx instead of the UUID storage key.
+	url, err := s.s3Client.GeneratePresignedURL(ctx, fileKey, 15*time.Minute, filename)
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate presigned URL: %w", err)
 	}

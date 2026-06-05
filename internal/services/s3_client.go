@@ -16,7 +16,10 @@ import (
 //go:generate mockery --name=S3Client --structname=S3Client --output=../mocks/servicemocks --outpkg=servicemocks
 type S3Client interface {
 	UploadFile(ctx context.Context, key string, content []byte, contentType string) error
-	GeneratePresignedURL(ctx context.Context, key string, expiration time.Duration) (string, error)
+	// GeneratePresignedURL returns a presigned GET URL for key. An optional
+	// downloadFilename sets Content-Disposition so the browser saves the file
+	// under a meaningful name instead of the storage key (e.g. a UUID).
+	GeneratePresignedURL(ctx context.Context, key string, expiration time.Duration, downloadFilename ...string) (string, error)
 }
 
 type r2Client struct {
@@ -78,11 +81,17 @@ func (c *r2Client) UploadFile(ctx context.Context, key string, content []byte, c
 	return nil
 }
 
-func (c *r2Client) GeneratePresignedURL(ctx context.Context, key string, expiration time.Duration) (string, error) {
-	request, err := c.presignClient.PresignGetObject(ctx, &s3.GetObjectInput{
+func (c *r2Client) GeneratePresignedURL(ctx context.Context, key string, expiration time.Duration, downloadFilename ...string) (string, error) {
+	input := &s3.GetObjectInput{
 		Bucket: aws.String(c.bucketName),
 		Key:    aws.String(key),
-	}, func(opts *s3.PresignOptions) {
+	}
+	if len(downloadFilename) > 0 && downloadFilename[0] != "" {
+		input.ResponseContentDisposition = aws.String(
+			fmt.Sprintf(`attachment; filename="%s"`, downloadFilename[0]),
+		)
+	}
+	request, err := c.presignClient.PresignGetObject(ctx, input, func(opts *s3.PresignOptions) {
 		opts.Expires = expiration
 	})
 	if err != nil {
@@ -98,6 +107,6 @@ func (c *noopS3Client) UploadFile(ctx context.Context, key string, content []byt
 	return nil
 }
 
-func (c *noopS3Client) GeneratePresignedURL(ctx context.Context, key string, expiration time.Duration) (string, error) {
+func (c *noopS3Client) GeneratePresignedURL(ctx context.Context, key string, expiration time.Duration, downloadFilename ...string) (string, error) {
 	return "", nil
 }

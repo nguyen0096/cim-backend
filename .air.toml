@@ -1,0 +1,24 @@
+# Live-reload config for local dev (https://github.com/air-verse/air)
+# Run with: air   (rebuilds & restarts the server on .go changes)
+root = "."
+tmp_dir = "tmp"
+
+[build]
+  cmd = "go build -o ./tmp/main ."
+  bin = "./tmp/main"
+  full_bin = ""
+  include_ext = ["go"]
+  exclude_dir = ["tmp", "bin", "docs", "uploads", "test", ".git", ".claude", ".jj"]
+  exclude_regex = ["_test\\.go"]
+  exclude_unchanged = true
+  follow_symlink = false
+  delay = 800              # ms to wait after a change before rebuilding
+  stop_on_error = true     # keep last good binary running if the build fails
+  send_interrupt = true    # graceful shutdown (SIGINT) so the server cleans up
+  kill_delay = "2s"
+
+[log]
+  time = true
+
+[misc]
+  clean_on_exit = true
