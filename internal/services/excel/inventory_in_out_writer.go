@@ -26,6 +26,20 @@ import (
 
 const inOutSheetName = "Sheet1"
 
+// Styling constants. Font is Calibri (tabular figures align numbers cleanly);
+// all content is size 14. Money uses the accounting format (matches the XNT
+// template's numFmt 166: thousands grouping, parens for negatives, dash for
+// zero); quantities use 3 decimals like the template.
+const (
+	contentFont = "Calibri"
+	contentSize = 14.0
+	moneyNumFmt = `_(* #,##0_);_(* (#,##0);_(* "-"??_);_(@_)`
+	qtyNumFmt   = `#,##0.000`
+	headerFill  = "305496" // deep blue, white bold text
+	footerFill  = "DDEBF7" // soft light blue
+	borderColor = "BFBFBF"
+)
+
 // ExportContext bundles audit-metadata fields the writer renders into the
 // header block. The shaper does not need these.
 type ExportContext struct {
@@ -72,13 +86,18 @@ func WriteInOutExport(rows *ExportRows, ctx ExportContext) (*excelize.File, erro
 	if err := writeFooterRow(f, rows, dataStart, dataEnd); err != nil {
 		return nil, err
 	}
+	if err := applyStyles(f, rows, dataStart, dataEnd); err != nil {
+		return nil, err
+	}
+	// Freeze the header block (rows 1-7) and the Sản phẩm + Đơn vị tính columns
+	// (A-B) so both stay visible while scrolling across the daily/total columns.
 	if err := f.SetPanes(inOutSheetName, &excelize.Panes{
 		Freeze:      true,
 		Split:       false,
-		XSplit:      0,
+		XSplit:      2,
 		YSplit:      7,
-		TopLeftCell: "A8",
-		ActivePane:  "bottomLeft",
+		TopLeftCell: "C8",
+		ActivePane:  "bottomRight",
 	}); err != nil {
 		return nil, fmt.Errorf("freeze panes: %w", err)
 	}
@@ -92,16 +111,16 @@ func WriteInOutExport(rows *ExportRows, ctx ExportContext) (*excelize.File, erro
 // columns. We build a small layout struct so the writer reads/writes
 // consistent indices. Indices are 1-based to match excelize.
 type colLayout struct {
-	productName     int
-	unit            int
-	dailyStart      int // first daily-column index
-	dailyEnd        int // last daily-column index (inclusive)
-	purchasePrice   int
-	sellingPrice    int
-	beginningStock  int
-	endingStock     int
-	subtotalSold    int
-	subtotalRevenue int
+	productName          int
+	unit                 int
+	dailyStart           int // first daily-column index
+	dailyEnd             int // last daily-column index (inclusive)
+	purchasePrice        int
+	sellingPrice         int
+	beginningStock       int
+	endingStock          int
+	subtotalSold         int
+	subtotalRevenue      int
 	totalPurchasedAmount int
 	totalPurchasedTotal  int
 	totalSold            int
@@ -147,7 +166,10 @@ func buildLayout(dayCount int) colLayout {
 // --- audit metadata (rows 1-4) -------------------------------------------
 
 func writeAuditMetadata(f *excelize.File, rows *ExportRows, ctx ExportContext) error {
-	type pair struct{ row int; label, value string }
+	type pair struct {
+		row          int
+		label, value string
+	}
 	pairs := []pair{
 		{1, "Kho:", ctx.InventoryName},
 		{2, "Khoảng thời gian:", fmt.Sprintf("%s – %s",
@@ -510,6 +532,183 @@ func writeFooterRow(f *excelize.File, rows *ExportRows, startRow, endRow int) er
 	if err := setSum(l.totalRevenue); err != nil {
 		return err
 	}
+	return nil
+}
+
+// --- styling --------------------------------------------------------------
+
+// applyStyles decorates the already-written sheet: Calibri 14 throughout,
+// accounting money / 3-dp quantity number formats, blue header & footer
+// emphasis fills, thin borders, alignment and column widths. It never touches
+// cell values, formulas or merges.
+func applyStyles(f *excelize.File, rows *ExportRows, dataStart, dataEnd int) error {
+	l := buildLayout(rows.DayCount)
+	colName := func(col int) string { n, _ := excelize.ColumnNumberToName(col); return n }
+	money := moneyNumFmt
+	qty := qtyNumFmt
+
+	thin := []excelize.Border{
+		{Type: "left", Color: borderColor, Style: 1},
+		{Type: "right", Color: borderColor, Style: 1},
+		{Type: "top", Color: borderColor, Style: 1},
+		{Type: "bottom", Color: borderColor, Style: 1},
+	}
+	baseFont := excelize.Font{Family: contentFont, Size: contentSize}
+	boldFont := excelize.Font{Family: contentFont, Size: contentSize, Bold: true}
+	whiteBold := excelize.Font{Family: contentFont, Size: contentSize, Bold: true, Color: "FFFFFF"}
+
+	headerStyle, err := f.NewStyle(&excelize.Style{
+		Font:      &whiteBold,
+		Alignment: &excelize.Alignment{Horizontal: "center", Vertical: "center", WrapText: true},
+		Fill:      excelize.Fill{Type: "pattern", Pattern: 1, Color: []string{headerFill}},
+		Border:    thin,
+	})
+	if err != nil {
+		return fmt.Errorf("header style: %w", err)
+	}
+	auditLabelStyle, err := f.NewStyle(&excelize.Style{Font: &boldFont})
+	if err != nil {
+		return err
+	}
+	auditValueStyle, err := f.NewStyle(&excelize.Style{Font: &baseFont})
+	if err != nil {
+		return err
+	}
+	textStyle, err := f.NewStyle(&excelize.Style{
+		Font:      &baseFont,
+		Alignment: &excelize.Alignment{Horizontal: "left", Vertical: "center", WrapText: true},
+		Border:    thin,
+	})
+	if err != nil {
+		return err
+	}
+	moneyStyle, err := f.NewStyle(&excelize.Style{
+		Font:         &baseFont,
+		Alignment:    &excelize.Alignment{Horizontal: "right", Vertical: "center"},
+		Border:       thin,
+		CustomNumFmt: &money,
+	})
+	if err != nil {
+		return err
+	}
+	qtyStyle, err := f.NewStyle(&excelize.Style{
+		Font:         &baseFont,
+		Alignment:    &excelize.Alignment{Horizontal: "right", Vertical: "center"},
+		Border:       thin,
+		CustomNumFmt: &qty,
+	})
+	if err != nil {
+		return err
+	}
+	footerLabelStyle, err := f.NewStyle(&excelize.Style{
+		Font:      &boldFont,
+		Alignment: &excelize.Alignment{Horizontal: "left", Vertical: "center"},
+		Fill:      excelize.Fill{Type: "pattern", Pattern: 1, Color: []string{footerFill}},
+		Border:    thin,
+	})
+	if err != nil {
+		return err
+	}
+	footerMoneyStyle, err := f.NewStyle(&excelize.Style{
+		Font:         &boldFont,
+		Alignment:    &excelize.Alignment{Horizontal: "right", Vertical: "center"},
+		Fill:         excelize.Fill{Type: "pattern", Pattern: 1, Color: []string{footerFill}},
+		Border:       thin,
+		CustomNumFmt: &money,
+	})
+	if err != nil {
+		return err
+	}
+
+	setCol := func(col, style, fromRow, toRow int) error {
+		tl, _ := excelize.CoordinatesToCellName(col, fromRow)
+		br, _ := excelize.CoordinatesToCellName(col, toRow)
+		return f.SetCellStyle(inOutSheetName, tl, br, style)
+	}
+	setCell := func(col, row, style int) error {
+		c, _ := excelize.CoordinatesToCellName(col, row)
+		return f.SetCellStyle(inOutSheetName, c, c, style)
+	}
+
+	// Audit block (rows 1-4): bold labels, normal values.
+	for r := 1; r <= 4; r++ {
+		if err := setCell(1, r, auditLabelStyle); err != nil {
+			return err
+		}
+		if err := setCell(2, r, auditValueStyle); err != nil {
+			return err
+		}
+	}
+
+	// Header rows 6-7 across every column.
+	htl, _ := excelize.CoordinatesToCellName(1, 6)
+	hbr, _ := excelize.CoordinatesToCellName(l.last, 7)
+	if err := f.SetCellStyle(inOutSheetName, htl, hbr, headerStyle); err != nil {
+		return err
+	}
+
+	// Data rows, by column type.
+	if dataEnd >= dataStart {
+		moneyCols := []int{l.purchasePrice, l.sellingPrice, l.subtotalRevenue,
+			l.totalPurchasedTotal, l.totalDisposedTotal, l.totalRevenue}
+		qtyCols := []int{l.beginningStock, l.endingStock, l.subtotalSold,
+			l.totalPurchasedAmount, l.totalDisposedAmount, l.totalSold,
+			l.totalTransferredIn, l.totalTransferredOut,
+			l.totalBeginningStock, l.totalEndingStock}
+
+		if err := setCol(l.productName, textStyle, dataStart, dataEnd); err != nil {
+			return err
+		}
+		if err := setCol(l.unit, textStyle, dataStart, dataEnd); err != nil {
+			return err
+		}
+		for c := l.dailyStart; c <= l.dailyEnd; c++ {
+			if err := setCol(c, qtyStyle, dataStart, dataEnd); err != nil {
+				return err
+			}
+		}
+		for _, c := range qtyCols {
+			if err := setCol(c, qtyStyle, dataStart, dataEnd); err != nil {
+				return err
+			}
+		}
+		for _, c := range moneyCols {
+			if err := setCol(c, moneyStyle, dataStart, dataEnd); err != nil {
+				return err
+			}
+		}
+
+		// Footer row: emphasis fill across the row, money format on the sums.
+		footerRow := dataEnd + 1
+		ftl, _ := excelize.CoordinatesToCellName(1, footerRow)
+		fbr, _ := excelize.CoordinatesToCellName(l.last, footerRow)
+		if err := f.SetCellStyle(inOutSheetName, ftl, fbr, footerLabelStyle); err != nil {
+			return err
+		}
+		for _, c := range []int{l.totalPurchasedTotal, l.totalDisposedTotal, l.totalRevenue} {
+			if err := setCell(c, footerRow, footerMoneyStyle); err != nil {
+				return err
+			}
+		}
+	}
+
+	// Column widths: wide product, narrow daily, roomy value/total columns.
+	setW := func(from, to int, w float64) error {
+		return f.SetColWidth(inOutSheetName, colName(from), colName(to), w)
+	}
+	if err := setW(l.productName, l.productName, 28); err != nil {
+		return err
+	}
+	if err := setW(l.unit, l.unit, 10); err != nil {
+		return err
+	}
+	if err := setW(l.dailyStart, l.dailyEnd, 9); err != nil {
+		return err
+	}
+	if err := setW(l.purchasePrice, l.last, 16); err != nil {
+		return err
+	}
+
 	return nil
 }
 

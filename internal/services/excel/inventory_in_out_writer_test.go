@@ -57,8 +57,10 @@ func TestWriteInOutExport_AuditMetadataRows(t *testing.T) {
 	require.NoError(t, err)
 	defer f.Close()
 
+	// RawCellValue so applied number formats (accounting money / 3-dp qty)
+	// don't reshape the asserted stored values.
 	read := func(cell string) string {
-		v, _ := f.GetCellValue(inOutSheetName, cell)
+		v, _ := f.GetCellValue(inOutSheetName, cell, excelize.Options{RawCellValue: true})
 		return v
 	}
 
@@ -77,8 +79,10 @@ func TestWriteInOutExport_HeaderRowsLayout(t *testing.T) {
 	defer f.Close()
 
 	// Layout: A=ProductName, B=Unit, C..G=Daily(5), H=PurchasePrice, I=SellingPrice, ...
+	// RawCellValue so applied number formats (accounting money / 3-dp qty)
+	// don't reshape the asserted stored values.
 	read := func(cell string) string {
-		v, _ := f.GetCellValue(inOutSheetName, cell)
+		v, _ := f.GetCellValue(inOutSheetName, cell, excelize.Options{RawCellValue: true})
 		return v
 	}
 
@@ -112,8 +116,10 @@ func TestWriteInOutExport_DataRowFormulasAndValues(t *testing.T) {
 	defer f.Close()
 
 	// Data row 1 (row 8): Apple, PO-1
+	// RawCellValue so applied number formats (accounting money / 3-dp qty)
+	// don't reshape the asserted stored values.
 	read := func(cell string) string {
-		v, _ := f.GetCellValue(inOutSheetName, cell)
+		v, _ := f.GetCellValue(inOutSheetName, cell, excelize.Options{RawCellValue: true})
 		return v
 	}
 	formula := func(cell string) string {
@@ -256,4 +262,44 @@ func TestWriteInOutExport_FreezePanesSet(t *testing.T) {
 		t.Fatalf("write to buffer: %v", err)
 	}
 	_ = excelize.NewFile() // keep import in case
+}
+
+func TestWriteInOutExport_StylesApplied(t *testing.T) {
+	rows := sampleRows()
+	f, err := WriteInOutExport(rows, ExportContext{InventoryName: "Kho A"})
+	require.NoError(t, err)
+	defer f.Close()
+
+	styleOf := func(cell string) *excelize.Style {
+		id, err := f.GetCellStyle(inOutSheetName, cell)
+		require.NoError(t, err)
+		s, err := f.GetStyle(id)
+		require.NoError(t, err)
+		return s
+	}
+
+	// Header cell: Calibri 14, bold, white text on the blue fill.
+	h := styleOf("A6")
+	require.NotNil(t, h.Font)
+	assert.Equal(t, "Calibri", h.Font.Family)
+	assert.Equal(t, 14.0, h.Font.Size)
+	assert.True(t, h.Font.Bold)
+	assert.Equal(t, "FFFFFF", h.Font.Color)
+	require.NotEmpty(t, h.Fill.Color)
+	assert.Equal(t, headerFill, h.Fill.Color[0])
+
+	// Data cell: size 14 content font.
+	d := styleOf("A8")
+	require.NotNil(t, d.Font)
+	assert.Equal(t, 14.0, d.Font.Size)
+
+	// Money cell (purchase price, col H) carries the accounting number format.
+	m := styleOf("H8")
+	require.NotNil(t, m.CustomNumFmt)
+	assert.Equal(t, moneyNumFmt, *m.CustomNumFmt)
+
+	// Quantity cell (daily, col C) carries the 3-dp format.
+	q := styleOf("C8")
+	require.NotNil(t, q.CustomNumFmt)
+	assert.Equal(t, qtyNumFmt, *q.CustomNumFmt)
 }
