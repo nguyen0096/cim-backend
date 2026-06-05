@@ -25,6 +25,7 @@ p, admin, inventory-items, view, allow
 p, admin, inventory-items, create, allow
 p, admin, inventory-items, update, allow
 p, admin, inventory-items, delete, allow
+p, admin, inventory-export, view, allow
 p, admin, purchase-orders, view, allow
 p, admin, purchase-orders, create, allow
 p, admin, purchase-orders, import, allow

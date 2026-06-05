@@ -186,6 +186,14 @@ var customRouteMappings = []RouteMapping{
 		Resource:    "inventory-submissions",
 		Action:      "",
 	},
+	// Inventory in/out Excel export — admin-only resource so it is NOT
+	// collapsed into inventory-items:view (which accountant/staff also have).
+	{
+		Method:      "GET",
+		PathPattern: "/inventories/*/export/inventory-in-out",
+		Resource:    "inventory-export",
+		Action:      "view",
+	},
 	{
 		Method:      "PUT",
 		PathPattern: "/purchase-orders/*/receive",
