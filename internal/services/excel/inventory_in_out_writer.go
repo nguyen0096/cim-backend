@@ -35,12 +35,14 @@ const inOutSheetName = "Sheet1"
 // Excel renders the separators per the viewer's regional settings. With
 // Vietnamese regional settings (decimal ',', thousands '.') money shows as
 // 1.234.567 and quantity as 1.234.567,89.
-//   money: 0 decimals (VND has no minor unit).
-//   qty:   up to 6 decimals, trailing zeros trimmed (108,9 not 108,900000).
+// Both use OPTIONAL decimal placeholders ('#') so Excel shows each value's
+// natural number of decimals — no rounding (99,75 stays 99,75, not 100) and no
+// padding (1.526,13 not 1.526,130000). Up to 6 decimals (quantities); money
+// rarely has any.
 const (
 	contentFont = "Calibri"
 	contentSize = 14.0
-	moneyNumFmt = `#,##0`
+	moneyNumFmt = `#,##0.######`
 	qtyNumFmt   = `#,##0.######`
 	headerFill  = "305496" // deep blue, white bold text
 	footerFill  = "DDEBF7" // soft light blue

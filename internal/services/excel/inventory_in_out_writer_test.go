@@ -323,3 +323,31 @@ func TestWriteInOutExport_RowHeight(t *testing.T) {
 	require.NotNil(t, props.DefaultRowHeight)
 	assert.Equal(t, 25.0, *props.DefaultRowHeight)
 }
+
+func TestWriteInOutExport_DecimalsNotRoundedOrPadded(t *testing.T) {
+	start := time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC)
+	rows := &ExportRows{
+		StartDate: start, EndDate: start.AddDate(0, 0, 4), DayCount: 5,
+		Rows: []*ExportRow{{
+			ProductID: 1, ProductName: "Apple", UnitName: "kg",
+			POItemID: 100, POID: 10, PONumber: "PO-1",
+			PurchasePrice:  dec(99.75),   // money with decimals — must NOT round to 100
+			SellingPrice:   dec(80),
+			BeginningStock: dec(1526.13), // qty — must NOT pad to 1526.130000
+			EndingStock:    dec(7),
+		}},
+	}
+	f, err := WriteInOutExport(rows, ExportContext{InventoryName: "Kho A"})
+	require.NoError(t, err)
+	defer f.Close()
+
+	// Formatted (rendered) value — no RawCellValue — exercises the number format.
+	// excelize renders separators US-style ('.' decimal); under VN Excel these
+	// flip to ',' decimal / '.' thousands.
+	formatted := func(cell string) string {
+		v, _ := f.GetCellValue(inOutSheetName, cell)
+		return v
+	}
+	assert.Equal(t, "99.75", formatted("H8"))      // money: natural decimals, not "100"
+	assert.Equal(t, "1,526.13", formatted("J8"))   // qty: natural decimals, not "1526.130000"
+}
