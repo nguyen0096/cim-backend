@@ -121,11 +121,13 @@ func (s *inventoryInOutExportService) Export(ctx context.Context, req dto.Invent
 		}
 	}
 
-	// Precondition: every in-scope PO must have a selling price. Determine
-	// in-scope POIs: those that will appear as a row (i.e. have window
-	// activity OR positive ending stock at any point in the window).
-	if missing := s.checkMissingSellingPrices(items, resolvedHistorical, periodTxns, poInfo); len(missing) > 0 {
-		return nil, newMissingSellingPriceError(missing)
+	// Precondition: every in-scope PO (one that will appear as a row) must have
+	// a selling price — unless the caller opts to ignore it, in which case the
+	// export proceeds and uncomputable values render as "N/A".
+	if !req.IgnoreMissingSellingPrice {
+		if missing := s.checkMissingSellingPrices(items, resolvedHistorical, periodTxns, poInfo); len(missing) > 0 {
+			return nil, newMissingSellingPriceError(missing)
+		}
 	}
 
 	// Shape & render.

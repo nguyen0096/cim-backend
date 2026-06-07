@@ -56,7 +56,9 @@ type ExportRow struct {
 	PONumber     string
 
 	PurchasePrice decimal.Decimal
-	SellingPrice  decimal.Decimal // guaranteed non-nil for in-scope POIs by precondition
+	// SellingPrice is nil when the POI has no effective price; the writer then
+	// renders the cell (and its revenue) as "N/A".
+	SellingPrice *decimal.Decimal
 
 	// DailyPurchases: amounts indexed by day-of-window (0-based inclusive).
 	// Sparse: only days where this POI received a purchase have non-zero entries.
@@ -132,10 +134,6 @@ func BuildExportRows(in ShaperInput) *ExportRows {
 		// purchase-txn price below is a fallback for legacy POIs whose
 		// unit_price wasn't populated.
 		purchasePrice := info.PurchasePrice
-		var sellingPrice decimal.Decimal
-		if info.EffectivePrice != nil {
-			sellingPrice = *info.EffectivePrice
-		}
 		r := &ExportRow{
 			ProductID:      productID,
 			ProductName:    productName,
@@ -144,7 +142,7 @@ func BuildExportRows(in ShaperInput) *ExportRows {
 			POID:           info.POID,
 			PONumber:       info.PONumber,
 			PurchasePrice:  purchasePrice,
-			SellingPrice:   sellingPrice,
+			SellingPrice:   info.EffectivePrice, // nil → rendered "N/A" by the writer
 			DailyPurchases: make(map[int]decimal.Decimal),
 		}
 		rowByPOItem[poItemID] = r

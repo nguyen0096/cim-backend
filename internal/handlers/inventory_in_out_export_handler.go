@@ -28,11 +28,15 @@ func NewInventoryInOutExportHandler(exportService services.InventoryInOutExportS
 // Query params:
 //   - start_date  (YYYY-MM-DD, required)
 //   - end_date    (YYYY-MM-DD, required)
+//   - ignore_missing_selling_price (optional; "true" bypasses the
+//     missing-selling-price warning)
 //
 // Returns 200 with { download_url, filename } on success.
-// Returns 400 with structured AppError on missing-selling-price precondition,
-// where the body includes a "missing_selling_prices" array of { po_id,
-// po_number }.
+// Returns 400 with structured AppError on the missing-selling-price precondition
+// (when ignore_missing_selling_price is not set), where the body includes a
+// "missing_selling_prices" array of { po_id, po_number }. The client warns the
+// user, then re-requests with ignore_missing_selling_price=true to export
+// anyway — uncomputable values render as "N/A".
 func (h *InventoryInOutExportHandler) ExportInventoryInOut(c echo.Context) error {
 	id, err := pkg.ExtractIDParam(c)
 	if err != nil {
@@ -48,9 +52,10 @@ func (h *InventoryInOutExportHandler) ExportInventoryInOut(c echo.Context) error
 	}
 
 	req := dto.InventoryInOutExportRequest{
-		InventoryID: id,
-		StartDate:   startDate,
-		EndDate:     endDate,
+		InventoryID:               id,
+		StartDate:                 startDate,
+		EndDate:                   endDate,
+		IgnoreMissingSellingPrice: c.QueryParam("ignore_missing_selling_price") == "true",
 	}
 
 	result, err := h.exportService.Export(c.Request().Context(), req)

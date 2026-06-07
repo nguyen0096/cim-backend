@@ -183,6 +183,57 @@ func TestExport_PreconditionMissingSellingPrice(t *testing.T) {
 	assert.False(t, s3.PresignCalled, "GeneratePresignedURL must not be called when precondition fails")
 }
 
+func TestExport_IgnoreMissingSellingPriceBypassesPrecondition(t *testing.T) {
+	// With IgnoreMissingSellingPrice=true the missing-selling-price precondition
+	// is skipped: the export proceeds (uncomputable values render as "N/A" in the
+	// sheet) and the file is uploaded & presigned.
+	ctx := context.Background()
+	invRepo := repositorymocks.NewInventoryRepository(t)
+	spRepo := repositorymocks.NewSellingPriceRepository(t)
+	s3 := &fakeS3{}
+
+	svc := NewInventoryInOutExportService(invRepo, spRepo, s3)
+
+	poiID := uint(ioPOItemID)
+	purchase := &repository.InventoryTransactionWithCounter{
+		InventoryTransaction: &models.InventoryTransaction{
+			Base:                models.Base{ID: 1, CreatedAt: time.Date(2026, 4, 5, 12, 0, 0, 0, time.UTC)},
+			InventoryItemID:     ioItemID,
+			TransactionType:     models.InventoryTransactionTypePurchase,
+			Quantity:            decimal.NewFromInt(10),
+			Price:               5.0,
+			PurchaseOrderItemID: &poiID,
+		},
+	}
+
+	// EffectivePrice nil — would block without Confirm.
+	poInfo := map[uint]*repository.POItemSellingPriceInfo{
+		ioPOItemID: {
+			POItemID: ioPOItemID, POID: ioPOID, PONumber: "PO-MISS",
+			ProductID: ioProdID, EffectivePrice: nil,
+		},
+	}
+
+	invRepo.On("GetByID", ctx, ioInvID).Return(ioInventory(), nil)
+	invRepo.On("GetTransactionsByInventoryIDs", ctx, ioInvID, (*time.Time)(nil), mock.Anything).
+		Return([]*models.InventoryTransaction{}, nil)
+	invRepo.On("GetTransactionsByInventoryIDsWithCounter", ctx, ioInvID, mock.Anything, mock.Anything).
+		Return([]*repository.InventoryTransactionWithCounter{purchase}, nil)
+	invRepo.On("GetTransactionsByInventoryIDsWithCounter", ctx, ioInvID, (*time.Time)(nil), mock.Anything).
+		Return([]*repository.InventoryTransactionWithCounter{}, nil)
+	spRepo.On("GetPOItemsWithPriceByIDs", ctx, mock.Anything, ioInvID).
+		Return(poInfo, nil)
+
+	req := ioReq()
+	req.IgnoreMissingSellingPrice = true
+	resp, err := svc.Export(ctx, req)
+	require.NoError(t, err)
+	require.NotNil(t, resp)
+	assert.Equal(t, "https://signed.example/file.xlsx", resp.DownloadURL)
+	assert.True(t, s3.UploadCalled, "UploadFile must be called on a confirmed export")
+	assert.True(t, s3.PresignCalled, "GeneratePresignedURL must be called on a confirmed export")
+}
+
 func TestExport_CrossInventoryTransferInResolvesSourcePOI(t *testing.T) {
 	// A transfer-in into the destination inventory whose source POI lives in
 	// another inventory must still be reflected in the export. The service

@@ -24,7 +24,7 @@ func sampleRows() *ExportRows {
 			{
 				ProductID: 1, ProductName: "Apple", UnitName: "kg",
 				POItemID: 100, POID: 10, PONumber: "PO-1",
-				PurchasePrice: dec(50), SellingPrice: dec(80),
+				PurchasePrice: dec(50), SellingPrice: decPtr(80),
 				DailyPurchases:       map[int]decimal.Decimal{0: dec(10)},
 				BeginningStock:       dec(0),
 				EndingStock:          dec(7),
@@ -35,7 +35,7 @@ func sampleRows() *ExportRows {
 			{
 				ProductID: 1, ProductName: "Apple", UnitName: "kg",
 				POItemID: 101, POID: 11, PONumber: "PO-2",
-				PurchasePrice: dec(60), SellingPrice: dec(90),
+				PurchasePrice: dec(60), SellingPrice: decPtr(90),
 				DailyPurchases:       map[int]decimal.Decimal{2: dec(5)},
 				BeginningStock:       dec(0),
 				EndingStock:          dec(5),
@@ -135,8 +135,9 @@ func TestWriteInOutExport_DataRowFormulasAndValues(t *testing.T) {
 	assert.Equal(t, "10", read("C8")) // day 0 of 5
 	assert.Equal(t, "50", read("H8")) // purchase_price
 	assert.Equal(t, "80", read("I8")) // selling_price
-	// subtotal_revenue = selling × subtotal_sold
-	assert.Equal(t, "I8*L8", formula("M8"))
+	// subtotal_revenue = selling × subtotal_sold, guarded so a missing price
+	// (text "N/A" in the selling-price cell) yields "N/A" not #VALUE!.
+	assert.Equal(t, `IF(ISNUMBER(I8),I8*L8,"N/A")`, formula("M8"))
 	// total_purchased.total = purchase_price × amount
 	assert.Equal(t, "H8*N8", formula("O8"))
 	// total_disposed.total = purchase_price × disposed_amount
@@ -144,6 +145,46 @@ func TestWriteInOutExport_DataRowFormulasAndValues(t *testing.T) {
 
 	// Group totals on first row of group (row 8): merged across 8-9
 	assert.Equal(t, "SUM(L8:L9)", formula("P8")) // total_sold = SUM(subtotal_sold)
+}
+
+func TestWriteInOutExport_MissingSellingPriceRendersNA(t *testing.T) {
+	// A POI with no effective selling price (nil) renders the selling-price
+	// cell as the literal "N/A" and its revenue as an ISNUMBER-guarded formula
+	// that evaluates to "N/A" rather than #VALUE!. Reachable only on a
+	// confirmed export. The group/footer revenue SUMs are unchanged and skip
+	// the text cell.
+	start := time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC)
+	rows := &ExportRows{
+		StartDate: start, EndDate: start.AddDate(0, 0, 4), DayCount: 5,
+		Rows: []*ExportRow{{
+			ProductID: 1, ProductName: "Apple", UnitName: "kg",
+			POItemID: 100, POID: 10, PONumber: "PO-1",
+			PurchasePrice: dec(50), SellingPrice: nil, // no effective selling price
+			DailyPurchases:       map[int]decimal.Decimal{0: dec(10)},
+			BeginningStock:       dec(0),
+			EndingStock:          dec(7),
+			TotalPurchasedAmount: dec(10),
+			SubtotalSold:         dec(3),
+		}},
+	}
+	f, err := WriteInOutExport(rows, ExportContext{InventoryName: "Kho A"})
+	require.NoError(t, err)
+	defer f.Close()
+
+	read := func(cell string) string {
+		v, _ := f.GetCellValue(inOutSheetName, cell, excelize.Options{RawCellValue: true})
+		return v
+	}
+	formula := func(cell string) string {
+		v, _ := f.GetCellFormula(inOutSheetName, cell)
+		return v
+	}
+
+	assert.Equal(t, "N/A", read("I8")) // selling-price cell is literal text
+	// Revenue formula present and guarded; evaluates to "N/A" for a text price.
+	assert.Equal(t, `IF(ISNUMBER(I8),I8*L8,"N/A")`, formula("M8"))
+	// Group/footer revenue totals stay plain SUMs (Excel skips the "N/A" text).
+	assert.Equal(t, "SUM(M8:M8)", formula("W8"))
 }
 
 func TestWriteInOutExport_FooterRowSums(t *testing.T) {
@@ -193,7 +234,7 @@ func TestWriteInOutExport_DistinctProductsSameDisplayNameNotMerged(t *testing.T)
 			{
 				ProductID: 1, ProductName: "Apple", UnitName: "kg",
 				POItemID: 100, POID: 10, PONumber: "PO-1",
-				PurchasePrice: dec(50), SellingPrice: dec(80),
+				PurchasePrice: dec(50), SellingPrice: decPtr(80),
 				DailyPurchases:       map[int]decimal.Decimal{0: dec(10)},
 				BeginningStock:       dec(0),
 				EndingStock:          dec(7),
@@ -203,7 +244,7 @@ func TestWriteInOutExport_DistinctProductsSameDisplayNameNotMerged(t *testing.T)
 			{
 				ProductID: 2, ProductName: "Apple", UnitName: "kg", // distinct product, same name
 				POItemID: 200, POID: 20, PONumber: "PO-2",
-				PurchasePrice: dec(60), SellingPrice: dec(90),
+				PurchasePrice: dec(60), SellingPrice: decPtr(90),
 				DailyPurchases:       map[int]decimal.Decimal{1: dec(5)},
 				BeginningStock:       dec(0),
 				EndingStock:          dec(5),
@@ -332,7 +373,7 @@ func TestWriteInOutExport_DecimalsNotRoundedOrPadded(t *testing.T) {
 			ProductID: 1, ProductName: "Apple", UnitName: "kg",
 			POItemID: 100, POID: 10, PONumber: "PO-1",
 			PurchasePrice:  dec(99.75),   // money with decimals — must NOT round to 100
-			SellingPrice:   dec(80),
+			SellingPrice:   decPtr(80),
 			BeginningStock: dec(1526.13), // qty — must NOT pad to 1526.130000
 			EndingStock:    dec(7),
 		}},

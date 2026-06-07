@@ -6,6 +6,9 @@ type InventoryInOutExportRequest struct {
 	InventoryID uint   `param:"id" validate:"required"`
 	StartDate   string `query:"start_date" validate:"required"`
 	EndDate     string `query:"end_date" validate:"required"`
+	// IgnoreMissingSellingPrice bypasses the missing-selling-price precondition:
+	// the export proceeds and uncomputable values render as "N/A".
+	IgnoreMissingSellingPrice bool `query:"ignore_missing_selling_price"`
 }
 
 // InventoryInOutExportResponse is returned on success: a presigned download URL

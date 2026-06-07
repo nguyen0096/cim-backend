@@ -47,6 +47,8 @@ const (
 	headerFill  = "305496" // deep blue, white bold text
 	footerFill  = "DDEBF7" // soft light blue
 	borderColor = "BFBFBF"
+	// naText renders cells that can't be computed (no selling price).
+	naText = "N/A"
 )
 
 // ExportContext bundles audit-metadata fields the writer renders into the
@@ -413,8 +415,15 @@ func writeOneRow(f *excelize.File, r *ExportRow, l colLayout, row int) error {
 	if err := setNum(l.purchasePrice, r.PurchasePrice); err != nil {
 		return err
 	}
-	if err := setNum(l.sellingPrice, r.SellingPrice); err != nil {
-		return err
+	// No effective selling price → literal "N/A".
+	if r.SellingPrice != nil {
+		if err := setNum(l.sellingPrice, *r.SellingPrice); err != nil {
+			return err
+		}
+	} else {
+		if err := setStr(l.sellingPrice, naText); err != nil {
+			return err
+		}
 	}
 	if err := setNum(l.beginningStock, r.BeginningStock); err != nil {
 		return err
@@ -425,9 +434,13 @@ func writeOneRow(f *excelize.File, r *ExportRow, l colLayout, row int) error {
 	if err := setNum(l.subtotalSold, r.SubtotalSold); err != nil {
 		return err
 	}
-	// subtotal_revenue = selling_price × subtotal_sold
-	if err := setFormula(l.subtotalRevenue, fmt.Sprintf("%s%d*%s%d",
-		colName(l.sellingPrice), row, colName(l.subtotalSold), row)); err != nil {
+	// subtotal_revenue = selling_price × subtotal_sold. ISNUMBER guard yields
+	// "N/A" (not #VALUE!) when the price cell is text, and recomputes if a real
+	// price is later typed over it.
+	if err := setFormula(l.subtotalRevenue, fmt.Sprintf(`IF(ISNUMBER(%s%d),%s%d*%s%d,"%s")`,
+		colName(l.sellingPrice), row,
+		colName(l.sellingPrice), row, colName(l.subtotalSold), row,
+		naText)); err != nil {
 		return err
 	}
 	if err := setNum(l.totalPurchasedAmount, r.TotalPurchasedAmount); err != nil {
