@@ -588,6 +588,29 @@ var _ = Describe("Purchase Order API", func() {
 						err = tenv.DB.WithContext(ctx).First(&purchaseOrder, "id = ?", testPurchaseOrder.ID).Error
 						Expect(err).NotTo(HaveOccurred())
 						Expect(purchaseOrder.Status).To(Equal(tc.expectedPOStatus))
+
+						// Regression guard for the PO-id vs PO-item-id bug (commit
+						// d2a47c1 / PR #7): receiving must stamp each purchase
+						// transaction with the PO ITEM id (poi.ID), not the purchase
+						// ORDER id, and link it to an inventory item of that POI's
+						// product. The old code wrote poi.PurchaseOrderID here, which
+						// silently pointed transactions at an unrelated PO/line.
+						for _, poi := range purchaseOrderItems {
+							var txn models.InventoryTransaction
+							err := tenv.DB.WithContext(ctx).
+								Where("purchase_order_item_id = ? AND transaction_type = ?",
+									poi.ID, models.InventoryTransactionTypePurchase).
+								First(&txn).Error
+							Expect(err).NotTo(HaveOccurred(),
+								"expected a purchase transaction linked to PO item %d (the bug would link PO id %d instead)",
+								poi.ID, testPurchaseOrder.ID)
+
+							var item models.InventoryItem
+							err = tenv.DB.WithContext(ctx).First(&item, "id = ?", txn.InventoryItemID).Error
+							Expect(err).NotTo(HaveOccurred())
+							Expect(item.ProductID).To(Equal(*poi.ProductID),
+								"purchase transaction's inventory item product must match its PO item product")
+						}
 					})
 				}
 			}
