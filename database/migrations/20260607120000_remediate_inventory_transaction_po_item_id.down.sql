@@ -1,0 +1,2 @@
+-- No-op: this is a one-way data remediation; the prior (corrupted) values are
+-- not restorable in a meaningful way, so there is nothing to revert.
