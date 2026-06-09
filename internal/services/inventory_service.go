@@ -36,6 +36,16 @@ type InventoryService interface {
 	ProcessSubmission(ctx context.Context, req dto.SubmissionApprovalRequest) (*models.InventorySubmission, error)
 	UpdateSubmission(ctx context.Context, req dto.UpdateSubmissionRequest) (*dto.SubmissionResponse, error)
 	GetMonthlyTransactionReport(ctx context.Context, inventoryID uint, month, year int) (*models.TxnReportInventory, error)
+
+	// ResolvePendingSubmissions is a one-off (#43) data-fix: it applies a fixed
+	// set of pending reconcile and/or dispose submissions by chronologically
+	// chaining their drops through FIFO consume to synthesize backdated
+	// transactions — reconciles become Sell txns, disposes become Disposal txns,
+	// all sharing the same in-memory FIFO chain. When apply is false it computes
+	// and returns the full plan but persists nothing; when apply is true it
+	// persists the identical plan in a single transaction. An empty disposeIDs
+	// preserves the original reconcile-only behavior.
+	ResolvePendingSubmissions(ctx context.Context, inventoryID uint, reconcileIDs []uint, disposeIDs []uint, apply bool) (*dto.ResolutionPlan, error)
 }
 
 type inventoryService struct {
