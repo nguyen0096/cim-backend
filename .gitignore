@@ -57,3 +57,5 @@ google-service-account.json
 **/uploads/*
 
 ginkgo.report
+
+tmp/**
