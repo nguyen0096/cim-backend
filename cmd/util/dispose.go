@@ -248,6 +248,18 @@ func computeDisposePlan(ctx context.Context, db *gorm.DB, inventoryID, submissio
 			if remaining.LessThan(take) {
 				take = remaining
 			}
+			// Temporal-FIFO guard: we are about to consume from this source. A disposal
+			// must NOT be backdated to before the stock it consumes existed. Each disposal
+			// txn's CreatedAt is backdated to sub.CreatedAt; if this source purchase was
+			// created AFTER the submission, the backdated disposal would predate its own
+			// source stock and corrupt historical COGS. Abort the whole plan (no writes).
+			// Only post-dated sources FIFO actually reaches are checked: a later purchase
+			// the walk never consumes is skipped by the toConsume>0 loop guard above.
+			if src.CreatedAt.After(sub.CreatedAt) {
+				return nil, fmt.Errorf(
+					"item %d: FIFO would consume purchase txn %d (created_at %s), which is AFTER the dispose submission's created_at %s; backdating the disposal to the submission date would place it before its source stock existed. Aborting (no writes). Approve this dispose via the normal app flow, or with a date on/after that purchase.",
+					id, src.ID, src.CreatedAt.Format(time.RFC3339), sub.CreatedAt.Format(time.RFC3339))
+			}
 			plan.Txns = append(plan.Txns, SyntheticTxn{
 				InventoryItemID:     id,
 				TransactionType:     string(models.InventoryTransactionTypeDisposal),

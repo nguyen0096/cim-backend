@@ -3,6 +3,8 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -239,6 +241,78 @@ func TestDispose_SpansTwoPurchases_BackdatedCOGS(t *testing.T) {
 	}
 	if gotSub.ProcessingStatus != models.InventorySubmissionStatusCompleted {
 		t.Fatalf("submission processing_status = %s, want completed", gotSub.ProcessingStatus)
+	}
+}
+
+// TestDispose_PostDatedFIFOSource_ErrorsAndWritesNothing: the temporal-FIFO guard.
+// On-or-before-submission stock is INSUFFICIENT for the requested qty, so FIFO must
+// reach a later purchase whose created_at is AFTER the submission's created_at.
+// Backdating that disposal to the submission date would place it before its source
+// stock existed, so computeDisposePlan must abort (naming the post-dated source) and
+// write nothing.
+func TestDispose_PostDatedFIFOSource_ErrorsAndWritesNothing(t *testing.T) {
+	// Submission at an explicit instant so the boundary is unambiguous.
+	disposeAt := time.Date(2024, 3, 15, 12, 0, 0, 0, time.UTC)
+	// Live qty 150 (requested) but only 100 from a pre-submission purchase; the
+	// remaining 50 sits in a purchase created AFTER the submission.
+	env := newDisposeTestEnv(t, "150", "150", disposeAt)
+	env.addPurchase(t, day("2024-01-01"), "100", "0", 10)                     // pre-submission (older)
+	postSrc := env.addPurchase(t, disposeAt.Add(time.Second), "200", "0", 12) // AFTER submission
+
+	_, err := computeDisposePlan(env.ctx, env.db, env.inventoryID, env.submissionID)
+	if err == nil {
+		t.Fatalf("expected temporal-FIFO error, got nil")
+	}
+	// Error must name the post-dated source purchase txn id.
+	if want := fmt.Sprintf("purchase txn %d", postSrc); !strings.Contains(err.Error(), want) {
+		t.Fatalf("error %q does not mention post-dated source %q", err.Error(), want)
+	}
+
+	// Nothing written: no disposal txns, item quantity unchanged, submission still pending.
+	var disposalCount int64
+	if err := env.db.Model(&models.InventoryTransaction{}).
+		Where("transaction_type = ?", models.InventoryTransactionTypeDisposal).
+		Count(&disposalCount).Error; err != nil {
+		t.Fatalf("count disposals: %v", err)
+	}
+	if disposalCount != 0 {
+		t.Fatalf("expected 0 disposal txns after temporal-FIFO abort, got %d", disposalCount)
+	}
+	var gotItem models.InventoryItem
+	if err := env.db.First(&gotItem, env.itemID).Error; err != nil {
+		t.Fatalf("reload item: %v", err)
+	}
+	if !gotItem.Quantity.Equal(dec("150")) {
+		t.Fatalf("item quantity = %s, want unchanged 150", gotItem.Quantity)
+	}
+	var gotSub models.InventorySubmission
+	if err := env.db.First(&gotSub, env.submissionID).Error; err != nil {
+		t.Fatalf("reload submission: %v", err)
+	}
+	if gotSub.ApprovalStatus != models.InventorySubmissionApprovalStatusPending {
+		t.Fatalf("submission approval_status = %s, want still pending", gotSub.ApprovalStatus)
+	}
+}
+
+// TestDispose_SourceExactlyOnSubmission_Allowed: a source purchase created EXACTLY at
+// the submission's created_at is NOT "after" it, so the temporal-FIFO guard must not
+// fire and the plan is produced normally (boundary case). A later purchase that FIFO
+// never reaches must also not trip the guard.
+func TestDispose_SourceExactlyOnSubmission_Allowed(t *testing.T) {
+	disposeAt := time.Date(2024, 3, 15, 12, 0, 0, 0, time.UTC)
+	env := newDisposeTestEnv(t, "300", "100", disposeAt)
+	onSrc := env.addPurchase(t, disposeAt, "100", "0", 10)       // exactly ON submission -> allowed
+	env.addPurchase(t, disposeAt.Add(time.Hour), "200", "0", 12) // later, never reached by FIFO
+
+	plan, err := computeDisposePlan(env.ctx, env.db, env.inventoryID, env.submissionID)
+	if err != nil {
+		t.Fatalf("computeDisposePlan: %v (source exactly on submission must be allowed)", err)
+	}
+	if len(plan.Txns) != 1 {
+		t.Fatalf("expected 1 disposal txn, got %d", len(plan.Txns))
+	}
+	if plan.Txns[0].SourcePurchaseTxnID != onSrc || !plan.Txns[0].Quantity.Equal(dec("100")) {
+		t.Fatalf("txn = src %d qty %s, want src %d qty 100", plan.Txns[0].SourcePurchaseTxnID, plan.Txns[0].Quantity, onSrc)
 	}
 }
 
