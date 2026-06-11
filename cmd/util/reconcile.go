@@ -51,6 +51,10 @@ var reconcileCmd = &cobra.Command{
 var reconcileResolveCmd = &cobra.Command{
 	Use:   "resolve",
 	Short: "Resolve pending reconcile + dispose submissions (preview by default)",
+	// Runtime (RunE) errors print only the error, not the usage block. Flag-parse
+	// errors still show usage (cobra applies SilenceUsage only after parsing).
+	SilenceUsage:  true,
+	SilenceErrors: true,
 	Long: "One-time #46 data-fix. For each adjacent reconcile pair (sub1 earlier, " +
 		"sub2 later) it checks the rule\n\n" +
 		"    sub2_qty <= sub1_qty + range_purchases - range_disposes\n\n" +
@@ -508,161 +512,186 @@ type correctedStep struct {
 // convention "a row on sub1 -> start", a purchase whose created_at exactly equals
 // the first reconcile's timestamp counts toward start_stock (NOT into any range),
 // so it is included exactly once.
-func resolveItem(in itemInput) (startStock decimal.Decimal, steps []correctedStep, sells []SyntheticTxn, disposals []SyntheticTxn, consumedAfter map[uint]decimal.Decimal, err error) {
+func resolveItem(in itemInput) (startStock decimal.Decimal, steps []correctedStep, sells []SyntheticTxn, disposals []SyntheticTxn, consumedAfter map[uint]decimal.Decimal, ignoredTrailingDisposeSubIDs []uint, err error) {
 	recs := in.reconcileSubs
-	if len(recs) == 0 {
-		return decimal.Zero, nil, nil, nil, nil, fmt.Errorf("item %d has no reconcile submissions", in.itemID)
-	}
-	first := recs[0]
-	last := recs[len(recs)-1]
 
-	// IGNORE purchases dated strictly after the item's last in-scope reconcile.
-	// Such purchases (#50: one item had 87) fall OUTSIDE every reconcile window and
-	// do not affect the historical shrinkage being corrected between counts. Drop
-	// them entirely — not into a range, not into start-stock, and not into the FIFO
-	// ledger — so the result is identical to the same item without those purchases.
-	// (Purchases at/before the last reconcile are kept: start-stock if at/before the
-	// first reconcile, otherwise folded into the window that contains them.)
-	//
-	// isTrailingPurchase is the single source of truth for "out of scope" used both
-	// here and by the unconsumed-ledger assertion in computeResolution, so the two
-	// stay consistent: a purchase the resolver ignores is exactly one the assertion
-	// skips.
-	if len(in.purchases) > 0 {
-		kept := make([]purchaseTxn, 0, len(in.purchases))
-		for _, p := range in.purchases {
-			if isTrailingPurchase(p.createdAt, last.createdAt) {
-				continue // out of scope: after the last reconcile — ignored
-			}
-			kept = append(kept, p)
-		}
-		in.purchases = kept
-	}
-
-	// start_stock: purchases created at or before the first reconcile. A purchase
-	// exactly on the first reconcile's timestamp counts here (convention: "a row on
-	// sub1 -> start"), matching the range loop below which excludes such a purchase
-	// from every half-open range.
-	startStock = decimal.Zero
-	for _, p := range in.purchases {
-		if !p.createdAt.After(first.createdAt) {
-			startStock = startStock.Add(p.quantity)
-		}
-	}
-
-	// Assert every (in-scope) purchase maps to exactly one place: before the first
-	// reconcile (start-stock) OR into exactly one half-open range. Purchases after
-	// the last reconcile were already dropped above (#50), so none reach here.
-	rangePurchases := make([]decimal.Decimal, len(recs)) // rangePurchases[k] = purchases in (recs[k-1], recs[k]]
-	for i := range rangePurchases {
-		rangePurchases[i] = decimal.Zero
-	}
-	for _, p := range in.purchases {
-		if !p.createdAt.After(first.createdAt) {
-			continue // start-stock (created at or before the first reconcile)
-		}
-		k := rangeIndexFor(recs, p.createdAt)
-		if k < 0 {
-			return decimal.Zero, nil, nil, nil, nil, fmt.Errorf(
-				"item %d purchase txn %d (created_at %s) did not map to any range", in.itemID, p.txnID, p.createdAt.Format(time.RFC3339))
-		}
-		rangePurchases[k] = rangePurchases[k].Add(p.quantity)
-	}
-
-	// Hard-fail on a NEGATIVE dispose quantity BEFORE any range math. A selected
-	// dispose submission with qty < 0 would otherwise be folded into range_disposes
-	// (distorting the correction via the "- range_disposes" term) while NO disposal
-	// event is built for it (events are only created for qty > 0). On --apply that
-	// would mark the submission approved/completed with no matching transaction and a
-	// distorted correction. Reject it up front and abort the whole preview/apply (no
-	// partial writes). A ZERO quantity stays a benign no-op (prior decision).
+	// Hard-fail on a NEGATIVE dispose quantity up front (independent of reconciles).
+	// A selected dispose submission with qty < 0 would otherwise distort range math
+	// while NO disposal event is built for it (events are only created for qty > 0).
+	// On --apply that would mark the submission approved/completed with no matching
+	// transaction. Reject it and abort the whole preview/apply (no partial writes).
+	// A ZERO quantity stays a benign no-op (prior decision).
 	for _, dsp := range in.disposeSubs {
 		if dsp.qty.LessThan(decimal.Zero) {
-			return decimal.Zero, nil, nil, nil, nil, fmt.Errorf(
+			return decimal.Zero, nil, nil, nil, nil, nil, fmt.Errorf(
 				"item %d dispose submission %d (inventory_item_id %d) has negative quantity %s: aborting, no partial writes",
 				in.itemID, dsp.subID, in.itemID, dsp.qty.String())
 		}
 	}
 
-	// range_disposes[k] = pending dispose qty in (recs[k-1], recs[k]]. A dispose
-	// before the first reconcile or after the last is an error (out of scope).
-	rangeDisposes := make([]decimal.Decimal, len(recs))
-	for i := range rangeDisposes {
-		rangeDisposes[i] = decimal.Zero
-	}
-	for _, dsp := range in.disposeSubs {
-		if !dsp.createdAt.After(first.createdAt) {
-			return decimal.Zero, nil, nil, nil, nil, fmt.Errorf(
-				"item %d dispose submission %d (created_at %s) is not after the first reconcile %d (%s): out of scope",
-				in.itemID, dsp.subID, dsp.createdAt.Format(time.RFC3339), first.subID, first.createdAt.Format(time.RFC3339))
-		}
-		if dsp.createdAt.After(last.createdAt) {
-			return decimal.Zero, nil, nil, nil, nil, fmt.Errorf(
-				"item %d dispose submission %d (created_at %s) is after the last reconcile %d (%s): out of scope",
-				in.itemID, dsp.subID, dsp.createdAt.Format(time.RFC3339), last.subID, last.createdAt.Format(time.RFC3339))
-		}
-		k := rangeIndexFor(recs, dsp.createdAt)
-		if k <= 0 {
-			return decimal.Zero, nil, nil, nil, nil, fmt.Errorf(
-				"item %d dispose submission %d did not map to an inter-reconcile range", in.itemID, dsp.subID)
-		}
-		rangeDisposes[k] = rangeDisposes[k].Add(dsp.qty)
-	}
+	// Reconcile-dependent math: start-stock, per-range purchases/disposes, the
+	// backward-propagation correction, and the per-step drops. This is only
+	// meaningful when there is at least one reconcile pair. A DISPOSE-ONLY item
+	// (no reconcile submissions, only disposals — #52) skips all of it: it has no
+	// counts to correct and no windows, just disposal events that FIFO-consume from
+	// the full purchase ledger below. It flows through the same resolve→apply path.
+	if len(recs) > 0 {
+		first := recs[0]
+		last := recs[len(recs)-1]
 
-	// Corrected counts start from the recorded counts.
-	corrected := make([]decimal.Decimal, len(recs))
-	wasCorrected := make([]bool, len(recs))
-	for i, r := range recs {
-		corrected[i] = r.qty
-	}
-
-	// Backward propagation (latest -> earliest). For each adjacent pair
-	// (recs[k-1], recs[k]) with range index k:
-	//   rule: corrected[k] <= corrected[k-1] + range_purchases[k] - range_disposes[k]
-	//   else: corrected[k-1] := corrected[k] - range_purchases[k] + range_disposes[k]
-	for k := len(recs) - 1; k >= 1; k-- {
-		implied := corrected[k-1].Add(rangePurchases[k]).Sub(rangeDisposes[k])
-		if corrected[k].GreaterThan(implied) {
-			corrected[k-1] = corrected[k].Sub(rangePurchases[k]).Add(rangeDisposes[k])
-			wasCorrected[k-1] = true
+		// IGNORE purchases dated strictly after the item's last in-scope reconcile.
+		// Such purchases (#50: one item had 87) fall OUTSIDE every reconcile window and
+		// do not affect the historical shrinkage being corrected between counts. Drop
+		// them entirely — not into a range, not into start-stock, and not into the FIFO
+		// ledger — so the result is identical to the same item without those purchases.
+		// (Purchases at/before the last reconcile are kept: start-stock if at/before the
+		// first reconcile, otherwise folded into the window that contains them.)
+		//
+		// isTrailingPurchase is the single source of truth for "out of scope" used both
+		// here and by the unconsumed-ledger assertion in computeResolution, so the two
+		// stay consistent: a purchase the resolver ignores is exactly one the assertion
+		// skips.
+		if len(in.purchases) > 0 {
+			kept := make([]purchaseTxn, 0, len(in.purchases))
+			for _, p := range in.purchases {
+				if isTrailingPurchase(p.createdAt, last.createdAt) {
+					continue // out of scope: after the last reconcile — ignored
+				}
+				kept = append(kept, p)
+			}
+			in.purchases = kept
 		}
-	}
 
-	// Fatal validation: after propagation, the first sub's corrected stock must
-	// not exceed start-stock (you cannot have counted more than was ever purchased
-	// before the first reconcile, given no consumption yet).
-	if corrected[0].GreaterThan(startStock) {
-		return decimal.Zero, nil, nil, nil, nil, fmt.Errorf(
-			"item %d FATAL: corrected first-reconcile stock %s > start stock %s (sub %d): aborting, no partial writes",
-			in.itemID, corrected[0].String(), startStock.String(), first.subID)
-	}
+		// IGNORE disposes dated strictly after the item's last in-scope reconcile,
+		// mirroring the purchase treatment above (#52). Such a dispose falls outside
+		// every reconcile window; we no longer abort or list it. Drop it from the
+		// dispose set so it neither folds into range_disposes nor synthesizes a txn,
+		// AND report its sub-id out (ignoredTrailingDisposeSubIDs) so the caller's
+		// preview/status path can exclude it from the plan steps and leave the
+		// submission pending — resolveItem stays the single source of truth for what
+		// was treated as trailing, so the two cannot drift apart again.
+		// (A dispose-only item has NO reconcile submissions at all, so it never enters
+		// this `len(recs) > 0` block: the whole reconcile-dependent section above and
+		// this filter are skipped, and all of its disposes flow through the FIFO
+		// consume below as in scope.)
+		if len(in.disposeSubs) > 0 {
+			keptD := make([]disposeStep, 0, len(in.disposeSubs))
+			for _, dsp := range in.disposeSubs {
+				if dsp.createdAt.After(last.createdAt) {
+					ignoredTrailingDisposeSubIDs = append(ignoredTrailingDisposeSubIDs, dsp.subID)
+					continue // out of scope: after the last reconcile — ignored
+				}
+				keptD = append(keptD, dsp)
+			}
+			in.disposeSubs = keptD
+		}
 
-	// Build per-step prev_quantity (chain-consistent stock just before the sub)
-	// and the net shrinkage (drop) consumed at each reconcile's date.
-	//   prev[0]  = start_stock
-	//   prev[k]  = corrected[k-1] + range_purchases[k] - range_disposes[k]
-	//   drop[k]  = prev[k] - corrected[k]   (>= 0 by construction after correction)
-	steps = make([]correctedStep, len(recs))
-	for k, r := range recs {
-		prev := startStock
-		if k >= 1 {
-			prev = corrected[k-1].Add(rangePurchases[k]).Sub(rangeDisposes[k])
+		// start_stock: purchases created at or before the first reconcile. A purchase
+		// exactly on the first reconcile's timestamp counts here (convention: "a row on
+		// sub1 -> start"), matching the range loop below which excludes such a purchase
+		// from every half-open range.
+		startStock = decimal.Zero
+		for _, p := range in.purchases {
+			if !p.createdAt.After(first.createdAt) {
+				startStock = startStock.Add(p.quantity)
+			}
 		}
-		drop := prev.Sub(corrected[k])
-		if drop.IsNegative() {
-			// Should never happen after correction; guard against bad data.
-			return decimal.Zero, nil, nil, nil, nil, fmt.Errorf(
-				"item %d sub %d computed negative drop %s (prev %s, corrected %s)",
-				in.itemID, r.subID, drop.String(), prev.String(), corrected[k].String())
+
+		// Assert every (in-scope) purchase maps to exactly one place: before the first
+		// reconcile (start-stock) OR into exactly one half-open range. Purchases after
+		// the last reconcile were already dropped above (#50), so none reach here.
+		rangePurchases := make([]decimal.Decimal, len(recs)) // rangePurchases[k] = purchases in (recs[k-1], recs[k]]
+		for i := range rangePurchases {
+			rangePurchases[i] = decimal.Zero
 		}
-		steps[k] = correctedStep{
-			subID:     r.subID,
-			createdAt: r.createdAt,
-			origQty:   r.qty,
-			newQty:    corrected[k],
-			prevQty:   prev,
-			drop:      drop,
-			corrected: wasCorrected[k],
+		for _, p := range in.purchases {
+			if !p.createdAt.After(first.createdAt) {
+				continue // start-stock (created at or before the first reconcile)
+			}
+			k := rangeIndexFor(recs, p.createdAt)
+			if k < 0 {
+				return decimal.Zero, nil, nil, nil, nil, nil, fmt.Errorf(
+					"item %d purchase txn %d (created_at %s) did not map to any range", in.itemID, p.txnID, p.createdAt.Format(time.RFC3339))
+			}
+			rangePurchases[k] = rangePurchases[k].Add(p.quantity)
+		}
+
+		// range_disposes[k] = pending dispose qty in (recs[k-1], recs[k]]. A dispose
+		// before the first reconcile is an error (out of scope). Disposes after the
+		// last reconcile were already ignored above (#52), so none reach here.
+		rangeDisposes := make([]decimal.Decimal, len(recs))
+		for i := range rangeDisposes {
+			rangeDisposes[i] = decimal.Zero
+		}
+		for _, dsp := range in.disposeSubs {
+			if !dsp.createdAt.After(first.createdAt) {
+				return decimal.Zero, nil, nil, nil, nil, nil, fmt.Errorf(
+					"item %d dispose submission %d (created_at %s) is not after the first reconcile %d (%s): out of scope",
+					in.itemID, dsp.subID, dsp.createdAt.Format(time.RFC3339), first.subID, first.createdAt.Format(time.RFC3339))
+			}
+			k := rangeIndexFor(recs, dsp.createdAt)
+			if k <= 0 {
+				return decimal.Zero, nil, nil, nil, nil, nil, fmt.Errorf(
+					"item %d dispose submission %d did not map to an inter-reconcile range", in.itemID, dsp.subID)
+			}
+			rangeDisposes[k] = rangeDisposes[k].Add(dsp.qty)
+		}
+
+		// Corrected counts start from the recorded counts.
+		corrected := make([]decimal.Decimal, len(recs))
+		wasCorrected := make([]bool, len(recs))
+		for i, r := range recs {
+			corrected[i] = r.qty
+		}
+
+		// Backward propagation (latest -> earliest). For each adjacent pair
+		// (recs[k-1], recs[k]) with range index k:
+		//   rule: corrected[k] <= corrected[k-1] + range_purchases[k] - range_disposes[k]
+		//   else: corrected[k-1] := corrected[k] - range_purchases[k] + range_disposes[k]
+		for k := len(recs) - 1; k >= 1; k-- {
+			implied := corrected[k-1].Add(rangePurchases[k]).Sub(rangeDisposes[k])
+			if corrected[k].GreaterThan(implied) {
+				corrected[k-1] = corrected[k].Sub(rangePurchases[k]).Add(rangeDisposes[k])
+				wasCorrected[k-1] = true
+			}
+		}
+
+		// Fatal validation: after propagation, the first sub's corrected stock must
+		// not exceed start-stock (you cannot have counted more than was ever purchased
+		// before the first reconcile, given no consumption yet).
+		if corrected[0].GreaterThan(startStock) {
+			return decimal.Zero, nil, nil, nil, nil, nil, fmt.Errorf(
+				"item %d FATAL: corrected first-reconcile stock %s > start stock %s (sub %d): aborting, no partial writes",
+				in.itemID, corrected[0].String(), startStock.String(), first.subID)
+		}
+
+		// Build per-step prev_quantity (chain-consistent stock just before the sub)
+		// and the net shrinkage (drop) consumed at each reconcile's date.
+		//   prev[0]  = start_stock
+		//   prev[k]  = corrected[k-1] + range_purchases[k] - range_disposes[k]
+		//   drop[k]  = prev[k] - corrected[k]   (>= 0 by construction after correction)
+		steps = make([]correctedStep, len(recs))
+		for k, r := range recs {
+			prev := startStock
+			if k >= 1 {
+				prev = corrected[k-1].Add(rangePurchases[k]).Sub(rangeDisposes[k])
+			}
+			drop := prev.Sub(corrected[k])
+			if drop.IsNegative() {
+				// Should never happen after correction; guard against bad data.
+				return decimal.Zero, nil, nil, nil, nil, nil, fmt.Errorf(
+					"item %d sub %d computed negative drop %s (prev %s, corrected %s)",
+					in.itemID, r.subID, drop.String(), prev.String(), corrected[k].String())
+			}
+			steps[k] = correctedStep{
+				subID:     r.subID,
+				createdAt: r.createdAt,
+				origQty:   r.qty,
+				newQty:    corrected[k],
+				prevQty:   prev,
+				drop:      drop,
+				corrected: wasCorrected[k],
+			}
 		}
 	}
 
@@ -687,18 +716,18 @@ func resolveItem(in itemInput) (startStock decimal.Decimal, steps []correctedSte
 	}
 	sort.SliceStable(events, func(i, j int) bool { return events[i].at.Before(events[j].at) })
 
-	// FIFO consume, with a TEMPORAL constraint: a consuming event at time ev.at may
-	// only draw from purchase txns that already existed at/before ev.at
-	// (createdAt <= ev.at). We must never source a backdated sell/disposal from a
-	// purchase dated AFTER the event — that would silently paper over stock that was
-	// actually negative at the event's time. Among eligible purchases we still draw
-	// FIFO (oldest first). If the eligible stock is insufficient, hard-fail (stock was
-	// negative at ev.at) and abort before any write.
+	// FIFO consume against the purchase ledger, oldest first, regardless of a
+	// purchase's createdAt vs the event time. We do NOT restrict an event to
+	// purchases that existed at/before its date: this is a one-off historical
+	// correction over an unconsumed ledger, and chronology between a backdated
+	// sell/disposal and the purchase that sources it is not meaningful here.
 	//
-	// in.purchases is already sorted by createdAt ASC (then id), so for a given event
-	// the eligible window is a prefix of the slice. We never reset the FIFO cursor
-	// backward; instead, for each event we (a) compute how far the eligible prefix
-	// extends, then (b) consume from the oldest not-yet-exhausted eligible row.
+	// The only real guard that remains is total stock: if the whole purchase ledger
+	// is exhausted while an event still needs more, the item's stock is genuinely
+	// negative — hard-fail and abort before any write.
+	//
+	// in.purchases is already sorted by createdAt ASC (then id), so the FIFO cursor
+	// only ever moves forward.
 	consumedAfter = make(map[uint]decimal.Decimal, len(in.purchases))
 	remaining := make([]decimal.Decimal, len(in.purchases))
 	for i, p := range in.purchases {
@@ -707,25 +736,19 @@ func resolveItem(in itemInput) (startStock decimal.Decimal, steps []correctedSte
 	}
 	idx := 0 // oldest purchase row not yet fully consumed (FIFO cursor)
 	for _, ev := range events {
-		// eligible = number of leading purchases with createdAt <= ev.at; the event
-		// may only draw from in.purchases[:eligible].
-		eligible := 0
-		for eligible < len(in.purchases) && !in.purchases[eligible].createdAt.After(ev.at) {
-			eligible++
-		}
 		toConsume := ev.qty
 		for toConsume.GreaterThan(decimal.Zero) {
-			// Advance past exhausted rows, but only within the eligible prefix.
-			for idx < eligible && !remaining[idx].GreaterThan(decimal.Zero) {
+			// Advance past fully-consumed rows.
+			for idx < len(in.purchases) && !remaining[idx].GreaterThan(decimal.Zero) {
 				idx++
 			}
-			if idx >= eligible {
+			if idx >= len(in.purchases) {
 				evName := "sell (reconcile shrinkage)"
 				if !ev.isSell {
 					evName = "disposal"
 				}
-				return decimal.Zero, nil, nil, nil, nil, fmt.Errorf(
-					"item %d FATAL: stock would be negative at %s — %s event needs %s more, but no purchase created at/before that time has remaining stock; aborting, no partial writes",
+				return decimal.Zero, nil, nil, nil, nil, nil, fmt.Errorf(
+					"item %d FATAL: insufficient stock at %s — %s event needs %s more, but the purchase ledger is exhausted; aborting, no partial writes",
 					in.itemID, ev.at.Format(time.RFC3339), evName, toConsume.String())
 			}
 			take := toConsume
@@ -753,7 +776,7 @@ func resolveItem(in itemInput) (startStock decimal.Decimal, steps []correctedSte
 		}
 	}
 
-	return startStock, steps, sells, disposals, consumedAfter, nil
+	return startStock, steps, sells, disposals, consumedAfter, ignoredTrailingDisposeSubIDs, nil
 }
 
 // rangeIndexFor returns the range index k (1..len-1) such that t is in the
@@ -872,14 +895,22 @@ func computeResolution(ctx context.Context, db *gorm.DB, inventoryID uint, recon
 	// activity must NOT abort the run (#51). Scoping this AFTER inputs are built lets
 	// us use the same per-item last-reconcile boundary as resolveItem, via the shared
 	// isTrailingPurchase, so the check and the resolver agree on what is in scope.
+	//
+	// A DISPOSE-ONLY item (#52: no reconcile submissions) has no last-reconcile
+	// boundary — resolveItem FIFO-consumes its disposals from the FULL purchase
+	// ledger — so every one of its purchases is in scope and checked here.
 	for _, id := range itemIDs {
 		in := inputs[id]
-		if in == nil || len(in.reconcileSubs) == 0 {
-			continue // resolveItem will surface the "no reconcile submissions" error
+		if in == nil {
+			continue
 		}
-		lastReconcileAt := in.reconcileSubs[len(in.reconcileSubs)-1].createdAt
+		hasReconcile := len(in.reconcileSubs) > 0
+		var lastReconcileAt time.Time
+		if hasReconcile {
+			lastReconcileAt = in.reconcileSubs[len(in.reconcileSubs)-1].createdAt
+		}
 		for _, p := range in.purchases {
-			if isTrailingPurchase(p.createdAt, lastReconcileAt) {
+			if hasReconcile && isTrailingPurchase(p.createdAt, lastReconcileAt) {
 				continue // out of scope: ignored by resolveItem, exempt from the assertion
 			}
 			if p.consumedQuantity.GreaterThan(decimal.Zero) {
@@ -906,11 +937,34 @@ func computeResolution(ctx context.Context, db *gorm.DB, inventoryID uint, recon
 	correctedSubItems := make(map[uint]bool) // submission ids that were corrected
 	consumedDeltaByTxn := make(map[uint]decimal.Decimal)
 
+	// Per-dispose-submission tracking so AppliedAsIs reflects what was ACTUALLY
+	// applied. A single dispose submission can list multiple items; resolveItem may
+	// treat it as trailing (ignored) for one item and in-scope for another. We
+	// record, per dispose submission, the items where it was applied (in-scope) vs.
+	// ignored-as-trailing, then decide membership in AppliedAsIs below.
+	disposeAppliedItems := make(map[uint][]uint)         // dispose subID -> item ids it was applied for (in scope)
+	disposeIgnoredTrailingItems := make(map[uint][]uint) // dispose subID -> item ids it was ignored-as-trailing for
+
 	for _, id := range orderedItemIDs {
 		in := inputs[id]
-		startStock, steps, sells, disposals, consumedAfter, err := resolveItem(*in)
+		startStock, steps, sells, disposals, consumedAfter, ignoredTrailingDisposeSubIDs, err := resolveItem(*in)
 		if err != nil {
 			return nil, err
+		}
+
+		// Trailing disposes ignored for THIS item (resolveItem is the single source of
+		// truth). They synthesize no txn and no stock decrement, so they must ALSO be
+		// excluded from the preview steps and kept out of AppliedAsIs (left pending) —
+		// otherwise preview/apply would show/complete a disposal that never happens.
+		ignoredTrailing := make(map[uint]bool, len(ignoredTrailingDisposeSubIDs))
+		for _, subID := range ignoredTrailingDisposeSubIDs {
+			ignoredTrailing[subID] = true
+			disposeIgnoredTrailingItems[subID] = append(disposeIgnoredTrailingItems[subID], id)
+		}
+		for _, dsp := range in.disposeSubs {
+			if !ignoredTrailing[dsp.subID] {
+				disposeAppliedItems[dsp.subID] = append(disposeAppliedItems[dsp.subID], id)
+			}
 		}
 
 		// Total outbound we synthesize for this item (in-window shrinkage sells +
@@ -925,11 +979,19 @@ func computeResolution(ctx context.Context, db *gorm.DB, inventoryID uint, recon
 		currentQty := items[id].Quantity
 		appliedQty := currentQty.Sub(outbound)
 
+		// final == last reconcile corrected count. A DISPOSE-ONLY item (#52) has no
+		// reconcile steps and thus no corrected count: its resulting on-hand stock is
+		// just current_live minus the disposals we synthesize, i.e. appliedQty.
+		finalStock := appliedQty
+		if len(steps) > 0 {
+			finalStock = steps[len(steps)-1].newQty
+		}
+
 		itemPlan := ItemPlan{
 			InventoryItemID: id,
 			ProductName:     in.productName,
 			StartStock:      startStock,
-			FinalStock:      steps[len(steps)-1].newQty, // final == last reconcile corrected count
+			FinalStock:      finalStock,
 			CurrentQuantity: currentQty,
 			AppliedQuantity: appliedQty,
 		}
@@ -956,8 +1018,16 @@ func computeResolution(ctx context.Context, db *gorm.DB, inventoryID uint, recon
 				})
 			}
 		}
-		// dispose steps (informational) appended to the item plan
+		// dispose steps (informational) appended to the item plan. SKIP any dispose
+		// ignored-as-trailing for this item: it produces no synthetic txn, so it must
+		// not appear as a disposal step either (keeps preview == apply). NOTE: in is a
+		// pointer here, so in.disposeSubs is still the ORIGINAL un-filtered set —
+		// resolveItem mutated only its own by-value copy — which is why we must filter
+		// explicitly via the ignored-trailing set rather than relying on in.disposeSubs.
 		for _, dsp := range in.disposeSubs {
+			if ignoredTrailing[dsp.subID] {
+				continue // ignored as trailing for this item — no txn, no step
+			}
 			itemPlan.Steps = append(itemPlan.Steps, ItemStep{
 				SubmissionID:      dsp.subID,
 				SubmissionType:    string(models.InventorySubmissionTypeDispose),
@@ -1029,11 +1099,41 @@ func computeResolution(ctx context.Context, db *gorm.DB, inventoryID uint, recon
 		plan.ConsumedDeltas = append(plan.ConsumedDeltas, ConsumedQuantityDelta{PurchaseTxnID: id, Delta: consumedDeltaByTxn[id]})
 	}
 
-	// Applied-as-is: every requested submission that was NOT corrected.
+	// Applied-as-is membership:
+	//   - Reconcile: every requested reconcile that was NOT corrected (unchanged).
+	//   - Dispose: ONLY if it was applied (in scope) for EVERY item it touches.
+	//     A dispose ignored-as-trailing for all its items folds into nothing and
+	//     synthesizes no txn, so it must stay PENDING (NOT in AppliedAsIs) — never
+	//     fabricate a completion for a disposal that never happened.
 	for _, s := range subs {
-		if s.isReconcile() && correctedSubItems[s.ID] {
+		if s.isReconcile() {
+			if correctedSubItems[s.ID] {
+				continue
+			}
+			plan.AppliedAsIs = append(plan.AppliedAsIs, s.ID)
 			continue
 		}
+
+		// Dispose submission.
+		applied := disposeAppliedItems[s.ID]
+		ignored := disposeIgnoredTrailingItems[s.ID]
+
+		// NARROW integrity guard (NOT the broad "after last reconcile" abort that #52
+		// intentionally removed): a SINGLE dispose submission that is in-scope for some
+		// item but trailing for another cannot be both applied and left pending
+		// consistently — there is no way to honor it. Fatal, naming the submission and
+		// the conflicting items. (Zero occurrences in current prod data; safety net.)
+		if len(applied) > 0 && len(ignored) > 0 {
+			return nil, fmt.Errorf(
+				"item-level conflict: dispose submission %d is trailing (after last reconcile) for item %d but in-scope for item %d; cannot resolve consistently",
+				s.ID, ignored[0], applied[0])
+		}
+
+		// Trailing for every item it touches -> leave pending (skip AppliedAsIs).
+		if len(applied) == 0 {
+			continue
+		}
+		// Applied for every item it touches -> applied as-is.
 		plan.AppliedAsIs = append(plan.AppliedAsIs, s.ID)
 	}
 

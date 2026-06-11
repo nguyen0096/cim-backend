@@ -42,7 +42,7 @@ func TestResolveItem_S1(t *testing.T) {
 			{subID: 2, createdAt: day("2024-03-01"), prev: dec("1000"), qty: dec("650")},
 		},
 	}
-	start, steps, sells, disposals, _, err := resolveItem(in)
+	start, steps, sells, disposals, _, _, err := resolveItem(in)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -99,7 +99,7 @@ func TestResolveItem_S2(t *testing.T) {
 			{subID: 2, createdAt: day("2024-03-01"), prev: dec("1100"), qty: dec("650")},
 		},
 	}
-	start, steps, sells, _, _, err := resolveItem(in)
+	start, steps, sells, _, _, _, err := resolveItem(in)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -145,7 +145,7 @@ func TestResolveItem_Consistent(t *testing.T) {
 			{subID: 2, createdAt: day("2024-03-01"), prev: dec("800"), qty: dec("650")},
 		},
 	}
-	_, steps, sells, _, _, err := resolveItem(in)
+	_, steps, sells, _, _, _, err := resolveItem(in)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -188,7 +188,7 @@ func TestResolveItem_BackwardPropagation(t *testing.T) {
 			{subID: 3, createdAt: day("2024-04-01"), prev: dec("650"), qty: dec("500")},
 		},
 	}
-	start, steps, _, _, _, err := resolveItem(in)
+	start, steps, _, _, _, _, err := resolveItem(in)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -232,7 +232,7 @@ func TestResolveItem_PurchaseAndDispose(t *testing.T) {
 			{subID: 3, createdAt: day("2024-02-20"), qty: dec("50")},
 		},
 	}
-	start, steps, sells, disposals, consumedAfter, err := resolveItem(in)
+	start, steps, sells, disposals, consumedAfter, _, err := resolveItem(in)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -302,7 +302,7 @@ func TestResolveItem_BoundaryExactlyOnSubTimestamp(t *testing.T) {
 			{subID: 2, createdAt: sub2at, prev: dec("1100"), qty: dec("650")},
 		},
 	}
-	_, steps, _, _, _, err := resolveItem(in)
+	_, steps, _, _, _, _, err := resolveItem(in)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -325,7 +325,7 @@ func TestResolveItem_FatalFirstSubExceedsStart(t *testing.T) {
 			{subID: 2, createdAt: day("2024-03-01"), prev: dec("400"), qty: dec("650")},
 		},
 	}
-	_, _, _, _, _, err := resolveItem(in)
+	_, _, _, _, _, _, err := resolveItem(in)
 	if err == nil {
 		t.Fatalf("expected fatal error (corrected sub1 650 > start 400)")
 	}
@@ -346,7 +346,7 @@ func TestResolveItem_OverdrawErrors(t *testing.T) {
 			{subID: 3, createdAt: day("2024-02-15"), qty: dec("500")}, // overdraw
 		},
 	}
-	_, _, _, _, _, err := resolveItem(in)
+	_, _, _, _, _, _, err := resolveItem(in)
 	if err == nil {
 		t.Fatalf("expected overdraw error")
 	}
@@ -372,7 +372,7 @@ func TestResolveItem_NegativeDisposeQtyErrors(t *testing.T) {
 			{subID: 42, createdAt: day("2024-02-15"), qty: dec("-5")}, // negative
 		},
 	}
-	start, steps, sells, disposals, consumedAfter, err := resolveItem(in)
+	start, steps, sells, disposals, consumedAfter, _, err := resolveItem(in)
 	if err == nil {
 		t.Fatalf("expected hard error for negative dispose quantity")
 	}
@@ -410,7 +410,7 @@ func TestResolveItem_ZeroDisposeQtyIsNoOp(t *testing.T) {
 			{subID: 9, createdAt: day("2024-02-15"), qty: dec("0")},
 		},
 	}
-	_, _, _, disposals, _, err := resolveItem(in)
+	_, _, _, disposals, _, _, err := resolveItem(in)
 	if err != nil {
 		t.Fatalf("zero dispose qty should be a benign no-op, got error: %v", err)
 	}
@@ -454,16 +454,20 @@ func indexOf(s, sub string) int {
 	return -1
 }
 
-// Temporal FIFO: a dispose dated BEFORE the only purchase that could cover it must
-// hard-fail (stock was negative at the dispose's time) — the consume loop must not
-// reach forward into a future purchase. Mirrors the prod scenario: sub1 stock 0,
-// dispose 100 on Feb 10, purchase 100 on Feb 20, sub2 stock 0.
-func TestResolveItem_TemporalFIFO_FuturePurchaseRejected(t *testing.T) {
+// #52: the temporal-FIFO guard is REMOVED. A dispose dated before the only purchase
+// that could cover it now FIFO-consumes from that purchase regardless of chronology
+// (this is a one-off historical correction over an unconsumed ledger). Mirrors the
+// prod scenario: sub1 stock 0, dispose 100 on Feb 10, purchase 100 on Feb 20, sub2
+// stock 0. There IS enough total stock (the one purchase covers it), so it resolves
+// cleanly instead of hard-failing — the disposal is sourced from the Feb-20 purchase
+// and dated at the dispose's own date.
+func TestResolveItem_FuturePurchaseConsumedFIFO(t *testing.T) {
 	in := itemInput{
 		itemID: 1,
 		purchases: []purchaseTxn{
 			// purchase dated AFTER the dispose (Feb 20). No purchase exists at/before
-			// the first reconcile, so start stock is 0.
+			// the first reconcile, so start stock is 0 — but the dispose still draws
+			// from it FIFO now that the temporal guard is gone.
 			{txnID: 200, createdAt: day("2024-02-20"), quantity: dec("100"), price: 10},
 		},
 		reconcileSubs: []reconcileStep{
@@ -474,24 +478,32 @@ func TestResolveItem_TemporalFIFO_FuturePurchaseRejected(t *testing.T) {
 			{subID: 3, createdAt: day("2024-02-10"), qty: dec("100")}, // before the Feb-20 purchase
 		},
 	}
-	_, _, _, _, _, err := resolveItem(in)
-	if err == nil {
-		t.Fatalf("expected hard error: dispose on Feb 10 cannot source from a Feb 20 purchase (negative stock)")
+	_, _, _, disposals, _, _, err := resolveItem(in)
+	if err != nil {
+		t.Fatalf("unexpected error (temporal guard removed; total stock suffices): %v", err)
 	}
-	if !contains(err.Error(), "2024-02-10") {
-		t.Fatalf("error should name the event's timestamp (2024-02-10); got: %v", err)
+	total := decimal.Zero
+	for _, d := range disposals {
+		total = total.Add(d.Quantity)
+		if d.SourcePurchaseTxnID != 200 {
+			t.Fatalf("disposal sourced from txn %d, want 200 (the only purchase)", d.SourcePurchaseTxnID)
+		}
+		if !d.BackdatedDate.Equal(day("2024-02-10")) {
+			t.Fatalf("disposal dated %s, want its own date 2024-02-10", d.BackdatedDate)
+		}
+	}
+	if !total.Equal(dec("100")) {
+		t.Fatalf("disposal total = %s, want 100", total)
 	}
 }
 
-// Temporal FIFO valid case: an EARLIER purchase (dated at/before the dispose) covers
-// the dispose, so it resolves cleanly and the disposal is dated at the dispose's own
-// date sourced from that earlier purchase.
-func TestResolveItem_TemporalFIFO_EarlierPurchaseCovers(t *testing.T) {
+// FIFO valid case: a purchase covers the dispose, so it resolves cleanly and the
+// disposal is dated at the dispose's own date sourced from that purchase.
+func TestResolveItem_EarlierPurchaseCovers(t *testing.T) {
 	in := itemInput{
 		itemID: 1,
 		purchases: []purchaseTxn{
-			// purchase before the first reconcile -> start stock 100, eligible for the
-			// Feb-10 dispose.
+			// purchase before the first reconcile -> start stock 100.
 			startPurchase(100, "100", day("2024-01-15")),
 		},
 		reconcileSubs: []reconcileStep{
@@ -502,7 +514,7 @@ func TestResolveItem_TemporalFIFO_EarlierPurchaseCovers(t *testing.T) {
 			{subID: 3, createdAt: day("2024-02-10"), qty: dec("100")},
 		},
 	}
-	_, _, _, disposals, _, err := resolveItem(in)
+	_, _, _, disposals, _, _, err := resolveItem(in)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -518,6 +530,93 @@ func TestResolveItem_TemporalFIFO_EarlierPurchaseCovers(t *testing.T) {
 	}
 	if !total.Equal(dec("100")) {
 		t.Fatalf("disposal total = %s, want 100", total)
+	}
+}
+
+// #52: a DISPOSE-ONLY item (no reconcile submissions) must NOT abort. It has no
+// counts to correct and no windows — just disposal events that FIFO-consume from the
+// full purchase ledger, dated at each dispose's own date. start_stock/steps are zero/
+// empty (no reconciles); the disposals are synthesized like any other item.
+func TestResolveItem_DisposeOnlyNoReconcile(t *testing.T) {
+	in := itemInput{
+		itemID: 9,
+		purchases: []purchaseTxn{
+			startPurchase(100, "60", day("2024-01-01")),
+			{txnID: 101, createdAt: day("2024-02-01"), quantity: dec("40"), price: 10},
+		},
+		// no reconcileSubs
+		disposeSubs: []disposeStep{
+			{subID: 5, createdAt: day("2024-03-01"), qty: dec("70")}, // draws 60 from txn100, 10 from txn101
+		},
+	}
+	start, steps, sells, disposals, consumedAfter, _, err := resolveItem(in)
+	if err != nil {
+		t.Fatalf("dispose-only item must not abort: %v", err)
+	}
+	if !start.IsZero() {
+		t.Fatalf("dispose-only start stock = %s, want 0 (no reconciles)", start)
+	}
+	if len(steps) != 0 {
+		t.Fatalf("dispose-only steps = %d, want 0 (no reconciles)", len(steps))
+	}
+	if len(sells) != 0 {
+		t.Fatalf("dispose-only sells = %d, want 0 (no reconcile shrinkage)", len(sells))
+	}
+	total := decimal.Zero
+	for _, d := range disposals {
+		total = total.Add(d.Quantity)
+		if !d.BackdatedDate.Equal(day("2024-03-01")) {
+			t.Fatalf("disposal dated %s, want its own date 2024-03-01", d.BackdatedDate)
+		}
+	}
+	if !total.Equal(dec("70")) {
+		t.Fatalf("disposal total = %s, want 70", total)
+	}
+	// FIFO: 60 consumed from txn100 (fully), 10 from txn101.
+	if !consumedAfter[100].Equal(dec("60")) {
+		t.Fatalf("txn100 consumed = %s, want 60", consumedAfter[100])
+	}
+	if !consumedAfter[101].Equal(dec("10")) {
+		t.Fatalf("txn101 consumed = %s, want 10", consumedAfter[101])
+	}
+}
+
+// #52: a dispose dated strictly AFTER the item's last reconcile is now IGNORED
+// (no abort, no list), mirroring the trailing-purchase treatment. The result must be
+// identical to the same item without that trailing dispose.
+func TestResolveItem_TrailingDisposeAfterLastReconcileIgnored(t *testing.T) {
+	base := itemInput{
+		itemID: 1,
+		purchases: []purchaseTxn{
+			startPurchase(100, "1000", day("2024-01-01")),
+		},
+		reconcileSubs: []reconcileStep{
+			{subID: 1, createdAt: day("2024-02-01"), prev: dec("1000"), qty: dec("1000")},
+			{subID: 2, createdAt: day("2024-03-01"), prev: dec("1000"), qty: dec("1000")},
+		},
+	}
+	withTrailing := base
+	withTrailing.disposeSubs = []disposeStep{
+		// dispose AFTER sub2's timestamp -> out of scope, ignored (#52).
+		{subID: 9, createdAt: day("2024-06-01"), qty: dec("100")},
+	}
+
+	_, _, _, baseDisp, _, baseIgnored, baseErr := resolveItem(base)
+	_, _, _, disp, _, ignored, err := resolveItem(withTrailing)
+	if baseErr != nil || err != nil {
+		t.Fatalf("unexpected error: base=%v with=%v", baseErr, err)
+	}
+	if len(disp) != len(baseDisp) {
+		t.Fatalf("trailing dispose should be ignored: got %d disposals, want %d", len(disp), len(baseDisp))
+	}
+	// The baseline (no trailing dispose) reports nothing ignored.
+	if len(baseIgnored) != 0 {
+		t.Fatalf("baseline should report no ignored trailing disposes, got %v", baseIgnored)
+	}
+	// resolveItem must REPORT the trailing dispose sub it ignored, so the caller can
+	// keep it out of the preview steps and AppliedAsIs (left pending).
+	if len(ignored) != 1 || ignored[0] != 9 {
+		t.Fatalf("ignored trailing dispose set = %v, want [9]", ignored)
 	}
 }
 
@@ -537,7 +636,7 @@ func TestResolveItem_FirstBoundaryPurchaseIsStartStock(t *testing.T) {
 			{subID: 2, createdAt: day("2024-03-01"), prev: dec("1000"), qty: dec("1000")},
 		},
 	}
-	start, steps, _, _, _, err := resolveItem(in)
+	start, steps, _, _, _, _, err := resolveItem(in)
 	if err != nil {
 		t.Fatalf("unexpected error (boundary purchase should map to start, not abort): %v", err)
 	}
@@ -581,12 +680,12 @@ func TestResolveItem_TrailingPurchaseAfterLastReconcileIgnored(t *testing.T) {
 		// trailing purchase: AFTER sub2's timestamp -> out of scope, ignored.
 		purchaseTxn{txnID: 999, createdAt: day("2024-06-01"), quantity: dec("777"), price: 10})
 
-	baseStart, baseSteps, baseSells, _, baseConsumed, baseErr := resolveItem(base)
+	baseStart, baseSteps, baseSells, _, baseConsumed, _, baseErr := resolveItem(base)
 	if baseErr != nil {
 		t.Fatalf("baseline (windows-only) unexpected error: %v", baseErr)
 	}
 
-	start, steps, sells, _, consumed, err := resolveItem(withTrailing)
+	start, steps, sells, _, consumed, _, err := resolveItem(withTrailing)
 	if err != nil {
 		t.Fatalf("trailing purchase must NOT error (it is out of scope), got: %v", err)
 	}
