@@ -225,6 +225,14 @@ type ItemPlan struct {
 	StartStock      decimal.Decimal `json:"start_stock"`
 	Steps           []ItemStep      `json:"steps"`
 	FinalStock      decimal.Decimal `json:"final_stock"`
+	// CurrentQuantity is the item's live quantity at compute time (the
+	// optimistic-lock baseline apply will guard against).
+	CurrentQuantity decimal.Decimal `json:"current_quantity"`
+	// AppliedQuantity is the quantity apply will WRITE: current_quantity minus the
+	// total outbound (sells + disposals) we synthesize for this item. It equals
+	// FinalStock when there is no post-reconcile activity and exceeds it by the net
+	// trailing activity otherwise. Preview shows this so preview == apply.
+	AppliedQuantity decimal.Decimal `json:"applied_quantity"`
 }
 
 // ItemStep is one submission's effect on the item, in chronological order.
@@ -506,6 +514,30 @@ func resolveItem(in itemInput) (startStock decimal.Decimal, steps []correctedSte
 		return decimal.Zero, nil, nil, nil, nil, fmt.Errorf("item %d has no reconcile submissions", in.itemID)
 	}
 	first := recs[0]
+	last := recs[len(recs)-1]
+
+	// IGNORE purchases dated strictly after the item's last in-scope reconcile.
+	// Such purchases (#50: one item had 87) fall OUTSIDE every reconcile window and
+	// do not affect the historical shrinkage being corrected between counts. Drop
+	// them entirely — not into a range, not into start-stock, and not into the FIFO
+	// ledger — so the result is identical to the same item without those purchases.
+	// (Purchases at/before the last reconcile are kept: start-stock if at/before the
+	// first reconcile, otherwise folded into the window that contains them.)
+	//
+	// isTrailingPurchase is the single source of truth for "out of scope" used both
+	// here and by the unconsumed-ledger assertion in computeResolution, so the two
+	// stay consistent: a purchase the resolver ignores is exactly one the assertion
+	// skips.
+	if len(in.purchases) > 0 {
+		kept := make([]purchaseTxn, 0, len(in.purchases))
+		for _, p := range in.purchases {
+			if isTrailingPurchase(p.createdAt, last.createdAt) {
+				continue // out of scope: after the last reconcile — ignored
+			}
+			kept = append(kept, p)
+		}
+		in.purchases = kept
+	}
 
 	// start_stock: purchases created at or before the first reconcile. A purchase
 	// exactly on the first reconcile's timestamp counts here (convention: "a row on
@@ -518,10 +550,9 @@ func resolveItem(in itemInput) (startStock decimal.Decimal, steps []correctedSte
 		}
 	}
 
-	// Assert every purchase maps to exactly one place: before first reconcile
-	// (start-stock) OR into exactly one half-open range. A purchase after the last
-	// reconcile maps to no range and is an error (out of scope for this one-off).
-	last := recs[len(recs)-1]
+	// Assert every (in-scope) purchase maps to exactly one place: before the first
+	// reconcile (start-stock) OR into exactly one half-open range. Purchases after
+	// the last reconcile were already dropped above (#50), so none reach here.
 	rangePurchases := make([]decimal.Decimal, len(recs)) // rangePurchases[k] = purchases in (recs[k-1], recs[k]]
 	for i := range rangePurchases {
 		rangePurchases[i] = decimal.Zero
@@ -529,11 +560,6 @@ func resolveItem(in itemInput) (startStock decimal.Decimal, steps []correctedSte
 	for _, p := range in.purchases {
 		if !p.createdAt.After(first.createdAt) {
 			continue // start-stock (created at or before the first reconcile)
-		}
-		if p.createdAt.After(last.createdAt) {
-			return decimal.Zero, nil, nil, nil, nil, fmt.Errorf(
-				"item %d purchase txn %d (created_at %s) is after the last reconcile %d (%s): out of scope for this one-off",
-				in.itemID, p.txnID, p.createdAt.Format(time.RFC3339), last.subID, last.createdAt.Format(time.RFC3339))
 		}
 		k := rangeIndexFor(recs, p.createdAt)
 		if k < 0 {
@@ -742,6 +768,15 @@ func rangeIndexFor(recs []reconcileStep, t time.Time) int {
 	return -1
 }
 
+// isTrailingPurchase reports whether a purchase created at purchaseAt is "out of
+// scope" for an item whose last in-scope reconcile is at lastReconcileAt — i.e.
+// dated strictly after that reconcile. Trailing purchases are ignored by
+// resolveItem (#50) and are likewise exempt from the unconsumed-ledger assertion
+// in computeResolution. This is the single source of truth for both call sites.
+func isTrailingPurchase(purchaseAt, lastReconcileAt time.Time) bool {
+	return purchaseAt.After(lastReconcileAt)
+}
+
 // ---------------------------------------------------------------------------
 // computeResolution: shared preview/apply compute path (loads, runs core, builds plan)
 // ---------------------------------------------------------------------------
@@ -784,17 +819,6 @@ func computeResolution(ctx context.Context, db *gorm.DB, inventoryID uint, recon
 	}
 	if err != nil {
 		return nil, err
-	}
-
-	// Assumption check (#46): no purchase has been consumed yet.
-	for _, it := range items {
-		for _, txn := range it.ConsumableTransactions {
-			if txn.ConsumedQuantity.GreaterThan(decimal.Zero) {
-				return nil, fmt.Errorf(
-					"assumption failed: item %d purchase txn %d already has consumed_quantity %s > 0; this one-off assumes an unconsumed ledger",
-					it.ID, txn.ID, txn.ConsumedQuantity.String())
-			}
-		}
 	}
 
 	// Group submission rows per item.
@@ -840,6 +864,32 @@ func computeResolution(ctx context.Context, db *gorm.DB, inventoryID uint, recon
 		sort.SliceStable(in.disposeSubs, func(i, j int) bool { return in.disposeSubs[i].createdAt.Before(in.disposeSubs[j].createdAt) })
 	}
 
+	// Assumption check (#46): no IN-SCOPE purchase has been consumed yet. The
+	// FIFO-replay correction assumes the ledger is unconsumed for the purchases it
+	// actually replays (start-stock + within-window). TRAILING purchases (dated
+	// after the item's last reconcile) are ignored by resolveItem (#50) and are
+	// therefore exempt here — a trailing purchase consumed by normal post-reconcile
+	// activity must NOT abort the run (#51). Scoping this AFTER inputs are built lets
+	// us use the same per-item last-reconcile boundary as resolveItem, via the shared
+	// isTrailingPurchase, so the check and the resolver agree on what is in scope.
+	for _, id := range itemIDs {
+		in := inputs[id]
+		if in == nil || len(in.reconcileSubs) == 0 {
+			continue // resolveItem will surface the "no reconcile submissions" error
+		}
+		lastReconcileAt := in.reconcileSubs[len(in.reconcileSubs)-1].createdAt
+		for _, p := range in.purchases {
+			if isTrailingPurchase(p.createdAt, lastReconcileAt) {
+				continue // out of scope: ignored by resolveItem, exempt from the assertion
+			}
+			if p.consumedQuantity.GreaterThan(decimal.Zero) {
+				return nil, fmt.Errorf(
+					"assumption failed: item %d purchase txn %d already has consumed_quantity %s > 0; this one-off assumes an unconsumed ledger",
+					id, p.txnID, p.consumedQuantity.String())
+			}
+		}
+	}
+
 	plan := &ResolutionPlan{
 		InventoryID:  inventoryID,
 		ReconcileIDs: reconcileIDs,
@@ -863,11 +913,25 @@ func computeResolution(ctx context.Context, db *gorm.DB, inventoryID uint, recon
 			return nil, err
 		}
 
+		// Total outbound we synthesize for this item (in-window shrinkage sells +
+		// disposals). Apply decrements the live quantity by exactly this.
+		outbound := decimal.Zero
+		for _, s := range sells {
+			outbound = outbound.Add(s.Quantity)
+		}
+		for _, d := range disposals {
+			outbound = outbound.Add(d.Quantity)
+		}
+		currentQty := items[id].Quantity
+		appliedQty := currentQty.Sub(outbound)
+
 		itemPlan := ItemPlan{
 			InventoryItemID: id,
 			ProductName:     in.productName,
 			StartStock:      startStock,
 			FinalStock:      steps[len(steps)-1].newQty, // final == last reconcile corrected count
+			CurrentQuantity: currentQty,
+			AppliedQuantity: appliedQty,
 		}
 		for _, s := range steps {
 			itemPlan.Steps = append(itemPlan.Steps, ItemStep{
@@ -920,11 +984,27 @@ func computeResolution(ctx context.Context, db *gorm.DB, inventoryID uint, recon
 			}
 		}
 
-		// Item quantity update: optimistic-lock baseline = current DB quantity.
+		// Item quantity update. We DECREMENT the current live quantity by the total
+		// outbound we synthesize (in-window shrinkage sells + disposals), rather than
+		// OVERWRITING with FinalStock. Since #50 ignores purchases dated after the
+		// item's last in-scope reconcile, post-reconcile activity (e.g. a trailing
+		// purchase + later consumption, net +N still on hand) is reflected only in the
+		// live quantity, never in FinalStock. Overwriting with FinalStock would
+		// silently discard that net +N of real stock.
+		//
+		//   new_quantity = current_live - Σ(sells + disposals we create for this item)
+		//
+		// This preserves post-reconcile activity and equals FinalStock EXACTLY when
+		// there is none: with an unconsumed ledger (asserted above) and no trailing
+		// purchase, current_live == startStock + Σ(in-window purchases), and the
+		// resolver's invariant gives FinalStock == startStock + Σ(in-window purchases)
+		// - Σ(sells + disposals), so current_live - outbound == FinalStock. The
+		// optimistic-lock baseline stays the current DB quantity. appliedQty is the
+		// SAME value the preview shows (ItemPlan.AppliedQuantity) -> preview == apply.
 		plan.itemUpdates = append(plan.itemUpdates, itemQtyUpdate{
 			itemID:      id,
-			originalQty: items[id].Quantity,
-			newQty:      itemPlan.FinalStock,
+			originalQty: currentQty,
+			newQty:      appliedQty,
 		})
 	}
 
@@ -1206,7 +1286,9 @@ func printPlanSummary(plan *ResolutionPlan) {
 
 	fmt.Println("\nPer-item:")
 	for _, item := range plan.Items {
-		fmt.Printf("  item %d (%s): start=%s final=%s\n", item.InventoryItemID, item.ProductName, item.StartStock.String(), item.FinalStock.String())
+		fmt.Printf("  item %d (%s): start=%s final=%s current=%s applied=%s\n",
+			item.InventoryItemID, item.ProductName, item.StartStock.String(), item.FinalStock.String(),
+			item.CurrentQuantity.String(), item.AppliedQuantity.String())
 		for _, s := range item.Steps {
 			tag := ""
 			if s.Corrected {
@@ -1274,7 +1356,7 @@ func writePlanXLSX(plan *ResolutionPlan, path string) error {
 	for _, c := range cols {
 		headers = append(headers, fmt.Sprintf("Sub %d (%s)", c.subID, c.at.Format("2006-01-02")))
 	}
-	headers = append(headers, "Final Stock")
+	headers = append(headers, "Final Stock", "Current Stock", "Applied Stock")
 	for i, h := range headers {
 		cell, _ := excelize.CoordinatesToCellName(i+1, 1)
 		_ = f.SetCellValue(sheet, cell, h)
@@ -1303,6 +1385,8 @@ func writePlanXLSX(plan *ResolutionPlan, path string) error {
 			}
 		}
 		set(item.FinalStock.String())
+		set(item.CurrentQuantity.String())
+		set(item.AppliedQuantity.String())
 	}
 
 	if err := f.SaveAs(path); err != nil {

@@ -554,6 +554,100 @@ func TestResolveItem_FirstBoundaryPurchaseIsStartStock(t *testing.T) {
 	}
 }
 
+// #50: a purchase dated strictly AFTER the item's last in-scope reconcile is
+// OUTSIDE every reconcile window and must be IGNORED (not folded into a range,
+// not added to start-stock, not an error). The correction/drops/sells must be
+// identical to the same item WITHOUT that trailing purchase (i.e. computed from
+// the windows only). This is the S2 scenario plus one trailing purchase.
+func TestResolveItem_TrailingPurchaseAfterLastReconcileIgnored(t *testing.T) {
+	// Windows-only baseline (== TestResolveItem_S2): start 1000, in-range +100,
+	// sub1 300 -> corrected 550, sell 450 @ sub1, final 650.
+	base := itemInput{
+		itemID: 1,
+		purchases: []purchaseTxn{
+			startPurchase(100, "1000", day("2024-01-01")),                               // start stock 1000
+			{txnID: 101, createdAt: day("2024-02-15"), quantity: dec("100"), price: 10}, // in range (sub1, sub2]
+		},
+		reconcileSubs: []reconcileStep{
+			{subID: 1, createdAt: day("2024-02-01"), prev: dec("1000"), qty: dec("300")},
+			{subID: 2, createdAt: day("2024-03-01"), prev: dec("1100"), qty: dec("650")},
+		},
+	}
+
+	// Same item PLUS a purchase dated after the last reconcile (sub2 = 2024-03-01).
+	withTrailing := base
+	withTrailing.purchases = append([]purchaseTxn{}, base.purchases...)
+	withTrailing.purchases = append(withTrailing.purchases,
+		// trailing purchase: AFTER sub2's timestamp -> out of scope, ignored.
+		purchaseTxn{txnID: 999, createdAt: day("2024-06-01"), quantity: dec("777"), price: 10})
+
+	baseStart, baseSteps, baseSells, _, baseConsumed, baseErr := resolveItem(base)
+	if baseErr != nil {
+		t.Fatalf("baseline (windows-only) unexpected error: %v", baseErr)
+	}
+
+	start, steps, sells, _, consumed, err := resolveItem(withTrailing)
+	if err != nil {
+		t.Fatalf("trailing purchase must NOT error (it is out of scope), got: %v", err)
+	}
+
+	// Trailing purchase is dropped, not added to start-stock.
+	if !start.Equal(dec("1000")) {
+		t.Fatalf("start stock = %s, want 1000 (trailing purchase must be ignored, not added to start)", start)
+	}
+	if !start.Equal(baseStart) {
+		t.Fatalf("start = %s, want == windows-only baseline %s", start, baseStart)
+	}
+
+	// Correction/drops identical to windows-only.
+	if len(steps) != len(baseSteps) {
+		t.Fatalf("got %d steps, want %d (same as baseline)", len(steps), len(baseSteps))
+	}
+	for i := range steps {
+		if !steps[i].newQty.Equal(baseSteps[i].newQty) ||
+			steps[i].corrected != baseSteps[i].corrected ||
+			!steps[i].drop.Equal(baseSteps[i].drop) ||
+			!steps[i].prevQty.Equal(baseSteps[i].prevQty) {
+			t.Fatalf("step %d differs from windows-only baseline: got newQty=%s corrected=%v drop=%s prev=%s; want newQty=%s corrected=%v drop=%s prev=%s",
+				i, steps[i].newQty, steps[i].corrected, steps[i].drop, steps[i].prevQty,
+				baseSteps[i].newQty, baseSteps[i].corrected, baseSteps[i].drop, baseSteps[i].prevQty)
+		}
+	}
+
+	// Sells identical (total + dates), and none sourced from the trailing purchase.
+	sellTotal := decimal.Zero
+	for _, s := range sells {
+		sellTotal = sellTotal.Add(s.Quantity)
+		if s.SourcePurchaseTxnID == 999 {
+			t.Fatalf("a sell was sourced from the trailing (ignored) purchase 999")
+		}
+	}
+	baseSellTotal := decimal.Zero
+	for _, s := range baseSells {
+		baseSellTotal = baseSellTotal.Add(s.Quantity)
+	}
+	if !sellTotal.Equal(dec("450")) || !sellTotal.Equal(baseSellTotal) {
+		t.Fatalf("sell total = %s, want 450 (== baseline %s)", sellTotal, baseSellTotal)
+	}
+
+	// The trailing purchase contributes nothing to consumption (it isn't in the
+	// ledger at all), so total consumed matches the windows-only baseline.
+	totalConsumed := decimal.Zero
+	for _, c := range consumed {
+		totalConsumed = totalConsumed.Add(c)
+	}
+	baseTotalConsumed := decimal.Zero
+	for _, c := range baseConsumed {
+		baseTotalConsumed = baseTotalConsumed.Add(c)
+	}
+	if _, ok := consumed[999]; ok {
+		t.Fatalf("trailing purchase 999 must not appear in the consumed ledger")
+	}
+	if !totalConsumed.Equal(baseTotalConsumed) {
+		t.Fatalf("total consumed = %s, want == windows-only baseline %s", totalConsumed, baseTotalConsumed)
+	}
+}
+
 // isLocalHost: an empty/missing host is treated as NON-local so a hostless DSN
 // requires --prod-confirm before --apply.
 func TestIsLocalHost_EmptyIsNonLocal(t *testing.T) {
