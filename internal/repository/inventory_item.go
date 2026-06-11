@@ -91,8 +91,12 @@ type InventoryItemRepository interface {
 	CountLowStockItems(ctx context.Context) (int64, error)
 
 	// v1 - AGENTS MUST CONFIRM BEFORE MODIFYING SECTION BELOW THIS LINE
+
 	GetByInventoryIDWithFilters(ctx context.Context, inventoryID uint, filters InventoryItemFilters, limit, offset int) ([]models.InventoryItem, error)
 	CountByInventoryIDWithFilters(ctx context.Context, inventoryID uint, filters InventoryItemFilters) (int64, error)
+	// GetActiveInventoryItems returns a list of InventoryItem that have active status.
+	// This method also populates a list of consumable purchase transactions, sorted by
+	// created_at ascending.
 	GetActiveInventoryItems(ctx context.Context, inventoryID uint, ids []uint) ([]*models.InventoryItem, error)
 	GetActiveInventoryItemsByProductIDs(ctx context.Context, inventoryID uint, productIDs []uint) ([]*models.InventoryItem, error)
 	GetByIDs(ctx context.Context, ids []uint) ([]*models.InventoryItem, error)

@@ -14,7 +14,10 @@ var (
 type QuantityItem struct {
 	InventoryItemID uint             `json:"inventory_item_id" validate:"required"`
 	Quantity        *decimal.Decimal `json:"quantity" validate:"required"`
-	PrevQuantity    decimal.Decimal  `json:"prev_quantity,omitempty" validate:"required"`
+
+	// PrevQuantity is previus stock state.
+	// Only available for stateful submission like Reconcile.
+	PrevQuantity decimal.Decimal `json:"prev_quantity,omitempty" validate:"required"`
 
 	// Response fields
 
