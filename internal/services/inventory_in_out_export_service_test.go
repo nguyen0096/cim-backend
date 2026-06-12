@@ -185,7 +185,7 @@ func TestExport_PreconditionMissingSellingPrice(t *testing.T) {
 
 func TestExport_IgnoreMissingSellingPriceBypassesPrecondition(t *testing.T) {
 	// With IgnoreMissingSellingPrice=true the missing-selling-price precondition
-	// is skipped: the export proceeds (uncomputable values render as "N/A" in the
+	// is skipped: the export proceeds (uncomputable values render as "-" in the
 	// sheet) and the file is uploaded & presigned.
 	ctx := context.Background()
 	invRepo := repositorymocks.NewInventoryRepository(t)
