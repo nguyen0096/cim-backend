@@ -418,11 +418,13 @@ func writeOneRow(f *excelize.File, r *ExportRow, l colLayout, row int) error {
 	if err := setStr(l.unit, r.UnitName); err != nil {
 		return err
 	}
-	for d, qty := range r.DailyPurchases {
-		if qty.IsZero() {
-			continue
-		}
-		if err := setNum(l.dailyStart+d, qty); err != nil {
+	// Fill EVERY day column: a day with a purchase gets the numeric quantity;
+	// a day with no purchase (missing map key — the zero-value Decimal IsZero)
+	// or an explicit zero entry renders "-" via setQty, keeping the dash
+	// convention in one place. No formula references these daily cells, so the
+	// text "-" is safe.
+	for col := l.dailyStart; col <= l.dailyEnd; col++ {
+		if err := setQty(col, r.DailyPurchases[col-l.dailyStart]); err != nil {
 			return err
 		}
 	}

@@ -236,6 +236,38 @@ func TestWriteInOutExport_ZeroQuantityRendersDash(t *testing.T) {
 	assert.Equal(t, `IF(SUM(L8:L8)=0,"-",SUM(L8:L8))`, formula("P8"))
 }
 
+func TestWriteInOutExport_DailyNoPurchaseCellsRenderDash(t *testing.T) {
+	// Every daily column under "Số lượng nhập trong kì" is filled: days with a
+	// purchase show the numeric quantity; days with no purchase (missing map
+	// key) and explicit zero-quantity entries render "-" like every other empty
+	// quantity cell — never a blank.
+	rows := sampleRows()
+	// Explicit zero entry for day 1 of row 1: must render "-" too.
+	rows.Rows[0].DailyPurchases[1] = dec(0)
+	f, err := WriteInOutExport(rows, ExportContext{InventoryName: "Kho A"})
+	require.NoError(t, err)
+	defer f.Close()
+
+	read := func(cell string) string {
+		v, _ := f.GetCellValue(inOutSheetName, cell, excelize.Options{RawCellValue: true})
+		return v
+	}
+
+	// Row 8 (Apple PO-1): purchase on day 0 only. Daily columns are C..G.
+	assert.Equal(t, "10", read("C8")) // day 0: real purchase stays numeric
+	assert.Equal(t, "-", read("D8"))  // day 1: explicit zero entry → "-"
+	assert.Equal(t, "-", read("E8"))  // day 2: no purchase → "-"
+	assert.Equal(t, "-", read("F8"))  // day 3: no purchase → "-"
+	assert.Equal(t, "-", read("G8"))  // day 4: no purchase → "-"
+
+	// Row 9 (Apple PO-2): purchase on day 2 only.
+	assert.Equal(t, "-", read("C9"))
+	assert.Equal(t, "-", read("D9"))
+	assert.Equal(t, "5", read("E9")) // day 2: real purchase stays numeric
+	assert.Equal(t, "-", read("F9"))
+	assert.Equal(t, "-", read("G9"))
+}
+
 func TestWriteInOutExport_FooterRowSums(t *testing.T) {
 	rows := sampleRows()
 	f, err := WriteInOutExport(rows, ExportContext{InventoryName: "Kho A"})
