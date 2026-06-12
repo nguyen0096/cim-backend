@@ -7,7 +7,7 @@ import "github.com/shopspring/decimal"
 // Resolution order: SellingPrice (if non-nil) → SellingPriceRef.Price (via SellingPriceID) → none.
 type POItemSellingPrice struct {
 	Base
-	PurchaseOrderItemID uint             `json:"purchase_order_item_id" gorm:"uniqueIndex;not null"`
+	PurchaseOrderItemID uint             `json:"purchase_order_item_id" gorm:"uniqueIndex:uq_pisp_po_item_id_active,where:deleted_at IS NULL;not null"`
 	PurchaseOrderItem   *PurchaseOrderItem `json:"purchase_order_item,omitempty" gorm:"foreignKey:PurchaseOrderItemID" validate:"-"`
 	SellingPrice        *decimal.Decimal `json:"selling_price" gorm:"type:numeric(13,2)"`
 	SellingPriceID      *uint            `json:"selling_price_id"`

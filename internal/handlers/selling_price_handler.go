@@ -31,16 +31,17 @@ func (h *SellingPriceHandler) CreateSellingPrice(c echo.Context) error {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Validation failed", "details": err.Error()})
 	}
 
-	sp, err := h.sellingPriceService.CreateSellingPrice(c.Request().Context(), req)
+	sp, applying, err := h.sellingPriceService.CreateSellingPriceWithApplying(c.Request().Context(), req)
 	if err != nil {
+		if appErr, ok := err.(*pkg.AppError); ok {
+			return c.JSON(appErr.HTTPStatus(), appErr)
+		}
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to create selling price", "details": err.Error()})
 	}
 
-	unlinkedCount, _ := h.sellingPriceService.CountUnlinkedPOItems(c.Request().Context(), sp.ID)
-
 	return c.JSON(http.StatusCreated, map[string]interface{}{
-		"selling_price":           sp,
-		"unlinked_po_items_count": unlinkedCount,
+		"selling_price":    sp,
+		"massive_applying": applying,
 	})
 }
 
@@ -95,7 +96,7 @@ func (h *SellingPriceHandler) UpdateSellingPrice(c echo.Context) error {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Validation failed", "details": err.Error()})
 	}
 
-	sp, err := h.sellingPriceService.UpdateSellingPrice(c.Request().Context(), id, req)
+	sp, applying, err := h.sellingPriceService.UpdateSellingPriceWithApplying(c.Request().Context(), id, req)
 	if err != nil {
 		if appErr, ok := err.(*pkg.AppError); ok {
 			return c.JSON(appErr.HTTPStatus(), appErr)
@@ -103,11 +104,9 @@ func (h *SellingPriceHandler) UpdateSellingPrice(c echo.Context) error {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to update selling price", "details": err.Error()})
 	}
 
-	unlinkedCount, _ := h.sellingPriceService.CountUnlinkedPOItems(c.Request().Context(), sp.ID)
-
 	return c.JSON(http.StatusOK, map[string]interface{}{
-		"selling_price":           sp,
-		"unlinked_po_items_count": unlinkedCount,
+		"selling_price":    sp,
+		"massive_applying": applying,
 	})
 }
 
@@ -117,27 +116,61 @@ func (h *SellingPriceHandler) DeleteSellingPrice(c echo.Context) error {
 		return err
 	}
 
-	if err := h.sellingPriceService.DeleteSellingPrice(c.Request().Context(), id); err != nil {
+	applying, err := h.sellingPriceService.DeleteSellingPriceWithApplying(c.Request().Context(), id)
+	if err != nil {
+		if appErr, ok := err.(*pkg.AppError); ok {
+			return c.JSON(appErr.HTTPStatus(), appErr)
+		}
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to delete selling price", "details": err.Error()})
 	}
 
-	return c.NoContent(http.StatusNoContent)
+	return c.JSON(http.StatusOK, map[string]interface{}{
+		"massive_applying": applying,
+	})
 }
 
-// BackfillPOItems links a selling price to PO items in its effective date range that don't have one yet
+// BackfillPOItems re-points PO items to the START selling price (:id) across its
+// effective range, resolved SERVER-SIDE from the current ledger. The body's
+// end_effective_from is the exclusive end DATE the client previewed
+// ("YYYY-MM-DD"; null/omitted = previewed open-ended) and acts as an
+// optimistic-concurrency assertion: a mismatch with the resolved boundary date
+// returns 409 and the client must re-fetch the preview. The whole apply runs in
+// a single transaction.
+// @Summary Apply a selling price to PO items in its effective range
+// @Description Re-point PO items to the start selling price (:id) across its server-resolved effective range. end_effective_from ("YYYY-MM-DD") must match the previewed boundary date (null = open-ended) or a 409 is returned.
+// @Tags selling-prices
+// @Accept json
+// @Produce json
+// @Param id path int true "Start selling price ID"
+// @Param body body dto.BackfillSellingPriceRequest false "Previewed end-of-range boundary date (optimistic-concurrency assertion)"
+// @Success 200 {object} map[string]interface{}
+// @Failure 400 {object} map[string]string
+// @Failure 404 {object} map[string]string
+// @Failure 409 {object} map[string]string
+// @Failure 500 {object} map[string]string
+// @Security BearerAuth
+// @Router /selling-prices/{id}/backfill [post]
 func (h *SellingPriceHandler) BackfillPOItems(c echo.Context) error {
 	id, err := pkg.ExtractIDParam(c)
 	if err != nil {
 		return err
 	}
 
-	count, err := h.sellingPriceService.BackfillPOItems(c.Request().Context(), id)
+	var req dto.BackfillSellingPriceRequest
+	if err := c.Bind(&req); err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid request body"})
+	}
+
+	count, err := h.sellingPriceService.ApplyMassiveLinks(c.Request().Context(), id, req.EndEffectiveFrom)
 	if err != nil {
+		if appErr, ok := err.(*pkg.AppError); ok {
+			return c.JSON(appErr.HTTPStatus(), appErr)
+		}
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to backfill", "details": err.Error()})
 	}
 
 	return c.JSON(http.StatusOK, map[string]interface{}{
-		"linked": count,
+		"applied": count,
 	})
 }
 
@@ -159,11 +192,15 @@ func (h *SellingPriceHandler) UpdatePOItemSellingPrice(c echo.Context) error {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid request body"})
 	}
 
-	if req.SellingPrice.LessThanOrEqual(decimal.Zero) {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "selling_price must be greater than 0"})
+	if req.SellingPrice == nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "selling_price is required"})
 	}
 
-	result, err := h.sellingPriceService.UpsertPOItemSellingPrice(c.Request().Context(), poID, uint(itemID), req.SellingPrice)
+	if req.SellingPrice.LessThan(decimal.Zero) {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "selling_price must not be negative"})
+	}
+
+	result, err := h.sellingPriceService.UpsertPOItemSellingPrice(c.Request().Context(), poID, uint(itemID), *req.SellingPrice)
 	if err != nil {
 		if appErr, ok := err.(*pkg.AppError); ok {
 			return c.JSON(appErr.HTTPStatus(), appErr)

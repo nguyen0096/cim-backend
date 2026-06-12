@@ -36,6 +36,18 @@ type SellingPriceRepository interface {
 	GetByID(ctx context.Context, id uint) (*models.SellingPrice, error)
 	ListByProductID(ctx context.Context, productID uint) ([]*models.SellingPrice, error)
 
+	// GetNextInScope returns the chronologically NEXT selling price — the earliest
+	// price strictly after sp.EffectiveFrom — within the same product+inventory
+	// scope (inventory_id compared with IS NOT DISTINCT FROM, so global and
+	// inventory-specific ledgers never bleed into each other). Returns (nil, nil)
+	// when there is no next price.
+	GetNextInScope(ctx context.Context, sp *models.SellingPrice) (*models.SellingPrice, error)
+
+	// GetPrevInScope is the symmetric PREVIOUS lookup: the latest price strictly
+	// before sp.EffectiveFrom in the same product+inventory scope. Returns
+	// (nil, nil) when there is no previous price.
+	GetPrevInScope(ctx context.Context, sp *models.SellingPrice) (*models.SellingPrice, error)
+
 	// GetLatestForProduct returns the latest selling price for a product as of asOfDate.
 	// Fallback: inventory-specific (matching inventoryID) first, then global (inventory_id IS NULL).
 	// inventoryID can be nil to only search global prices.
@@ -110,6 +122,39 @@ func (r *sellingPriceRepository) ListByProductID(ctx context.Context, productID 
 		Order("effective_from DESC").
 		Find(&prices).Error
 	return prices, err
+}
+
+func (r *sellingPriceRepository) GetNextInScope(ctx context.Context, sp *models.SellingPrice) (*models.SellingPrice, error) {
+	return r.adjacentInScope(ctx, sp, "effective_from > ?", "ASC")
+}
+
+func (r *sellingPriceRepository) GetPrevInScope(ctx context.Context, sp *models.SellingPrice) (*models.SellingPrice, error) {
+	return r.adjacentInScope(ctx, sp, "effective_from < ?", "DESC")
+}
+
+// adjacentInScope is the shared next/prev lookup so the scope predicate
+// (product_id match + inventory_id IS NOT DISTINCT FROM) is written exactly
+// once. cmp and ord are constants supplied by the two wrappers above — never
+// caller input — so the string concatenation cannot inject.
+// The id tie-break makes the pick deterministic when two same-scope prices
+// share an effective_from (the schema has no unique constraint preventing
+// that): without it the returned row would be query-plan-dependent.
+func (r *sellingPriceRepository) adjacentInScope(ctx context.Context, sp *models.SellingPrice, cmp, ord string) (*models.SellingPrice, error) {
+	var adjacent models.SellingPrice
+	err := r.db.WithContext(ctx).
+		Raw(`SELECT * FROM selling_prices
+			WHERE product_id = ? AND `+cmp+` AND deleted_at IS NULL
+			AND (inventory_id IS NOT DISTINCT FROM ?)
+			ORDER BY effective_from `+ord+`, id `+ord+` LIMIT 1`,
+			sp.ProductID, sp.EffectiveFrom, sp.InventoryID).
+		Scan(&adjacent).Error
+	if err != nil {
+		return nil, err
+	}
+	if adjacent.ID == 0 {
+		return nil, nil
+	}
+	return &adjacent, nil
 }
 
 func (r *sellingPriceRepository) GetLatestForProduct(ctx context.Context, productID uint, inventoryID *uint, asOfDate time.Time) (*models.SellingPrice, error) {
@@ -215,8 +260,8 @@ func (r *sellingPriceRepository) GetSellingPricesForSellTransactions(ctx context
 		Raw(`SELECT st.id, COALESCE(pisp.selling_price, sp.price) as selling_price
 			FROM inventory_transactions st
 			JOIN inventory_transactions pt ON pt.id = st.counter_transaction_id
-			JOIN purchase_order_item_selling_prices pisp ON pisp.purchase_order_item_id = pt.purchase_order_item_id
-			LEFT JOIN selling_prices sp ON sp.id = pisp.selling_price_id
+			JOIN purchase_order_item_selling_prices pisp ON pisp.purchase_order_item_id = pt.purchase_order_item_id AND pisp.deleted_at IS NULL
+			LEFT JOIN selling_prices sp ON sp.id = pisp.selling_price_id AND sp.deleted_at IS NULL
 			WHERE st.id IN ?
 			AND COALESCE(pisp.selling_price, sp.price) IS NOT NULL`, sellTxnIDs).
 		Scan(&results).Error
