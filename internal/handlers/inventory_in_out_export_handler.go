@@ -36,7 +36,7 @@ func NewInventoryInOutExportHandler(exportService services.InventoryInOutExportS
 // (when ignore_missing_selling_price is not set), where the body includes a
 // "missing_selling_prices" array of { po_id, po_number }. The client warns the
 // user, then re-requests with ignore_missing_selling_price=true to export
-// anyway — uncomputable values render as "N/A".
+// anyway — uncomputable values render as "-".
 func (h *InventoryInOutExportHandler) ExportInventoryInOut(c echo.Context) error {
 	id, err := pkg.ExtractIDParam(c)
 	if err != nil {

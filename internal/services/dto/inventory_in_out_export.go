@@ -7,7 +7,7 @@ type InventoryInOutExportRequest struct {
 	StartDate   string `query:"start_date" validate:"required"`
 	EndDate     string `query:"end_date" validate:"required"`
 	// IgnoreMissingSellingPrice bypasses the missing-selling-price precondition:
-	// the export proceeds and uncomputable values render as "N/A".
+	// the export proceeds and uncomputable values render as "-".
 	IgnoreMissingSellingPrice bool `query:"ignore_missing_selling_price"`
 }
 

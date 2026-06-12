@@ -47,8 +47,11 @@ const (
 	headerFill  = "305496" // deep blue, white bold text
 	footerFill  = "DDEBF7" // soft light blue
 	borderColor = "BFBFBF"
-	// naText renders cells that can't be computed (no selling price).
-	naText = "N/A"
+	// dashText renders "empty" cells with a dash instead of a noisy zero or
+	// "N/A": a missing (nil) selling price, the revenue that can't be computed
+	// from a missing price, and quantity cells whose value is exactly zero.
+	// A real 0 selling price (a valid value) still renders as 0, not "-".
+	dashText = "-"
 )
 
 // ExportContext bundles audit-metadata fields the writer renders into the
@@ -389,6 +392,17 @@ func writeOneRow(f *excelize.File, r *ExportRow, l colLayout, row int) error {
 		fl, _ := v.Float64()
 		return f.SetCellValue(inOutSheetName, c, fl)
 	}
+	// setQty writes a quantity cell as a numeric value, except an exact zero,
+	// which is rendered as the literal "-" to avoid noisy zeros. Downstream
+	// formulas that reference these cells (revenue, TT totals, group SUMs)
+	// tolerate the text via ISNUMBER / N() guards, so a "-" never produces
+	// #VALUE! and never inflates a sum.
+	setQty := func(col int, v decimal.Decimal) error {
+		if v.IsZero() {
+			return setStr(col, dashText)
+		}
+		return setNum(col, v)
+	}
 	setFormula := func(col int, formula string) error {
 		c, _ := excelize.CoordinatesToCellName(col, row)
 		return f.SetCellFormula(inOutSheetName, c, formula)
@@ -404,64 +418,70 @@ func writeOneRow(f *excelize.File, r *ExportRow, l colLayout, row int) error {
 	if err := setStr(l.unit, r.UnitName); err != nil {
 		return err
 	}
-	for d, qty := range r.DailyPurchases {
-		if qty.IsZero() {
-			continue
-		}
-		if err := setNum(l.dailyStart+d, qty); err != nil {
+	// Fill EVERY day column: a day with a purchase gets the numeric quantity;
+	// a day with no purchase (missing map key — the zero-value Decimal IsZero)
+	// or an explicit zero entry renders "-" via setQty, keeping the dash
+	// convention in one place. No formula references these daily cells, so the
+	// text "-" is safe.
+	for col := l.dailyStart; col <= l.dailyEnd; col++ {
+		if err := setQty(col, r.DailyPurchases[col-l.dailyStart]); err != nil {
 			return err
 		}
 	}
 	if err := setNum(l.purchasePrice, r.PurchasePrice); err != nil {
 		return err
 	}
-	// No effective selling price → literal "N/A".
+	// Missing (nil) effective selling price → literal "-". A real 0 is a valid
+	// price and still renders as 0 (it goes through setNum, not the dash branch).
 	if r.SellingPrice != nil {
 		if err := setNum(l.sellingPrice, *r.SellingPrice); err != nil {
 			return err
 		}
 	} else {
-		if err := setStr(l.sellingPrice, naText); err != nil {
+		if err := setStr(l.sellingPrice, dashText); err != nil {
 			return err
 		}
 	}
-	if err := setNum(l.beginningStock, r.BeginningStock); err != nil {
+	if err := setQty(l.beginningStock, r.BeginningStock); err != nil {
 		return err
 	}
-	if err := setNum(l.endingStock, r.EndingStock); err != nil {
+	if err := setQty(l.endingStock, r.EndingStock); err != nil {
 		return err
 	}
-	if err := setNum(l.subtotalSold, r.SubtotalSold); err != nil {
+	if err := setQty(l.subtotalSold, r.SubtotalSold); err != nil {
 		return err
 	}
-	// subtotal_revenue = selling_price × subtotal_sold. ISNUMBER guard yields
-	// "N/A" (not #VALUE!) when the price cell is text, and recomputes if a real
-	// price is later typed over it.
-	if err := setFormula(l.subtotalRevenue, fmt.Sprintf(`IF(ISNUMBER(%s%d),%s%d*%s%d,"%s")`,
+	// subtotal_revenue = selling_price × subtotal_sold.
+	//   - Missing price (selling-price cell is text "-") → revenue "-".
+	//   - Otherwise compute; N() coerces a text "-" in the sold cell to 0 so a
+	//     real 0 revenue (0 price or 0 sold) stays numeric 0, not "-" or #VALUE!.
+	if err := setFormula(l.subtotalRevenue, fmt.Sprintf(`IF(ISNUMBER(%s%d),%s%d*N(%s%d),"%s")`,
 		colName(l.sellingPrice), row,
 		colName(l.sellingPrice), row, colName(l.subtotalSold), row,
-		naText)); err != nil {
+		dashText)); err != nil {
 		return err
 	}
-	if err := setNum(l.totalPurchasedAmount, r.TotalPurchasedAmount); err != nil {
+	if err := setQty(l.totalPurchasedAmount, r.TotalPurchasedAmount); err != nil {
 		return err
 	}
-	// total_purchased.total = purchase_price × amount
-	if err := setFormula(l.totalPurchasedTotal, fmt.Sprintf("%s%d*%s%d",
+	// total_purchased.total = purchase_price × amount. N() coerces a text "-"
+	// amount to 0 so the money total stays numeric (0) without #VALUE!.
+	if err := setFormula(l.totalPurchasedTotal, fmt.Sprintf("%s%d*N(%s%d)",
 		colName(l.purchasePrice), row, colName(l.totalPurchasedAmount), row)); err != nil {
 		return err
 	}
-	if err := setNum(l.totalDisposedAmount, r.TotalDisposedAmount); err != nil {
+	if err := setQty(l.totalDisposedAmount, r.TotalDisposedAmount); err != nil {
 		return err
 	}
-	if err := setFormula(l.totalDisposedTotal, fmt.Sprintf("%s%d*%s%d",
+	// total_disposed.total = purchase_price × disposed_amount (N()-guarded, as above).
+	if err := setFormula(l.totalDisposedTotal, fmt.Sprintf("%s%d*N(%s%d)",
 		colName(l.purchasePrice), row, colName(l.totalDisposedAmount), row)); err != nil {
 		return err
 	}
-	if err := setNum(l.totalTransferredIn, r.TotalTransferredIn); err != nil {
+	if err := setQty(l.totalTransferredIn, r.TotalTransferredIn); err != nil {
 		return err
 	}
-	if err := setNum(l.totalTransferredOut, r.TotalTransferredOut); err != nil {
+	if err := setQty(l.totalTransferredOut, r.TotalTransferredOut); err != nil {
 		return err
 	}
 	return nil
@@ -492,6 +512,14 @@ func mergeProductGroup(f *excelize.File, l colLayout, g productGroup, startRow, 
 		formula := fmt.Sprintf("SUM(%s%d:%s%d)", colName(sourceCol), startRow, colName(sourceCol), endRow)
 		return f.SetCellFormula(inOutSheetName, topCell, formula)
 	}
+	// setQtySUMOnFirst is the quantity variant: SUM (which skips any "-" text
+	// cells) wrapped so a zero total renders as "-" instead of 0, matching the
+	// per-row quantity rule.
+	setQtySUMOnFirst := func(col int, sourceCol int) error {
+		topCell, _ := excelize.CoordinatesToCellName(col, startRow)
+		sum := fmt.Sprintf("SUM(%s%d:%s%d)", colName(sourceCol), startRow, colName(sourceCol), endRow)
+		return f.SetCellFormula(inOutSheetName, topCell, fmt.Sprintf(`IF(%s=0,"%s",%s)`, sum, dashText, sum))
+	}
 
 	if err := mergeRange(l.productName); err != nil {
 		return err
@@ -500,20 +528,22 @@ func mergeProductGroup(f *excelize.File, l colLayout, g productGroup, startRow, 
 		return err
 	}
 
-	// Merged aggregations
-	if err := setSUMOnFirst(l.totalSold, l.subtotalSold); err != nil {
+	// Merged aggregations. Quantity totals dash out a zero sum; revenue total
+	// stays a plain SUM so a real 0 revenue shows 0 (missing-price rows already
+	// contribute the text "-" their subtotal renders and SUM skips).
+	if err := setQtySUMOnFirst(l.totalSold, l.subtotalSold); err != nil {
 		return err
 	}
 	if err := mergeRange(l.totalSold); err != nil {
 		return err
 	}
-	if err := setSUMOnFirst(l.totalBeginningStock, l.beginningStock); err != nil {
+	if err := setQtySUMOnFirst(l.totalBeginningStock, l.beginningStock); err != nil {
 		return err
 	}
 	if err := mergeRange(l.totalBeginningStock); err != nil {
 		return err
 	}
-	if err := setSUMOnFirst(l.totalEndingStock, l.endingStock); err != nil {
+	if err := setQtySUMOnFirst(l.totalEndingStock, l.endingStock); err != nil {
 		return err
 	}
 	if err := mergeRange(l.totalEndingStock); err != nil {

@@ -136,23 +136,24 @@ func TestWriteInOutExport_DataRowFormulasAndValues(t *testing.T) {
 	assert.Equal(t, "50", read("H8")) // purchase_price
 	assert.Equal(t, "80", read("I8")) // selling_price
 	// subtotal_revenue = selling × subtotal_sold, guarded so a missing price
-	// (text "N/A" in the selling-price cell) yields "N/A" not #VALUE!.
-	assert.Equal(t, `IF(ISNUMBER(I8),I8*L8,"N/A")`, formula("M8"))
-	// total_purchased.total = purchase_price × amount
-	assert.Equal(t, "H8*N8", formula("O8"))
-	// total_disposed.total = purchase_price × disposed_amount
-	assert.Equal(t, "H8*Q8", formula("R8"))
+	// (text "-" in the selling-price cell) yields "-" not #VALUE!. N() coerces
+	// a "-" sold cell to 0 so a real 0 revenue stays numeric 0.
+	assert.Equal(t, `IF(ISNUMBER(I8),I8*N(L8),"-")`, formula("M8"))
+	// total_purchased.total = purchase_price × amount; N() tolerates a "-" amount.
+	assert.Equal(t, "H8*N(N8)", formula("O8"))
+	// total_disposed.total = purchase_price × disposed_amount; N()-guarded.
+	assert.Equal(t, "H8*N(Q8)", formula("R8"))
 
-	// Group totals on first row of group (row 8): merged across 8-9
-	assert.Equal(t, "SUM(L8:L9)", formula("P8")) // total_sold = SUM(subtotal_sold)
+	// Group totals on first row of group (row 8): merged across 8-9. Quantity
+	// total dashes out a zero sum.
+	assert.Equal(t, `IF(SUM(L8:L9)=0,"-",SUM(L8:L9))`, formula("P8")) // total_sold = SUM(subtotal_sold)
 }
 
-func TestWriteInOutExport_MissingSellingPriceRendersNA(t *testing.T) {
+func TestWriteInOutExport_MissingSellingPriceRendersDash(t *testing.T) {
 	// A POI with no effective selling price (nil) renders the selling-price
-	// cell as the literal "N/A" and its revenue as an ISNUMBER-guarded formula
-	// that evaluates to "N/A" rather than #VALUE!. Reachable only on a
-	// confirmed export. The group/footer revenue SUMs are unchanged and skip
-	// the text cell.
+	// cell as the literal "-" and its revenue as an ISNUMBER-guarded formula
+	// that evaluates to "-" rather than #VALUE!. The group/footer revenue SUMs
+	// are plain SUMs and skip the text cell.
 	start := time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC)
 	rows := &ExportRows{
 		StartDate: start, EndDate: start.AddDate(0, 0, 4), DayCount: 5,
@@ -180,11 +181,91 @@ func TestWriteInOutExport_MissingSellingPriceRendersNA(t *testing.T) {
 		return v
 	}
 
-	assert.Equal(t, "N/A", read("I8")) // selling-price cell is literal text
-	// Revenue formula present and guarded; evaluates to "N/A" for a text price.
-	assert.Equal(t, `IF(ISNUMBER(I8),I8*L8,"N/A")`, formula("M8"))
-	// Group/footer revenue totals stay plain SUMs (Excel skips the "N/A" text).
+	assert.Equal(t, "-", read("I8")) // selling-price cell is literal dash
+	// Revenue formula present and guarded; evaluates to "-" for a text price.
+	assert.Equal(t, `IF(ISNUMBER(I8),I8*N(L8),"-")`, formula("M8"))
+	// Group/footer revenue totals stay plain SUMs (Excel skips the "-" text).
 	assert.Equal(t, "SUM(M8:M8)", formula("W8"))
+}
+
+func TestWriteInOutExport_ZeroQuantityRendersDash(t *testing.T) {
+	// Quantity cells whose value is exactly zero render the literal "-" instead
+	// of a noisy 0. A real 0 selling price (a valid value) still renders as 0.
+	start := time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC)
+	rows := &ExportRows{
+		StartDate: start, EndDate: start.AddDate(0, 0, 4), DayCount: 5,
+		Rows: []*ExportRow{{
+			ProductID: 1, ProductName: "Apple", UnitName: "kg",
+			POItemID: 100, POID: 10, PONumber: "PO-1",
+			PurchasePrice: dec(50), SellingPrice: decPtr(0), // real 0 price → stays 0
+			DailyPurchases:       map[int]decimal.Decimal{0: dec(10)},
+			BeginningStock:       dec(0), // zero qty → "-"
+			EndingStock:          dec(7),
+			TotalPurchasedAmount: dec(10),
+			SubtotalSold:         dec(0), // zero qty → "-"
+			TotalDisposedAmount:  dec(0), // zero qty → "-"
+			TotalTransferredIn:   dec(0), // zero qty → "-"
+			TotalTransferredOut:  dec(0), // zero qty → "-"
+		}},
+	}
+	f, err := WriteInOutExport(rows, ExportContext{InventoryName: "Kho A"})
+	require.NoError(t, err)
+	defer f.Close()
+
+	read := func(cell string) string {
+		v, _ := f.GetCellValue(inOutSheetName, cell, excelize.Options{RawCellValue: true})
+		return v
+	}
+	formula := func(cell string) string {
+		v, _ := f.GetCellFormula(inOutSheetName, cell)
+		return v
+	}
+
+	// Real 0 selling price stays the numeric 0 (NOT "-").
+	assert.Equal(t, "0", read("I8"))
+	// Zero quantities render "-".
+	assert.Equal(t, "-", read("J8")) // beginning stock = 0
+	assert.Equal(t, "-", read("L8")) // subtotal sold = 0
+	assert.Equal(t, "-", read("Q8")) // total disposed amount = 0
+	// Non-zero quantities stay numeric.
+	assert.Equal(t, "10", read("N8")) // total purchased amount = 10
+	assert.Equal(t, "7", read("K8"))  // ending stock = 7
+	// Revenue formula tolerates the "-" sold cell via N() and the real 0 price.
+	assert.Equal(t, `IF(ISNUMBER(I8),I8*N(L8),"-")`, formula("M8"))
+	// Quantity group total dashes out a zero sum (single-row group: SUM(L8:L8)).
+	assert.Equal(t, `IF(SUM(L8:L8)=0,"-",SUM(L8:L8))`, formula("P8"))
+}
+
+func TestWriteInOutExport_DailyNoPurchaseCellsRenderDash(t *testing.T) {
+	// Every daily column under "Số lượng nhập trong kì" is filled: days with a
+	// purchase show the numeric quantity; days with no purchase (missing map
+	// key) and explicit zero-quantity entries render "-" like every other empty
+	// quantity cell — never a blank.
+	rows := sampleRows()
+	// Explicit zero entry for day 1 of row 1: must render "-" too.
+	rows.Rows[0].DailyPurchases[1] = dec(0)
+	f, err := WriteInOutExport(rows, ExportContext{InventoryName: "Kho A"})
+	require.NoError(t, err)
+	defer f.Close()
+
+	read := func(cell string) string {
+		v, _ := f.GetCellValue(inOutSheetName, cell, excelize.Options{RawCellValue: true})
+		return v
+	}
+
+	// Row 8 (Apple PO-1): purchase on day 0 only. Daily columns are C..G.
+	assert.Equal(t, "10", read("C8")) // day 0: real purchase stays numeric
+	assert.Equal(t, "-", read("D8"))  // day 1: explicit zero entry → "-"
+	assert.Equal(t, "-", read("E8"))  // day 2: no purchase → "-"
+	assert.Equal(t, "-", read("F8"))  // day 3: no purchase → "-"
+	assert.Equal(t, "-", read("G8"))  // day 4: no purchase → "-"
+
+	// Row 9 (Apple PO-2): purchase on day 2 only.
+	assert.Equal(t, "-", read("C9"))
+	assert.Equal(t, "-", read("D9"))
+	assert.Equal(t, "5", read("E9")) // day 2: real purchase stays numeric
+	assert.Equal(t, "-", read("F9"))
+	assert.Equal(t, "-", read("G9"))
 }
 
 func TestWriteInOutExport_FooterRowSums(t *testing.T) {
@@ -276,8 +357,9 @@ func TestWriteInOutExport_DistinctProductsSameDisplayNameNotMerged(t *testing.T)
 		return v
 	}
 	// Two single-row groups: row 8 totals over L8:L8, row 9 over L9:L9.
-	assert.Equal(t, "SUM(L8:L8)", formula("P8"))
-	assert.Equal(t, "SUM(L9:L9)", formula("P9"))
+	// Quantity totals are dash-guarded so a zero sum renders "-".
+	assert.Equal(t, `IF(SUM(L8:L8)=0,"-",SUM(L8:L8))`, formula("P8"))
+	assert.Equal(t, `IF(SUM(L9:L9)=0,"-",SUM(L9:L9))`, formula("P9"))
 }
 
 func TestSanitizeFilenameSegment(t *testing.T) {

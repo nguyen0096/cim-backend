@@ -57,7 +57,8 @@ type ExportRow struct {
 
 	PurchasePrice decimal.Decimal
 	// SellingPrice is nil when the POI has no effective price; the writer then
-	// renders the cell (and its revenue) as "N/A".
+	// renders the cell (and its revenue) as "-". A real 0 is a valid price and
+	// renders as 0.
 	SellingPrice *decimal.Decimal
 
 	// DailyPurchases: amounts indexed by day-of-window (0-based inclusive).
@@ -142,7 +143,7 @@ func BuildExportRows(in ShaperInput) *ExportRows {
 			POID:           info.POID,
 			PONumber:       info.PONumber,
 			PurchasePrice:  purchasePrice,
-			SellingPrice:   info.EffectivePrice, // nil → rendered "N/A" by the writer
+			SellingPrice:   info.EffectivePrice, // nil → rendered "-" by the writer
 			DailyPurchases: make(map[int]decimal.Decimal),
 		}
 		rowByPOItem[poItemID] = r
