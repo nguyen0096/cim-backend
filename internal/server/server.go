@@ -81,7 +81,7 @@ func SetupServer(
 	saleOrderService := services.NewSaleOrderService(saleOrderRepo, db)
 	sellingPriceService := services.NewSellingPriceService(sellingPriceRepo, productRepo, db)
 	inventoryTimelineService := services.NewInventoryTimelineService(inventoryRepo, inventoryItemRepo, sellingPriceRepo)
-	inventoryInOutExportService := services.NewInventoryInOutExportService(inventoryRepo, sellingPriceRepo, s3Client)
+	inventoryInOutExportService := services.NewInventoryInOutExportService(inventoryRepo, sellingPriceRepo, s3Client, cfg.R2.ExportPrefix)
 
 	// Initialize handlers
 	userHandler := handlers.NewUserHandler(userService, firebaseAuth)

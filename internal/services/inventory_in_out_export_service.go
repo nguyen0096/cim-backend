@@ -13,15 +13,14 @@ import (
 	excelpkg "cim-backend/internal/services/excel"
 	"cim-backend/pkg"
 
-	"github.com/google/uuid"
 	"github.com/shopspring/decimal"
 )
 
 // InventoryInOutExportService orchestrates the inventory in/out Excel export:
-//   1. fetch inventory + period & historical txns + PO selling-price info
-//   2. validate every in-scope PO has a selling price
-//   3. shape rows & render xlsx
-//   4. upload to S3 & return a presigned URL
+//  1. fetch inventory + period & historical txns + PO selling-price info
+//  2. validate every in-scope PO has a selling price
+//  3. shape rows & render xlsx
+//  4. upload to S3 & return a presigned URL
 //
 //go:generate mockery --name=InventoryInOutExportService --structname=InventoryInOutExportService --output=../mocks/servicemocks --outpkg=servicemocks
 type InventoryInOutExportService interface {
@@ -32,18 +31,22 @@ type inventoryInOutExportService struct {
 	inventoryRepo    repository.InventoryRepository
 	sellingPriceRepo repository.SellingPriceRepository
 	s3Client         S3Client
+	exportPrefix     string
 }
 
-// NewInventoryInOutExportService constructs the service.
+// NewInventoryInOutExportService constructs the service. exportPrefix is the
+// config-driven base object-key prefix (e.g. "exports") for generated files.
 func NewInventoryInOutExportService(
 	inventoryRepo repository.InventoryRepository,
 	sellingPriceRepo repository.SellingPriceRepository,
 	s3Client S3Client,
+	exportPrefix string,
 ) InventoryInOutExportService {
 	return &inventoryInOutExportService{
 		inventoryRepo:    inventoryRepo,
 		sellingPriceRepo: sellingPriceRepo,
 		s3Client:         s3Client,
+		exportPrefix:     exportPrefix,
 	}
 }
 
@@ -159,9 +162,16 @@ func (s *inventoryInOutExportService) Export(ctx context.Context, req dto.Invent
 		endDate.Format("20060102"),
 	)
 
-	// Upload + presign. Mirrors PopulateExportURL pattern.
-	fileKey := fmt.Sprintf("exports/%d/%02d/%02d/%s.xlsx",
-		generatedAt.Year(), generatedAt.Month(), generatedAt.Day(), uuid.New().String())
+	// Upload + presign. Mirrors PopulateExportURL pattern. The object key is
+	// server-derived & per-inventory segregated (see BuildExportObjectKey).
+	fileKey := BuildExportObjectKey(
+		s.exportPrefix,
+		req.InventoryID,
+		generatedAt,
+		inventory.Name,
+		startDate.Format("20060102"),
+		endDate.Format("20060102"),
+	)
 	contentType := "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 	if err := s.s3Client.UploadFile(ctx, fileKey, xlsxBytes, contentType); err != nil {
 		return nil, fmt.Errorf("failed to upload file: %w", err)
@@ -396,9 +406,9 @@ func newMissingSellingPriceError(missing []dto.MissingSellingPricePO) *missingSe
 
 func (e *missingSellingPriceError) MarshalJSON() ([]byte, error) {
 	obj := map[string]interface{}{
-		"code":                    e.Code.String(),
-		"message":                 e.Message,
-		"missing_selling_prices":  e.MissingPOs,
+		"code":                   e.Code.String(),
+		"message":                e.Message,
+		"missing_selling_prices": e.MissingPOs,
 	}
 	return json.Marshal(obj)
 }

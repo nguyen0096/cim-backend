@@ -77,6 +77,10 @@ type R2Config struct {
 	SecretAccessKey string
 	BucketName      string
 	Enabled         bool
+	// ExportPrefix is the base object-key prefix for generated export files.
+	// Defaults to "exports"; leading/trailing slashes are trimmed at load so a
+	// misconfigured value can't regress exports to the bucket root.
+	ExportPrefix string
 }
 
 // Load loads configuration from environment variables.
@@ -131,6 +135,7 @@ func Load(filePath ...string) *Config {
 			SecretAccessKey: getEnv("R2_SECRET_ACCESS_KEY", ""),
 			BucketName:      getEnv("R2_BUCKET_NAME", ""),
 			Enabled:         getEnv("R2_ENABLED", "false") == "true",
+			ExportPrefix:    normalizeExportPrefix(getEnv("R2_EXPORT_PREFIX", "exports")),
 		},
 		UploadsBasePath: getEnv("UPLOADS_BASE_PATH", "uploads"),
 		Log: log.Config{
@@ -138,6 +143,29 @@ func Load(filePath ...string) *Config {
 		},
 	}
 	return App
+}
+
+// normalizeExportPrefix sanitizes the configured export prefix into a safe
+// object-key prefix. It trims surrounding whitespace, treats both "/" and "\"
+// as separators, and drops empty and path-traversal ("..") segments so a
+// misconfigured value (e.g. "../exports", "..", "\exports\") can never regress
+// generated keys toward—or above—the bucket root. Falls back to "exports" when
+// nothing safe remains.
+func normalizeExportPrefix(value string) string {
+	value = strings.ReplaceAll(strings.TrimSpace(value), "\\", "/")
+	segments := strings.Split(value, "/")
+	safe := make([]string, 0, len(segments))
+	for _, seg := range segments {
+		seg = strings.TrimSpace(seg)
+		if seg == "" || seg == "." || seg == ".." {
+			continue
+		}
+		safe = append(safe, seg)
+	}
+	if len(safe) == 0 {
+		return "exports"
+	}
+	return strings.Join(safe, "/")
 }
 
 func getEnv(key, defaultValue string) string {

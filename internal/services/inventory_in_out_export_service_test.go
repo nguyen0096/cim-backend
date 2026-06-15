@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -27,14 +28,18 @@ type fakeS3 struct {
 	UploadErr       error
 	URL             string
 	PresignFilename string // captures the download filename passed for Content-Disposition
+	UploadedKey     string // captures the object key passed to UploadFile
+	PresignedKey    string // captures the object key passed to GeneratePresignedURL
 }
 
-func (f *fakeS3) UploadFile(_ context.Context, _ string, _ []byte, _ string) error {
+func (f *fakeS3) UploadFile(_ context.Context, key string, _ []byte, _ string) error {
 	f.UploadCalled = true
+	f.UploadedKey = key
 	return f.UploadErr
 }
-func (f *fakeS3) GeneratePresignedURL(_ context.Context, _ string, _ time.Duration, downloadFilename ...string) (string, error) {
+func (f *fakeS3) GeneratePresignedURL(_ context.Context, key string, _ time.Duration, downloadFilename ...string) (string, error) {
 	f.PresignCalled = true
+	f.PresignedKey = key
 	if len(downloadFilename) > 0 {
 		f.PresignFilename = downloadFilename[0]
 	}
@@ -43,6 +48,9 @@ func (f *fakeS3) GeneratePresignedURL(_ context.Context, _ string, _ time.Durati
 	}
 	return f.URL, nil
 }
+
+// testExportPrefix is the configured base prefix used across these tests.
+const testExportPrefix = "exports"
 
 const (
 	ioInvID    = uint(10)
@@ -84,7 +92,7 @@ func TestExport_HappyPath_UploadsAndReturnsURL(t *testing.T) {
 	spRepo := repositorymocks.NewSellingPriceRepository(t)
 	s3 := &fakeS3{}
 
-	svc := NewInventoryInOutExportService(invRepo, spRepo, s3)
+	svc := NewInventoryInOutExportService(invRepo, spRepo, s3, testExportPrefix)
 
 	poiID := uint(ioPOItemID)
 	purchase := &repository.InventoryTransactionWithCounter{
@@ -124,6 +132,18 @@ func TestExport_HappyPath_UploadsAndReturnsURL(t *testing.T) {
 	// The meaningful filename is passed to the presigned URL (Content-Disposition)
 	// so the download isn't named after the UUID storage key.
 	assert.Equal(t, resp.Filename, s3.PresignFilename)
+
+	// The server-derived object key is config-prefixed, per-inventory
+	// segregated, carries the sanitized name + period, and is never bare-root.
+	require.NotEmpty(t, s3.UploadedKey)
+	assert.True(t, strings.HasPrefix(s3.UploadedKey, testExportPrefix+"/inventory/10/"),
+		"key %q must be prefixed and segregated by inventory id", s3.UploadedKey)
+	assert.Contains(t, s3.UploadedKey, "-kho-a-")
+	assert.Contains(t, s3.UploadedKey, "-20260401-20260430-")
+	assert.True(t, strings.HasSuffix(s3.UploadedKey, ".xlsx"))
+	assert.NotEqual(t, "/", string(s3.UploadedKey[0]), "key must never start at bucket root")
+	// Upload and presign must target the identical key.
+	assert.Equal(t, s3.UploadedKey, s3.PresignedKey)
 }
 
 func TestExport_PreconditionMissingSellingPrice(t *testing.T) {
@@ -132,7 +152,7 @@ func TestExport_PreconditionMissingSellingPrice(t *testing.T) {
 	spRepo := repositorymocks.NewSellingPriceRepository(t)
 	s3 := &fakeS3{}
 
-	svc := NewInventoryInOutExportService(invRepo, spRepo, s3)
+	svc := NewInventoryInOutExportService(invRepo, spRepo, s3, testExportPrefix)
 
 	poiID := uint(ioPOItemID)
 	purchase := &repository.InventoryTransactionWithCounter{
@@ -192,7 +212,7 @@ func TestExport_IgnoreMissingSellingPriceBypassesPrecondition(t *testing.T) {
 	spRepo := repositorymocks.NewSellingPriceRepository(t)
 	s3 := &fakeS3{}
 
-	svc := NewInventoryInOutExportService(invRepo, spRepo, s3)
+	svc := NewInventoryInOutExportService(invRepo, spRepo, s3, testExportPrefix)
 
 	poiID := uint(ioPOItemID)
 	purchase := &repository.InventoryTransactionWithCounter{
@@ -243,7 +263,7 @@ func TestExport_CrossInventoryTransferInResolvesSourcePOI(t *testing.T) {
 	invRepo := repositorymocks.NewInventoryRepository(t)
 	spRepo := repositorymocks.NewSellingPriceRepository(t)
 	s3 := &fakeS3{}
-	svc := NewInventoryInOutExportService(invRepo, spRepo, s3)
+	svc := NewInventoryInOutExportService(invRepo, spRepo, s3, testExportPrefix)
 
 	const sourcePOIID = uint(900) // POI that lives in OTHER inventory
 	srcPOI := uint(sourcePOIID)
@@ -300,7 +320,7 @@ func TestExport_FractionalCarryOverDoesNotConfusePrecondition(t *testing.T) {
 	invRepo := repositorymocks.NewInventoryRepository(t)
 	spRepo := repositorymocks.NewSellingPriceRepository(t)
 	s3 := &fakeS3{}
-	svc := NewInventoryInOutExportService(invRepo, spRepo, s3)
+	svc := NewInventoryInOutExportService(invRepo, spRepo, s3, testExportPrefix)
 
 	const fracPOI = uint(800)
 	poiID := uint(fracPOI)
@@ -349,7 +369,7 @@ func TestExport_BadDateRange(t *testing.T) {
 	invRepo := repositorymocks.NewInventoryRepository(t)
 	spRepo := repositorymocks.NewSellingPriceRepository(t)
 	s3 := &fakeS3{}
-	svc := NewInventoryInOutExportService(invRepo, spRepo, s3)
+	svc := NewInventoryInOutExportService(invRepo, spRepo, s3, testExportPrefix)
 
 	resp, err := svc.Export(ctx, dto.InventoryInOutExportRequest{
 		InventoryID: ioInvID,

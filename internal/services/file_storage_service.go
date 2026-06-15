@@ -35,6 +35,7 @@ type fileStorageService struct {
 	uploadsBasePath string
 	s3Client        S3Client
 	r2Enabled       bool
+	exportPrefix    string
 }
 
 // NewFileStorageService creates a new file storage service
@@ -43,6 +44,7 @@ func NewFileStorageService(cfg *config.Config, s3Client S3Client) FileStorageSer
 		uploadsBasePath: cfg.UploadsBasePath,
 		s3Client:        s3Client,
 		r2Enabled:       cfg.R2.Enabled,
+		exportPrefix:    cfg.R2.ExportPrefix,
 	}
 
 	// Ensure upload directories exist on initialization
@@ -220,13 +222,11 @@ func (s *fileStorageService) PopulateExportURL(ctx context.Context, export *mode
 		return pkg.ErrValidation("export file content cannot be empty", nil)
 	}
 
-	// Generate file key with date organization
+	// Generate file key with date organization. This legacy path has no
+	// inventory/period identity, so it uses the config-prefixed fallback shape
+	// (<prefix>/inventory/YYYY/MM/DD/<uuid>.xlsx).
 	now := time.Now()
-	fileUID := uuid.New().String()
-
-	// Format: exports/YYYY/MM/DD/uuid.xlsx
-	fileKey := fmt.Sprintf("exports/%d/%02d/%02d/%s.xlsx",
-		now.Year(), now.Month(), now.Day(), fileUID)
+	fileKey := buildExportFallbackKey(s.exportPrefix, now)
 
 	log.WithFields(logrus.Fields{
 		"file_key":     fileKey,
