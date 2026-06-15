@@ -89,6 +89,13 @@ const (
 
 	// Unit Error Keys
 	ErrKeyUnitConversionAlreadyExists = "unit_conversion_already_exists"
+
+	// Selling Price Error Keys
+
+	ErrKeySellingPriceInventorySpecificUnsupported  = "selling_price_inventory_specific_unsupported"
+	ErrKeySellingPriceInvalidEndEffectiveFromFormat = "selling_price_invalid_end_effective_from_format"
+	ErrKeySellingPriceMoveEarliestNoTakeover        = "selling_price_move_earliest_no_takeover"
+	ErrKeySellingPriceDeleteNoTakeover              = "selling_price_delete_no_takeover"
 )
 
 // ErrorMessages maps error keys to multilingual messages
@@ -311,6 +318,24 @@ var ErrorMessages = map[string]ErrorMessage{
 	ErrKeyUnitConversionAlreadyExists: {
 		EN: "Unit conversion from %d to %d already exists",
 		VI: "Đã tồn tại chuyển đổi đơn vị từ %d đến %d",
+	},
+
+	// Selling Price Errors
+	ErrKeySellingPriceInventorySpecificUnsupported: {
+		EN: "inventory-specific selling price is not supported yet",
+		VI: "giá bán riêng theo kho chưa được hỗ trợ",
+	},
+	ErrKeySellingPriceInvalidEndEffectiveFromFormat: {
+		EN: "invalid end_effective_from date format, expected YYYY-MM-DD",
+		VI: "định dạng ngày end_effective_from không hợp lệ, yêu cầu YYYY-MM-DD",
+	},
+	ErrKeySellingPriceMoveEarliestNoTakeover: {
+		EN: "cannot move the earliest selling price later: the vacated window would have no selling price to take over",
+		VI: "không thể dời giá bán sớm nhất sang ngày muộn hơn: khoảng thời gian bị bỏ trống sẽ không có giá bán nào thay thế",
+	},
+	ErrKeySellingPriceDeleteNoTakeover: {
+		EN: "cannot delete: no previous selling price to take over the vacated window",
+		VI: "không thể xóa: không có giá bán trước đó để thay thế cho khoảng thời gian bị bỏ trống",
 	},
 }
 
@@ -739,4 +764,26 @@ func ErrQuantityHavingMoreDecimalPlacesThanProductUnit(ctx context.Context,
 func ErrFailedToCreateProduct(ctx context.Context, cause error) *AppError {
 	message := getErrorMessage(ctx, ErrKeyFailedToCreateProduct)
 	return NewAppError(ErrorCodeInternal, message, cause)
+}
+
+// Selling Price Error Helpers
+
+// ErrSellingPriceInventorySpecificUnsupported creates an error when an inventory-scoped selling price is requested
+func ErrSellingPriceInventorySpecificUnsupported(ctx context.Context) *AppError {
+	return ErrValidation(getErrorMessage(ctx, ErrKeySellingPriceInventorySpecificUnsupported), nil)
+}
+
+// ErrSellingPriceInvalidEndEffectiveFromFormat creates an error for a malformed end_effective_from date
+func ErrSellingPriceInvalidEndEffectiveFromFormat(ctx context.Context, cause error) *AppError {
+	return ErrValidation(getErrorMessage(ctx, ErrKeySellingPriceInvalidEndEffectiveFromFormat), cause)
+}
+
+// ErrSellingPriceMoveEarliestNoTakeover creates an error when moving the earliest price later would leave a window with no price to take over
+func ErrSellingPriceMoveEarliestNoTakeover(ctx context.Context) *AppError {
+	return ErrValidation(getErrorMessage(ctx, ErrKeySellingPriceMoveEarliestNoTakeover), nil)
+}
+
+// ErrSellingPriceDeleteNoTakeover creates an error when deleting a price would leave the vacated window with no previous price to take over
+func ErrSellingPriceDeleteNoTakeover(ctx context.Context) *AppError {
+	return ErrValidation(getErrorMessage(ctx, ErrKeySellingPriceDeleteNoTakeover), nil)
 }

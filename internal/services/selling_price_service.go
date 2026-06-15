@@ -67,7 +67,7 @@ func (s *sellingPriceService) CreateSellingPrice(ctx context.Context, req dto.Cr
 	// NULL). The schema and apply-scope SQL already handle inventory-specific vs
 	// global precedence, so this validation is the only gate to lift later.
 	if req.InventoryID != nil {
-		return nil, pkg.ErrValidation("inventory-specific selling price is not supported yet", nil)
+		return nil, pkg.ErrSellingPriceInventorySpecificUnsupported(ctx)
 	}
 
 	// Validate product exists
@@ -388,7 +388,7 @@ func (s *sellingPriceService) ApplyMassiveLinks(ctx context.Context, startID uin
 	if err != nil {
 		return 0, err
 	}
-	if err := assertRangeBoundary(rng, endEffectiveFrom); err != nil {
+	if err := assertRangeBoundary(ctx, rng, endEffectiveFrom); err != nil {
 		return 0, err
 	}
 
@@ -420,7 +420,7 @@ func (s *sellingPriceService) ApplyMassiveLinks(ctx context.Context, startID uin
 // the resolved boundary, a date when the range is now open-ended, or no date
 // when a next price now exists — means the ledger changed between preview and
 // apply: conflict, re-preview.
-func assertRangeBoundary(rng SellingPriceRange, claimedEndDate *string) error {
+func assertRangeBoundary(ctx context.Context, rng SellingPriceRange, claimedEndDate *string) error {
 	boundaryConflict := func() error {
 		return pkg.NewAppError(pkg.ErrorCodeConflict,
 			"selling price range boundary changed since preview: end_effective_from does not match the current range end in scope — re-fetch the preview and retry", nil)
@@ -433,7 +433,7 @@ func assertRangeBoundary(rng SellingPriceRange, claimedEndDate *string) error {
 		return boundaryConflict()
 	}
 	if _, err := time.Parse("2006-01-02", *claimedEndDate); err != nil {
-		return pkg.ErrValidation("invalid end_effective_from date format, expected YYYY-MM-DD", err)
+		return pkg.ErrSellingPriceInvalidEndEffectiveFromFormat(ctx, err)
 	}
 	if rng.EffectiveEndAt == nil {
 		return boundaryConflict()
@@ -514,7 +514,7 @@ func (s *sellingPriceService) UpdateSellingPriceWithApplying(ctx context.Context
 	if newEffectiveFrom, perr := time.Parse("2006-01-02", req.EffectiveFrom); perr == nil &&
 		newEffectiveFrom.After(oldEffectiveFrom) &&
 		s.resolvePreviousPrice(ctx, before) == nil {
-		return nil, nil, pkg.ErrValidation("cannot move the earliest selling price later: the vacated window would have no selling price to take over", nil)
+		return nil, nil, pkg.ErrSellingPriceMoveEarliestNoTakeover(ctx)
 	}
 
 	sp, err := s.UpdateSellingPrice(ctx, id, req)
@@ -579,7 +579,7 @@ func (s *sellingPriceService) DeleteSellingPriceWithApplying(ctx context.Context
 	// no price would take over the vacated window.
 	start := s.resolvePreviousPrice(ctx, sp)
 	if start == nil {
-		return nil, pkg.ErrValidation("cannot delete: no previous selling price to take over the vacated window", nil)
+		return nil, pkg.ErrSellingPriceDeleteNoTakeover(ctx)
 	}
 
 	if err := s.DeleteSellingPrice(ctx, id); err != nil {
