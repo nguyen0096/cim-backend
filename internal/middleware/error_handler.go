@@ -72,14 +72,23 @@ func HandleError(c echo.Context, err error) error {
 		// tiering 4xx down to Warn) so the stack is never suppressed by the
 		// default LOG_LEVEL=error threshold -- handled errors must ALWAYS emit a
 		// stack per the logging contract; only the output FORMAT is env-gated.
+		//
+		// We deliberately do NOT attach the error via .WithError(batchErr):
+		// BatchError.Error() expands every Locations entry, so a batch with many
+		// invalid rows would produce an unbounded error-level log line that leaks
+		// per-row validation details and pressures log ingestion. The structured
+		// fields below already carry the bounded summary (code, message, status,
+		// locations COUNT, stack), so the record stays bounded regardless of
+		// len(Locations).
 		log.WithFields(logrus.Fields{
 			"error_code":  batchErr.Code.String(),
+			"error":       batchErr.Message,
 			"method":      method,
 			"path":        path,
 			"http_status": batchErr.HTTPStatus(),
 			"locations":   len(batchErr.Locations),
 			"stack_trace": pkg.StackTrace(batchErr),
-		}).WithError(batchErr).Error("batch error")
+		}).Error("batch error")
 
 		// Return structured JSON response with locations
 		return c.JSON(batchErr.HTTPStatus(), batchErr)

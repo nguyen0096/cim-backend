@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -92,6 +93,45 @@ func TestHandleErrorLogsStackTrace(t *testing.T) {
 		// debug.Stack() taken inside the handler. Guards the embedded-AppError
 		// errors.As regression.
 		assert.Equal(t, batchErr.Stack, entry["stack_trace"])
+	})
+
+	t.Run("BatchError log is bounded and does not expand per-row Locations", func(t *testing.T) {
+		buf := captureLogs(t)
+		log.Logger.SetLevel(logrus.ErrorLevel)
+		c, _ := newContext()
+
+		batchErr := pkg.NewBatchError(pkg.ErrorCodeValidation, "batch failed", nil)
+		// Many locations with a recognizable, sensitive per-row marker.
+		const rowMarker = "SENSITIVE_ROW_DETAIL"
+		const numLocations = 500
+		for i := 0; i < numLocations; i++ {
+			batchErr.AddLocation(
+				fmt.Sprintf("row %d", i),
+				fmt.Sprintf("%s value=%d", rowMarker, i),
+			)
+		}
+		require.NoError(t, HandleError(c, batchErr))
+
+		entry := lastLogEntry(t, buf)
+		assert.Equal(t, "error", entry["level"])
+
+		// Structured fields from #57 must still be present.
+		assert.Equal(t, pkg.ErrorCodeValidation.String(), entry["error_code"])
+		assert.Equal(t, float64(http.StatusBadRequest), entry["http_status"])
+		assert.Equal(t, float64(numLocations), entry["locations"])
+		assert.Contains(t, entry, "stack_trace")
+		assert.NotEmpty(t, entry["stack_trace"])
+		assert.Equal(t, batchErr.Stack, entry["stack_trace"])
+
+		// The per-row expansion produced by BatchError.Error() must NOT leak into
+		// the log: not the row markers, not the "Locations:" header that Error()
+		// emits. The whole captured output is checked (not just the structured
+		// fields) to catch any field that serializes the full error string.
+		raw := buf.String()
+		assert.NotContains(t, raw, rowMarker,
+			"per-row Locations detail leaked into the bounded batch-error log")
+		assert.NotContains(t, raw, "Locations:",
+			"BatchError.Error() per-row expansion leaked into the log")
 	})
 
 	t.Run("unknown error logs stack_trace at error", func(t *testing.T) {
