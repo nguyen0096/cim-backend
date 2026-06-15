@@ -5,6 +5,9 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"runtime"
+	"runtime/debug"
+	"strings"
 )
 
 //go:generate stringer -type=ErrorCode -linecomment
@@ -61,6 +64,10 @@ type AppError struct {
 	Code    ErrorCode
 	Cause   error
 	Message string
+	// Stack holds a stack trace captured at error creation time. It is used for
+	// server-side logging only and MUST NOT be exposed in MarshalJSON / client
+	// responses.
+	Stack string
 }
 
 // Error implements the error interface
@@ -115,7 +122,60 @@ func NewAppError(code ErrorCode, message string, cause error) *AppError {
 		Code:    code,
 		Message: message,
 		Cause:   cause,
+		Stack:   captureStack(3),
 	}
+}
+
+// captureStack records the current call stack as a formatted string, skipping
+// the given number of leading frames (this helper + the constructor frames) so
+// the trace starts at the caller that created the error.
+func captureStack(skip int) string {
+	const depth = 32
+	var pcs [depth]uintptr
+	n := runtime.Callers(skip, pcs[:])
+	if n == 0 {
+		return ""
+	}
+
+	frames := runtime.CallersFrames(pcs[:n])
+	var b strings.Builder
+	for {
+		frame, more := frames.Next()
+		fmt.Fprintf(&b, "%s\n\t%s:%d\n", frame.Function, frame.File, frame.Line)
+		if !more {
+			break
+		}
+	}
+	return b.String()
+}
+
+// capturedStack returns the stack captured at construction time. It is defined
+// on *AppError and is promoted to *BatchError via embedding, so both satisfy
+// the stackCapturer interface used by StackTrace.
+func (e *AppError) capturedStack() string { return e.Stack }
+
+// stackCapturer is implemented by errors that carry a stack captured at
+// creation time (*AppError, and *BatchError via promotion).
+type stackCapturer interface{ capturedStack() string }
+
+// StackTrace returns a stack trace associated with err for server-side logging.
+// If err (or anything it wraps) carries a captured creation stack (*AppError or
+// *BatchError), that stack is returned. Otherwise it falls back to the current
+// goroutine stack via debug.Stack so raw errors still get a usable trace.
+//
+// Note: errors.As(&appErr) does NOT reach the AppError embedded in *BatchError
+// (Go does not traverse embedded fields without Unwrap/As), so we walk the
+// Unwrap chain and check the stackCapturer interface, which *BatchError
+// satisfies through method promotion.
+func StackTrace(err error) string {
+	for e := err; e != nil; e = errors.Unwrap(e) {
+		if sc, ok := e.(stackCapturer); ok {
+			if s := sc.capturedStack(); s != "" {
+				return s
+			}
+		}
+	}
+	return string(debug.Stack())
 }
 
 func IsErrorCode(err error, code ErrorCode) bool {
@@ -136,6 +196,7 @@ func NewBatchError(
 			Code:    code,
 			Message: message,
 			Cause:   cause,
+			Stack:   captureStack(3),
 		},
 		Locations: []BatchErrorLocation{},
 	}

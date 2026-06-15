@@ -159,7 +159,11 @@ func SetupServer(
 			return nil
 		},
 	}))
-	e.Use(echoMiddleware.Recover())
+	// Recover from panics anywhere in the handler chain. Logging is routed
+	// through logrus (pkg/log) with a "stack_trace" field in every mode, and
+	// each recovered panic is logged exactly once (avoids the previous gommon +
+	// central-handler double-log).
+	e.Use(middleware.RecoverMiddleware())
 	e.Use(echoMiddleware.CORSWithConfig(echoMiddleware.CORSConfig{
 		AllowOrigins: cfg.Server.CORSAllowedOrigins,
 		AllowMethods: []string{echo.GET, echo.POST, echo.PUT, echo.DELETE, echo.OPTIONS},

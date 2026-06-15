@@ -20,6 +20,10 @@ var DefaultConfig = Config{
 
 type Config struct {
 	LogLevel logrus.Level
+	// Environment controls the OUTPUT FORMAT only (JSON for non-local, text for
+	// local/development). It must NEVER gate stack-trace content: stacks are
+	// emitted in every environment.
+	Environment string
 }
 
 func init() {
@@ -30,8 +34,35 @@ func init() {
 func Init(cfg Config) (*logrus.Logger, error) {
 	logger := logrus.New()
 	logger.SetLevel(cfg.LogLevel)
+
+	// Include the calling method as a field. This affects all log entries in
+	// every environment.
+	logger.SetReportCaller(true)
+
+	// Formatter selection keys off the environment for FORMAT ONLY (structured
+	// JSON for deployed environments, human-readable text for local). This does
+	// NOT gate stack-trace content; the "stack_trace" field is emitted in both.
+	if isLocalEnvironment(cfg.Environment) {
+		logger.SetFormatter(&logrus.TextFormatter{
+			FullTimestamp: true,
+		})
+	} else {
+		logger.SetFormatter(&logrus.JSONFormatter{})
+	}
+
 	Logger = logger
 	return logger, nil
+}
+
+// isLocalEnvironment reports whether the environment is a local/development one
+// (text formatter). Anything else (e.g. staging, production) uses JSON.
+func isLocalEnvironment(env string) bool {
+	switch env {
+	case "", "local", "development", "dev", "test":
+		return true
+	default:
+		return false
+	}
 }
 
 // MustInit creates and initializes a new logger, panicking on error

@@ -3,6 +3,7 @@ package pkg
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -315,5 +316,96 @@ func TestBatchError_Integration(t *testing.T) {
 		assert.NotNil(t, batchErr.AppError)
 		assert.Equal(t, ErrorCodeValidation, batchErr.AppError.Code)
 		assert.Equal(t, "test", batchErr.AppError.Message)
+	})
+}
+
+func TestNewAppErrorCapturesStack(t *testing.T) {
+	appErr := NewAppError(ErrorCodeInternal, "boom", nil)
+
+	require.NotNil(t, appErr)
+	assert.NotEmpty(t, appErr.Stack, "NewAppError should capture a stack trace")
+	// Stack should reference this test function (the construction call site),
+	// confirming constructor frames were skipped.
+	assert.Contains(t, appErr.Stack, "TestNewAppErrorCapturesStack")
+}
+
+func TestNewBatchErrorCapturesStack(t *testing.T) {
+	batchErr := NewBatchError(ErrorCodeValidation, "boom", nil)
+
+	require.NotNil(t, batchErr)
+	assert.NotEmpty(t, batchErr.Stack, "NewBatchError should capture a stack trace")
+	assert.Contains(t, batchErr.Stack, "TestNewBatchErrorCapturesStack")
+}
+
+func TestStackNeverInMarshalJSON(t *testing.T) {
+	t.Run("AppError MarshalJSON omits stack", func(t *testing.T) {
+		appErr := NewAppError(ErrorCodeInternal, "boom", errors.New("cause"))
+		require.NotEmpty(t, appErr.Stack)
+
+		data, err := json.Marshal(appErr)
+		require.NoError(t, err)
+
+		assert.NotContains(t, string(data), "stack")
+		assert.NotContains(t, string(data), appErr.Stack)
+
+		var obj map[string]interface{}
+		require.NoError(t, json.Unmarshal(data, &obj))
+		_, hasStack := obj["Stack"]
+		assert.False(t, hasStack)
+		_, hasStackTrace := obj["stack_trace"]
+		assert.False(t, hasStackTrace)
+	})
+
+	t.Run("BatchError MarshalJSON omits stack", func(t *testing.T) {
+		batchErr := NewBatchError(ErrorCodeValidation, "boom", errors.New("cause"))
+		batchErr.AddLocation("row 1", "bad")
+		require.NotEmpty(t, batchErr.Stack)
+
+		data, err := json.Marshal(batchErr)
+		require.NoError(t, err)
+
+		assert.NotContains(t, string(data), "stack")
+		assert.NotContains(t, string(data), batchErr.Stack)
+	})
+}
+
+func TestStackTraceHelper(t *testing.T) {
+	t.Run("returns AppError stack directly", func(t *testing.T) {
+		appErr := NewAppError(ErrorCodeInternal, "boom", nil)
+		got := StackTrace(appErr)
+		assert.Equal(t, appErr.Stack, got)
+		assert.Contains(t, got, "TestStackTraceHelper")
+	})
+
+	t.Run("unwraps %w-wrapped AppError", func(t *testing.T) {
+		appErr := NewAppError(ErrorCodeInternal, "boom", nil)
+		wrapped := fmt.Errorf("context: %w", appErr)
+		got := StackTrace(wrapped)
+		assert.Equal(t, appErr.Stack, got)
+	})
+
+	t.Run("returns BatchError's embedded creation stack", func(t *testing.T) {
+		// errors.As(&appErr) does not reach the AppError embedded in
+		// *BatchError; StackTrace must still return the captured creation stack
+		// (not a fresh debug.Stack), via the stackCapturer interface.
+		batchErr := NewBatchError(ErrorCodeValidation, "boom", nil)
+		got := StackTrace(batchErr)
+		assert.Equal(t, batchErr.Stack, got)
+		assert.Contains(t, got, "TestStackTraceHelper")
+	})
+
+	t.Run("unwraps %w-wrapped BatchError", func(t *testing.T) {
+		batchErr := NewBatchError(ErrorCodeValidation, "boom", nil)
+		wrapped := fmt.Errorf("context: %w", batchErr)
+		got := StackTrace(wrapped)
+		assert.Equal(t, batchErr.Stack, got)
+	})
+
+	t.Run("falls back to debug.Stack for raw errors", func(t *testing.T) {
+		raw := errors.New("raw error")
+		got := StackTrace(raw)
+		assert.NotEmpty(t, got)
+		// debug.Stack output for the current goroutine references this test.
+		assert.Contains(t, got, "TestStackTraceHelper")
 	})
 }

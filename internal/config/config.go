@@ -139,7 +139,8 @@ func Load(filePath ...string) *Config {
 		},
 		UploadsBasePath: getEnv("UPLOADS_BASE_PATH", "uploads"),
 		Log: log.Config{
-			LogLevel: logrus.Level(logLever),
+			LogLevel:    logrus.Level(logLever),
+			Environment: getEnv("ENV", "development"),
 		},
 	}
 	return App

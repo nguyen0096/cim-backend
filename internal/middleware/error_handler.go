@@ -2,12 +2,38 @@ package middleware
 
 import (
 	"cim-backend/pkg"
+	"cim-backend/pkg/log"
 	"errors"
-	"log"
 	"net/http"
 
 	"github.com/labstack/echo/v4"
+	echoMiddleware "github.com/labstack/echo/v4/middleware"
+	"github.com/sirupsen/logrus"
 )
+
+// RecoverMiddleware returns the panic-recovery middleware. Recovered panics are
+// logged exactly once through logrus (pkg/log) with a "stack_trace" field in
+// every environment. The LogErrorFunc returns nil so Echo does NOT also invoke
+// the centralized HTTPErrorHandler, avoiding a duplicate log line, and writes
+// the 500 response itself.
+func RecoverMiddleware() echo.MiddlewareFunc {
+	return echoMiddleware.RecoverWithConfig(echoMiddleware.RecoverConfig{
+		LogErrorFunc: func(c echo.Context, err error, stack []byte) error {
+			log.WithFields(logrus.Fields{
+				"method":      c.Request().Method,
+				"path":        c.Request().URL.Path,
+				"stack_trace": string(stack),
+			}).WithError(err).Error("panic recovered")
+
+			if !c.Response().Committed {
+				_ = c.JSON(http.StatusInternalServerError, map[string]string{
+					"error": "Internal server error",
+				})
+			}
+			return nil
+		},
+	})
+}
 
 // CustomErrorHandler is Echo's custom error handler function
 func CustomErrorHandler(err error, c echo.Context) {
@@ -19,7 +45,9 @@ func CustomErrorHandler(err error, c echo.Context) {
 	// Use our existing HandleError function
 	if handlerErr := HandleError(c, err); handlerErr != nil {
 		// If HandleError itself returns an error, fall back to basic error handling
-		log.Printf("Error in error handler: %v", handlerErr)
+		log.WithFields(logrus.Fields{
+			"stack_trace": pkg.StackTrace(handlerErr),
+		}).WithError(handlerErr).Error("error in error handler")
 		_ = c.JSON(http.StatusInternalServerError, map[string]string{
 			"error": "Internal server error",
 		})
@@ -33,15 +61,25 @@ func HandleError(c echo.Context, err error) error {
 		return httpErr
 	}
 
+	method := c.Request().Method
+	path := c.Request().URL.Path
+
 	// Check if it's a BatchError first (before AppError, since BatchError embeds AppError)
 	var batchErr *pkg.BatchError
 	if errors.As(err, &batchErr) {
-		// Log the batch error with context
-		log.Printf("BatchError [%s] in %s %s: %d location(s)",
-			batchErr.Code.String(),
-			c.Request().Method,
-			c.Request().URL.Path,
-			len(batchErr.Locations))
+		// Log the batch error with context and stack at Error level. Stacks are
+		// emitted in every mode (not dev-gated). We log at Error (rather than
+		// tiering 4xx down to Warn) so the stack is never suppressed by the
+		// default LOG_LEVEL=error threshold -- handled errors must ALWAYS emit a
+		// stack per the logging contract; only the output FORMAT is env-gated.
+		log.WithFields(logrus.Fields{
+			"error_code":  batchErr.Code.String(),
+			"method":      method,
+			"path":        path,
+			"http_status": batchErr.HTTPStatus(),
+			"locations":   len(batchErr.Locations),
+			"stack_trace": pkg.StackTrace(batchErr),
+		}).WithError(batchErr).Error("batch error")
 
 		// Return structured JSON response with locations
 		return c.JSON(batchErr.HTTPStatus(), batchErr)
@@ -50,12 +88,15 @@ func HandleError(c echo.Context, err error) error {
 	// Check if it's our custom AppError
 	var appErr *pkg.AppError
 	if errors.As(err, &appErr) {
-		// Log the actual error with context
-		log.Printf("AppError [%s] in %s %s: %v",
-			appErr.Code.String(),
-			c.Request().Method,
-			c.Request().URL.Path,
-			appErr.Error())
+		// Log the actual error with context and stack at Error level (see the
+		// BatchError branch above for why we do not tier 4xx down to Warn).
+		log.WithFields(logrus.Fields{
+			"error_code":  appErr.Code.String(),
+			"method":      method,
+			"path":        path,
+			"http_status": appErr.HTTPStatus(),
+			"stack_trace": pkg.StackTrace(appErr),
+		}).WithError(appErr).Error("app error")
 
 		// Return the display message to client
 		return c.JSON(appErr.HTTPStatus(), map[string]interface{}{
@@ -64,11 +105,13 @@ func HandleError(c echo.Context, err error) error {
 		})
 	}
 
-	// Handle other errors as internal server errors
-	log.Printf("Internal error in %s %s: %v",
-		c.Request().Method,
-		c.Request().URL.Path,
-		err)
+	// Handle other (unknown) errors as internal server errors. Always logged at
+	// Error with a stack, in every mode.
+	log.WithFields(logrus.Fields{
+		"method":      method,
+		"path":        path,
+		"stack_trace": pkg.StackTrace(err),
+	}).WithError(err).Error("internal error")
 
 	return c.JSON(http.StatusInternalServerError, map[string]string{
 		"error": "Internal server error",
