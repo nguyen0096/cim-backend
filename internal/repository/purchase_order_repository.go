@@ -33,11 +33,11 @@ type PurchaseOrderRepository interface {
 }
 
 type purchaseOrderRepository struct {
-	db *gorm.DB
+	*baseRepository
 }
 
-func NewPurchaseOrderRepository(db *gorm.DB) PurchaseOrderRepository {
-	return &purchaseOrderRepository{db: db}
+func NewPurchaseOrderRepository(base BaseRepository) PurchaseOrderRepository {
+	return &purchaseOrderRepository{baseRepository: asBase(base)}
 }
 
 func (r *purchaseOrderRepository) Create(ctx context.Context, purchaseOrder *models.PurchaseOrder) error {

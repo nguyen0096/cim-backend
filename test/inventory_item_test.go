@@ -27,7 +27,7 @@ var _ = Describe("InventoryItemRepository", func() {
 		BeforeEach(func() {
 			ctx = tenv.DefaultContext
 			db = tenv.ContextfulDB()
-			repo = repository.NewInventoryItemRepository(db)
+			repo = repository.NewInventoryItemRepository(repository.NewBaseRepository(db))
 		})
 
 		Context("filtering active items", func() {
@@ -313,7 +313,7 @@ var _ = Describe("InventoryItemRepository", func() {
 
 			It("should handle database errors gracefully", func() {
 				invalidDB, _ := gorm.Open(nil, nil)
-				closedRepo := repository.NewInventoryItemRepository(invalidDB)
+				closedRepo := repository.NewInventoryItemRepository(repository.NewBaseRepository(invalidDB))
 
 				result, err := closedRepo.GetActiveInventoryItems(ctx, 1, []uint{1})
 
@@ -338,7 +338,7 @@ var _ = Describe("SaveInventoryItemChanges", func() {
 	BeforeEach(func() {
 		ctx = tenv.DefaultContext
 		db = tenv.ContextfulDB()
-		repo = repository.NewInventoryItemRepository(db)
+		repo = repository.NewInventoryItemRepository(repository.NewBaseRepository(db))
 
 	})
 
@@ -726,7 +726,7 @@ var _ = Describe("SaveInventoryItemChanges", func() {
 		BeforeEach(func() {
 			ctx = tenv.DefaultContext
 			db = tenv.ContextfulDB()
-			repo = repository.NewInventoryItemRepository(db)
+			repo = repository.NewInventoryItemRepository(repository.NewBaseRepository(db))
 
 			// Setup fixtures
 			unit = fixture.WithUnit(db.WithContext(ctx), models.Unit{Name: "Kilogram", Symbol: "kg", UnitType: "mass"})

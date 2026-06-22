@@ -30,6 +30,7 @@ type InventoryService interface {
 
 	GetLastPurchasePrices(ctx context.Context, supplierID uint) (dto.LastPurchasePriceMap, error)
 	ListSubmissions(ctx context.Context, params models.ListParams, approvalStatuses []string, inventoryID uint, submissionTypes []string) ([]dto.SubmissionResponse, int64, error)
+	InitiateReconcile(ctx context.Context, req dto.InitiateReconcileRequest) (*models.InventorySubmission, error)
 	CreateReconcileSubmission(ctx context.Context, req dto.ReconcileInventoryRequest) (*models.InventorySubmission, error)
 	CreateDisposeSubmission(ctx context.Context, req dto.DisposeInventoryRequest) (*models.InventorySubmission, error)
 	CreateTransferSubmission(ctx context.Context, req dto.TransferInventoryRequest) (*models.InventorySubmission, error)
@@ -42,18 +43,29 @@ type inventoryService struct {
 	inventoryRepo           repository.InventoryRepository
 	inventoryItemRepo       repository.InventoryItemRepository
 	inventorySubmissionRepo repository.InventorySubmissionRepository
+	snapshotRepo            repository.ReconciliationSnapshotRepository
 	productRepo             repository.ProductRepository
 
 	fileStorageService FileStorageService
-	db                 *gorm.DB
+	// baseRepo is the repository-layer transaction root. The reconcile flow does
+	// not use a *gorm.DB directly; it asks the base repository to open one
+	// transaction and thread it through the context (WithinTx), then calls
+	// repository methods with that context so they enlist in the same transaction.
+	baseRepo repository.BaseRepository
+	// db backs the pre-existing monthly-transaction-report query
+	// (getPurchaseOrderItemsLookup) only. New atomic flows must go through
+	// baseRepo.WithinTx + repositories rather than reaching for this handle.
+	db *gorm.DB
 }
 
 func NewInventoryService(
 	inventoryRepo repository.InventoryRepository,
 	inventoryItemRepo repository.InventoryItemRepository,
 	inventorySubmissionRepo repository.InventorySubmissionRepository,
+	snapshotRepo repository.ReconciliationSnapshotRepository,
 	productRepo repository.ProductRepository,
 	fileStorageService FileStorageService,
+	baseRepo repository.BaseRepository,
 	db *gorm.DB,
 ) InventoryService {
 	return &inventoryService{
@@ -61,7 +73,9 @@ func NewInventoryService(
 		productRepo:             productRepo,
 		inventoryItemRepo:       inventoryItemRepo,
 		inventorySubmissionRepo: inventorySubmissionRepo,
+		snapshotRepo:            snapshotRepo,
 		fileStorageService:      fileStorageService,
+		baseRepo:                baseRepo,
 		db:                      db,
 	}
 }
@@ -243,6 +257,119 @@ func (s *inventoryService) reconcileInventory(
 
 	if err := s.inventoryItemRepo.SaveInventoryItemChanges(ctx, ivtrItemChanges, txns); err != nil {
 		return ps.addError(fmt.Errorf("failed to save inventory item changes: %w", err))
+	}
+	return nil
+}
+
+// InitiateReconcile starts a reconciliation for an inventory (epic #38, Part 2).
+//
+// In a single transaction it (1) creates a placeholder reconcile
+// inventory_submissions row (processing + approval status pending, empty payload)
+// and (2) captures one reconciliation_snapshots row per ACTIVE inventory item in
+// the inventory, recording prev_quantity = that item's live quantity at the moment
+// of initiation. The snapshot is the sole baseline for all later
+// synthesize/review/apply, so capturing it atomically with the parent — and off
+// live quantities at initiate time — is the data-correctness invariant of this
+// part. If snapshot capture fails the placeholder submission is rolled back.
+//
+// In scope = every active inventory item of the inventory. The legacy reconcile
+// flow scopes per-inventory (CreateReconcileSubmission validates each supplied
+// item against the inventory's active items); at initiate there are no client
+// counts yet, so the baseline must cover every item that could later be counted.
+func (s *inventoryService) InitiateReconcile(ctx context.Context, req dto.InitiateReconcileRequest) (*models.InventorySubmission, error) {
+	// Defense-in-depth: the route is gated by RBAC middleware, but mirror the
+	// in-service permission check used by ProcessSubmission so the action cannot
+	// be invoked without authorization even if wiring changes.
+	if !pkg.HasPermission(ctx, pkg.RBACResourceInventorySubmissions, pkg.RBACActionInitiateReconciliation) {
+		return nil, pkg.NewAppError(pkg.ErrorCodeForbidden, "user does not have permission to initiate reconciliation", nil)
+	}
+
+	if req.InventoryID == 0 {
+		return nil, pkg.ErrInvalidRequestBody(fmt.Errorf("inventory_id is required"))
+	}
+
+	// Verify the inventory exists before opening the transaction. Without this, a
+	// missing id would only be caught by the inventory_submissions FK on the
+	// placeholder insert, surfacing as a generic 500 instead of the 404 the legacy
+	// reconcile path returns for the same case. Use a lightweight existence check
+	// (SELECT 1) rather than GetByID, which would preload Items/Product/Unit — heavy
+	// app-layer materialization just to prove the inventory exists, before the
+	// set-based INSERT ... SELECT snapshot.
+	exists, err := s.inventoryRepo.ExistsByID(ctx, req.InventoryID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to check inventory existence: %w", err)
+	}
+	if !exists {
+		return nil, pkg.NewAppError(pkg.ErrorCodeNotFound,
+			fmt.Sprintf("inventory %d not found", req.InventoryID), nil)
+	}
+
+	submission := &models.InventorySubmission{
+		InventoryID:      req.InventoryID,
+		SubmissionType:   models.InventorySubmissionTypeReconcile,
+		ProcessingStatus: models.InventorySubmissionStatusPending,
+		ApprovalStatus:   models.InventorySubmissionApprovalStatusPending,
+	}
+
+	// The reconcile flow does not reach for a *gorm.DB. It asks the base
+	// repository to open one transaction and thread it through the context; every
+	// repository call made with txCtx enlists in that same transaction, so the
+	// parent submission and its baseline snapshots commit (or roll back) atomically.
+	err = s.baseRepo.WithinTx(ctx, func(txCtx context.Context) error {
+		// Create the parent placeholder submission first so snapshot rows can FK to it.
+		if err := s.inventorySubmissionRepo.Create(txCtx, submission); err != nil {
+			return fmt.Errorf("failed to create reconcile submission: %w", err)
+		}
+
+		// Capture the baseline with a single set-based INSERT ... SELECT inside the
+		// same tx: one snapshot row per active item, prev_quantity = the item's live
+		// quantity read in this transaction. No item set is materialised in app
+		// memory. RowsAffected is the active-item count.
+		count, err := s.snapshotRepo.BuildReconciliationSnapshots(txCtx, submission.ID, req.InventoryID)
+		if err != nil {
+			return fmt.Errorf("failed to capture reconciliation snapshots: %w", err)
+		}
+		if count == 0 {
+			// Roll back the placeholder: an inventory with no active items has no
+			// baseline to reconcile against.
+			return pkg.NewAppError(pkg.ErrorCodeNotFound,
+				fmt.Sprintf("no active inventory items found for inventory %d", req.InventoryID), nil)
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	return submission, nil
+}
+
+// guardNotInitiatedReconcile blocks the legacy single-payload update/approve
+// paths from acting on a reconciliation that was started via the initiate
+// endpoint (epic #38, Part 2).
+//
+// A submission created by InitiateReconcile is a pending reconcile with an empty
+// payload plus associated reconciliation_snapshots rows. Those snapshot rows are
+// the new-model marker: a legacy reconcile submission never has any. If we let
+// the legacy flow touch one, a caller could either overwrite the placeholder
+// with a client-supplied payload (bypassing the snapshot baseline) or approve
+// the empty payload (processSubmission then fails to unmarshal it, leaving the
+// submission approved/failed). Until the snapshot-based synthesize/approve path
+// (later parts) exists, such submissions must be rejected by the legacy paths.
+//
+// Only reconcile submissions are checked, so dispose/transfer are unaffected.
+func (s *inventoryService) guardNotInitiatedReconcile(ctx context.Context, submission *models.InventorySubmission) error {
+	if submission.SubmissionType != models.InventorySubmissionTypeReconcile {
+		return nil
+	}
+	hasSnapshots, err := s.snapshotRepo.ExistsForSubmission(ctx, submission.ID)
+	if err != nil {
+		return fmt.Errorf("failed to check reconciliation snapshots: %w", err)
+	}
+	if hasSnapshots {
+		return pkg.NewAppError(pkg.ErrorCodeConflict,
+			fmt.Sprintf("submission %d was started via reconcile-initiate and uses the snapshot-based flow; it cannot be updated or approved through the legacy path", submission.ID),
+			nil)
 	}
 	return nil
 }
@@ -512,6 +639,18 @@ func (s *inventoryService) ProcessSubmission(ctx context.Context, req dto.Submis
 	default:
 		return nil, pkg.NewAppError(pkg.ErrorCodeValidation,
 			fmt.Sprintf("invalid action: %s", req.Action), nil)
+	}
+
+	// Block legacy *approval* of reconciliations started via the initiate endpoint
+	// (snapshot-based flow); approve would unmarshal the empty placeholder payload
+	// and bypass the snapshot baseline, so it must go through the later
+	// synthesize/approve path. Reject is safe — it only marks the submission
+	// rejected/canceled and never reads the payload — so an initiated reconcile can
+	// still be rejected through this endpoint.
+	if approvalStatus == models.InventorySubmissionApprovalStatusApproved {
+		if err := s.guardNotInitiatedReconcile(ctx, submission); err != nil {
+			return nil, err
+		}
 	}
 
 	// Step 1: Persist approval status and reason first
@@ -1027,6 +1166,12 @@ func (s *inventoryService) UpdateSubmission(ctx context.Context, req dto.UpdateS
 	if submission.ApprovalStatus != models.InventorySubmissionApprovalStatusPending {
 		return nil, pkg.NewAppError(pkg.ErrorCodeValidation,
 			fmt.Sprintf("cannot update submission with approval status: %s. Only pending submissions can be updated", submission.ApprovalStatus), nil)
+	}
+
+	// Block legacy overwrite of reconciliations started via the initiate endpoint
+	// (snapshot-based flow); a legacy payload would bypass the snapshot baseline.
+	if err := s.guardNotInitiatedReconcile(ctx, submission); err != nil {
+		return nil, err
 	}
 
 	// Validate based on submission type

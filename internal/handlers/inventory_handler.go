@@ -208,6 +208,43 @@ func (h *InventoryHandler) DisposeInventoryItems(c echo.Context) error {
 	return c.JSON(http.StatusOK, submission)
 }
 
+// InitiateReconcile starts a reconciliation for an inventory (epic #38, Part 2)
+// @Summary Initiate reconciliation
+// @Description Creates a placeholder reconcile submission and captures a per-item baseline snapshot (prev_quantity = live quantity at initiate time) for every active item in the inventory. Admin/accountant only.
+// @Tags inventories
+// @Accept json
+// @Produce json
+// @Param id path int true "Inventory ID"
+// @Success 200 {object} models.InventorySubmission
+// @Failure 400 {object} map[string]string
+// @Failure 403 {object} map[string]string
+// @Failure 404 {object} map[string]string
+// @Failure 500 {object} map[string]string
+// @Security BearerAuth
+// @Router /inventories/{id}/reconcile/initiate [post]
+func (h *InventoryHandler) InitiateReconcile(c echo.Context) error {
+	// This endpoint is path-scoped: the inventory is identified solely by the
+	// `:id` path param. Take it authoritatively from the path so a request body
+	// (e.g. {"inventory_id":2}) can never change which inventory is reconciled.
+	id, err := pkg.ExtractIDParam(c)
+	if err != nil {
+		return err
+	}
+
+	req := dto.InitiateReconcileRequest{InventoryID: id}
+
+	if err := pkg.Validator.Struct(req); err != nil {
+		return pkg.ErrValidation(err.Error(), err)
+	}
+
+	submission, err := h.inventoryService.InitiateReconcile(c.Request().Context(), req)
+	if err != nil {
+		return fmt.Errorf("failed to initiate reconciliation: %w", err)
+	}
+
+	return c.JSON(http.StatusOK, submission)
+}
+
 // ReconcileInventory confirms the actual inventory count for multiple items
 // @Summary Confirm inventory items
 // @Description Creates a pending submission to confirm the actual inventory count for multiple inventory items

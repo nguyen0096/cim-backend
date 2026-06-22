@@ -36,11 +36,11 @@ type UnitRepository interface {
 }
 
 type unitRepository struct {
-	db *gorm.DB
+	*baseRepository
 }
 
-func NewUnitRepository(db *gorm.DB) UnitRepository {
-	return &unitRepository{db: db}
+func NewUnitRepository(base BaseRepository) UnitRepository {
+	return &unitRepository{baseRepository: asBase(base)}
 }
 
 func (r *unitRepository) Create(ctx context.Context, unit *models.Unit) error {

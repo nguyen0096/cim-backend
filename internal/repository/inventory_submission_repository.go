@@ -6,8 +6,6 @@ import (
 	"context"
 	"fmt"
 	"strings"
-
-	"gorm.io/gorm"
 )
 
 // InventorySubmissionRepository handles inventory submission persistence
@@ -23,17 +21,19 @@ type InventorySubmissionRepository interface {
 }
 
 type inventorySubmissionRepository struct {
-	db *gorm.DB
+	*baseRepository
 }
 
 // NewInventorySubmissionRepository creates a new inventory submission repository
-func NewInventorySubmissionRepository(db *gorm.DB) InventorySubmissionRepository {
-	return &inventorySubmissionRepository{db: db}
+func NewInventorySubmissionRepository(base BaseRepository) InventorySubmissionRepository {
+	return &inventorySubmissionRepository{baseRepository: asBase(base)}
 }
 
-// Create creates a new inventory submission
+// Create creates a new inventory submission. It is transaction-aware: when the
+// context carries a BaseRepository.WithinTx transaction it runs inside that
+// transaction, otherwise it uses the repository's own connection.
 func (r *inventorySubmissionRepository) Create(ctx context.Context, submission *models.InventorySubmission) error {
-	return r.db.WithContext(ctx).Create(submission).Error
+	return r.DB(ctx).WithContext(ctx).Create(submission).Error
 }
 
 // GetPendingSubmissions retrieves all pending submissions for an inventory

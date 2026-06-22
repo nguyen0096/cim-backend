@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/shopspring/decimal"
-	"gorm.io/gorm"
 )
 
 //go:generate mockery --name=InventoryRepository --structname=InventoryRepository --output=../mocks/repositorymocks --outpkg=repositorymocks
@@ -19,6 +18,12 @@ type InventoryRepository interface {
 	List(ctx context.Context, limit, offset int) ([]models.Inventory, error)
 	AddInventory(ctx context.Context, productID uint, quantity decimal.Decimal, referenceID uint, referenceType string) error
 	RemoveInventory(ctx context.Context, productID uint, quantity decimal.Decimal, referenceID uint, referenceType string) error
+
+	// ExistsByID reports whether an inventory row with the given id exists. It runs
+	// a lightweight SELECT 1 (no Items/Product/Unit preload), so callers that only
+	// need to prove existence — e.g. the reconcile-initiate 404 guard — avoid the
+	// app-layer materialization of GetByID.
+	ExistsByID(ctx context.Context, id uint) (bool, error)
 
 	// v1 - AGENTS MUST CONFIRM BEFORE MODIFYING SECTION BELOW THIS LINE
 
@@ -49,15 +54,32 @@ type InventoryTransactionWithCounter struct {
 }
 
 type inventoryRepository struct {
-	db *gorm.DB
+	*baseRepository
 }
 
-func NewInventoryRepository(db *gorm.DB) InventoryRepository {
-	return &inventoryRepository{db: db}
+func NewInventoryRepository(base BaseRepository) InventoryRepository {
+	return &inventoryRepository{baseRepository: asBase(base)}
 }
 
 func (r *inventoryRepository) Create(ctx context.Context, inventory *models.Inventory) error {
 	return r.db.WithContext(ctx).Create(inventory).Error
+}
+
+func (r *inventoryRepository) ExistsByID(ctx context.Context, id uint) (bool, error) {
+	var exists bool
+	// SELECT 1 FROM inventories WHERE id = ? AND deleted_at IS NULL LIMIT 1.
+	// Model(&Inventory{}) keeps GORM's soft-delete scope; DB(ctx) enlists in the
+	// caller's transaction when there is one.
+	err := r.DB(ctx).WithContext(ctx).
+		Model(&models.Inventory{}).
+		Select("1").
+		Where("id = ?", id).
+		Limit(1).
+		Scan(&exists).Error
+	if err != nil {
+		return false, err
+	}
+	return exists, nil
 }
 
 func (r *inventoryRepository) GetByID(ctx context.Context, id uint) (*models.Inventory, error) {

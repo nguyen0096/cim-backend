@@ -39,22 +39,30 @@ func SetupServer(
 		return nil, err
 	}
 
-	// Initialize repositories
-	userRepo := repository.NewUserRepository(db, cfg.Environment)
-	supplierRepo := repository.NewSupplierRepository(db)
-	unitRepo := repository.NewUnitRepository(db)
-	productRepo := repository.NewProductRepository(db)
-	inventoryRepo := repository.NewInventoryRepository(db)
-	inventoryItemRepo := repository.NewInventoryItemRepository(db)
-	inventorySubmissionRepo := repository.NewInventorySubmissionRepository(db)
-	purchaseOrderRepo := repository.NewPurchaseOrderRepository(db)
-	settingsRepo := repository.NewSettingsRepository(db)
-	paymentReceiptFormRepo := repository.NewPaymentReceiptFormRepository(db)
-	menuRepo := repository.NewMenuRepository(db)
-	menuItemRepo := repository.NewMenuItemRepository(db)
-	saleOrderRepo := repository.NewSaleOrderRepository(db)
-	revenueExpenseFinalizationRepo := repository.NewRevenueExpenseFinalizationRepository(db)
-	sellingPriceRepo := repository.NewSellingPriceRepository(db)
+	// Initialize the single BaseRepository: the one connection root shared by
+	// every repository. Repositories embed it (anonymous field) for their db
+	// accessor and obtain the "run these calls in one transaction" capability
+	// (WithinTx) from it, so no repository or service holds a raw *gorm.DB for
+	// transactional work.
+	baseRepo := repository.NewBaseRepository(db)
+
+	// Initialize repositories (all share the one baseRepo)
+	userRepo := repository.NewUserRepository(baseRepo, cfg.Environment)
+	supplierRepo := repository.NewSupplierRepository(baseRepo)
+	unitRepo := repository.NewUnitRepository(baseRepo)
+	productRepo := repository.NewProductRepository(baseRepo)
+	inventoryRepo := repository.NewInventoryRepository(baseRepo)
+	inventoryItemRepo := repository.NewInventoryItemRepository(baseRepo)
+	inventorySubmissionRepo := repository.NewInventorySubmissionRepository(baseRepo)
+	reconciliationSnapshotRepo := repository.NewReconciliationSnapshotRepository(baseRepo)
+	purchaseOrderRepo := repository.NewPurchaseOrderRepository(baseRepo)
+	settingsRepo := repository.NewSettingsRepository(baseRepo)
+	paymentReceiptFormRepo := repository.NewPaymentReceiptFormRepository(baseRepo)
+	menuRepo := repository.NewMenuRepository(baseRepo)
+	menuItemRepo := repository.NewMenuItemRepository(baseRepo)
+	saleOrderRepo := repository.NewSaleOrderRepository(baseRepo)
+	revenueExpenseFinalizationRepo := repository.NewRevenueExpenseFinalizationRepository(baseRepo)
+	sellingPriceRepo := repository.NewSellingPriceRepository(baseRepo)
 
 	// Initialize S3 client for R2
 	s3Client, err := services.NewS3Client(cfg)
@@ -69,7 +77,7 @@ func SetupServer(
 	settingsService := services.NewSettingsService(settingsRepo)
 	unitService := services.NewUnitService(unitRepo, productRepo)
 	productService := services.NewProductService(productRepo, supplierRepo, unitRepo, unitService, settingsService)
-	inventoryService := services.NewInventoryService(inventoryRepo, inventoryItemRepo, inventorySubmissionRepo, productRepo, fileStorageService, db)
+	inventoryService := services.NewInventoryService(inventoryRepo, inventoryItemRepo, inventorySubmissionRepo, reconciliationSnapshotRepo, productRepo, fileStorageService, baseRepo, db)
 	inventoryItemService := services.NewInventoryItemService(inventoryItemRepo, inventoryRepo, productRepo)
 	revenueExpenseExcelRepo := excel.NewRevenueExpenseExcelRepository()
 	revenueExpenseGoogleSheetsRepo := googlesheets.NewRevenueExpenseGoogleSheetsRepository()
@@ -240,6 +248,7 @@ func SetupServer(
 	inventories.GET("/:id/submissions", inventoryHandler.ListSubmissions)
 	inventories.POST("/transfer", inventoryHandler.TransferInventory)
 	inventories.POST("/:id/dispose", inventoryHandler.DisposeInventoryItems)
+	inventories.POST("/:id/reconcile/initiate", inventoryHandler.InitiateReconcile)
 	inventories.POST("/:id/reconcile", inventoryHandler.ReconcileInventory)
 	inventories.GET("/:id/export/monthly-transaction", inventoryHandler.ExportMonthlyTransactionReport)
 	inventories.GET("/:id/timeline", inventoryTimelineHandler.GetInventoryTimeline)

@@ -21,11 +21,11 @@ type SaleOrderRepository interface {
 }
 
 type saleOrderRepository struct {
-	db *gorm.DB
+	*baseRepository
 }
 
-func NewSaleOrderRepository(db *gorm.DB) SaleOrderRepository {
-	return &saleOrderRepository{db: db}
+func NewSaleOrderRepository(base BaseRepository) SaleOrderRepository {
+	return &saleOrderRepository{baseRepository: asBase(base)}
 }
 
 func (r *saleOrderRepository) Create(ctx context.Context, saleOrder *models.SaleOrder) error {

@@ -20,6 +20,7 @@ p, admin, inventory-submissions, create, allow
 p, admin, inventory-submissions, update, allow
 p, admin, inventory-submissions, delete, allow
 p, admin, inventory-submissions, approve, allow
+p, admin, inventory-submissions, initiate_reconciliation, allow
 
 p, admin, inventory-items, view, allow
 p, admin, inventory-items, create, allow
@@ -98,6 +99,7 @@ p, accountant, inventory-submissions, create, allow
 p, accountant, inventory-submissions, update, allow
 p, accountant, inventory-submissions, delete, allow
 p, accountant, inventory-submissions, approve, allow
+p, accountant, inventory-submissions, initiate_reconciliation, allow
 
 p, accountant, revenue-expenses, create, allow
 

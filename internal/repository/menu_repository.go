@@ -17,11 +17,11 @@ type MenuRepository interface {
 }
 
 type menuRepository struct {
-	db *gorm.DB
+	*baseRepository
 }
 
-func NewMenuRepository(db *gorm.DB) MenuRepository {
-	return &menuRepository{db: db}
+func NewMenuRepository(base BaseRepository) MenuRepository {
+	return &menuRepository{baseRepository: asBase(base)}
 }
 
 func (r *menuRepository) Create(ctx context.Context, menu *models.Menu) error {

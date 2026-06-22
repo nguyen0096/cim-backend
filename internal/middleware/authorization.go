@@ -168,6 +168,15 @@ var customRouteMappings = []RouteMapping{
 		Resource:    "payment-receipt-forms",
 		Action:      "view-pending",
 	},
+	// Reconcile-initiate (epic #38, Part 2): admin/accountant-only. Must precede
+	// the broader /inventories/*/reconcile mapping and carry its own action so it
+	// is gated by initiate_reconciliation, not the generic create action.
+	{
+		Method:      "POST",
+		PathPattern: "/inventories/*/reconcile/initiate",
+		Resource:    "inventory-submissions",
+		Action:      "initiate_reconciliation",
+	},
 	{
 		Method:      "*",
 		PathPattern: "/inventories/*/reconcile",

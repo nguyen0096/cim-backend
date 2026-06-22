@@ -25,11 +25,11 @@ type SupplierRepository interface {
 }
 
 type supplierRepository struct {
-	db *gorm.DB
+	*baseRepository
 }
 
-func NewSupplierRepository(db *gorm.DB) SupplierRepository {
-	return &supplierRepository{db: db}
+func NewSupplierRepository(base BaseRepository) SupplierRepository {
+	return &supplierRepository{baseRepository: asBase(base)}
 }
 
 func (r *supplierRepository) Create(ctx context.Context, supplier *models.Supplier) error {

@@ -1854,7 +1854,7 @@ func seedUsers(db *gorm.DB, casbinCfg config.CasbinConfig) error {
 	}
 
 	// Initialize user repository and service
-	userRepo := repository.NewUserRepository(db, "development")
+	userRepo := repository.NewUserRepository(repository.NewBaseRepository(db), "development")
 	userService := services.NewUserService(userRepo, casbinService)
 
 	ctx := context.Background()

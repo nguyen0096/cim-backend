@@ -32,14 +32,12 @@ type PaymentReceiptFormRepository interface {
 }
 
 type paymentReceiptFormRepository struct {
-	db *gorm.DB
+	*baseRepository
 }
 
 // NewPaymentReceiptFormRepository creates a new payment receipt form repository
-func NewPaymentReceiptFormRepository(db *gorm.DB) PaymentReceiptFormRepository {
-	return &paymentReceiptFormRepository{
-		db: db,
-	}
+func NewPaymentReceiptFormRepository(base BaseRepository) PaymentReceiptFormRepository {
+	return &paymentReceiptFormRepository{baseRepository: asBase(base)}
 }
 
 // Create creates a new payment receipt form

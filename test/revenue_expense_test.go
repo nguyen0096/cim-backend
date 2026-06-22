@@ -58,7 +58,7 @@ var _ = Describe("Revenue Expense API", func() {
 
 			// Configure revenue expense settings
 			ctx := pkg.WithUserEmail(tenv.DefaultContext, "test@cim.local")
-			settingsRepo := repository.NewSettingsRepository(tenv.ContextfulDB())
+			settingsRepo := repository.NewSettingsRepository(repository.NewBaseRepository(tenv.ContextfulDB()))
 
 			settingsValue := map[string]interface{}{
 				"filePath":  tempExcelFile,
@@ -259,7 +259,7 @@ var _ = Describe("Revenue Expense API", func() {
 			It("should return error when revenue expense settings are missing", func(ctx SpecContext) {
 				// Remove the settings
 				settingsCtx := pkg.WithUserEmail(tenv.DefaultContext, "test@cim.local")
-				settingsRepo := repository.NewSettingsRepository(tenv.ContextfulDB())
+				settingsRepo := repository.NewSettingsRepository(repository.NewBaseRepository(tenv.ContextfulDB()))
 
 				// Delete the setting
 				err := settingsRepo.Delete(settingsCtx, config.RevenueExpenseExcelSettingsKey)
@@ -283,7 +283,7 @@ var _ = Describe("Revenue Expense API", func() {
 			It("should create finalization record with failed status and reason", func(ctx SpecContext) {
 				// Set lastFinalizedDate
 				settingsCtx := pkg.WithUserEmail(tenv.DefaultContext, "test@cim.local")
-				settingsRepo := repository.NewSettingsRepository(tenv.ContextfulDB())
+				settingsRepo := repository.NewSettingsRepository(repository.NewBaseRepository(tenv.ContextfulDB()))
 
 				// Configure revenue expense settings with invalid file path to cause failure
 				invalidFilePath := "/nonexistent/path/to/file.xlsx"
@@ -306,7 +306,7 @@ var _ = Describe("Revenue Expense API", func() {
 				Expect(resp.StatusCode).To(Equal(500))
 
 				// Query finalization repository to verify record was created
-				finalizationRepo := repository.NewRevenueExpenseFinalizationRepository(tenv.ContextfulDB())
+				finalizationRepo := repository.NewRevenueExpenseFinalizationRepository(repository.NewBaseRepository(tenv.ContextfulDB()))
 				finalizations, _, err := finalizationRepo.List(tenv.DefaultContext, 10, 0)
 				Expect(err).NotTo(HaveOccurred())
 				Expect(finalizations).NotTo(BeEmpty())
@@ -373,7 +373,7 @@ var _ = Describe("Revenue Expense API", func() {
 				Expect(nextDay).To(Equal(expectedNextDay))
 
 				// Verify finalization record was created with success status
-				finalizationRepo := repository.NewRevenueExpenseFinalizationRepository(tenv.ContextfulDB())
+				finalizationRepo := repository.NewRevenueExpenseFinalizationRepository(repository.NewBaseRepository(tenv.ContextfulDB()))
 				finalizations, _, err := finalizationRepo.List(tenv.DefaultContext, 10, 0)
 				Expect(err).NotTo(HaveOccurred())
 				Expect(finalizations).NotTo(BeEmpty())
@@ -417,7 +417,7 @@ var _ = Describe("Revenue Expense API", func() {
 				Expect(finalizeResp["next_day"]).To(Equal(pkg.GetTodayDate().AddDate(0, 0, 1).Format("2006-01-02")))
 
 				// Verify finalization record was created with success status
-				finalizationRepo := repository.NewRevenueExpenseFinalizationRepository(tenv.ContextfulDB())
+				finalizationRepo := repository.NewRevenueExpenseFinalizationRepository(repository.NewBaseRepository(tenv.ContextfulDB()))
 				lastSuccessfulFinalization, err := finalizationRepo.GetLastest(tenv.DefaultContext)
 				Expect(err).NotTo(HaveOccurred())
 				Expect(lastSuccessfulFinalization).NotTo(BeNil())

@@ -3,8 +3,6 @@ package repository
 import (
 	"cim-backend/internal/models"
 	"context"
-
-	"gorm.io/gorm"
 )
 
 //go:generate mockery --name=RevenueExpenseFinalizationRepository --structname=RevenueExpenseFinalizationRepository --output=../mocks/repositorymocks --outpkg=repositorymocks
@@ -16,14 +14,12 @@ type RevenueExpenseFinalizationRepository interface {
 }
 
 type revenueExpenseFinalizationRepository struct {
-	db *gorm.DB
+	*baseRepository
 }
 
 // NewRevenueExpenseFinalizationRepository creates a new revenue expense finalization repository
-func NewRevenueExpenseFinalizationRepository(db *gorm.DB) RevenueExpenseFinalizationRepository {
-	return &revenueExpenseFinalizationRepository{
-		db: db,
-	}
+func NewRevenueExpenseFinalizationRepository(base BaseRepository) RevenueExpenseFinalizationRepository {
+	return &revenueExpenseFinalizationRepository{baseRepository: asBase(base)}
 }
 
 // Create inserts a new revenue expense finalization record

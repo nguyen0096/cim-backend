@@ -31,11 +31,11 @@ type ProductRepository interface {
 }
 
 type productRepository struct {
-	db *gorm.DB
+	*baseRepository
 }
 
-func NewProductRepository(db *gorm.DB) ProductRepository {
-	return &productRepository{db: db}
+func NewProductRepository(base BaseRepository) ProductRepository {
+	return &productRepository{baseRepository: asBase(base)}
 }
 
 func (r *productRepository) Create(ctx context.Context, product *models.Product) error {

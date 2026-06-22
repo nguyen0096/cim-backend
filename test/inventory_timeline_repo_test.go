@@ -173,7 +173,7 @@ var _ = Describe("SellingPriceRepository.GetPOItemsWithPriceByIDs", func() {
 	var repo repository.SellingPriceRepository
 
 	BeforeEach(func() {
-		repo = repository.NewSellingPriceRepository(tenv.DB)
+		repo = repository.NewSellingPriceRepository(repository.NewBaseRepository(tenv.DB))
 	})
 
 	It("returns the override price when pisp.selling_price is set", func(ctx SpecContext) {
@@ -321,7 +321,7 @@ var _ = Describe("InventoryRepository.GetTransactionsByInventoryIDsWithCounter",
 	var repo repository.InventoryRepository
 
 	BeforeEach(func() {
-		repo = repository.NewInventoryRepository(tenv.DB)
+		repo = repository.NewInventoryRepository(repository.NewBaseRepository(tenv.DB))
 	})
 
 	It("returns purchase txns with their own purchase_order_item_id and nil CounterPOIID", func(ctx SpecContext) {

@@ -20,14 +20,12 @@ type SettingsRepository interface {
 
 // settingsRepository implements SettingsRepository
 type settingsRepository struct {
-	db *gorm.DB
+	*baseRepository
 }
 
 // NewSettingsRepository creates a new settings repository
-func NewSettingsRepository(db *gorm.DB) SettingsRepository {
-	return &settingsRepository{
-		db: db,
-	}
+func NewSettingsRepository(base BaseRepository) SettingsRepository {
+	return &settingsRepository{baseRepository: asBase(base)}
 }
 
 // Get retrieves a setting by key

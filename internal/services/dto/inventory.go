@@ -44,6 +44,19 @@ func (d ReconcileInventoryRequest) GetItemIDs() []uint {
 	return itemIDs
 }
 
+// InitiateReconcileRequest starts a reconciliation for an inventory (epic #38,
+// Part 2). It creates a placeholder reconcile inventory_submissions row and
+// captures one reconciliation_snapshots row per active inventory item, recording
+// prev_quantity = that item's live quantity at initiate time. No counts are
+// supplied here; staff enter counted quantities later via child items.
+// InventoryID is intentionally NOT JSON-bindable (`json:"-"`): this endpoint is
+// path-scoped (/inventories/:id/reconcile/initiate) and must take its scope
+// solely from the path. The handler sets it from the `:id` path param after
+// binding, so a request body cannot change which inventory is reconciled.
+type InitiateReconcileRequest struct {
+	InventoryID uint `json:"-" validate:"required"`
+}
+
 // DisposeInventoryRequest represents the request for disposing inventory items
 type DisposeInventoryRequest struct {
 	InventoryID uint           `json:"inventory_id" validate:"required" param:"id"`

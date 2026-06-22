@@ -10,15 +10,15 @@ import (
 
 // UserRepository handles user data operations
 type UserRepository struct {
-	db          *gorm.DB
+	*baseRepository
 	environment string
 }
 
 // NewUserRepository creates a new user repository
-func NewUserRepository(db *gorm.DB, environment string) *UserRepository {
+func NewUserRepository(base BaseRepository, environment string) *UserRepository {
 	return &UserRepository{
-		db:          db,
-		environment: environment,
+		baseRepository: asBase(base),
+		environment:    environment,
 	}
 }
 

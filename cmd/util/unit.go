@@ -39,7 +39,7 @@ var unitMigrateConversionsCmd = &cobra.Command{
 		ctx := pkg.WithUserEmail(context.Background(), "system@cim.local")
 
 		// Initialize repository
-		unitConversionRepo := repository.NewUnitRepository(db)
+		unitConversionRepo := repository.NewUnitRepository(repository.NewBaseRepository(db))
 
 		// 2. Query units with parent relationships
 		var units []models.Unit

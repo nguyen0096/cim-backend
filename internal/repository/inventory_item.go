@@ -105,11 +105,11 @@ type InventoryItemRepository interface {
 }
 
 type inventoryItemRepository struct {
-	db *gorm.DB
+	*baseRepository
 }
 
-func NewInventoryItemRepository(db *gorm.DB) InventoryItemRepository {
-	return &inventoryItemRepository{db: db}
+func NewInventoryItemRepository(base BaseRepository) InventoryItemRepository {
+	return &inventoryItemRepository{baseRepository: asBase(base)}
 }
 
 func (r *inventoryItemRepository) Create(ctx context.Context, item *models.InventoryItem) error {

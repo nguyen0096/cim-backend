@@ -34,7 +34,7 @@ func setupTestDB(t *testing.T) (*gorm.DB, sqlmock.Sqlmock) {
 
 func TestPaymentReceiptFormRepository_Create(t *testing.T) {
 	gormDB, mock := setupTestDB(t)
-	repo := NewPaymentReceiptFormRepository(gormDB)
+	repo := NewPaymentReceiptFormRepository(NewBaseRepository(gormDB))
 	ctx := pkg.WithUserEmail(context.Background(), "test@cim.local")
 
 	form := &models.PaymentReceiptForm{
@@ -58,7 +58,7 @@ func TestPaymentReceiptFormRepository_Create(t *testing.T) {
 
 func TestPaymentReceiptFormRepository_GetByID(t *testing.T) {
 	gormDB, mock := setupTestDB(t)
-	repo := NewPaymentReceiptFormRepository(gormDB)
+	repo := NewPaymentReceiptFormRepository(NewBaseRepository(gormDB))
 	ctx := pkg.WithUserEmail(context.Background(), "test@cim.local")
 	formID := uint(123)
 
@@ -89,7 +89,7 @@ func TestPaymentReceiptFormRepository_GetByID(t *testing.T) {
 
 func TestPaymentReceiptFormRepository_GetByIDFull(t *testing.T) {
 	gormDB, mock := setupTestDB(t)
-	repo := NewPaymentReceiptFormRepository(gormDB)
+	repo := NewPaymentReceiptFormRepository(NewBaseRepository(gormDB))
 	ctx := pkg.WithUserEmail(context.Background(), "test@cim.local")
 	formID := uint(123)
 	poID := uint(456)
@@ -143,7 +143,7 @@ func TestPaymentReceiptFormRepository_GetByIDFull(t *testing.T) {
 
 func TestPaymentReceiptFormRepository_Update(t *testing.T) {
 	gormDB, mock := setupTestDB(t)
-	repo := NewPaymentReceiptFormRepository(gormDB)
+	repo := NewPaymentReceiptFormRepository(NewBaseRepository(gormDB))
 	ctx := pkg.WithUserEmail(context.Background(), "test@cim.local")
 
 	form := &models.PaymentReceiptForm{
@@ -176,7 +176,7 @@ func TestPaymentReceiptFormRepository_Update(t *testing.T) {
 
 func TestPaymentReceiptFormRepository_List(t *testing.T) {
 	gormDB, mock := setupTestDB(t)
-	repo := NewPaymentReceiptFormRepository(gormDB)
+	repo := NewPaymentReceiptFormRepository(NewBaseRepository(gormDB))
 	ctx := pkg.WithUserEmail(context.Background(), "test@cim.local")
 
 	t.Run("list with filters", func(t *testing.T) {
@@ -209,7 +209,7 @@ func TestPaymentReceiptFormRepository_List(t *testing.T) {
 
 func TestPaymentReceiptFormRepository_GenerateNextFormNumber(t *testing.T) {
 	gormDB, mock := setupTestDB(t)
-	repo := NewPaymentReceiptFormRepository(gormDB)
+	repo := NewPaymentReceiptFormRepository(NewBaseRepository(gormDB))
 	ctx := pkg.WithUserEmail(context.Background(), "test@cim.local")
 	date := time.Date(2024, 1, 15, 0, 0, 0, 0, time.UTC)
 	inventoryID := uint(1)

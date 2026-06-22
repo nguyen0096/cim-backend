@@ -23,6 +23,10 @@ const (
 
 	// RBAC actions
 	RBACActionApprove = "approve"
+	// RBACActionInitiateReconciliation gates the reconcile-initiate endpoint
+	// (epic #38, Part 2): only admin/accountant may start a reconciliation and
+	// capture the per-item snapshot baseline.
+	RBACActionInitiateReconciliation = "initiate_reconciliation"
 )
 
 // GetUserEmailFromContext gets the user email from the context

@@ -85,11 +85,11 @@ type SellingPriceRepository interface {
 }
 
 type sellingPriceRepository struct {
-	db *gorm.DB
+	*baseRepository
 }
 
-func NewSellingPriceRepository(db *gorm.DB) SellingPriceRepository {
-	return &sellingPriceRepository{db: db}
+func NewSellingPriceRepository(base BaseRepository) SellingPriceRepository {
+	return &sellingPriceRepository{baseRepository: asBase(base)}
 }
 
 func (r *sellingPriceRepository) Create(ctx context.Context, sp *models.SellingPrice) error {

@@ -22,7 +22,7 @@ import (
 // filter the join could match the stale soft-deleted row and return a wrong price.
 func TestGetSellingPricesForSellTransactions_FiltersSoftDeletedPISP(t *testing.T) {
 	gormDB, mock := setupTestDB(t)
-	repo := NewSellingPriceRepository(gormDB)
+	repo := NewSellingPriceRepository(NewBaseRepository(gormDB))
 	ctx := context.Background()
 
 	// The query expectation requires "pisp.deleted_at IS NULL" to appear in the
@@ -64,7 +64,7 @@ func nextPrevScopeRe(cmp, ord string) string {
 
 func TestGetNextInScope_ReturnsNextRow(t *testing.T) {
 	gormDB, mock := setupTestDB(t)
-	repo := NewSellingPriceRepository(gormDB)
+	repo := NewSellingPriceRepository(NewBaseRepository(gormDB))
 
 	from := time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC)
 	nextFrom := time.Date(2026, 5, 1, 0, 0, 0, 0, time.UTC)
@@ -85,7 +85,7 @@ func TestGetNextInScope_ReturnsNextRow(t *testing.T) {
 
 func TestGetNextInScope_NoNext_ReturnsNil(t *testing.T) {
 	gormDB, mock := setupTestDB(t)
-	repo := NewSellingPriceRepository(gormDB)
+	repo := NewSellingPriceRepository(NewBaseRepository(gormDB))
 
 	from := time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC)
 	inv := uint(3)
@@ -103,7 +103,7 @@ func TestGetNextInScope_NoNext_ReturnsNil(t *testing.T) {
 
 func TestGetPrevInScope_ReturnsPrevRow(t *testing.T) {
 	gormDB, mock := setupTestDB(t)
-	repo := NewSellingPriceRepository(gormDB)
+	repo := NewSellingPriceRepository(NewBaseRepository(gormDB))
 
 	from := time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC)
 	prevFrom := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
@@ -124,7 +124,7 @@ func TestGetPrevInScope_ReturnsPrevRow(t *testing.T) {
 
 func TestGetPrevInScope_NoPrev_ReturnsNil(t *testing.T) {
 	gormDB, mock := setupTestDB(t)
-	repo := NewSellingPriceRepository(gormDB)
+	repo := NewSellingPriceRepository(NewBaseRepository(gormDB))
 
 	from := time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC)
 	sp := &models.SellingPrice{ProductID: 42, EffectiveFrom: from}

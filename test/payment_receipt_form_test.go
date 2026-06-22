@@ -345,7 +345,7 @@ var _ = Describe("Payment Receipt Form API", func() {
 
 			// Create a successful finalization record with finalized date (different from form date)
 			lastFinalizedDate := time.Now().AddDate(0, 0, -5) // 5 days ago
-			finalizationRepo := repository.NewRevenueExpenseFinalizationRepository(tenv.ContextfulDB())
+			finalizationRepo := repository.NewRevenueExpenseFinalizationRepository(repository.NewBaseRepository(tenv.ContextfulDB()))
 			finalization := &models.RevenueExpenseFinalization{
 				FinalizedDate: lastFinalizedDate.AddDate(0, 0, -1),
 				Status:        pkg.Ptr(models.RevenueExpenseFinalizationStatusSuccess),
