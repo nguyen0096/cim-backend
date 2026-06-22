@@ -1,0 +1,5 @@
+DROP INDEX IF EXISTS idx_reconciliation_snapshots_deleted_at;
+DROP INDEX IF EXISTS idx_reconciliation_snapshots_created_at;
+DROP INDEX IF EXISTS idx_reconciliation_snapshots_submission_id;
+DROP INDEX IF EXISTS uq_reconciliation_snapshots_submission_item_active;
+DROP TABLE IF EXISTS reconciliation_snapshots;

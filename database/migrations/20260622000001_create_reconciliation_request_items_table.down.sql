@@ -1,0 +1,3 @@
+DROP INDEX IF EXISTS idx_reconciliation_request_items_deleted_at;
+DROP INDEX IF EXISTS idx_reconciliation_request_items_submission_id;
+DROP TABLE IF EXISTS reconciliation_request_items;
