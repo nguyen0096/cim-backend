@@ -168,6 +168,10 @@ func TestInitiateReconcile_CapturesSnapshotsAtomically(t *testing.T) {
 
 	mock.ExpectBegin()
 
+	// 0) One-active-pending guard (epic #38, Part 3 — S5) runs first inside the tx;
+	// no live pending submission for this inventory -> it passes.
+	expectActivePending(mock, 0)
+
 	// 1) Create the parent placeholder submission; return its generated id.
 	mock.ExpectQuery(regexp.QuoteMeta(`INSERT INTO "inventory_submissions"`)).
 		WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(99))
@@ -199,6 +203,7 @@ func TestInitiateReconcile_RollsBackOnSnapshotFailure(t *testing.T) {
 	expectInventoryExists(mock, inventoryID)
 
 	mock.ExpectBegin()
+	expectActivePending(mock, 0)
 	mock.ExpectQuery(regexp.QuoteMeta(`INSERT INTO "inventory_submissions"`)).
 		WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(99))
 	mock.ExpectExec(regexp.QuoteMeta(`INSERT INTO reconciliation_snapshots`)).
@@ -222,6 +227,7 @@ func TestInitiateReconcile_NoActiveItems(t *testing.T) {
 	expectInventoryExists(mock, 7)
 
 	mock.ExpectBegin()
+	expectActivePending(mock, 0)
 	mock.ExpectQuery(regexp.QuoteMeta(`INSERT INTO "inventory_submissions"`)).
 		WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(99))
 	mock.ExpectExec(regexp.QuoteMeta(`INSERT INTO reconciliation_snapshots`)).

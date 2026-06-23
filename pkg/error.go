@@ -1,6 +1,7 @@
 package pkg
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -44,6 +45,9 @@ const (
 	ErrorCodeBadInventoryItemState ErrorCode = 8 // bad-inventory-item-state
 	// ErrorCodeReconcileValidationFailed is used when reconcile validation fails
 	ErrorCodeReconcileValidationFailed ErrorCode = 10 // reconcile-validation-failed
+	// ErrorCodeActivePendingReconcileConflict is returned when an inventory already
+	// has a pending reconcile in flight (one-active-pending-reconcile guard, #38 P3).
+	ErrorCodeActivePendingReconcileConflict ErrorCode = 17 // active-pending-reconcile-conflict
 	// ErrorCodeDisposeValidationFailed is used when dispose validation fails
 	ErrorCodeDisposeValidationFailed ErrorCode = 11 // dispose-validation-failed
 	// ErrorCodeTransferValidationFailed is used when transfer validation fails
@@ -64,10 +68,33 @@ type AppError struct {
 	Code    ErrorCode
 	Cause   error
 	Message string
+	// MessageKey, when set, is an ErrorMessages catalog key the error handler
+	// resolves to a request-localized message at response time (formatted with
+	// MessageArgs). Lets lower layers (e.g. repositories) return a domain error
+	// without knowing the caller's language. Message is the fallback if unset.
+	MessageKey  string
+	MessageArgs []interface{}
 	// Stack holds a stack trace captured at error creation time. It is used for
 	// server-side logging only and MUST NOT be exposed in MarshalJSON / client
 	// responses.
 	Stack string
+}
+
+// LocalizedMessage returns the request-localized message for ctx: the
+// MessageKey resolved against the catalog (formatted with MessageArgs) when set,
+// otherwise the static Message.
+func (e *AppError) LocalizedMessage(ctx context.Context) string {
+	if e.MessageKey == "" {
+		return e.Message
+	}
+	tmpl := getErrorMessage(ctx, e.MessageKey)
+	if tmpl == "" {
+		return e.Message
+	}
+	if len(e.MessageArgs) > 0 {
+		return fmt.Sprintf(tmpl, e.MessageArgs...)
+	}
+	return tmpl
 }
 
 // Error implements the error interface
@@ -107,7 +134,7 @@ func (e *AppError) HTTPStatus() int {
 		return http.StatusUnauthorized
 	case ErrorCodeForbidden:
 		return http.StatusForbidden
-	case ErrorCodeDuplicate, ErrorCodeConflict:
+	case ErrorCodeDuplicate, ErrorCodeConflict, ErrorCodeActivePendingReconcileConflict:
 		return http.StatusConflict
 	case ErrorCodeInternal:
 		fallthrough

@@ -18,6 +18,10 @@ type InventorySubmissionRepository interface {
 	FailSubmissionProcessingWithErrors(ctx context.Context, id uint, errors []error) error
 	ListSubmissions(ctx context.Context, params models.ListParams, inventoryID uint, approvalStatuses []string, submissionTypes []string) ([]models.InventorySubmission, int64, error)
 	UpdateSubmissionPayload(ctx context.Context, id uint, payload []byte) error
+	// ExistsActivePending reports whether a live pending RECONCILE submission
+	// already exists for the inventory (one-active-pending guard, #38 P3,
+	// reconcile-only). Tx-aware via DB(ctx).
+	ExistsActivePending(ctx context.Context, inventoryID uint) (bool, error)
 }
 
 type inventorySubmissionRepository struct {
@@ -29,11 +33,21 @@ func NewInventorySubmissionRepository(base BaseRepository) InventorySubmissionRe
 	return &inventorySubmissionRepository{baseRepository: asBase(base)}
 }
 
-// Create creates a new inventory submission. It is transaction-aware: when the
-// context carries a BaseRepository.WithinTx transaction it runs inside that
-// transaction, otherwise it uses the repository's own connection.
+// uqOneActivePendingReconcile is the partial unique index that enforces the
+// one-active-pending-reconcile-per-inventory rule (migration 20260622000002).
+const uqOneActivePendingReconcile = "uq_inventory_submissions_one_active_pending"
+
+// Create creates a new inventory submission. Transaction-aware via DB(ctx). A
+// violation of the one-active-pending-reconcile index is translated to the
+// ErrActivePendingReconcileConflict domain error (so a concurrent race loser
+// yields a clean conflict, not a raw DB error); other errors pass through.
 func (r *inventorySubmissionRepository) Create(ctx context.Context, submission *models.InventorySubmission) error {
-	return r.DB(ctx).WithContext(ctx).Create(submission).Error
+	err := r.DB(ctx).WithContext(ctx).Create(submission).Error
+	constraint := uqOneActivePendingReconcile
+	if err != nil && isDuplicateError(err, &constraint) {
+		return pkg.ErrActivePendingReconcileConflict(submission.InventoryID, err)
+	}
+	return err
 }
 
 // GetPendingSubmissions retrieves all pending submissions for an inventory
@@ -152,6 +166,25 @@ func (r *inventorySubmissionRepository) ListSubmissions(
 	}
 
 	return submissions, total, nil
+}
+
+// ExistsActivePending reports whether a live pending RECONCILE submission exists
+// for the inventory. The predicate mirrors the partial unique index (GORM adds
+// the deleted_at IS NULL scope), so terminal reconciles and pending
+// dispose/transfer never count. Tx-aware via DB(ctx).
+func (r *inventorySubmissionRepository) ExistsActivePending(ctx context.Context, inventoryID uint) (bool, error) {
+	var count int64
+	err := r.DB(ctx).WithContext(ctx).
+		Model(&models.InventorySubmission{}).
+		Where("inventory_id = ?", inventoryID).
+		Where("processing_status = ?", models.InventorySubmissionStatusPending).
+		Where("submission_type = ?", models.InventorySubmissionTypeReconcile).
+		Limit(1).
+		Count(&count).Error
+	if err != nil {
+		return false, err
+	}
+	return count > 0, nil
 }
 
 // UpdateSubmissionPayload updates the payload of a submission

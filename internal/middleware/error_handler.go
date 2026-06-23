@@ -107,9 +107,11 @@ func HandleError(c echo.Context, err error) error {
 			"stack_trace": pkg.StackTrace(appErr),
 		}).WithError(appErr).Error("app error")
 
-		// Return the display message to client
+		// Localize the message per request language (falls back to appErr.Message
+		// when the error carries no MessageKey) so domain errors raised by
+		// language-agnostic layers (e.g. repositories) are translated here.
 		return c.JSON(appErr.HTTPStatus(), map[string]interface{}{
-			"message": appErr.Message,
+			"message": appErr.LocalizedMessage(c.Request().Context()),
 			"code":    appErr.Code.String(),
 		})
 	}

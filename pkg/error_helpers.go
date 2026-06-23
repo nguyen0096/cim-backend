@@ -41,9 +41,10 @@ const (
 
 	// Inventory Error Keys
 
-	ErrKeyInventoryItemNotFound        = "inventory_item_not_found"
-	ErrKeyOptimisticLockConflict       = "optimistic_lock_conflict"
-	ErrKeyNoTransactionsInReportPeriod = "no_transactions_in_report_period"
+	ErrKeyInventoryItemNotFound          = "inventory_item_not_found"
+	ErrKeyOptimisticLockConflict         = "optimistic_lock_conflict"
+	ErrKeyNoTransactionsInReportPeriod   = "no_transactions_in_report_period"
+	ErrKeyActivePendingReconcileConflict = "active_pending_reconcile_conflict"
 
 	// Unit Error Keys
 
@@ -187,6 +188,10 @@ var ErrorMessages = map[string]ErrorMessage{
 	ErrKeyNoTransactionsInReportPeriod: {
 		EN: "No transactions found for the selected period",
 		VI: "Không tìm thấy giao dịch nào trong khoảng thời gian đã chọn",
+	},
+	ErrKeyActivePendingReconcileConflict: {
+		EN: "Inventory %d already has a pending reconcile; resolve it before creating another",
+		VI: "Kho %d đang có một phiếu kiểm kê chờ xử lý; vui lòng hoàn tất phiếu đó trước khi tạo phiếu mới",
 	},
 	// Unit Errors
 	ErrKeyUnitAlreadyExists: {
@@ -446,6 +451,22 @@ func ErrInventoryItemNotFound(ctx context.Context, itemID uint) *AppError {
 func ErrNoTransactionsInReportPeriod(ctx context.Context) *AppError {
 	message := getErrorMessage(ctx, ErrKeyNoTransactionsInReportPeriod)
 	return NewAppError(ErrorCodeNotFound, message, nil)
+}
+
+// ErrActivePendingReconcileConflict is the domain conflict for the
+// one-active-pending-reconcile guard (#38 P3). Both the service pre-check and the
+// repo unique-violation translator return it. It defers localization to the error
+// handler (MessageKey + inventoryID) so the language-agnostic repo layer can raise
+// it; Message is the English fallback.
+func ErrActivePendingReconcileConflict(inventoryID uint, cause error) *AppError {
+	err := NewAppError(
+		ErrorCodeActivePendingReconcileConflict,
+		fmt.Sprintf(ErrorMessages[ErrKeyActivePendingReconcileConflict].EN, inventoryID),
+		cause,
+	)
+	err.MessageKey = ErrKeyActivePendingReconcileConflict
+	err.MessageArgs = []interface{}{inventoryID}
+	return err
 }
 
 func ErrReconcileValidationFailed(message string) *AppError {

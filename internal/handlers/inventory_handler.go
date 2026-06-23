@@ -223,9 +223,7 @@ func (h *InventoryHandler) DisposeInventoryItems(c echo.Context) error {
 // @Security BearerAuth
 // @Router /inventories/{id}/reconcile/initiate [post]
 func (h *InventoryHandler) InitiateReconcile(c echo.Context) error {
-	// This endpoint is path-scoped: the inventory is identified solely by the
-	// `:id` path param. Take it authoritatively from the path so a request body
-	// (e.g. {"inventory_id":2}) can never change which inventory is reconciled.
+	// Inventory comes from the path param only, so a request body can't override it.
 	id, err := pkg.ExtractIDParam(c)
 	if err != nil {
 		return err

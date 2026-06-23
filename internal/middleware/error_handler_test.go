@@ -76,6 +76,39 @@ func TestHandleErrorLogsStackTrace(t *testing.T) {
 		assert.NotEmpty(t, entry["stack_trace"])
 	})
 
+	t.Run("AppError with MessageKey is localized per request language", func(t *testing.T) {
+		newLangContext := func(lang string) (echo.Context, *httptest.ResponseRecorder) {
+			e := echo.New()
+			req := httptest.NewRequest(http.MethodPost, "/inventories/7/reconcile/initiate", nil)
+			req = req.WithContext(pkg.WithLanguage(req.Context(), lang))
+			rec := httptest.NewRecorder()
+			return e.NewContext(req, rec), rec
+		}
+
+		readBody := func(t *testing.T, rec *httptest.ResponseRecorder) map[string]interface{} {
+			var body map[string]interface{}
+			require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &body))
+			return body
+		}
+
+		// The domain conflict carries a MessageKey (not a fixed string); the
+		// handler resolves it to the request language at write time.
+		cEN, recEN := newLangContext(pkg.LangEN)
+		require.NoError(t, HandleError(cEN, pkg.ErrActivePendingReconcileConflict(7, nil)))
+		assert.Equal(t, http.StatusConflict, recEN.Code)
+		bodyEN := readBody(t, recEN)
+		assert.Equal(t, pkg.ErrorCodeActivePendingReconcileConflict.String(), bodyEN["code"])
+		assert.Equal(t,
+			fmt.Sprintf(pkg.GetErrorMessageByLang(pkg.ErrKeyActivePendingReconcileConflict, pkg.LangEN), 7),
+			bodyEN["message"])
+
+		cVI, recVI := newLangContext(pkg.LangVI)
+		require.NoError(t, HandleError(cVI, pkg.ErrActivePendingReconcileConflict(7, nil)))
+		bodyVI := readBody(t, recVI)
+		assert.NotEqual(t, bodyEN["message"], bodyVI["message"], "VI response must differ from EN")
+		assert.Contains(t, bodyVI["message"], "7")
+	})
+
 	t.Run("BatchError logs the captured creation stack at error", func(t *testing.T) {
 		buf := captureLogs(t)
 		log.Logger.SetLevel(logrus.ErrorLevel)
