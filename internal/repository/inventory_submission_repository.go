@@ -76,7 +76,12 @@ func (r *inventorySubmissionRepository) GetPendingSubmissions(ctx context.Contex
 // GetByID retrieves a submission by ID
 func (r *inventorySubmissionRepository) GetByID(ctx context.Context, id uint) (*models.InventorySubmission, error) {
 	var submission models.InventorySubmission
-	err := r.db.WithContext(ctx).First(&submission, id).Error
+	// Use DB(ctx) so the read enlists in the caller's transaction when there is
+	// one (and the base connection otherwise — identical behavior outside a tx).
+	// This keeps a tx-bound caller (e.g. synthesize invoked inside WithinTx after
+	// mutating the parent) consistent with the child/snapshot reads, which already
+	// go through DB(ctx).
+	err := r.DB(ctx).WithContext(ctx).First(&submission, id).Error
 	if err != nil {
 		return nil, err
 	}

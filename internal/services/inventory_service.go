@@ -43,6 +43,14 @@ type InventoryService interface {
 	UpdateReconciliationItem(ctx context.Context, req dto.UpdateReconciliationItemRequest) (*models.ReconciliationRequestItem, error)
 	SetReconciliationItemReady(ctx context.Context, req dto.SetReconciliationItemReadyRequest) (*models.ReconciliationRequestItem, error)
 	DeleteReconciliationItem(ctx context.Context, req dto.DeleteReconciliationItemRequest) error
+
+	// SynthesizeSubmissionPayload folds the live (non-deleted) staff child rows of
+	// an initiated reconcile into the legacy ReconcileInventoryRequest-shaped
+	// payload the apply path consumes, summing counted quantities by
+	// inventory_item_id and attaching the snapshot baseline as PrevQuantity. It is
+	// pure/read-only synthesis (epic #38, Part 5) and drives the list/detail view,
+	// review label and warnings for active reconciles.
+	SynthesizeSubmissionPayload(ctx context.Context, submissionID uint) (*dto.SynthesizedReconcile, error)
 }
 
 type inventoryService struct {
@@ -1067,7 +1075,23 @@ func (s *inventoryService) ListSubmissions(ctx context.Context, params models.Li
 
 	submissionItemMap := make(map[uint][]dto.QuantityItem)
 	itemIDs := make([]uint, 0)
+	// synthesized holds, for each ACTIVE reconcile (initiated via the new flow,
+	// payload still empty), the read-only synthesis over its staff child rows
+	// (epic #38, Part 5 / S4). Such a submission's parent Payload is empty until
+	// apply, so its items/label/warnings are derived from the child rows instead.
+	synthesized := make(map[uint]*dto.SynthesizedReconcile)
 	for _, submission := range submissions {
+		if isActiveReconcile(submission) {
+			syn, err := s.SynthesizeSubmissionPayload(ctx, submission.ID)
+			if err != nil {
+				return nil, 0, fmt.Errorf("failed to synthesize reconcile submission %d: %w", submission.ID, err)
+			}
+			synthesized[submission.ID] = syn
+			submissionItemMap[submission.ID] = syn.Request.Items
+			itemIDs = append(itemIDs, models.GetIDs(syn.Request.Items)...)
+			continue
+		}
+
 		var genericPayload struct {
 			Items []dto.QuantityItem `json:"items"`
 		}
@@ -1093,6 +1117,20 @@ func (s *inventoryService) ListSubmissions(ctx context.Context, params models.Li
 			return nil, 0, fmt.Errorf("failed to format submission items: %w", err)
 		}
 
+		// Warnings reuse the shared formatWarnings reconcile branch, which compares
+		// PrevQuantity (the snapshot baseline, set by synthesis) vs the live item
+		// quantity — exactly the B2 snapshot-vs-live drift view.
+		warnings := formatWarnings(submission, items, inventoryItemMap)
+
+		var label dto.ReconcileReviewLabel
+		if syn, ok := synthesized[submission.ID]; ok {
+			label = syn.Label
+			// Surface synthesis anomalies (e.g. a stored aggregate exceeding its
+			// snapshot baseline) alongside the drift warnings so the admin sees the
+			// data oddity rather than it being silently corrected.
+			warnings = append(warnings, syn.Anomalies...)
+		}
+
 		responses[i] = dto.SubmissionResponse{
 			ID:             submission.ID,
 			InventoryID:    submission.InventoryID,
@@ -1101,8 +1139,9 @@ func (s *inventoryService) ListSubmissions(ctx context.Context, params models.Li
 			Status:         submission.ProcessingStatus,
 			ApprovalStatus: submission.ApprovalStatus,
 			Errors:         s.formatProcessingErrors(submission.Error),
-			Warnings:       formatWarnings(submission, items, inventoryItemMap),
+			Warnings:       warnings,
 			Items:          items,
+			ReviewLabel:    label,
 			Reason:         submission.Reason,
 			CreatedBy:      submission.CreatedBy,
 			CreatedAt:      submission.CreatedAt.Format(pkg.DateTimeFormat),
@@ -1112,6 +1151,42 @@ func (s *inventoryService) ListSubmissions(ctx context.Context, params models.Li
 	}
 
 	return responses, total, nil
+}
+
+// isActiveReconcile reports whether a submission is an in-flight reconciliation
+// initiated via the new flow whose parent payload is still empty (epic #38, Part
+// 5 / S4). Such submissions must render their items/label/warnings by synthesizing
+// over the staff child rows rather than reading the empty Payload. The gate is
+// intentionally cheap (no per-row query): a legacy single-payload reconcile carries
+// a non-empty Payload and so is excluded and keeps its existing behavior; an
+// applied/approved or rejected reconcile is likewise excluded (payload populated at
+// apply, or never reaching apply). Synthesis itself then reads the child rows and
+// snapshot; a reconcile with neither simply yields an empty item set.
+func isActiveReconcile(submission models.InventorySubmission) bool {
+	return submission.SubmissionType == models.InventorySubmissionTypeReconcile &&
+		submission.ApprovalStatus == models.InventorySubmissionApprovalStatusPending &&
+		len(payloadItemsRaw(submission.Payload)) == 0
+}
+
+// payloadItemsRaw returns the raw bytes of the payload only when it is non-empty
+// and parses to at least one item; an empty/`null`/`{}`/zero-item payload yields
+// nil so isActiveReconcile treats it as "no persisted payload yet".
+func payloadItemsRaw(payload json.RawMessage) json.RawMessage {
+	if len(payload) == 0 {
+		return nil
+	}
+	var parsed struct {
+		Items []json.RawMessage `json:"items"`
+	}
+	if err := json.Unmarshal(payload, &parsed); err != nil {
+		// Unparseable payload: treat as present (non-active) so we don't override a
+		// legacy/foreign payload via synthesis.
+		return payload
+	}
+	if len(parsed.Items) == 0 {
+		return nil
+	}
+	return payload
 }
 
 func (s *inventoryService) formatProcessingErrors(jsonStr json.RawMessage) json.RawMessage {
