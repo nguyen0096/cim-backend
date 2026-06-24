@@ -46,6 +46,24 @@ const (
 	ErrKeyNoTransactionsInReportPeriod   = "no_transactions_in_report_period"
 	ErrKeyActivePendingReconcileConflict = "active_pending_reconcile_conflict"
 
+	// Reconciliation Request Item Error Keys (epic #38, Part 4)
+
+	ErrKeyReconItemNotFound                 = "recon_item_not_found"
+	ErrKeyReconParentNotFound               = "recon_parent_not_found"
+	ErrKeyReconParentNotInitiated           = "recon_parent_not_initiated"
+	ErrKeyReconParentNotInFlight            = "recon_parent_not_in_flight"
+	ErrKeyReconItemMissingQuantity          = "recon_item_missing_quantity"
+	ErrKeyReconItemNotOwned                 = "recon_item_not_owned"
+	ErrKeyReconItemNotInParent              = "recon_item_not_in_parent"
+	ErrKeyReconItemImmutable                = "recon_item_immutable"
+	ErrKeyReconItemCannotDeleteStatus       = "recon_item_cannot_delete_status"
+	ErrKeyReconItemInvalidTransition        = "recon_item_invalid_transition"
+	ErrKeyReconItemCountExceedsBaseline     = "recon_item_count_exceeds_baseline"
+	ErrKeyReconItemAggregateExceedsBaseline = "recon_item_aggregate_exceeds_baseline"
+	ErrKeyReconItemNoSnapshotBaseline       = "recon_item_no_snapshot_baseline"
+	ErrKeyReconItemNegativeQuantity         = "recon_item_negative_quantity"
+	ErrKeyReconItemDuplicateLine            = "recon_item_duplicate_line"
+
 	// Unit Error Keys
 
 	ErrKeyUnitAlreadyExists                 = "unit_already_exists"
@@ -192,6 +210,67 @@ var ErrorMessages = map[string]ErrorMessage{
 	ErrKeyActivePendingReconcileConflict: {
 		EN: "Inventory %d already has a pending reconcile; resolve it before creating another",
 		VI: "Kho %d đang có một phiếu kiểm kê chờ xử lý; vui lòng hoàn tất phiếu đó trước khi tạo phiếu mới",
+	},
+	// Reconciliation Request Item Errors (epic #38, Part 4)
+	ErrKeyReconItemNotFound: {
+		EN: "Reconciliation item %d not found",
+		VI: "Không tìm thấy mục kiểm kê %d",
+	},
+	ErrKeyReconParentNotFound: {
+		EN: "Reconciliation submission %d not found",
+		VI: "Không tìm thấy phiếu kiểm kê %d",
+	},
+	ErrKeyReconParentNotInitiated: {
+		EN: "Submission %d is not an initiated reconciliation; it has no snapshot baseline for child items",
+		VI: "Phiếu %d không phải là phiếu kiểm kê đã khởi tạo; không có số liệu nền (snapshot) cho các mục kiểm kê",
+	},
+	ErrKeyReconParentNotInFlight: {
+		EN: "Reconciliation submission %d is no longer in progress (status %s); its items can no longer be modified",
+		VI: "Phiếu kiểm kê %d không còn đang xử lý (trạng thái %s); không thể chỉnh sửa các mục của phiếu",
+	},
+	ErrKeyReconItemMissingQuantity: {
+		EN: "Counted quantity is required for inventory item %d",
+		VI: "Số lượng đếm được là bắt buộc cho sản phẩm %d",
+	},
+	ErrKeyReconItemNotOwned: {
+		EN: "You can only modify reconciliation items you created",
+		VI: "Bạn chỉ có thể chỉnh sửa các mục kiểm kê do chính bạn tạo",
+	},
+	ErrKeyReconItemNotInParent: {
+		EN: "Reconciliation item %d does not belong to submission %d",
+		VI: "Mục kiểm kê %d không thuộc phiếu %d",
+	},
+	ErrKeyReconItemImmutable: {
+		EN: "Reconciliation item %d is applied and can no longer be modified",
+		VI: "Mục kiểm kê %d đã được áp dụng và không thể chỉnh sửa",
+	},
+	ErrKeyReconItemCannotDeleteStatus: {
+		EN: "Reconciliation item %d cannot be deleted in status %s; only in_progress or ready items may be deleted",
+		VI: "Không thể xóa mục kiểm kê %d ở trạng thái %s; chỉ có thể xóa mục ở trạng thái in_progress hoặc ready",
+	},
+	ErrKeyReconItemInvalidTransition: {
+		EN: "Invalid reconciliation item status transition from %s to %s",
+		VI: "Chuyển trạng thái mục kiểm kê không hợp lệ từ %s sang %s",
+	},
+	ErrKeyReconItemCountExceedsBaseline: {
+		EN: "Counted quantity %s for inventory item %d exceeds the snapshot baseline %s",
+		VI: "Số lượng đếm được %s cho sản phẩm %d vượt quá số liệu nền %s",
+	},
+	ErrKeyReconItemAggregateExceedsBaseline: {
+		EN: "Total counted quantity %s for inventory item %d across all staff submissions exceeds the snapshot baseline %s",
+		VI: "Tổng số lượng đếm được %s cho sản phẩm %d trên tất cả các phiếu kiểm kê của nhân viên vượt quá số liệu nền %s",
+	},
+	ErrKeyReconItemNoSnapshotBaseline: {
+		EN: "Inventory item %d has no snapshot baseline for this reconciliation",
+		VI: "Sản phẩm %d không có số liệu nền cho phiếu kiểm kê này",
+	},
+	ErrKeyReconItemNegativeQuantity: {
+		EN: "Counted quantity for inventory item %d must not be negative",
+		VI: "Số lượng đếm được cho sản phẩm %d không được âm",
+	},
+	ErrKeyReconItemDuplicateLine: {
+		EN: "Inventory item %d appears more than once in the reconciliation item payload",
+		VI: "Sản phẩm %d xuất hiện nhiều lần trong mục kiểm kê",
 	},
 	// Unit Errors
 	ErrKeyUnitAlreadyExists: {
@@ -471,6 +550,113 @@ func ErrActivePendingReconcileConflict(inventoryID uint, cause error) *AppError 
 
 func ErrReconcileValidationFailed(message string) *AppError {
 	return NewAppError(ErrorCodeReconcileValidationFailed, message, nil)
+}
+
+// --- Reconciliation request item domain errors (epic #38, Part 4) ---
+// Each maps a child-item rejection to a localized message + the correct HTTP
+// status via its ErrorCode, mirroring the Part 3 layering (no raw errors leak).
+
+// ErrReconItemNotFound is a 404 for a missing/soft-deleted child item.
+func ErrReconItemNotFound(ctx context.Context, itemID uint) *AppError {
+	return NewAppError(ErrorCodeNotFound,
+		fmt.Sprintf(getErrorMessage(ctx, ErrKeyReconItemNotFound), itemID), nil)
+}
+
+// ErrReconParentNotFound is a 404 for a missing parent submission.
+func ErrReconParentNotFound(ctx context.Context, submissionID uint) *AppError {
+	return NewAppError(ErrorCodeNotFound,
+		fmt.Sprintf(getErrorMessage(ctx, ErrKeyReconParentNotFound), submissionID), nil)
+}
+
+// ErrReconParentNotInitiated is a 400/validation: the parent is not a reconcile
+// started via initiate (no snapshot baseline), so child items cannot be filed.
+func ErrReconParentNotInitiated(ctx context.Context, submissionID uint) *AppError {
+	return NewAppError(ErrorCodeValidation,
+		fmt.Sprintf(getErrorMessage(ctx, ErrKeyReconParentNotInitiated), submissionID), nil)
+}
+
+// ErrReconParentNotInFlight is a 409/conflict: the parent reconciliation has left
+// the in-flight (approval pending) state — it was rejected/canceled or already
+// approved/applied — so its child items can no longer be created/edited/deleted.
+func ErrReconParentNotInFlight(ctx context.Context, submissionID uint, status string) *AppError {
+	return NewAppError(ErrorCodeConflict,
+		fmt.Sprintf(getErrorMessage(ctx, ErrKeyReconParentNotInFlight), submissionID, status), nil)
+}
+
+// ErrReconItemMissingQuantity is a 400/validation: a counted line omitted the
+// quantity entirely (distinct from an explicit zero count).
+func ErrReconItemMissingQuantity(ctx context.Context, itemID uint) *AppError {
+	return NewAppError(ErrorCodeValidation,
+		fmt.Sprintf(getErrorMessage(ctx, ErrKeyReconItemMissingQuantity), itemID), nil)
+}
+
+// ErrReconItemNotOwned is a 403: a staff user tried to touch another user's row.
+func ErrReconItemNotOwned(ctx context.Context) *AppError {
+	return NewAppError(ErrorCodeForbidden, getErrorMessage(ctx, ErrKeyReconItemNotOwned), nil)
+}
+
+// ErrReconItemNotInParent is a 404/validation: the item exists but under a
+// different parent submission than the path-scoped one.
+func ErrReconItemNotInParent(ctx context.Context, itemID, submissionID uint) *AppError {
+	return NewAppError(ErrorCodeNotFound,
+		fmt.Sprintf(getErrorMessage(ctx, ErrKeyReconItemNotInParent), itemID, submissionID), nil)
+}
+
+// ErrReconItemImmutable is a 409/conflict: the row is applied and immutable.
+func ErrReconItemImmutable(ctx context.Context, itemID uint) *AppError {
+	return NewAppError(ErrorCodeConflict,
+		fmt.Sprintf(getErrorMessage(ctx, ErrKeyReconItemImmutable), itemID), nil)
+}
+
+// ErrReconItemCannotDeleteStatus is a 409/conflict: only in_progress/ready rows
+// may be soft-deleted.
+func ErrReconItemCannotDeleteStatus(ctx context.Context, itemID uint, status string) *AppError {
+	return NewAppError(ErrorCodeConflict,
+		fmt.Sprintf(getErrorMessage(ctx, ErrKeyReconItemCannotDeleteStatus), itemID, status), nil)
+}
+
+// ErrReconItemInvalidTransition is a 409/conflict for an illegal status move.
+func ErrReconItemInvalidTransition(ctx context.Context, from, to string) *AppError {
+	return NewAppError(ErrorCodeConflict,
+		fmt.Sprintf(getErrorMessage(ctx, ErrKeyReconItemInvalidTransition), from, to), nil)
+}
+
+// ErrReconItemCountExceedsBaseline is a 400/validation for the S2 rule:
+// counted > snapshot baseline is rejected (no positive-adjustment mechanism).
+func ErrReconItemCountExceedsBaseline(ctx context.Context, itemID uint, counted, baseline decimal.Decimal) *AppError {
+	return NewAppError(ErrorCodeValidation,
+		fmt.Sprintf(getErrorMessage(ctx, ErrKeyReconItemCountExceedsBaseline), counted.String(), itemID, baseline.String()), nil)
+}
+
+// ErrReconItemAggregateExceedsBaseline is a 400/validation for the cross-row S2
+// rule: the SUM of counted quantities for one inventory item across ALL live
+// (non-deleted) staff child rows of the same parent reconcile — which are summed
+// by item at synthesis — must not exceed the snapshot baseline. This generalizes
+// the per-row ErrReconItemCountExceedsBaseline so two rows of 80 against a
+// baseline of 100 cannot each pass per-row yet sum to 160.
+func ErrReconItemAggregateExceedsBaseline(ctx context.Context, itemID uint, total, baseline decimal.Decimal) *AppError {
+	return NewAppError(ErrorCodeValidation,
+		fmt.Sprintf(getErrorMessage(ctx, ErrKeyReconItemAggregateExceedsBaseline), total.String(), itemID, baseline.String()), nil)
+}
+
+// ErrReconItemNoSnapshotBaseline is a 400/validation: a counted item has no
+// snapshot row (e.g. an item added after initiate), so there is no baseline.
+func ErrReconItemNoSnapshotBaseline(ctx context.Context, itemID uint) *AppError {
+	return NewAppError(ErrorCodeValidation,
+		fmt.Sprintf(getErrorMessage(ctx, ErrKeyReconItemNoSnapshotBaseline), itemID), nil)
+}
+
+// ErrReconItemNegativeQuantity is a 400/validation for a negative counted qty.
+func ErrReconItemNegativeQuantity(ctx context.Context, itemID uint) *AppError {
+	return NewAppError(ErrorCodeValidation,
+		fmt.Sprintf(getErrorMessage(ctx, ErrKeyReconItemNegativeQuantity), itemID), nil)
+}
+
+// ErrReconItemDuplicateLine is a 400/validation: the same inventory item appears
+// twice in one child payload (would make the per-item baseline check ambiguous).
+func ErrReconItemDuplicateLine(ctx context.Context, itemID uint) *AppError {
+	return NewAppError(ErrorCodeValidation,
+		fmt.Sprintf(getErrorMessage(ctx, ErrKeyReconItemDuplicateLine), itemID), nil)
 }
 
 func ErrDisposeValidationFailed(message string) *AppError {

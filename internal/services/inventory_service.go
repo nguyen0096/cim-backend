@@ -37,6 +37,12 @@ type InventoryService interface {
 	ProcessSubmission(ctx context.Context, req dto.SubmissionApprovalRequest) (*models.InventorySubmission, error)
 	UpdateSubmission(ctx context.Context, req dto.UpdateSubmissionRequest) (*dto.SubmissionResponse, error)
 	GetMonthlyTransactionReport(ctx context.Context, inventoryID uint, month, year int) (*models.TxnReportInventory, error)
+
+	// Staff reconciliation child-item lifecycle (epic #38, Part 4).
+	CreateReconciliationItem(ctx context.Context, req dto.CreateReconciliationItemRequest) (*models.ReconciliationRequestItem, error)
+	UpdateReconciliationItem(ctx context.Context, req dto.UpdateReconciliationItemRequest) (*models.ReconciliationRequestItem, error)
+	SetReconciliationItemReady(ctx context.Context, req dto.SetReconciliationItemReadyRequest) (*models.ReconciliationRequestItem, error)
+	DeleteReconciliationItem(ctx context.Context, req dto.DeleteReconciliationItemRequest) error
 }
 
 type inventoryService struct {
@@ -44,6 +50,7 @@ type inventoryService struct {
 	inventoryItemRepo       repository.InventoryItemRepository
 	inventorySubmissionRepo repository.InventorySubmissionRepository
 	snapshotRepo            repository.ReconciliationSnapshotRepository
+	reconItemRepo           repository.ReconciliationRequestItemRepository
 	productRepo             repository.ProductRepository
 
 	fileStorageService FileStorageService
@@ -63,6 +70,7 @@ func NewInventoryService(
 	inventoryItemRepo repository.InventoryItemRepository,
 	inventorySubmissionRepo repository.InventorySubmissionRepository,
 	snapshotRepo repository.ReconciliationSnapshotRepository,
+	reconItemRepo repository.ReconciliationRequestItemRepository,
 	productRepo repository.ProductRepository,
 	fileStorageService FileStorageService,
 	baseRepo repository.BaseRepository,
@@ -74,6 +82,7 @@ func NewInventoryService(
 		inventoryItemRepo:       inventoryItemRepo,
 		inventorySubmissionRepo: inventorySubmissionRepo,
 		snapshotRepo:            snapshotRepo,
+		reconItemRepo:           reconItemRepo,
 		fileStorageService:      fileStorageService,
 		baseRepo:                baseRepo,
 		db:                      db,

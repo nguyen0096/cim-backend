@@ -27,6 +27,15 @@ const (
 	// (epic #38, Part 2): only admin/accountant may start a reconciliation and
 	// capture the per-item snapshot baseline.
 	RBACActionInitiateReconciliation = "initiate_reconciliation"
+
+	// Staff reconciliation child-item actions (epic #38, Part 4). Granted to
+	// staff (own, non-applied rows) and to admin/accountant. They gate the
+	// child-item CRUD + state-machine endpoints; the in-service ownership/status
+	// guards are the data-correctness backstop behind these route gates.
+	RBACActionReconItemCreate = "recon_item_create"
+	RBACActionReconItemUpdate = "recon_item_update"
+	RBACActionReconItemReady  = "recon_item_ready"
+	RBACActionReconItemDelete = "recon_item_delete"
 )
 
 // GetUserEmailFromContext gets the user email from the context

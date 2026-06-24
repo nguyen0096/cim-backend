@@ -37,3 +37,40 @@ func TestExtractResourceAndAction_ReconcileGeneric(t *testing.T) {
 	assert.Equal(t, "inventory-submissions", resource)
 	assert.Equal(t, "create", action)
 }
+
+// TestExtractResourceAndAction_ReconciliationChildItems locks the RBAC gating for
+// the epic #38 Part 4 staff child-item routes: each (method, path) must resolve to
+// inventory-submissions with its own explicit recon_item_* action, distinct from
+// the generic create/update/delete actions, so the routes are gated independently.
+func TestExtractResourceAndAction_ReconciliationChildItems(t *testing.T) {
+	cases := []struct {
+		name, method, path, wantAction string
+	}{
+		{"create", http.MethodPost, "/api/v1/inventories/submissions/50/reconciliation-items", "recon_item_create"},
+		{"update", http.MethodPut, "/api/v1/inventories/submissions/50/reconciliation-items/777", "recon_item_update"},
+		{"delete", http.MethodDelete, "/api/v1/inventories/submissions/50/reconciliation-items/777", "recon_item_delete"},
+		{"ready", http.MethodPost, "/api/v1/inventories/submissions/50/reconciliation-items/777/ready", "recon_item_ready"},
+		{"not-ready", http.MethodPost, "/api/v1/inventories/submissions/50/reconciliation-items/777/not-ready", "recon_item_ready"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			resource, action := resolve(tc.method, tc.path)
+			assert.Equal(t, "inventory-submissions", resource)
+			assert.Equal(t, tc.wantAction, action)
+		})
+	}
+}
+
+// TestExtractResourceAndAction_SubmissionProcessUnaffected ensures the new
+// child-item mappings (also 4 segments under /inventories/submissions/*/...) do
+// not shadow the existing submission process route. The process route has no
+// custom mapping (its permission is enforced in-service via the approve action),
+// so it keeps falling through to the default resource resolution exactly as
+// before the Part 4 mappings were added — the child-item patterns only match the
+// distinct ".../reconciliation-items..." last segment.
+func TestExtractResourceAndAction_SubmissionProcessUnaffected(t *testing.T) {
+	resource, action := resolve(http.MethodPost, "/api/v1/inventories/submissions/50/process")
+	// Unchanged pre-existing fallback behavior (documented, not asserted as ideal).
+	assert.Equal(t, "inventory-items", resource)
+	assert.Equal(t, "create", action)
+}

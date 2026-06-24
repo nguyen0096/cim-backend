@@ -85,3 +85,56 @@ func (d TransferInventoryRequest) GetItemIDs() []uint {
 	}
 	return itemIDs
 }
+
+// ReconciliationCountItem is one counted line in a staff reconciliation child
+// item (epic #38, Part 4). It carries COUNTED quantities only — the baseline
+// (prev_quantity) is the parent snapshot captured at initiate, NOT supplied by
+// the client. Quantity must be non-negative and must not exceed the snapshot
+// baseline for the item (the S2 "counted > snapshot is rejected" rule).
+type ReconciliationCountItem struct {
+	InventoryItemID uint `json:"inventory_item_id" validate:"required"`
+	// Quantity is a pointer so an omitted `quantity` (nil) is distinguishable from
+	// an explicit zero count. It deliberately carries NO validate:"required" tag:
+	// the binding-layer validator would otherwise short-circuit a missing/null
+	// quantity into a generic validation error before the service runs, hiding the
+	// localized recon_item_missing_quantity domain error. Letting nil through to
+	// the service's nil-check (validateCountsAgainstSnapshot) yields that localized
+	// error instead. An explicit 0 still binds as a non-nil pointer and is a valid
+	// count; the service validates the dereferenced value (non-negative, <=
+	// snapshot baseline).
+	Quantity *decimal.Decimal `json:"quantity"`
+}
+
+// CreateReconciliationItemRequest creates a new staff child item under a parent
+// initiated reconcile submission. SubmissionID is path-scoped (set from the
+// `:id` path param after binding) and intentionally not JSON-bindable so a body
+// cannot retarget which submission the item is filed under.
+type CreateReconciliationItemRequest struct {
+	SubmissionID uint                      `json:"-" validate:"required"`
+	Items        []ReconciliationCountItem `json:"items" validate:"required,min=1,dive"`
+}
+
+// UpdateReconciliationItemRequest replaces the counted payload of an existing
+// child item. SubmissionID and ItemID are path-scoped (not JSON-bindable). A
+// staff edit of an `approved` row resets it back to `in_progress` (escape hatch).
+type UpdateReconciliationItemRequest struct {
+	SubmissionID uint                      `json:"-" validate:"required"`
+	ItemID       uint                      `json:"-" validate:"required"`
+	Items        []ReconciliationCountItem `json:"items" validate:"required,min=1,dive"`
+}
+
+// SetReconciliationItemReadyRequest marks a child item ready or not_ready
+// (status-only transition). Both ids are path-scoped.
+type SetReconciliationItemReadyRequest struct {
+	SubmissionID uint `json:"-" validate:"required"`
+	ItemID       uint `json:"-" validate:"required"`
+	// Ready true => in_progress -> ready; false => ready -> in_progress.
+	Ready bool `json:"-"`
+}
+
+// DeleteReconciliationItemRequest soft-deletes a staff-owned child item. Both
+// ids are path-scoped.
+type DeleteReconciliationItemRequest struct {
+	SubmissionID uint `json:"-" validate:"required"`
+	ItemID       uint `json:"-" validate:"required"`
+}

@@ -4,6 +4,8 @@ import (
 	"cim-backend/internal/models"
 	"cim-backend/pkg"
 	"context"
+
+	"github.com/shopspring/decimal"
 )
 
 // ReconciliationSnapshotRepository persists the per-item baseline quantities
@@ -29,6 +31,12 @@ type ReconciliationSnapshotRepository interface {
 	// new-model marker that distinguishes a reconciliation started via the
 	// initiate endpoint from a legacy single-payload reconcile submission.
 	ExistsForSubmission(ctx context.Context, submissionID uint) (bool, error)
+	// GetPrevQuantitiesBySubmission returns the per-item baseline captured at
+	// initiate as a map inventory_item_id -> prev_quantity, over the submission's
+	// live (non-soft-deleted) snapshot rows. It is the sole source of truth for the
+	// per-item "counted > snapshot" guard staff child-item writes are validated
+	// against (epic #38, Part 4). Tx-aware via DB(ctx).
+	GetPrevQuantitiesBySubmission(ctx context.Context, submissionID uint) (map[uint]decimal.Decimal, error)
 }
 
 type reconciliationSnapshotRepository struct {
@@ -87,4 +95,21 @@ func (r *reconciliationSnapshotRepository) ExistsForSubmission(ctx context.Conte
 		return false, err
 	}
 	return count > 0, nil
+}
+
+func (r *reconciliationSnapshotRepository) GetPrevQuantitiesBySubmission(ctx context.Context, submissionID uint) (map[uint]decimal.Decimal, error) {
+	var rows []models.ReconciliationSnapshot
+	err := r.DB(ctx).WithContext(ctx).
+		Model(&models.ReconciliationSnapshot{}).
+		Select("inventory_item_id", "prev_quantity").
+		Where("submission_id = ?", submissionID).
+		Find(&rows).Error
+	if err != nil {
+		return nil, err
+	}
+	out := make(map[uint]decimal.Decimal, len(rows))
+	for _, row := range rows {
+		out[row.InventoryItemID] = row.PrevQuantity
+	}
+	return out, nil
 }

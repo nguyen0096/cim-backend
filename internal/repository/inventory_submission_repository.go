@@ -6,6 +6,8 @@ import (
 	"context"
 	"fmt"
 	"strings"
+
+	"gorm.io/gorm/clause"
 )
 
 // InventorySubmissionRepository handles inventory submission persistence
@@ -13,6 +15,12 @@ type InventorySubmissionRepository interface {
 	Create(ctx context.Context, submission *models.InventorySubmission) error
 	GetPendingSubmissions(ctx context.Context, inventoryID uint) ([]models.InventorySubmission, error)
 	GetByID(ctx context.Context, id uint) (*models.InventorySubmission, error)
+	// GetByIDForUpdate loads a submission while holding a row-level write lock
+	// (SELECT ... FOR UPDATE). It is tx-aware via DB(ctx): inside a WithinTx block
+	// the lock is held for the life of that transaction, so a concurrent writer of
+	// the same row blocks until commit. Callers must invoke it inside WithinTx to
+	// get any locking benefit (outside a tx the lock releases immediately).
+	GetByIDForUpdate(ctx context.Context, id uint) (*models.InventorySubmission, error)
 	UpdateApprovalStatus(ctx context.Context, id uint, status models.SubmissionApprovalStatus, reason string) error
 	UpdateProcessingStatus(ctx context.Context, id uint, status models.SubmissionProcessingStatus) error
 	FailSubmissionProcessingWithErrors(ctx context.Context, id uint, errors []error) error
@@ -69,6 +77,23 @@ func (r *inventorySubmissionRepository) GetPendingSubmissions(ctx context.Contex
 func (r *inventorySubmissionRepository) GetByID(ctx context.Context, id uint) (*models.InventorySubmission, error) {
 	var submission models.InventorySubmission
 	err := r.db.WithContext(ctx).First(&submission, id).Error
+	if err != nil {
+		return nil, err
+	}
+	return &submission, nil
+}
+
+// GetByIDForUpdate retrieves a submission by ID while holding a row-level write
+// lock (SELECT ... FOR UPDATE), tx-aware via DB(ctx). Used by the staff
+// child-item write path: it loads the parent inside the same WithinTx as the
+// child write so a concurrent ProcessSubmission reject/cancel of that parent
+// either blocks until this tx commits or is observed by this tx, closing the
+// terminal-parent race.
+func (r *inventorySubmissionRepository) GetByIDForUpdate(ctx context.Context, id uint) (*models.InventorySubmission, error) {
+	var submission models.InventorySubmission
+	err := r.DB(ctx).WithContext(ctx).
+		Clauses(clause.Locking{Strength: "UPDATE"}).
+		First(&submission, id).Error
 	if err != nil {
 		return nil, err
 	}
