@@ -183,6 +183,62 @@ var _ = Describe("Reconciliation start-processing apply", func() {
 		Expect(sold.Equal(decimal.NewFromInt(40))).To(BeTrue(), "Sell total should be snapshot-counted = 40, got %s", sold)
 	})
 
+	// AUDIT GAP 3 (PARTIAL -> explicit): double-apply must be blocked. After a
+	// successful StartProcessing the submission is `processed` (approval_status flips
+	// to approved by MarkProcessed), so a SECOND StartProcessing is rejected at the
+	// loadActiveReconcileParent in-flight guard (approval_status != pending ->
+	// ErrReconParentNotInFlight, a 409/conflict) BEFORE the drift re-check or apply.
+	// It must book NO additional Sell and leave stock unchanged. This directly
+	// exercises the processed->processing edge the lifecycle guard protects, which
+	// the suite previously covered only transitively via "rejects start-processing
+	// from open".
+	It("rejects a second StartProcessing after a successful apply (no double consume)", func() {
+		// First apply: counted 60 against snapshot 100 -> consume 40 -> live 60.
+		item, err := svc.CreateReconciliationItem(staffCtx, dto.CreateReconciliationItemRequest{
+			SubmissionID: sub.ID, Items: countItems(60),
+		})
+		Expect(err).NotTo(HaveOccurred())
+		DeferCleanup(func() { tenv.ContextfulDB().Unscoped().Delete(item) })
+
+		_, err = svc.CloseReconciliation(adminCtx, sub.ID)
+		Expect(err).NotTo(HaveOccurred())
+
+		res, err := svc.StartProcessing(adminCtx, sub.ID)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(res.Submission).NotTo(BeNil())
+		Expect(res.Submission.ReconcileStatus).To(Equal(models.ReconcileLifecycleStatusProcessed))
+		Expect(itemQty().Equal(decimal.NewFromInt(60))).To(BeTrue(), "first apply consumes 40 -> live 60")
+
+		// Count the consuming Sell transactions booked by the first (and only valid) apply.
+		sellCount := func() int64 {
+			var n int64
+			Expect(tenv.ContextfulDB().Model(&models.InventoryTransaction{}).
+				Where("inventory_item_id = ? AND transaction_type = ?", itm.ID, models.InventoryTransactionTypeSell).
+				Count(&n).Error).NotTo(HaveOccurred())
+			return n
+		}
+		firstSells := sellCount()
+		Expect(firstSells).To(BeNumerically(">", 0), "the first apply booked at least one Sell")
+
+		// SECOND StartProcessing on the now-processed submission must be rejected.
+		res2, err := svc.StartProcessing(adminCtx, sub.ID)
+		Expect(err).To(HaveOccurred(), "a second StartProcessing must be rejected (not re-applied)")
+		Expect(err.Error()).To(ContainSubstring(fmt.Sprintf("%d", sub.ID)))
+		Expect(res2).To(BeNil())
+
+		// No double consume: stock unchanged and no additional Sell booked.
+		Expect(itemQty().Equal(decimal.NewFromInt(60))).To(BeTrue(),
+			"the rejected second apply must not consume again; live stays 60")
+		Expect(sellCount()).To(Equal(firstSells), "no additional Sell transactions on the rejected second apply")
+
+		// The submission is unchanged: still processed/completed/approved.
+		var reloaded models.InventorySubmission
+		Expect(tenv.ContextfulDB().First(&reloaded, sub.ID).Error).NotTo(HaveOccurred())
+		Expect(reloaded.ReconcileStatus).To(Equal(models.ReconcileLifecycleStatusProcessed))
+		Expect(reloaded.ProcessingStatus).To(Equal(models.InventorySubmissionStatusCompleted))
+		Expect(reloaded.ApprovalStatus).To(Equal(models.InventorySubmissionApprovalStatusApproved))
+	})
+
 	It("keeps a PO received during the count (snapshot-aware, Reading B): consume=snapshot-counted, PO survives", func() {
 		// Snapshot 100, counted 50. A PO of +30 arrives during the count -> live 130.
 		// Reading B: consume = snapshot(100) - counted(50) = 50; remaining = live(130)

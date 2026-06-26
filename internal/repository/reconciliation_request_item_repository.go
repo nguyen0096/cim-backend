@@ -28,9 +28,6 @@ type ReconciliationRequestItemRepository interface {
 	// status of a child row in one update (used by the staff edit path, including
 	// the approved -> in_progress escape hatch). Tx-aware via DB(ctx).
 	UpdatePayloadAndStatus(ctx context.Context, id uint, payload json.RawMessage, status models.ReconciliationRequestItemStatus) error
-	// UpdateStatus transitions only the status of a child row (mark ready /
-	// not_ready). Tx-aware via DB(ctx).
-	UpdateStatus(ctx context.Context, id uint, status models.ReconciliationRequestItemStatus) error
 	// SoftDelete soft-deletes a child row (sets deleted_at). Tx-aware via DB(ctx).
 	SoftDelete(ctx context.Context, id uint) error
 }
@@ -73,19 +70,6 @@ func (r *reconciliationRequestItemRepository) UpdatePayloadAndStatus(ctx context
 	updates, err := pkg.WithUpdateFields(ctx, map[string]interface{}{
 		"payload": payload,
 		"status":  status,
-	})
-	if err != nil {
-		return err
-	}
-	return r.DB(ctx).WithContext(ctx).
-		Model(&models.ReconciliationRequestItem{}).
-		Where("id = ?", id).
-		Updates(updates).Error
-}
-
-func (r *reconciliationRequestItemRepository) UpdateStatus(ctx context.Context, id uint, status models.ReconciliationRequestItemStatus) error {
-	updates, err := pkg.WithUpdateFields(ctx, map[string]interface{}{
-		"status": status,
 	})
 	if err != nil {
 		return err
