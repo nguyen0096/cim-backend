@@ -49,7 +49,7 @@ type SubmissionResponse struct {
 	ApprovalStatus         models.SubmissionApprovalStatus   `json:"approval_status"`
 	Items                  []QuantityItem                    `json:"items"`
 	Reason                 string                            `json:"reason,omitempty"`
-	Errors                 json.RawMessage                   `json:"error,omitempty"`
+	Errors                 json.RawMessage                   `json:"error,omitempty" swaggertype:"object"`
 	Warnings               []string                          `json:"warnings,omitempty"`
 	// ReviewLabel is populated only for ACTIVE reconcile submissions (initiated via
 	// the new flow, not yet applied); it is empty for every other submission. It is

@@ -282,7 +282,7 @@ func (h *InventoryHandler) ReconcileInventory(c echo.Context) error {
 // @Accept json
 // @Produce json
 // @Param id path int true "Submission ID"
-// @Param request body dto.ProcessSubmissionRequest true "Process request"
+// @Param request body dto.SubmissionApprovalRequest true "Process request"
 // @Success 200 {object} models.InventorySubmission
 // @Failure 400 {object} map[string]string
 // @Failure 403 {object} map[string]string

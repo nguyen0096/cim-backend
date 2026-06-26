@@ -60,8 +60,16 @@ var _ = Describe("Reconciliation synthesize + list/detail/label/warnings", func(
 		perms := map[pkg.UserPermission]struct{}{
 			{Resource: pkg.RBACResourceInventorySubmissions, Action: pkg.RBACActionReconItemCreate}: {},
 			{Resource: pkg.RBACResourceInventorySubmissions, Action: pkg.RBACActionReconItemUpdate}: {},
-			{Resource: pkg.RBACResourceInventorySubmissions, Action: pkg.RBACActionReconItemReady}:  {},
 			{Resource: pkg.RBACResourceInventorySubmissions, Action: pkg.RBACActionReconItemDelete}: {},
+		}
+		return context.WithValue(ctx, pkg.AuthContextKeyUserPermissions, perms)
+	}
+
+	// adminCtx holds recon_manage so it can close/reopen for the label spec.
+	adminCtx := func() context.Context {
+		ctx := pkg.WithUserEmail(context.Background(), "p5-admin@cim.local")
+		perms := map[pkg.UserPermission]struct{}{
+			{Resource: pkg.RBACResourceInventorySubmissions, Action: pkg.RBACActionReconManage}: {},
 		}
 		return context.WithValue(ctx, pkg.AuthContextKeyUserPermissions, perms)
 	}
@@ -126,6 +134,7 @@ var _ = Describe("Reconciliation synthesize + list/detail/label/warnings", func(
 			SubmissionType:   models.InventorySubmissionTypeReconcile,
 			ProcessingStatus: models.InventorySubmissionStatusPending,
 			ApprovalStatus:   models.InventorySubmissionApprovalStatusPending,
+			ReconcileStatus:  models.ReconcileLifecycleStatusOpen,
 		}
 		Expect(db.Create(submission).Error).NotTo(HaveOccurred())
 		DeferCleanup(func() { db.Unscoped().Delete(submission) })
@@ -178,33 +187,20 @@ var _ = Describe("Reconciliation synthesize + list/detail/label/warnings", func(
 		Expect(resp.Warnings).To(BeEmpty())
 	})
 
-	It("labels In-progress while any live row is below ready, Ready-for-review when all are ready", func() {
+	It("labels In-progress while open, Ready-for-review once closed (Q1 collapse)", func() {
 		a, err := svc.CreateReconciliationItem(staffCtx, dto.CreateReconciliationItemRequest{
 			SubmissionID: submission.ID, Items: countItems(40),
 		})
 		Expect(err).NotTo(HaveOccurred())
 		DeferCleanup(func() { tenv.ContextfulDB().Unscoped().Delete(a) })
 
-		b, err := svc.CreateReconciliationItem(otherCtx, dto.CreateReconciliationItemRequest{
-			SubmissionID: submission.ID, Items: countItems(20),
-		})
-		Expect(err).NotTo(HaveOccurred())
-		DeferCleanup(func() { tenv.ContextfulDB().Unscoped().Delete(b) })
-
-		// Mark only one ready -> mixed -> In-progress.
-		_, err = svc.SetReconciliationItemReady(staffCtx, dto.SetReconciliationItemReadyRequest{
-			SubmissionID: submission.ID, ItemID: a.ID, Ready: true,
-		})
-		Expect(err).NotTo(HaveOccurred())
-
+		// While open -> In-progress.
 		resp := findResp(list(), submission.ID)
 		Expect(resp).NotTo(BeNil())
 		Expect(resp.ReviewLabel).To(Equal(dto.ReconcileReviewLabelInProgress))
 
-		// Mark the other ready too -> all ready -> Ready-for-review.
-		_, err = svc.SetReconciliationItemReady(otherCtx, dto.SetReconciliationItemReadyRequest{
-			SubmissionID: submission.ID, ItemID: b.ID, Ready: true,
-		})
+		// Close -> Ready-for-review.
+		_, err = svc.CloseReconciliation(adminCtx(), submission.ID)
 		Expect(err).NotTo(HaveOccurred())
 
 		resp = findResp(list(), submission.ID)

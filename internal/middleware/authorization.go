@@ -183,25 +183,35 @@ var customRouteMappings = []RouteMapping{
 		Resource:    "inventory-submissions",
 		Action:      "",
 	},
+	// Admin/accountant reconciliation management (epic #38, Part 6 redesign). Close
+	// (open->closed), reopen (closed->open) and start-processing (the atomic apply)
+	// all carry the single recon_manage action, which only admin/accountant hold
+	// (staff never manages). Each is /inventories/submissions/*/<verb> (4 segments),
+	// distinct by trailing literal segment from one another and by segment count
+	// from the reconciliation-items patterns below.
+	{
+		Method:      "POST",
+		PathPattern: "/inventories/submissions/*/close",
+		Resource:    "inventory-submissions",
+		Action:      "recon_manage",
+	},
+	{
+		Method:      "POST",
+		PathPattern: "/inventories/submissions/*/reopen",
+		Resource:    "inventory-submissions",
+		Action:      "recon_manage",
+	},
+	{
+		Method:      "POST",
+		PathPattern: "/inventories/submissions/*/start-processing",
+		Resource:    "inventory-submissions",
+		Action:      "recon_manage",
+	},
 	// Staff reconciliation child-item lifecycle (epic #38, Part 4). Nested under
 	// the parent submission. Each (method, path) carries its own explicit action so
 	// it is gated independently of the generic create/update/delete actions; the
-	// service additionally enforces ownership + status guards. The more specific
-	// ready/not-ready patterns (6 segments) must precede the collection/element
-	// patterns so they are matched first (matchPathPattern requires equal segment
-	// counts, so this ordering is for clarity rather than correctness).
-	{
-		Method:      "POST",
-		PathPattern: "/inventories/submissions/*/reconciliation-items/*/ready",
-		Resource:    "inventory-submissions",
-		Action:      "recon_item_ready",
-	},
-	{
-		Method:      "POST",
-		PathPattern: "/inventories/submissions/*/reconciliation-items/*/not-ready",
-		Resource:    "inventory-submissions",
-		Action:      "recon_item_ready",
-	},
+	// service additionally enforces ownership + the closed-status guard. Admin/
+	// accountant also hold these (they edit child rows while a submission is closed).
 	{
 		Method:      "PUT",
 		PathPattern: "/inventories/submissions/*/reconciliation-items/*",

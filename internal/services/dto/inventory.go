@@ -123,18 +123,21 @@ type UpdateReconciliationItemRequest struct {
 	Items        []ReconciliationCountItem `json:"items" validate:"required,min=1,dive"`
 }
 
-// SetReconciliationItemReadyRequest marks a child item ready or not_ready
-// (status-only transition). Both ids are path-scoped.
-type SetReconciliationItemReadyRequest struct {
-	SubmissionID uint `json:"-" validate:"required"`
-	ItemID       uint `json:"-" validate:"required"`
-	// Ready true => in_progress -> ready; false => ready -> in_progress.
-	Ready bool `json:"-"`
-}
-
-// DeleteReconciliationItemRequest soft-deletes a staff-owned child item. Both
-// ids are path-scoped.
+// DeleteReconciliationItemRequest soft-deletes a child item. Both ids are
+// path-scoped.
 type DeleteReconciliationItemRequest struct {
 	SubmissionID uint `json:"-" validate:"required"`
 	ItemID       uint `json:"-" validate:"required"`
+}
+
+// StartProcessingResult is the outcome of POST .../start-processing (epic #38,
+// Part 6 redesign). On a clean apply, Submission is the finalized (processed)
+// submission. On drift, DriftDetected is true and Warnings carries the
+// warning-shaped payload (one line per consuming submission that processed during
+// the reconcile window — locked decision Q8); the apply was rolled back and no
+// inventory was mutated, so the admin can edit/reopen and restart processing.
+type StartProcessingResult struct {
+	Submission    *models.InventorySubmission `json:"submission,omitempty"`
+	DriftDetected bool                        `json:"drift_detected"`
+	Warnings      []string                    `json:"warnings,omitempty"`
 }

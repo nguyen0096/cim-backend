@@ -50,6 +50,18 @@ func reconCtx(email string) context.Context {
 	return pkg.WithUserEmail(context.Background(), email)
 }
 
+// reconManageCtx returns a context for an admin/accountant: carries the email
+// plus the recon_manage permission so guardParentEditable/guardOwnership treat
+// the caller as a manager (may edit a closed submission's rows, bypassing
+// ownership).
+func reconManageCtx(email string) context.Context {
+	ctx := pkg.WithUserEmail(context.Background(), email)
+	perms := map[pkg.UserPermission]struct{}{
+		{Resource: pkg.RBACResourceInventorySubmissions, Action: pkg.RBACActionReconManage}: {},
+	}
+	return context.WithValue(ctx, pkg.AuthContextKeyUserPermissions, perms)
+}
+
 func gormErrRecordNotFound() error { return gorm.ErrRecordNotFound }
 
 // decPtr returns a pointer to a decimal built from an int, for the pointer-typed
@@ -67,10 +79,17 @@ func decPtr(n int64) *decimal.Decimal {
 // is emitted, so every child-write path (which all funnel through
 // loadActiveReconcileParent) is verified to lock the parent row inside its tx.
 func expectParentReconcileLoad(mock sqlmock.Sqlmock, submissionID uint) {
+	expectParentReconcileLoadStatus(mock, submissionID, string(models.ReconcileLifecycleStatusOpen))
+}
+
+// expectParentReconcileLoadStatus is expectParentReconcileLoad with an explicit
+// reconcile_status (open/closed/...) so the staff-immutability guard can be
+// exercised.
+func expectParentReconcileLoadStatus(mock sqlmock.Sqlmock, submissionID uint, reconcileStatus string) {
 	mock.ExpectQuery(regexp.QuoteMeta(`SELECT * FROM "inventory_submissions"`)+`.*FOR UPDATE`).
 		WithArgs(submissionID, sqlmock.AnyArg()).
-		WillReturnRows(sqlmock.NewRows([]string{"id", "submission_type", "processing_status", "approval_status"}).
-			AddRow(submissionID, string(models.InventorySubmissionTypeReconcile), "pending", "pending"))
+		WillReturnRows(sqlmock.NewRows([]string{"id", "submission_type", "processing_status", "approval_status", "reconcile_status"}).
+			AddRow(submissionID, string(models.InventorySubmissionTypeReconcile), "pending", "pending", reconcileStatus))
 	// ExistsForSubmission: Count -> 1 snapshot row exists
 	mock.ExpectQuery(regexp.QuoteMeta(`SELECT count(*) FROM "reconciliation_snapshots"`)).
 		WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(1))
@@ -491,12 +510,9 @@ func TestCreateReconciliationItem_AggregateMultiItem_OneOverRejected(t *testing.
 	assert.NoError(t, mock.ExpectationsWereMet())
 }
 
-// ============================ UPDATE / ESCAPE HATCH ============================
+// ============================ UPDATE ============================
 
-// editResetsTo asserts that editing a row in the given start status resets it to
-// in_progress (the escape hatch for approved; the re-open for ready).
-func runUpdateResetsToInProgress(t *testing.T, startStatus string) {
-	t.Helper()
+func TestUpdateReconciliationItem_StaffWhileOpen_OK(t *testing.T) {
 	gormDB, mock := newInventoryServiceTestDB(t)
 	svc := newReconItemServiceReal(gormDB)
 	ctx := reconCtx(reconStaffEmail)
@@ -504,11 +520,10 @@ func runUpdateResetsToInProgress(t *testing.T, startStatus string) {
 	const itemID = uint(777)
 
 	mock.ExpectBegin()
-	expectParentReconcileLoad(mock, submissionID)
-	expectItemLoad(mock, itemID, submissionID, reconStaffEmail, startStatus)
+	expectParentReconcileLoad(mock, submissionID) // open
+	expectItemLoad(mock, itemID, submissionID, reconStaffEmail, string(models.ReconciliationRequestItemStatusInProgress))
 	expectSnapshotBaselines(mock, map[uint]string{10: "100"})
 	expectSiblingRows(mock, submissionID, nil)
-	// Expect the UPDATE writing payload + status='in_progress'.
 	mock.ExpectExec(regexp.QuoteMeta(`UPDATE "reconciliation_request_items" SET`)).
 		WillReturnResult(sqlmock.NewResult(0, 1))
 	mock.ExpectCommit()
@@ -519,17 +534,8 @@ func runUpdateResetsToInProgress(t *testing.T, startStatus string) {
 		Items:        []dto.ReconciliationCountItem{{InventoryItemID: 10, Quantity: decPtr(50)}},
 	})
 	require.NoError(t, err)
-	assert.Equal(t, models.ReconciliationRequestItemStatusInProgress, item.Status,
-		"editing a %s row must reset it to in_progress", startStatus)
+	assert.Equal(t, models.ReconciliationRequestItemStatusInProgress, item.Status)
 	assert.NoError(t, mock.ExpectationsWereMet())
-}
-
-func TestUpdateReconciliationItem_ApprovedRow_EscapeHatchResetsToInProgress(t *testing.T) {
-	runUpdateResetsToInProgress(t, string(models.ReconciliationRequestItemStatusApproved))
-}
-
-func TestUpdateReconciliationItem_ReadyRow_ResetsToInProgress(t *testing.T) {
-	runUpdateResetsToInProgress(t, string(models.ReconciliationRequestItemStatusReady))
 }
 
 func TestUpdateReconciliationItem_AggregatePushesOverBaseline_Rejected(t *testing.T) {
@@ -601,16 +607,17 @@ func TestUpdateReconciliationItem_StaysWithinExcludingOwnOldValue_Allowed(t *tes
 	assert.NoError(t, mock.ExpectationsWereMet())
 }
 
-func TestUpdateReconciliationItem_AppliedRow_Immutable(t *testing.T) {
+func TestUpdateReconciliationItem_StaffWhileClosed_Rejected(t *testing.T) {
+	// Once closed, a staff edit is rejected at the guardParentEditable chokepoint
+	// (before the item is even loaded).
 	gormDB, mock := newInventoryServiceTestDB(t)
 	svc := newReconItemServiceReal(gormDB)
-	ctx := reconCtx(reconStaffEmail)
+	ctx := reconCtx(reconStaffEmail) // staff: no recon_manage permission in ctx
 	const submissionID = uint(50)
 	const itemID = uint(777)
 
 	mock.ExpectBegin()
-	expectParentReconcileLoad(mock, submissionID)
-	expectItemLoad(mock, itemID, submissionID, reconStaffEmail, string(models.ReconciliationRequestItemStatusApplied))
+	expectParentReconcileLoadStatus(mock, submissionID, string(models.ReconcileLifecycleStatusClosed))
 	mock.ExpectRollback()
 
 	_, err := svc.UpdateReconciliationItem(ctx, dto.UpdateReconciliationItemRequest{
@@ -620,6 +627,34 @@ func TestUpdateReconciliationItem_AppliedRow_Immutable(t *testing.T) {
 	})
 	require.Error(t, err)
 	assert.Equal(t, pkg.ErrorCodeConflict, appErrCode(t, err))
+	assert.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestUpdateReconciliationItem_AdminWhileClosed_OK(t *testing.T) {
+	// Admin/accountant (recon_manage) may edit ANY row while the submission is
+	// closed — the ownership guard is bypassed and the closed-guard lets them through.
+	gormDB, mock := newInventoryServiceTestDB(t)
+	svc := newReconItemServiceReal(gormDB)
+	ctx := reconManageCtx("admin@cim.local")
+	const submissionID = uint(50)
+	const itemID = uint(777)
+
+	mock.ExpectBegin()
+	expectParentReconcileLoadStatus(mock, submissionID, string(models.ReconcileLifecycleStatusClosed))
+	// Row owned by a staff member, not the admin — ownership is bypassed.
+	expectItemLoad(mock, itemID, submissionID, reconStaffEmail, string(models.ReconciliationRequestItemStatusInProgress))
+	expectSnapshotBaselines(mock, map[uint]string{10: "100"})
+	expectSiblingRows(mock, submissionID, nil)
+	mock.ExpectExec(regexp.QuoteMeta(`UPDATE "reconciliation_request_items" SET`)).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectCommit()
+
+	_, err := svc.UpdateReconciliationItem(ctx, dto.UpdateReconciliationItemRequest{
+		SubmissionID: submissionID,
+		ItemID:       itemID,
+		Items:        []dto.ReconciliationCountItem{{InventoryItemID: 10, Quantity: decPtr(50)}},
+	})
+	require.NoError(t, err)
 	assert.NoError(t, mock.ExpectationsWereMet())
 }
 
@@ -668,92 +703,6 @@ func TestUpdateReconciliationItem_ItemInOtherParent_NotFound(t *testing.T) {
 	assert.NoError(t, mock.ExpectationsWereMet())
 }
 
-// ============================ READY / NOT-READY ============================
-
-func TestSetReady_InProgressToReady_OK(t *testing.T) {
-	gormDB, mock := newInventoryServiceTestDB(t)
-	svc := newReconItemServiceReal(gormDB)
-	ctx := reconCtx(reconStaffEmail)
-	const submissionID = uint(50)
-	const itemID = uint(777)
-
-	mock.ExpectBegin()
-	expectParentReconcileLoad(mock, submissionID)
-	expectItemLoad(mock, itemID, submissionID, reconStaffEmail, string(models.ReconciliationRequestItemStatusInProgress))
-	mock.ExpectExec(regexp.QuoteMeta(`UPDATE "reconciliation_request_items" SET`)).
-		WillReturnResult(sqlmock.NewResult(0, 1))
-	mock.ExpectCommit()
-
-	item, err := svc.SetReconciliationItemReady(ctx, dto.SetReconciliationItemReadyRequest{
-		SubmissionID: submissionID, ItemID: itemID, Ready: true,
-	})
-	require.NoError(t, err)
-	assert.Equal(t, models.ReconciliationRequestItemStatusReady, item.Status)
-	assert.NoError(t, mock.ExpectationsWereMet())
-}
-
-func TestSetReady_ReadyToInProgress_OK(t *testing.T) {
-	gormDB, mock := newInventoryServiceTestDB(t)
-	svc := newReconItemServiceReal(gormDB)
-	ctx := reconCtx(reconStaffEmail)
-	const submissionID = uint(50)
-	const itemID = uint(777)
-
-	mock.ExpectBegin()
-	expectParentReconcileLoad(mock, submissionID)
-	expectItemLoad(mock, itemID, submissionID, reconStaffEmail, string(models.ReconciliationRequestItemStatusReady))
-	mock.ExpectExec(regexp.QuoteMeta(`UPDATE "reconciliation_request_items" SET`)).
-		WillReturnResult(sqlmock.NewResult(0, 1))
-	mock.ExpectCommit()
-
-	item, err := svc.SetReconciliationItemReady(ctx, dto.SetReconciliationItemReadyRequest{
-		SubmissionID: submissionID, ItemID: itemID, Ready: false,
-	})
-	require.NoError(t, err)
-	assert.Equal(t, models.ReconciliationRequestItemStatusInProgress, item.Status)
-	assert.NoError(t, mock.ExpectationsWereMet())
-}
-
-func TestSetReady_ApprovedToReady_IllegalTransition(t *testing.T) {
-	gormDB, mock := newInventoryServiceTestDB(t)
-	svc := newReconItemServiceReal(gormDB)
-	ctx := reconCtx(reconStaffEmail)
-	const submissionID = uint(50)
-	const itemID = uint(777)
-
-	mock.ExpectBegin()
-	expectParentReconcileLoad(mock, submissionID)
-	expectItemLoad(mock, itemID, submissionID, reconStaffEmail, string(models.ReconciliationRequestItemStatusApproved))
-	mock.ExpectRollback()
-
-	_, err := svc.SetReconciliationItemReady(ctx, dto.SetReconciliationItemReadyRequest{
-		SubmissionID: submissionID, ItemID: itemID, Ready: true,
-	})
-	require.Error(t, err)
-	assert.Equal(t, pkg.ErrorCodeConflict, appErrCode(t, err))
-	assert.NoError(t, mock.ExpectationsWereMet())
-}
-
-func TestSetReady_AppliedRow_Immutable(t *testing.T) {
-	gormDB, mock := newInventoryServiceTestDB(t)
-	svc := newReconItemServiceReal(gormDB)
-	ctx := reconCtx(reconStaffEmail)
-	const submissionID = uint(50)
-	const itemID = uint(777)
-
-	mock.ExpectBegin()
-	expectParentReconcileLoad(mock, submissionID)
-	expectItemLoad(mock, itemID, submissionID, reconStaffEmail, string(models.ReconciliationRequestItemStatusApplied))
-	mock.ExpectRollback()
-
-	_, err := svc.SetReconciliationItemReady(ctx, dto.SetReconciliationItemReadyRequest{
-		SubmissionID: submissionID, ItemID: itemID, Ready: true,
-	})
-	require.Error(t, err)
-	assert.Equal(t, pkg.ErrorCodeConflict, appErrCode(t, err))
-	assert.NoError(t, mock.ExpectationsWereMet())
-}
-
 // ============================ DELETE ============================
 
 func runDeleteAllowed(t *testing.T, status string) {
@@ -785,12 +734,9 @@ func TestDeleteReconciliationItem_InProgress_OK(t *testing.T) {
 	runDeleteAllowed(t, string(models.ReconciliationRequestItemStatusInProgress))
 }
 
-func TestDeleteReconciliationItem_Ready_OK(t *testing.T) {
-	runDeleteAllowed(t, string(models.ReconciliationRequestItemStatusReady))
-}
-
-func runDeleteRejected(t *testing.T, status string, wantCode pkg.ErrorCode) {
-	t.Helper()
+func TestDeleteReconciliationItem_StaffWhileClosed_Rejected(t *testing.T) {
+	// Once closed, staff cannot delete — rejected at the guardParentEditable
+	// chokepoint before the item is loaded.
 	gormDB, mock := newInventoryServiceTestDB(t)
 	svc := newReconItemServiceReal(gormDB)
 	ctx := reconCtx(reconStaffEmail)
@@ -798,26 +744,15 @@ func runDeleteRejected(t *testing.T, status string, wantCode pkg.ErrorCode) {
 	const itemID = uint(777)
 
 	mock.ExpectBegin()
-	expectParentReconcileLoad(mock, submissionID)
-	expectItemLoad(mock, itemID, submissionID, reconStaffEmail, status)
+	expectParentReconcileLoadStatus(mock, submissionID, string(models.ReconcileLifecycleStatusClosed))
 	mock.ExpectRollback()
 
 	err := svc.DeleteReconciliationItem(ctx, dto.DeleteReconciliationItemRequest{
 		SubmissionID: submissionID, ItemID: itemID,
 	})
-	require.Error(t, err, "status %s must NOT be deletable", status)
-	assert.Equal(t, wantCode, appErrCode(t, err))
+	require.Error(t, err)
+	assert.Equal(t, pkg.ErrorCodeConflict, appErrCode(t, err))
 	assert.NoError(t, mock.ExpectationsWereMet())
-}
-
-func TestDeleteReconciliationItem_Approved_Rejected(t *testing.T) {
-	// Approved rows cannot be deleted (only the edit-back-to-in_progress escape hatch).
-	runDeleteRejected(t, string(models.ReconciliationRequestItemStatusApproved), pkg.ErrorCodeConflict)
-}
-
-func TestDeleteReconciliationItem_Applied_Immutable(t *testing.T) {
-	// Applied is caught by the immutability guard (also a conflict).
-	runDeleteRejected(t, string(models.ReconciliationRequestItemStatusApplied), pkg.ErrorCodeConflict)
 }
 
 func TestDeleteReconciliationItem_NotOwned_Forbidden(t *testing.T) {

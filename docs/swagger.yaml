@@ -1,5 +1,21 @@
 basePath: /api/v1
 definitions:
+  dto.BackfillSellingPriceRequest:
+    properties:
+      end_effective_from:
+        description: '"YYYY-MM-DD"'
+        type: string
+    type: object
+  dto.CreateReconciliationItemRequest:
+    properties:
+      items:
+        items:
+          $ref: '#/definitions/dto.ReconciliationCountItem'
+        minItems: 1
+        type: array
+    required:
+    - items
+    type: object
   dto.CreateUserRequest:
     properties:
       email:
@@ -13,6 +29,7 @@ definitions:
         - admin
         - accountant
         - staff
+        - bot_form
         example: staff
         type: string
       status:
@@ -60,34 +77,89 @@ definitions:
         type: integer
       items:
         items:
-          $ref: '#/definitions/dto.DisposeItem'
+          $ref: '#/definitions/dto.QuantityItem'
         minItems: 1
         type: array
     required:
     - inventory_id
     - items
     type: object
-  dto.DisposeItem:
+  dto.LastPurchasePriceMap:
+    additionalProperties:
+      additionalProperties:
+        items:
+          $ref: '#/definitions/dto.PriceHistory'
+        type: array
+      type: object
+    type: object
+  dto.PaymentReceiptFormPayload:
     properties:
+      amount_in_words:
+        type: string
+      date:
+        type: string
+      department:
+        type: string
+      details:
+        type: string
+      form_number:
+        type: string
+      full_name:
+        type: string
+      inventory_id:
+        type: integer
+      purchase_order_id:
+        type: integer
+      status:
+        allOf:
+        - $ref: '#/definitions/models.PaymentReceiptFormStatus'
+        enum:
+        - pending
+        - submitted
+        - approved
+        - rejected
+      total_amount:
+        type: number
+    required:
+    - details
+    - full_name
+    - total_amount
+    type: object
+  dto.PriceHistory:
+    properties:
+      price:
+        type: number
+      purchase_date:
+        type: string
+    type: object
+  dto.ProcessImportRequest:
+    properties:
+      sheet_name:
+        type: string
+    required:
+    - sheet_name
+    type: object
+  dto.QuantityItem:
+    properties:
+      current_quantity:
+        type: number
+      inventory_item:
+        $ref: '#/definitions/models.InventoryItem'
       inventory_item_id:
         type: integer
       prev_quantity:
-        minimum: 1
-        type: integer
+        description: |-
+          PrevQuantity is previus stock state.
+          Only available for stateful submission like Reconcile.
+        type: number
+      product_name:
+        type: string
       quantity:
-        minimum: 1
-        type: integer
+        type: number
     required:
     - inventory_item_id
     - prev_quantity
     - quantity
-    type: object
-  dto.LastPurchasePriceMap:
-    additionalProperties:
-      additionalProperties:
-        format: float64
-        type: number
-      type: object
     type: object
   dto.ReconcileInventoryRequest:
     properties:
@@ -95,38 +167,160 @@ definitions:
         type: integer
       items:
         items:
-          $ref: '#/definitions/dto.ReconcileItem'
+          $ref: '#/definitions/dto.QuantityItem'
         minItems: 1
         type: array
     required:
     - inventory_id
     - items
     type: object
-  dto.ReconcileItem:
+  dto.ReconcileReviewLabel:
+    enum:
+    - in_progress
+    - ready_for_review
+    type: string
+    x-enum-varnames:
+    - ReconcileReviewLabelInProgress
+    - ReconcileReviewLabelReadyForReview
+  dto.ReconciliationCountItem:
     properties:
-      actual_quantity:
-        minimum: 0
-        type: integer
       inventory_item_id:
         type: integer
-      prev_quantity:
-        minimum: 1
+      quantity:
+        description: |-
+          Quantity is a pointer so an omitted `quantity` (nil) is distinguishable from
+          an explicit zero count. It deliberately carries NO validate:"required" tag:
+          the binding-layer validator would otherwise short-circuit a missing/null
+          quantity into a generic validation error before the service runs, hiding the
+          localized recon_item_missing_quantity domain error. Letting nil through to
+          the service's nil-check (validateCountsAgainstSnapshot) yields that localized
+          error instead. An explicit 0 still binds as a non-nil pointer and is a valid
+          count; the service validates the dereferenced value (non-negative, <=
+          snapshot baseline).
+        type: number
+    required:
+    - inventory_item_id
+    type: object
+  dto.SheetPreview:
+    properties:
+      inventory_name:
+        type: string
+      items_count:
+        type: integer
+      order_date:
+        description: 'Format: YYYY-MM-DD'
+        type: string
+      supplier_name:
+        type: string
+    type: object
+  dto.SheetValidationResult:
+    properties:
+      error:
+        $ref: '#/definitions/pkg.BatchError'
+      is_valid:
+        type: boolean
+      preview:
+        $ref: '#/definitions/dto.SheetPreview'
+      sheet_name:
+        type: string
+    type: object
+  dto.StartProcessingResult:
+    properties:
+      drift_detected:
+        type: boolean
+      submission:
+        $ref: '#/definitions/models.InventorySubmission'
+      warnings:
+        items:
+          type: string
+        type: array
+    type: object
+  dto.SubmissionApprovalRequest:
+    properties:
+      action:
+        enum:
+        - approve
+        - reject
+        type: string
+      reason:
+        type: string
+      submission_id:
         type: integer
     required:
-    - actual_quantity
-    - inventory_item_id
-    - prev_quantity
+    - action
+    - submission_id
+    type: object
+  dto.SubmissionResponse:
+    properties:
+      approval_status:
+        $ref: '#/definitions/models.SubmissionApprovalStatus'
+      created_at:
+        type: string
+      created_by:
+        type: string
+      destination_inventory_id:
+        type: integer
+      error:
+        type: object
+      id:
+        type: integer
+      inventory:
+        $ref: '#/definitions/models.Inventory'
+      inventory_id:
+        type: integer
+      items:
+        items:
+          $ref: '#/definitions/dto.QuantityItem'
+        type: array
+      processing_status:
+        $ref: '#/definitions/models.SubmissionProcessingStatus'
+      reason:
+        type: string
+      review_label:
+        allOf:
+        - $ref: '#/definitions/dto.ReconcileReviewLabel'
+        description: |-
+          ReviewLabel is populated only for ACTIVE reconcile submissions (initiated via
+          the new flow, not yet applied); it is empty for every other submission. It is
+          derived from the live child rows and is presentation-only (not persisted).
+      submission_type:
+        $ref: '#/definitions/models.SubmissionType'
+      updated_at:
+        type: string
+      updated_by:
+        type: string
+      warnings:
+        items:
+          type: string
+        type: array
+    type: object
+  dto.TransferInventoryRequest:
+    properties:
+      destination_inventory_id:
+        type: integer
+      items:
+        items:
+          $ref: '#/definitions/dto.QuantityItem'
+        minItems: 1
+        type: array
+      source_inventory_id:
+        type: integer
+    required:
+    - destination_inventory_id
+    - items
+    - source_inventory_id
     type: object
   dto.UpdatePurchaseOrderDeliveryStatusRequest:
     properties:
+      confirmation_notes:
+        type: string
       items:
         items:
           properties:
             id:
               type: integer
             received_quantity:
-              minimum: 1
-              type: integer
+              type: number
           required:
           - id
           - received_quantity
@@ -139,6 +333,25 @@ definitions:
     - items
     - purchase_order_id
     type: object
+  dto.UpdatePurchaseOrderItemRequest:
+    properties:
+      product_id:
+        type: integer
+      quantity:
+        type: number
+      supplier_id:
+        type: integer
+      unit_id:
+        type: integer
+      unit_price:
+        minimum: 0
+        type: number
+    required:
+    - product_id
+    - quantity
+    - supplier_id
+    - unit_id
+    type: object
   dto.UpdatePurchaseOrderItemStatusResponse:
     properties:
       item_status:
@@ -150,6 +363,44 @@ definitions:
         - $ref: '#/definitions/models.PurchaseOrderStatus'
         example: fully_delivered
     type: object
+  dto.UpdatePurchaseOrderRequest:
+    properties:
+      inventory_id:
+        type: integer
+      items:
+        items:
+          $ref: '#/definitions/dto.UpdatePurchaseOrderItemRequest'
+        minItems: 1
+        type: array
+      notes:
+        type: string
+    required:
+    - inventory_id
+    - items
+    type: object
+  dto.UpdateReconciliationItemRequest:
+    properties:
+      items:
+        items:
+          $ref: '#/definitions/dto.ReconciliationCountItem'
+        minItems: 1
+        type: array
+    required:
+    - items
+    type: object
+  dto.UpdateSubmissionRequest:
+    properties:
+      items:
+        items:
+          $ref: '#/definitions/dto.QuantityItem'
+        minItems: 1
+        type: array
+      submission_id:
+        type: integer
+    required:
+    - items
+    - submission_id
+    type: object
   dto.UpdateUserRequest:
     properties:
       name:
@@ -160,6 +411,7 @@ definitions:
         - admin
         - accountant
         - staff
+        - bot_form
         example: staff
         type: string
       status:
@@ -172,6 +424,132 @@ definitions:
     required:
     - role
     - status
+    type: object
+  dto.UploadPurchaseOrderFileResponse:
+    properties:
+      file_extension:
+        type: string
+      file_name:
+        type: string
+      file_uid:
+        type: string
+      sheets:
+        items:
+          $ref: '#/definitions/dto.SheetValidationResult'
+        type: array
+      uploaded_at:
+        type: string
+    type: object
+  handlers.CreateMenuItemRequest:
+    properties:
+      menu_ids:
+        items:
+          type: integer
+        type: array
+      name:
+        type: string
+      product_ids:
+        items:
+          type: integer
+        type: array
+      tags:
+        items:
+          type: string
+        type: array
+    required:
+    - name
+    type: object
+  handlers.CreateMenuRequest:
+    properties:
+      inventory_ids:
+        items:
+          type: integer
+        type: array
+      menu_item_ids:
+        items:
+          type: integer
+        type: array
+      name:
+        type: string
+    required:
+    - name
+    type: object
+  handlers.FinalizeRevenueExpenseRequest:
+    properties:
+      date_in_excel:
+        type: string
+      prefix_date:
+        type: string
+    type: object
+  handlers.FinalizeRevenueExpenseResponse:
+    properties:
+      date:
+        type: string
+      message:
+        type: string
+      next_day:
+        type: string
+    type: object
+  handlers.UpdateMenuItemRequest:
+    properties:
+      menu_ids:
+        items:
+          type: integer
+        type: array
+      name:
+        type: string
+      product_ids:
+        items:
+          type: integer
+        type: array
+      tags:
+        items:
+          type: string
+        type: array
+    required:
+    - name
+    type: object
+  handlers.UpdateMenuRequest:
+    properties:
+      inventory_ids:
+        items:
+          type: integer
+        type: array
+      menu_item_ids:
+        items:
+          type: integer
+        type: array
+      name:
+        type: string
+    required:
+    - name
+    type: object
+  handlers.createUnitRequest:
+    properties:
+      base_unit_id:
+        type: integer
+      conversion_factor:
+        type: number
+      decimal_places:
+        maximum: 10
+        minimum: 0
+        type: integer
+      name:
+        type: string
+      symbol:
+        type: string
+      unit_type:
+        type: string
+    required:
+    - conversion_factor
+    - name
+    type: object
+  models.ExportFile:
+    properties:
+      download_url:
+        type: string
+      file_type:
+        type: string
     type: object
   models.GetSettingsResponse:
     description: Response containing all application settings
@@ -201,9 +579,13 @@ definitions:
         type: string
       name:
         type: string
+      restricted_delivery_hours:
+        type: string
       status:
         $ref: '#/definitions/models.InventoryStatus'
       updated_at:
+        type: string
+      updated_by:
         type: string
     type: object
   models.InventoryItem:
@@ -231,10 +613,16 @@ definitions:
       product_id:
         type: integer
       quantity:
-        type: integer
+        type: number
       status:
         $ref: '#/definitions/models.InventoryItemStatus'
+      unit:
+        $ref: '#/definitions/models.Unit'
+      unit_id:
+        type: integer
       updated_at:
+        type: string
+      updated_by:
         type: string
     type: object
   models.InventoryItemStatus:
@@ -253,10 +641,57 @@ definitions:
     x-enum-varnames:
     - InventoryStatusActive
     - InventoryStatusInactive
+  models.InventorySubmission:
+    properties:
+      approval_status:
+        $ref: '#/definitions/models.SubmissionApprovalStatus'
+      created_at:
+        type: string
+      created_by:
+        type: string
+      deleted_at:
+        type: string
+      error:
+        type: object
+      id:
+        type: integer
+      inventory:
+        $ref: '#/definitions/models.Inventory'
+      inventory_id:
+        type: integer
+      payload:
+        type: object
+      processed_at:
+        description: |-
+          ProcessedAt is the precise instant a CONSUMING submission's processing
+          completed (epic #38, Part 6, locked decision Q6). It is the authoritative
+          window bound for the Start-Processing drift re-check (a sibling consuming
+          submission with processed_at inside [snapshot_capture, now] is drift). Set
+          when processing completes; nil while pending/failed.
+        type: string
+      processing_status:
+        $ref: '#/definitions/models.SubmissionProcessingStatus'
+      reason:
+        type: string
+      reconcile_status:
+        allOf:
+        - $ref: '#/definitions/models.ReconcileLifecycleStatus'
+        description: |-
+          ReconcileStatus is the reconciliation lifecycle status (epic #38, Part 6).
+          Set only for initiated reconciles (open at initiate); empty for every other
+          submission type/flow. Drives the staff-immutability guard and the
+          close/reopen/start-processing transitions.
+      submission_type:
+        $ref: '#/definitions/models.SubmissionType'
+      updated_at:
+        type: string
+      updated_by:
+        type: string
+    type: object
   models.InventoryTransaction:
     properties:
       consumed_quantity:
-        type: integer
+        type: number
       counter_transaction_id:
         type: integer
       created_at:
@@ -276,7 +711,7 @@ definitions:
       purchase_order_item_id:
         type: integer
       quantity:
-        type: integer
+        type: number
       supplier:
         $ref: '#/definitions/models.Supplier'
       supplier_id:
@@ -285,17 +720,186 @@ definitions:
         $ref: '#/definitions/models.InventoryTransactionType'
       updated_at:
         type: string
+      updated_by:
+        type: string
     type: object
   models.InventoryTransactionType:
     enum:
     - purchase
     - disposal
     - sell
+    - transfer_out
+    - transfer_in
     type: string
     x-enum-varnames:
     - InventoryTransactionTypePurchase
     - InventoryTransactionTypeDisposal
     - InventoryTransactionTypeSell
+    - InventoryTransactionTypeTransferOut
+    - InventoryTransactionTypeTransferIn
+  models.Menu:
+    properties:
+      created_at:
+        type: string
+      created_by:
+        type: string
+      deleted_at:
+        type: string
+      id:
+        type: integer
+      inventories:
+        items:
+          $ref: '#/definitions/models.Inventory'
+        type: array
+      menu_items:
+        items:
+          $ref: '#/definitions/models.MenuItem'
+        type: array
+      name:
+        type: string
+      updated_at:
+        type: string
+      updated_by:
+        type: string
+    type: object
+  models.MenuItem:
+    properties:
+      created_at:
+        type: string
+      created_by:
+        type: string
+      deleted_at:
+        type: string
+      id:
+        type: integer
+      menus:
+        items:
+          $ref: '#/definitions/models.Menu'
+        type: array
+      name:
+        type: string
+      products:
+        items:
+          $ref: '#/definitions/models.Product'
+        type: array
+      tags:
+        items:
+          type: string
+        type: array
+      updated_at:
+        type: string
+      updated_by:
+        type: string
+    type: object
+  models.POItemSellingPrice:
+    properties:
+      created_at:
+        type: string
+      created_by:
+        type: string
+      deleted_at:
+        type: string
+      id:
+        type: integer
+      purchase_order_item:
+        $ref: '#/definitions/models.PurchaseOrderItem'
+      purchase_order_item_id:
+        type: integer
+      selling_price:
+        type: number
+      selling_price_id:
+        type: integer
+      selling_price_ref:
+        $ref: '#/definitions/models.SellingPrice'
+      updated_at:
+        type: string
+      updated_by:
+        type: string
+    type: object
+  models.PaginationResult-models_Menu:
+    properties:
+      data:
+        items:
+          $ref: '#/definitions/models.Menu'
+        type: array
+      limit:
+        example: 20
+        type: integer
+      page:
+        example: 1
+        type: integer
+      total:
+        example: 100
+        type: integer
+      totalPages:
+        example: 5
+        type: integer
+    type: object
+  models.PaginationResult-models_SaleOrder:
+    properties:
+      data:
+        items:
+          $ref: '#/definitions/models.SaleOrder'
+        type: array
+      limit:
+        example: 20
+        type: integer
+      page:
+        example: 1
+        type: integer
+      total:
+        example: 100
+        type: integer
+      totalPages:
+        example: 5
+        type: integer
+    type: object
+  models.PaymentReceiptForm:
+    properties:
+      created_at:
+        type: string
+      created_by:
+        type: string
+      date:
+        type: string
+      deleted_at:
+        type: string
+      department:
+        type: string
+      details:
+        type: string
+      form_number:
+        example: 20250101-1-1
+        type: string
+      full_name:
+        type: string
+      id:
+        type: integer
+      purchase_order:
+        $ref: '#/definitions/models.PurchaseOrder'
+      purchase_order_id:
+        type: integer
+      status:
+        $ref: '#/definitions/models.PaymentReceiptFormStatus'
+      total_amount:
+        type: number
+      updated_at:
+        type: string
+      updated_by:
+        type: string
+    type: object
+  models.PaymentReceiptFormStatus:
+    enum:
+    - pending
+    - submitted
+    - approved
+    - rejected
+    type: string
+    x-enum-varnames:
+    - PaymentReceiptFormStatusPending
+    - PaymentReceiptFormStatusSubmitted
+    - PaymentReceiptFormStatusApproved
+    - PaymentReceiptFormStatusRejected
   models.Product:
     properties:
       created_at:
@@ -314,6 +918,10 @@ definitions:
         type: array
       name:
         type: string
+      product_image:
+        items:
+          type: integer
+        type: array
       product_type:
         type: string
       status:
@@ -322,33 +930,13 @@ definitions:
         items:
           $ref: '#/definitions/models.Supplier'
         type: array
-      unit_id:
-        type: integer
       unit:
         $ref: '#/definitions/models.Unit'
-      updated_at:
-        type: string
-    type: object
-  models.Unit:
-    properties:
-      conversion_factor:
-        format: double
-        type: number
-      created_at:
-        type: string
-      created_by:
-        type: string
-      deleted_at:
-        type: string
-      id:
+      unit_id:
         type: integer
-      name:
-        type: string
-      symbol:
-        type: string
-      unit_type:
-        type: string
       updated_at:
+        type: string
+      updated_by:
         type: string
     type: object
   models.PurchaseOrder:
@@ -360,8 +948,6 @@ definitions:
       confirmed_at:
         example: "2023-01-01T12:00:00Z"
         type: string
-      confirmed_by:
-        type: integer
       created_at:
         type: string
       created_by:
@@ -370,6 +956,8 @@ definitions:
         type: string
       id:
         type: integer
+      inventory:
+        $ref: '#/definitions/models.Inventory'
       inventory_id:
         type: integer
       items:
@@ -388,10 +976,11 @@ definitions:
         - $ref: '#/definitions/models.PurchaseOrderStatus'
         example: order_placed
       total_amount:
-        description: Calculated field, not stored in DB
         example: 999.99
         type: number
       updated_at:
+        type: string
+      updated_by:
         type: string
     required:
     - inventory_id
@@ -407,6 +996,10 @@ definitions:
         type: string
       id:
         type: integer
+      po_item_selling_price:
+        allOf:
+        - $ref: '#/definitions/models.POItemSellingPrice'
+        description: Relationships
       product:
         $ref: '#/definitions/models.Product'
       product_id:
@@ -416,10 +1009,9 @@ definitions:
       purchase_order_id:
         type: integer
       quantity:
-        minimum: 1
-        type: integer
+        type: number
       received_quantity:
-        type: integer
+        type: number
       status:
         allOf:
         - $ref: '#/definitions/models.PurchaseOrderItemStatus'
@@ -429,29 +1021,37 @@ definitions:
       supplier_id:
         type: integer
       total_amount:
-        description: Calculated field, not stored in DB
         type: number
+      unit:
+        $ref: '#/definitions/models.Unit'
+      unit_id:
+        type: integer
       unit_price:
         minimum: 0
         type: number
       updated_at:
         type: string
+      updated_by:
+        type: string
     required:
     - product_id
     - quantity
     - supplier_id
+    - unit_id
     type: object
   models.PurchaseOrderItemStatus:
     enum:
     - awaiting_delivery
     - partially_delivered
     - delivered
+    - over_delivered
     - cancelled
     type: string
     x-enum-varnames:
     - PurchaseOrderItemStatusAwaitingDelivery
     - PurchaseOrderItemStatusPartiallyDelivered
     - PurchaseOrderItemStatusDelivered
+    - PurchaseOrderItemStatusOverDelivered
     - PurchaseOrderItemStatusCancelled
   models.PurchaseOrderStatus:
     enum:
@@ -467,6 +1067,167 @@ definitions:
     - PurchaseOrderStatusFullyDelivered
     - PurchaseOrderStatusCompleted
     - PurchaseOrderStatusCancelled
+  models.ReconcileLifecycleStatus:
+    enum:
+    - open
+    - closed
+    - processing
+    - processed
+    type: string
+    x-enum-varnames:
+    - ReconcileLifecycleStatusOpen
+    - ReconcileLifecycleStatusClosed
+    - ReconcileLifecycleStatusProcessing
+    - ReconcileLifecycleStatusProcessed
+  models.ReconciliationRequestItem:
+    properties:
+      created_at:
+        type: string
+      created_by:
+        type: string
+      deleted_at:
+        type: string
+      id:
+        type: integer
+      payload:
+        type: object
+      status:
+        $ref: '#/definitions/models.ReconciliationRequestItemStatus'
+      submission:
+        $ref: '#/definitions/models.InventorySubmission'
+      submission_id:
+        type: integer
+      updated_at:
+        type: string
+      updated_by:
+        type: string
+    type: object
+  models.ReconciliationRequestItemStatus:
+    enum:
+    - in_progress
+    type: string
+    x-enum-varnames:
+    - ReconciliationRequestItemStatusInProgress
+  models.SaleOrder:
+    description: Sale order entity with items and status tracking
+    properties:
+      created_at:
+        type: string
+      created_by:
+        type: string
+      customer_id:
+        type: string
+      deleted_at:
+        type: string
+      id:
+        type: integer
+      inventory:
+        $ref: '#/definitions/models.Inventory'
+      inventory_id:
+        type: integer
+      is_latest:
+        type: boolean
+      items:
+        items:
+          $ref: '#/definitions/models.SaleOrderItem'
+        minItems: 1
+        type: array
+      notes:
+        example: Sale order notes
+        type: string
+      order_number:
+        example: SO-2023-001
+        type: string
+      previous_order:
+        $ref: '#/definitions/models.SaleOrder'
+      previous_order_id:
+        type: integer
+      status:
+        allOf:
+        - $ref: '#/definitions/models.SaleOrderStatus'
+        example: ordered
+      tag:
+        type: integer
+      total_price:
+        description: Display fields, not stored in DB
+        example: 999.99
+        type: number
+      updated_at:
+        type: string
+      updated_by:
+        type: string
+    required:
+    - customer_id
+    - inventory_id
+    - items
+    type: object
+  models.SaleOrderItem:
+    properties:
+      created_at:
+        type: string
+      created_by:
+        type: string
+      deleted_at:
+        type: string
+      id:
+        type: integer
+      menu_items:
+        items:
+          $ref: '#/definitions/models.MenuItem'
+        type: array
+      sale_order:
+        $ref: '#/definitions/models.SaleOrder'
+      sale_order_id:
+        type: integer
+      total_price:
+        description: Display fields, not stored in DB
+        type: number
+      updated_at:
+        type: string
+      updated_by:
+        type: string
+    type: object
+  models.SaleOrderStatus:
+    enum:
+    - ordered
+    - served
+    - completed
+    - cancelled
+    type: string
+    x-enum-varnames:
+    - SaleOrderStatusOrdered
+    - SaleOrderStatusServed
+    - SaleOrderStatusCompleted
+    - SaleOrderStatusCancelled
+  models.SellingPrice:
+    properties:
+      created_at:
+        type: string
+      created_by:
+        type: string
+      deleted_at:
+        type: string
+      effective_from:
+        type: string
+      id:
+        type: integer
+      inventory:
+        $ref: '#/definitions/models.Inventory'
+      inventory_id:
+        type: integer
+      notes:
+        type: string
+      price:
+        type: number
+      product:
+        $ref: '#/definitions/models.Product'
+      product_id:
+        type: integer
+      updated_at:
+        type: string
+      updated_by:
+        type: string
+    type: object
   models.SetSettingResponse:
     description: Response after successfully setting a configuration value
     properties:
@@ -482,6 +1243,38 @@ definitions:
       value:
         type: object
     type: object
+  models.SubmissionApprovalStatus:
+    enum:
+    - pending
+    - approved
+    - rejected
+    type: string
+    x-enum-varnames:
+    - InventorySubmissionApprovalStatusPending
+    - InventorySubmissionApprovalStatusApproved
+    - InventorySubmissionApprovalStatusRejected
+  models.SubmissionProcessingStatus:
+    enum:
+    - pending
+    - failed
+    - completed
+    - canceled
+    type: string
+    x-enum-varnames:
+    - InventorySubmissionStatusPending
+    - InventorySubmissionStatusFailed
+    - InventorySubmissionStatusCompleted
+    - InventorySubmissionStatusCanceled
+  models.SubmissionType:
+    enum:
+    - reconcile
+    - dispose
+    - transfer
+    type: string
+    x-enum-varnames:
+    - InventorySubmissionTypeReconcile
+    - InventorySubmissionTypeDispose
+    - InventorySubmissionTypeTransfer
   models.Supplier:
     properties:
       address:
@@ -508,7 +1301,188 @@ definitions:
         type: string
       updated_at:
         type: string
+      updated_by:
+        type: string
     type: object
+  models.Unit:
+    properties:
+      base_unit:
+        $ref: '#/definitions/models.Unit'
+      base_unit_id:
+        type: integer
+      conversion_factor:
+        type: number
+      conversion_factor_to_current:
+        description: Calculated field, not stored in DB
+        type: number
+      created_at:
+        type: string
+      created_by:
+        type: string
+      decimal_places:
+        type: integer
+      deleted_at:
+        type: string
+      derived_units:
+        items:
+          $ref: '#/definitions/models.Unit'
+        type: array
+      id:
+        type: integer
+      level:
+        type: integer
+      name:
+        type: string
+      products:
+        items:
+          $ref: '#/definitions/models.Product'
+        type: array
+      symbol:
+        type: string
+      unit_type:
+        type: string
+      updated_at:
+        type: string
+      updated_by:
+        type: string
+    type: object
+  pkg.AppError:
+    properties:
+      cause: {}
+      code:
+        $ref: '#/definitions/pkg.ErrorCode'
+      message:
+        type: string
+      messageArgs:
+        items: {}
+        type: array
+      messageKey:
+        description: |-
+          MessageKey, when set, is an ErrorMessages catalog key the error handler
+          resolves to a request-localized message at response time (formatted with
+          MessageArgs). Lets lower layers (e.g. repositories) return a domain error
+          without knowing the caller's language. Message is the fallback if unset.
+        type: string
+      stack:
+        description: |-
+          Stack holds a stack trace captured at error creation time. It is used for
+          server-side logging only and MUST NOT be exposed in MarshalJSON / client
+          responses.
+        type: string
+    type: object
+  pkg.BatchError:
+    properties:
+      cause: {}
+      code:
+        $ref: '#/definitions/pkg.ErrorCode'
+      locations:
+        items:
+          $ref: '#/definitions/pkg.BatchErrorLocation'
+        type: array
+      message:
+        type: string
+      messageArgs:
+        items: {}
+        type: array
+      messageKey:
+        description: |-
+          MessageKey, when set, is an ErrorMessages catalog key the error handler
+          resolves to a request-localized message at response time (formatted with
+          MessageArgs). Lets lower layers (e.g. repositories) return a domain error
+          without knowing the caller's language. Message is the fallback if unset.
+        type: string
+      stack:
+        description: |-
+          Stack holds a stack trace captured at error creation time. It is used for
+          server-side logging only and MUST NOT be exposed in MarshalJSON / client
+          responses.
+        type: string
+    type: object
+  pkg.BatchErrorLocation:
+    properties:
+      location:
+        type: string
+      message:
+        type: string
+    type: object
+  pkg.ErrorCode:
+    enum:
+    - 0
+    - 1
+    - 2
+    - 3
+    - 4
+    - 5
+    - 6
+    - 9
+    - 7
+    - 14
+    - 8
+    - 10
+    - 17
+    - 11
+    - 12
+    - 13
+    - 15
+    - 16
+    type: integer
+    x-enum-comments:
+      ErrorCodeActivePendingReconcileConflict: active-pending-reconcile-conflict
+      ErrorCodeBadInventoryItemState: bad-inventory-item-state
+      ErrorCodeConflict: conflict
+      ErrorCodeConsumeFIFOFailed: consume-fifo-failed
+      ErrorCodeDisposeValidationFailed: dispose-validation-failed
+      ErrorCodeDuplicate: duplicate
+      ErrorCodeEmptyDataFile: data-row-not-found
+      ErrorCodeForbidden: forbidden
+      ErrorCodeInternal: internal
+      ErrorCodeInvalidRequestBody: invalid-request-body
+      ErrorCodeNotFound: not-found
+      ErrorCodePurchaseOrderNoApprovedPaymentReceipt: purchase-order-no-approved-payment-receipt
+      ErrorCodePurchaseOrderNoItems: purchase-order-no-items
+      ErrorCodeReconcileValidationFailed: reconcile-validation-failed
+      ErrorCodeTransferValidationFailed: transfer-validation-failed
+      ErrorCodeUnauthorized: unauthorized
+      ErrorCodeUnsupportedFileFormat: unsupported-file-format
+      ErrorCodeValidation: validation
+    x-enum-descriptions:
+    - internal
+    - invalid-request-body
+    - not-found
+    - unauthorized
+    - forbidden
+    - validation
+    - duplicate
+    - conflict
+    - purchase-order-no-items
+    - purchase-order-no-approved-payment-receipt
+    - bad-inventory-item-state
+    - reconcile-validation-failed
+    - active-pending-reconcile-conflict
+    - dispose-validation-failed
+    - transfer-validation-failed
+    - consume-fifo-failed
+    - unsupported-file-format
+    - data-row-not-found
+    x-enum-varnames:
+    - ErrorCodeInternal
+    - ErrorCodeInvalidRequestBody
+    - ErrorCodeNotFound
+    - ErrorCodeUnauthorized
+    - ErrorCodeForbidden
+    - ErrorCodeValidation
+    - ErrorCodeDuplicate
+    - ErrorCodeConflict
+    - ErrorCodePurchaseOrderNoItems
+    - ErrorCodePurchaseOrderNoApprovedPaymentReceipt
+    - ErrorCodeBadInventoryItemState
+    - ErrorCodeReconcileValidationFailed
+    - ErrorCodeActivePendingReconcileConflict
+    - ErrorCodeDisposeValidationFailed
+    - ErrorCodeTransferValidationFailed
+    - ErrorCodeConsumeFIFOFailed
+    - ErrorCodeUnsupportedFileFormat
+    - ErrorCodeEmptyDataFile
 host: localhost:8080
 info:
   contact:
@@ -540,7 +1514,7 @@ paths:
         in: query
         name: limit
         type: integer
-      - description: Search term for order number or notes
+      - description: Search term for order number, notes, or supplier name
         in: query
         name: q
         type: string
@@ -620,43 +1594,27 @@ paths:
       summary: Create a new purchase order
       tags:
       - purchase-orders
-  /api/purchase-orders/{id}/confirm:
-    post:
+  /api/purchase-orders/{id}:
+    get:
       consumes:
       - application/json
-      description: Confirm a purchase order with confirmation notes
+      description: Retrieve a purchase order by its ID with all related items and
+        relationships
       parameters:
       - description: Purchase Order ID
         in: path
         name: id
         required: true
         type: integer
-      - description: Confirmation request with notes
-        in: body
-        name: request
-        required: true
-        schema:
-          properties:
-            confirmation_notes:
-              type: string
-          type: object
       produces:
       - application/json
       responses:
         "200":
-          description: Successfully confirmed purchase order
+          description: Successfully retrieved purchase order
           schema:
-            additionalProperties:
-              type: string
-            type: object
+            $ref: '#/definitions/models.PurchaseOrder'
         "400":
-          description: Invalid request body or validation failed
-          schema:
-            additionalProperties:
-              type: string
-            type: object
-        "403":
-          description: Access denied
+          description: Invalid purchase order ID
           schema:
             additionalProperties:
               type: string
@@ -667,21 +1625,68 @@ paths:
             additionalProperties:
               type: string
             type: object
-        "409":
-          description: Purchase order already confirmed
-          schema:
-            additionalProperties:
-              type: string
-            type: object
         "500":
-          description: Failed to confirm purchase order
+          description: Failed to get purchase order
           schema:
             additionalProperties:
               type: string
             type: object
       security:
       - BearerAuth: []
-      summary: Confirm a purchase order
+      summary: Get purchase order by ID
+      tags:
+      - purchase-orders
+    put:
+      consumes:
+      - application/json
+      description: Update a purchase order's inventory, notes, and items while preserving
+        received quantities
+      parameters:
+      - description: Purchase Order ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: Purchase order update data
+        in: body
+        name: purchase_order
+        required: true
+        schema:
+          $ref: '#/definitions/dto.UpdatePurchaseOrderRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Successfully updated purchase order
+          schema:
+            $ref: '#/definitions/models.PurchaseOrder'
+        "400":
+          description: Invalid request body or validation failed
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Purchase order not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "422":
+          description: Cannot edit completed or cancelled purchase order
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Failed to update purchase order
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Update a purchase order
       tags:
       - purchase-orders
   /api/purchase-orders/{id}/items/{item_id}/status:
@@ -780,12 +1785,56 @@ paths:
       summary: Update purchase order delivery status
       tags:
       - purchase-orders
+  /api/v1/purchase-orders/revenue-expense/{payment_receipt_form_id}/retry:
+    post:
+      consumes:
+      - application/json
+      description: Retry queueing a revenue expense request for a payment receipt
+        form
+      parameters:
+      - description: Payment Receipt Form ID
+        in: path
+        name: payment_receipt_form_id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Successfully queued revenue expense request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: Invalid payment receipt form ID
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Payment receipt form not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Failed to queue revenue expense request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Retry queue revenue expense request
+      tags:
+      - purchase-orders
   /excel/verify:
     post:
       consumes:
       - application/json
-      description: Verifies that the specified filepath and sheetname exist and are
-        valid
+      description: Verifies that the specified file (local Excel or Google Sheets
+        URL) and sheetname exist and are valid
       parameters:
       - description: File verification request
         in: body
@@ -820,7 +1869,7 @@ paths:
             additionalProperties:
               type: string
             type: object
-      summary: Verify Excel file and sheet
+      summary: Verify file and sheet
       tags:
       - excel
   /inventories:
@@ -1277,36 +2326,82 @@ paths:
       summary: Update inventory item
       tags:
       - inventory-items
-  /inventories/{id}/inventory-items/{item_id}/adjust:
-    put:
+  /inventories/{id}/reconcile/initiate:
+    post:
       consumes:
       - application/json
-      description: Adjust the quantity of an inventory item
+      description: Creates a placeholder reconcile submission and captures a per-item
+        baseline snapshot (prev_quantity = live quantity at initiate time) for every
+        active item in the inventory. Admin/accountant only.
       parameters:
       - description: Inventory ID
         in: path
         name: id
         required: true
         type: integer
-      - description: Inventory item ID
-        in: path
-        name: item_id
-        required: true
-        type: integer
-      - description: Adjustment data
-        in: body
-        name: adjustment
-        required: true
-        schema:
-          additionalProperties: true
-          type: object
       produces:
       - application/json
       responses:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/models.InventoryItem'
+            $ref: '#/definitions/models.InventorySubmission'
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "403":
+          description: Forbidden
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Initiate reconciliation
+      tags:
+      - inventories
+  /inventories/{id}/reports/monthly-transactions:
+    get:
+      consumes:
+      - application/json
+      description: Export monthly transaction report as Excel file for a specific
+        inventory
+      parameters:
+      - description: Inventory ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: Month (1-12), defaults to current month
+        in: query
+        name: month
+        type: integer
+      - description: Year (e.g., 2024), defaults to current year
+        in: query
+        name: year
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.ExportFile'
         "400":
           description: Bad Request
           schema:
@@ -1327,14 +2422,70 @@ paths:
             type: object
       security:
       - BearerAuth: []
-      summary: Adjust inventory item quantity
+      summary: Export monthly transaction report
       tags:
-      - inventory-items
+      - inventories
+  /inventories/{id}/submissions:
+    get:
+      consumes:
+      - application/json
+      description: Get all approved or rejected inventory submissions with pagination,
+        optionally filtered by approval status or submission types
+      parameters:
+      - description: Inventory ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - default: 1
+        description: Page number
+        in: query
+        name: page
+        type: integer
+      - default: 20
+        description: Items per page
+        in: query
+        name: limit
+        type: integer
+      - description: 'Filter by approval status (comma-separated: approved,rejected,pending)'
+        in: query
+        name: approval_status
+        type: string
+      - description: 'Filter by submission types (comma-separated: reconcile,dispose,transfer)'
+        in: query
+        name: submission_type
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: List submissions
+      tags:
+      - inventories
   /inventories/confirm:
     put:
       consumes:
       - application/json
-      description: Confirm the actual inventory count for multiple inventory items
+      description: Creates a pending submission to confirm the actual inventory count
+        for multiple inventory items
       parameters:
       - description: Confirmation data
         in: body
@@ -1345,8 +2496,10 @@ paths:
       produces:
       - application/json
       responses:
-        "204":
-          description: No Content
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.InventorySubmission'
         "400":
           description: Bad Request
           schema:
@@ -1374,7 +2527,7 @@ paths:
     put:
       consumes:
       - application/json
-      description: Dispose multiple inventory items by reducing their quantities
+      description: Creates a pending submission to dispose multiple inventory items
       parameters:
       - description: Disposal data
         in: body
@@ -1388,8 +2541,7 @@ paths:
         "200":
           description: OK
           schema:
-            additionalProperties: true
-            type: object
+            $ref: '#/definitions/models.InventorySubmission'
         "400":
           description: Bad Request
           schema:
@@ -1417,8 +2569,14 @@ paths:
     get:
       consumes:
       - application/json
-      description: Get the last purchase transaction price for each Supplier Product
-        as a nested map (product_id -> supplier_id -> price)
+      description: Get the 2 most recent purchase transaction prices for each Supplier
+        Product as a nested map (product_id -> supplier_id -> []PriceHistory). Optionally
+        filter by supplier_id.
+      parameters:
+      - description: Supplier ID to filter by
+        in: query
+        name: supplier_id
+        type: integer
       produces:
       - application/json
       responses:
@@ -1426,6 +2584,12 @@ paths:
           description: OK
           schema:
             $ref: '#/definitions/dto.LastPurchasePriceMap'
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
         "500":
           description: Internal Server Error
           schema:
@@ -1434,7 +2598,424 @@ paths:
             type: object
       security:
       - BearerAuth: []
-      summary: Get last purchase prices
+      summary: Get 2 latest purchase prices
+      tags:
+      - inventories
+  /inventories/submissions/{id}:
+    put:
+      consumes:
+      - application/json
+      description: Update the quantity items in an inventory submission. Only submissions
+        with pending approval status can be updated.
+      parameters:
+      - description: Submission ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: Update request
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.UpdateSubmissionRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.SubmissionResponse'
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Update submission items
+      tags:
+      - inventories
+  /inventories/submissions/{id}/close:
+    post:
+      description: Admin/accountant closes an open reconciliation (open -> closed).
+        Staff can no longer edit child items; admin/accountant may still edit, then
+        start processing or reopen.
+      parameters:
+      - description: Submission ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.InventorySubmission'
+        "403":
+          description: Forbidden
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "409":
+          description: Conflict
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Close reconciliation submission
+      tags:
+      - inventories
+  /inventories/submissions/{id}/process:
+    post:
+      consumes:
+      - application/json
+      description: Approve or reject a pending inventory submission. Approve will
+        execute the inventory operation, reject will mark as rejected.
+      parameters:
+      - description: Submission ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: Process request
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.SubmissionApprovalRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.InventorySubmission'
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "403":
+          description: Forbidden
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Process submission (approve/reject)
+      tags:
+      - inventories
+  /inventories/submissions/{id}/reconciliation-items:
+    post:
+      consumes:
+      - application/json
+      description: Staff submits counted quantities as a new in_progress child item
+        under an initiated reconcile submission. Counts must not exceed the per-item
+        snapshot baseline.
+      parameters:
+      - description: Parent submission ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: Counted items
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.CreateReconciliationItemRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/models.ReconciliationRequestItem'
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "403":
+          description: Forbidden
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Create reconciliation item
+      tags:
+      - inventories
+  /inventories/submissions/{id}/reconciliation-items/{item_id}:
+    delete:
+      description: Staff soft-deletes their own in_progress or ready child item. Approved/applied
+        items cannot be deleted.
+      parameters:
+      - description: Parent submission ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: Child item ID
+        in: path
+        name: item_id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "204":
+          description: No Content
+        "403":
+          description: Forbidden
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "409":
+          description: Conflict
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Delete reconciliation item
+      tags:
+      - inventories
+    put:
+      consumes:
+      - application/json
+      description: Staff replaces the counted quantities of their own child item.
+        Editing a ready/approved row resets it to in_progress.
+      parameters:
+      - description: Parent submission ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: Child item ID
+        in: path
+        name: item_id
+        required: true
+        type: integer
+      - description: Counted items
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.UpdateReconciliationItemRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.ReconciliationRequestItem'
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "403":
+          description: Forbidden
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "409":
+          description: Conflict
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Update reconciliation item
+      tags:
+      - inventories
+  /inventories/submissions/{id}/reopen:
+    post:
+      description: Admin/accountant reopens a closed reconciliation (closed -> open)
+        so staff can edit child items again.
+      parameters:
+      - description: Submission ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.InventorySubmission'
+        "403":
+          description: Forbidden
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "409":
+          description: Conflict
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Reopen reconciliation submission
+      tags:
+      - inventories
+  /inventories/submissions/{id}/start-processing:
+    post:
+      description: Admin/accountant applies a closed reconciliation in one atomic
+        transaction. Re-checks for a consuming submission processed during the reconciliation
+        window; on drift it rolls back and returns a warning payload (HTTP 409). Otherwise
+        it creates the consuming transactions (snapshot - counted) and finalizes the
+        submission.
+      parameters:
+      - description: Submission ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.StartProcessingResult'
+        "403":
+          description: Forbidden
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/dto.StartProcessingResult'
+      security:
+      - BearerAuth: []
+      summary: Start processing a reconciliation
+      tags:
+      - inventories
+  /inventories/transfer:
+    post:
+      consumes:
+      - application/json
+      description: Creates a pending submission to transfer inventory items from source
+        inventory to destination inventory
+      parameters:
+      - description: Transfer data
+        in: body
+        name: transfer
+        required: true
+        schema:
+          $ref: '#/definitions/dto.TransferInventoryRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.InventorySubmission'
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Transfer inventory items
       tags:
       - inventories
   /inventory-items:
@@ -1548,6 +3129,843 @@ paths:
       summary: Get inventory item by product ID
       tags:
       - inventory-items
+  /menu-items:
+    get:
+      consumes:
+      - application/json
+      description: List all menu items with pagination, search, and tag filtering
+      parameters:
+      - default: 1
+        description: Page number
+        in: query
+        name: page
+        type: integer
+      - default: 20
+        description: Items per page
+        in: query
+        name: limit
+        type: integer
+      - description: Search query (searches by name)
+        in: query
+        name: q
+        type: string
+      - description: Comma-separated list of tags to filter by (e.g., appetizer,mains,desserts)
+        in: query
+        name: tags
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: List menu items
+      tags:
+      - menu-items
+    post:
+      consumes:
+      - application/json
+      description: Create a new menu item
+      parameters:
+      - description: Menu item data
+        in: body
+        name: menuItem
+        required: true
+        schema:
+          $ref: '#/definitions/handlers.CreateMenuItemRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/models.MenuItem'
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Create menu item
+      tags:
+      - menu-items
+  /menu-items/{id}:
+    delete:
+      consumes:
+      - application/json
+      description: Delete a menu item
+      parameters:
+      - description: Menu item ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "204":
+          description: No Content
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Delete menu item
+      tags:
+      - menu-items
+    get:
+      consumes:
+      - application/json
+      description: Get a menu item by ID
+      parameters:
+      - description: Menu item ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.MenuItem'
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Get menu item
+      tags:
+      - menu-items
+    put:
+      consumes:
+      - application/json
+      description: Update a menu item
+      parameters:
+      - description: Menu item ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: Menu item data
+        in: body
+        name: menuItem
+        required: true
+        schema:
+          $ref: '#/definitions/handlers.UpdateMenuItemRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.MenuItem'
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Update menu item
+      tags:
+      - menu-items
+  /menus:
+    get:
+      consumes:
+      - application/json
+      description: List all menus with pagination
+      parameters:
+      - default: 1
+        description: Page number
+        in: query
+        name: page
+        type: integer
+      - default: 20
+        description: Items per page
+        in: query
+        name: limit
+        type: integer
+      - description: Search term for menu name
+        in: query
+        name: q
+        type: string
+      - description: Sort field (name, created_at, updated_at)
+        in: query
+        name: sort
+        type: string
+      - default: desc
+        description: Sort direction (asc, desc)
+        in: query
+        name: order
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.PaginationResult-models_Menu'
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: List menus
+      tags:
+      - menus
+    post:
+      consumes:
+      - application/json
+      description: Create a new menu
+      parameters:
+      - description: Menu data
+        in: body
+        name: menu
+        required: true
+        schema:
+          $ref: '#/definitions/handlers.CreateMenuRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/models.Menu'
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Create menu
+      tags:
+      - menus
+  /menus/{id}:
+    delete:
+      consumes:
+      - application/json
+      description: Delete a menu
+      parameters:
+      - description: Menu ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "204":
+          description: No Content
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Delete menu
+      tags:
+      - menus
+    get:
+      consumes:
+      - application/json
+      description: Get a menu by ID
+      parameters:
+      - description: Menu ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.Menu'
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Get menu
+      tags:
+      - menus
+    put:
+      consumes:
+      - application/json
+      description: Update a menu
+      parameters:
+      - description: Menu ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: Menu data
+        in: body
+        name: menu
+        required: true
+        schema:
+          $ref: '#/definitions/handlers.UpdateMenuRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.Menu'
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Update menu
+      tags:
+      - menus
+  /payment-receipt-forms:
+    get:
+      consumes:
+      - application/json
+      description: Retrieve a paginated list of payment receipt forms with optional
+        search, sorting, and filtering
+      parameters:
+      - description: 'Page number (default: 1, minimum: 1)'
+        in: query
+        name: page
+        type: integer
+      - description: 'Number of items per page (default: 20, minimum: 1, maximum:
+          100)'
+        in: query
+        name: limit
+        type: integer
+      - description: Search term for full name, department, or details
+        in: query
+        name: q
+        type: string
+      - description: Filter by purchase order ID
+        in: query
+        name: purchase_order_id
+        type: integer
+      - description: Filter by inventory ID
+        in: query
+        name: inventory_id
+        type: integer
+      - collectionFormat: csv
+        description: Filter by statuses (pending, submitted, approved, rejected)
+        in: query
+        items:
+          type: string
+        name: statuses
+        type: array
+      - description: Sort field (full_name, department, total_amount, date, created_at,
+          updated_at)
+        in: query
+        name: sort
+        type: string
+      - description: 'Sort direction (asc, desc, default: asc)'
+        in: query
+        name: order
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Paginated list of payment receipt forms
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: List payment receipt forms
+      tags:
+      - payment-receipt-forms
+    post:
+      consumes:
+      - application/json
+      description: Create a new payment receipt form with auto-generated form number
+        if not provided
+      parameters:
+      - description: Payment receipt form data
+        in: body
+        name: paymentReceiptForm
+        required: true
+        schema:
+          $ref: '#/definitions/dto.PaymentReceiptFormPayload'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/models.PaymentReceiptForm'
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "409":
+          description: Conflict
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Create payment receipt form
+      tags:
+      - payment-receipt-forms
+  /payment-receipt-forms/{id}:
+    delete:
+      consumes:
+      - application/json
+      description: Delete a payment receipt form by ID
+      parameters:
+      - description: Payment receipt form ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "204":
+          description: No Content
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Delete payment receipt form
+      tags:
+      - payment-receipt-forms
+    get:
+      consumes:
+      - application/json
+      description: Get a payment receipt form by ID
+      parameters:
+      - description: Payment receipt form ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.PaymentReceiptForm'
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Get payment receipt form
+      tags:
+      - payment-receipt-forms
+    put:
+      consumes:
+      - application/json
+      description: Update a payment receipt form by ID (used by admin/accountant,
+        form still needs approval after update)
+      parameters:
+      - description: Payment receipt form ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: Payment receipt form data
+        in: body
+        name: paymentReceiptForm
+        required: true
+        schema:
+          $ref: '#/definitions/dto.PaymentReceiptFormPayload'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.PaymentReceiptForm'
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Update payment receipt form
+      tags:
+      - payment-receipt-forms
+  /payment-receipt-forms/{id}/approve:
+    put:
+      consumes:
+      - application/json
+      description: Approve a payment receipt form by ID
+      parameters:
+      - description: Payment receipt form ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Approve payment receipt form
+      tags:
+      - payment-receipt-forms
+  /payment-receipt-forms/{id}/notify:
+    post:
+      consumes:
+      - application/json
+      description: Resend the initial pending form event to all connected SSE clients
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Notify payment receipt form
+      tags:
+      - payment-receipt-forms
+  /payment-receipt-forms/{id}/reject:
+    put:
+      consumes:
+      - application/json
+      description: Reject a payment receipt form by ID
+      parameters:
+      - description: Payment receipt form ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Reject payment receipt form
+      tags:
+      - payment-receipt-forms
+  /payment-receipt-forms/{id}/submit:
+    post:
+      consumes:
+      - application/json
+      description: Submit a payment receipt form by ID (used by bot_form role)
+      parameters:
+      - description: Payment receipt form ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: Payment receipt form data
+        in: body
+        name: paymentReceiptForm
+        required: true
+        schema:
+          $ref: '#/definitions/dto.PaymentReceiptFormPayload'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.PaymentReceiptForm'
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Submit payment receipt form
+      tags:
+      - payment-receipt-forms
+  /payment-receipt-forms/pending:
+    get:
+      consumes:
+      - application/json
+      description: Stream the latest payment receipt form in pending status using
+        Server-Sent Events. The connection will remain open and send updates when
+        the pending form changes. Events are sent every 5 seconds with keep-alive
+        every 30 seconds.
+      produces:
+      - text/event-stream
+      responses:
+        "200":
+          description: Server-Sent Events stream
+          schema:
+            type: string
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Get latest pending payment receipt form (SSE)
+      tags:
+      - payment-receipt-forms
   /products:
     get:
       consumes:
@@ -1685,14 +4103,88 @@ paths:
       summary: Update product status
       tags:
       - products
+  /products/export-csv:
+    get:
+      consumes:
+      - application/json
+      description: Export products to CSV file with the same format as the import
+        template. CSV uses semicolon (;) as delimiter. Products with multiple suppliers
+        will have one row per supplier.
+      parameters:
+      - description: Filter by status (active/inactive)
+        in: query
+        name: status
+        type: string
+      - description: Filter by product type
+        in: query
+        name: product_type
+        type: string
+      - description: Filter by supplier ID
+        in: query
+        name: supplier_id
+        type: integer
+      produces:
+      - text/csv
+      responses:
+        "200":
+          description: CSV file download
+          schema:
+            type: file
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Export products to CSV
+      tags:
+      - products
+  /products/export-excel:
+    get:
+      consumes:
+      - application/json
+      description: Export products to Excel file with the same format as the import
+        template. Products with multiple suppliers will have one row per supplier.
+      parameters:
+      - description: Filter by status (active/inactive)
+        in: query
+        name: status
+        type: string
+      - description: Filter by product type
+        in: query
+        name: product_type
+        type: string
+      - description: Filter by supplier ID
+        in: query
+        name: supplier_id
+        type: integer
+      produces:
+      - application/vnd.openxmlformats-officedocument.spreadsheetml.sheet
+      responses:
+        "200":
+          description: Excel file download
+          schema:
+            type: file
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Export products to Excel
+      tags:
+      - products
   /products/import-csv:
     post:
       consumes:
       - multipart/form-data
       description: 'Import products and their suppliers from a CSV or Excel file upload.
-        Files must have headers: Name, Description, ProductType, Suppliers, ContactEmail,
-        ContactPhone, Address. CSV uses semicolon (;) as delimiter. Products can have
-        multiple suppliers by repeating rows with empty product fields.'
+        Files must have headers: Name, Description, ProductType, Unit, Suppliers,
+        ContactEmail, ContactPhone, Address. CSV uses semicolon (;) as delimiter.
+        Products can have multiple suppliers by repeating rows with empty product
+        fields.'
       parameters:
       - description: CSV or Excel file to upload
         in: formData
@@ -1789,129 +4281,261 @@ paths:
       summary: Search products
       tags:
       - products
-  /units:
+  /purchase-orders/upload:
+    post:
+      consumes:
+      - multipart/form-data
+      description: Upload an XLSX file and validate all sheets. Returns validation
+        results for each sheet.
+      parameters:
+      - description: Purchase order XLSX file
+        in: formData
+        name: file
+        required: true
+        type: file
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.UploadPurchaseOrderFileResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/pkg.AppError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/pkg.AppError'
+      summary: Upload and validate purchase order file
+      tags:
+      - purchase-orders
+  /purchase-orders/upload-files/{uid}/process:
+    post:
+      consumes:
+      - application/json
+      description: Process a specific sheet from an uploaded file and create a purchase
+        order. File is deleted after processing.
+      parameters:
+      - description: File UID from upload response
+        in: path
+        name: uid
+        required: true
+        type: string
+      - description: Sheet selection request
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.ProcessImportRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/models.PurchaseOrder'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/pkg.AppError'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/pkg.AppError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/pkg.AppError'
+      summary: Process import purchase order from uploaded file
+      tags:
+      - purchase-orders
+  /revenue-expenses/finalize:
+    post:
+      consumes:
+      - application/json
+      description: Creates a new row with the next day's date in the revenue-expense
+        excel/sheet based on the provided date
+      parameters:
+      - description: Finalize request with date
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/handlers.FinalizeRevenueExpenseRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Successfully finalized
+          schema:
+            $ref: '#/definitions/handlers.FinalizeRevenueExpenseResponse'
+        "400":
+          description: Invalid request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Finalize revenue expense
+      tags:
+      - revenue-expenses
+  /revenue-expenses/finalized-dates:
     get:
       consumes:
       - application/json
-      description: Retrieve units with pagination, optional filtering by type, and search query
+      description: Get a paginated list of revenue expense finalizations (finalized
+        dates)
       parameters:
-      - default: 20
-        description: Number of items per page
-        in: query
-        name: limit
-        type: integer
       - default: 1
         description: Page number
         in: query
         name: page
         type: integer
-      - default: '"created_at"'
-        description: Sort field
+      - default: 20
+        description: Items per page
         in: query
-        name: sort
-        type: string
-      - default: '"desc"'
-        description: Sort order (asc/desc)
-        in: query
-        name: order
-        type: string
-      - description: Filter by unit type (e.g., mass, volume)
-        in: query
-        name: unit_type
-        type: string
-      - description: Search units by name or symbol
-        in: query
-        name: q
-        type: string
+        name: limit
+        type: integer
       produces:
       - application/json
       responses:
         "200":
-          description: List of units with pagination
-          schema:
-            additionalProperties: true
-            type: object
-        "400":
-          description: Bad request
+          description: List of finalized dates
           schema:
             additionalProperties: true
             type: object
         "500":
           description: Internal server error
           schema:
-            additionalProperties: true
+            additionalProperties:
+              type: string
             type: object
       security:
       - BearerAuth: []
-      summary: List measurement units
+      summary: List finalized dates
       tags:
-      - units
+      - revenue-expenses
+  /sale-orders:
+    get:
+      consumes:
+      - application/json
+      description: List all sale orders with pagination and optional tag filtering
+      parameters:
+      - default: 1
+        description: Page number
+        in: query
+        name: page
+        type: integer
+      - default: 20
+        description: Items per page
+        in: query
+        name: limit
+        type: integer
+      - description: Search term for order number or notes
+        in: query
+        name: q
+        type: string
+      - description: Sort field (order_number, status, created_at, updated_at, tag)
+        in: query
+        name: sort
+        type: string
+      - default: desc
+        description: Sort direction (asc, desc)
+        in: query
+        name: order
+        type: string
+      - description: Filter by status (comma-separated)
+        in: query
+        name: status
+        type: string
+      - description: Filter by tag
+        in: query
+        name: tag
+        type: integer
+      - description: 'Start date for filtering (format: YYYY-MM-DD)'
+        in: query
+        name: start_date
+        type: string
+      - description: 'End date for filtering (format: YYYY-MM-DD)'
+        in: query
+        name: end_date
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.PaginationResult-models_SaleOrder'
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: List sale orders
+      tags:
+      - sale-orders
     post:
       consumes:
       - application/json
-      description: Create a measurement unit definition
+      description: Create a new sale order with previousOrderId null and isLatest
+        true by default
       parameters:
-      - description: Unit information
+      - description: Sale order data
         in: body
-        name: unit
+        name: sale_order
         required: true
         schema:
-          $ref: '#/definitions/models.Unit'
+          $ref: '#/definitions/models.SaleOrder'
       produces:
       - application/json
       responses:
         "201":
-          description: Unit created successfully
+          description: Created
           schema:
-            $ref: '#/definitions/models.Unit'
+            $ref: '#/definitions/models.SaleOrder'
         "400":
-          description: Bad request
+          description: Bad Request
           schema:
-            additionalProperties: true
-            type: object
-        "409":
-          description: Duplicate unit
-          schema:
-            additionalProperties: true
-            type: object
-      security:
-      - BearerAuth: []
-      summary: Create a new unit
-      tags:
-      - units
-  /units/{id}:
-    delete:
-      description: Soft delete a measurement unit
-      parameters:
-      - description: Unit ID
-        in: path
-        name: id
-        required: true
-        type: integer
-      produces:
-      - application/json
-      responses:
-        "204":
-          description: Unit deleted successfully
-        "400":
-          description: Invalid unit ID
-          schema:
-            additionalProperties: true
+            additionalProperties:
+              type: string
             type: object
         "500":
-          description: Internal server error
+          description: Internal Server Error
           schema:
-            additionalProperties: true
+            additionalProperties:
+              type: string
             type: object
       security:
       - BearerAuth: []
-      summary: Delete a unit
+      summary: Create sale order
       tags:
-      - units
+      - sale-orders
+  /sale-orders/{id}:
     get:
-      description: Retrieve a single unit by its ID
+      consumes:
+      - application/json
+      description: Get a sale order by ID
       parameters:
-      - description: Unit ID
+      - description: Sale Order ID
         in: path
         name: id
         required: true
@@ -1920,67 +4544,184 @@ paths:
       - application/json
       responses:
         "200":
-          description: Unit retrieved successfully
+          description: OK
           schema:
-            $ref: '#/definitions/models.Unit'
+            $ref: '#/definitions/models.SaleOrder'
         "400":
-          description: Invalid unit ID
+          description: Bad Request
           schema:
-            additionalProperties: true
+            additionalProperties:
+              type: string
             type: object
         "404":
-          description: Unit not found
+          description: Not Found
           schema:
-            additionalProperties: true
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
             type: object
       security:
       - BearerAuth: []
-      summary: Get unit by ID
+      summary: Get sale order
       tags:
-      - units
+      - sale-orders
     put:
       consumes:
       - application/json
-      description: Update a measurement unit definition
+      description: Updates a sale order by creating a new version with previousOrderId
+        pointing to existing order
       parameters:
-      - description: Unit ID
+      - description: Sale Order ID
         in: path
         name: id
         required: true
         type: integer
-      - description: Updated unit information
+      - description: Sale order update data
         in: body
-        name: unit
+        name: sale_order
         required: true
         schema:
-          $ref: '#/definitions/models.Unit'
+          $ref: '#/definitions/models.SaleOrder'
       produces:
       - application/json
       responses:
         "200":
-          description: Unit updated successfully
+          description: OK
           schema:
-            $ref: '#/definitions/models.Unit'
+            $ref: '#/definitions/models.SaleOrder'
         "400":
-          description: Bad request
+          description: Bad Request
           schema:
-            additionalProperties: true
+            additionalProperties:
+              type: string
             type: object
         "404":
-          description: Unit not found
+          description: Not Found
           schema:
-            additionalProperties: true
+            additionalProperties:
+              type: string
             type: object
-        "409":
-          description: Duplicate unit
+        "500":
+          description: Internal Server Error
           schema:
-            additionalProperties: true
+            additionalProperties:
+              type: string
             type: object
       security:
       - BearerAuth: []
-      summary: Update an existing unit
+      summary: Update sale order
       tags:
-      - units
+      - sale-orders
+  /sale-orders/{id}/status:
+    put:
+      consumes:
+      - application/json
+      description: Update only the status of a sale order without creating a new record
+      parameters:
+      - description: Sale Order ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: Status update
+        in: body
+        name: status
+        required: true
+        schema:
+          type: object
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Update sale order status
+      tags:
+      - sale-orders
+  /selling-prices/{id}/backfill:
+    post:
+      consumes:
+      - application/json
+      description: Re-point PO items to the start selling price (:id) across its server-resolved
+        effective range. end_effective_from ("YYYY-MM-DD") must match the previewed
+        boundary date (null = open-ended) or a 409 is returned.
+      parameters:
+      - description: Start selling price ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: Previewed end-of-range boundary date (optimistic-concurrency
+          assertion)
+        in: body
+        name: body
+        schema:
+          $ref: '#/definitions/dto.BackfillSellingPriceRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "409":
+          description: Conflict
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Apply a selling price to PO items in its effective range
+      tags:
+      - selling-prices
   /settings:
     get:
       consumes:
@@ -2161,6 +4902,221 @@ paths:
       summary: Update supplier status
       tags:
       - suppliers
+  /units:
+    get:
+      consumes:
+      - application/json
+      description: Retrieve units with pagination, optional filtering by type, and
+        search query
+      parameters:
+      - default: 20
+        description: Number of items per page
+        in: query
+        name: limit
+        type: integer
+      - default: 1
+        description: Page number
+        in: query
+        name: page
+        type: integer
+      - default: '"created_at"'
+        description: Sort field
+        in: query
+        name: sort
+        type: string
+      - default: '"desc"'
+        description: Sort order (asc/desc)
+        in: query
+        name: order
+        type: string
+      - description: Filter by unit type (e.g., mass, volume)
+        in: query
+        name: unit_type
+        type: string
+      - description: Search units by name or symbol
+        in: query
+        name: q
+        type: string
+      - default: false
+        description: Filter to show only base units
+        in: query
+        name: base_only
+        type: boolean
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: List measurement units
+      tags:
+      - units
+    post:
+      consumes:
+      - application/json
+      description: Create a measurement unit definition
+      parameters:
+      - description: Unit information
+        in: body
+        name: unit
+        required: true
+        schema:
+          $ref: '#/definitions/handlers.createUnitRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/models.Unit'
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "409":
+          description: Conflict
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Create a new unit
+      tags:
+      - units
+  /units/{id}:
+    delete:
+      description: Soft delete a measurement unit
+      parameters:
+      - description: Unit ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "204":
+          description: Unit deleted successfully
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Delete a unit
+      tags:
+      - units
+    get:
+      description: Retrieve a single unit by its ID
+      parameters:
+      - description: Unit ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.Unit'
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Get unit by ID
+      tags:
+      - units
+    put:
+      consumes:
+      - application/json
+      description: Update a measurement unit definition
+      parameters:
+      - description: Unit ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: Updated unit information
+        in: body
+        name: unit
+        required: true
+        schema:
+          $ref: '#/definitions/handlers.createUnitRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.Unit'
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "409":
+          description: Conflict
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Update an existing unit
+      tags:
+      - units
   /users:
     post:
       consumes:

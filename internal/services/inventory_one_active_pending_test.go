@@ -123,6 +123,7 @@ func TestInitiateReconcile_NotBlockedByTerminalSubmission(t *testing.T) {
 	expectActivePending(mock, 0)
 	mock.ExpectQuery(regexp.QuoteMeta(`INSERT INTO "inventory_submissions"`)).
 		WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(101))
+	expectAdvisoryLock(mock)
 	mock.ExpectExec(regexp.QuoteMeta(`INSERT INTO reconciliation_snapshots`)).
 		WillReturnResult(sqlmock.NewResult(0, 2))
 	mock.ExpectCommit()

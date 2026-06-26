@@ -49,8 +49,9 @@ func TestExtractResourceAndAction_ReconciliationChildItems(t *testing.T) {
 		{"create", http.MethodPost, "/api/v1/inventories/submissions/50/reconciliation-items", "recon_item_create"},
 		{"update", http.MethodPut, "/api/v1/inventories/submissions/50/reconciliation-items/777", "recon_item_update"},
 		{"delete", http.MethodDelete, "/api/v1/inventories/submissions/50/reconciliation-items/777", "recon_item_delete"},
-		{"ready", http.MethodPost, "/api/v1/inventories/submissions/50/reconciliation-items/777/ready", "recon_item_ready"},
-		{"not-ready", http.MethodPost, "/api/v1/inventories/submissions/50/reconciliation-items/777/not-ready", "recon_item_ready"},
+		{"close", http.MethodPost, "/api/v1/inventories/submissions/50/close", "recon_manage"},
+		{"reopen", http.MethodPost, "/api/v1/inventories/submissions/50/reopen", "recon_manage"},
+		{"start-processing", http.MethodPost, "/api/v1/inventories/submissions/50/start-processing", "recon_manage"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

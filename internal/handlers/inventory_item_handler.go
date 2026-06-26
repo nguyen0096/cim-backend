@@ -9,7 +9,6 @@ import (
 	"strconv"
 
 	"github.com/labstack/echo/v4"
-	"github.com/shopspring/decimal"
 )
 
 type InventoryItemHandler struct {
@@ -127,14 +126,18 @@ func (h *InventoryItemHandler) UpdateInventoryItem(c echo.Context) error {
 	item.ID = uint(itemID)
 	item.InventoryID = inventoryID
 
-	if err := h.inventoryItemService.UpdateInventoryItem(c.Request().Context(), &item); err != nil {
+	updated, err := h.inventoryItemService.UpdateInventoryItem(c.Request().Context(), &item)
+	if err != nil {
 		if appErr, ok := err.(*pkg.AppError); ok {
 			return c.JSON(appErr.HTTPStatus(), map[string]string{"error": appErr.Error()})
 		}
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to update inventory item"})
 	}
 
-	return c.JSON(http.StatusOK, item)
+	// Return the persisted item: quantity is immutable on this metadata path, so
+	// responding with the reloaded row prevents echoing a request-supplied quantity
+	// the DB never stored.
+	return c.JSON(http.StatusOK, updated)
 }
 
 // DeleteInventoryItem deletes an inventory item
@@ -374,51 +377,4 @@ func (h *InventoryItemHandler) GetLowStockItems(c echo.Context) error {
 	}
 
 	return c.JSON(http.StatusOK, response)
-}
-
-// AdjustInventoryItemQuantity adjusts the quantity of an inventory item
-// @Summary Adjust inventory item quantity
-// @Description Adjust the quantity of an inventory item
-// @Tags inventory-items
-// @Accept json
-// @Produce json
-// @Param id path int true "Inventory ID"
-// @Param item_id path int true "Inventory item ID"
-// @Param adjustment body map[string]interface{} true "Adjustment data"
-// @Success 200 {object} models.InventoryItem
-// @Failure 400 {object} map[string]string
-// @Failure 404 {object} map[string]string
-// @Failure 500 {object} map[string]string
-// @Security BearerAuth
-// @Router /inventories/{id}/inventory-items/{item_id}/adjust [put]
-func (h *InventoryItemHandler) AdjustInventoryItemQuantity(c echo.Context) error {
-	itemIDStr := c.Param("item_id")
-	itemID, err := strconv.ParseUint(itemIDStr, 10, 32)
-	if err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid item ID"})
-	}
-
-	var req struct {
-		Quantity decimal.Decimal `json:"quantity"`
-		Notes    string          `json:"notes"`
-	}
-
-	if err := c.Bind(&req); err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid request body"})
-	}
-
-	if err := h.inventoryItemService.AdjustInventoryItemQuantity(c.Request().Context(), uint(itemID), req.Quantity, req.Notes); err != nil {
-		if appErr, ok := err.(*pkg.AppError); ok {
-			return c.JSON(appErr.HTTPStatus(), map[string]string{"error": appErr.Error()})
-		}
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to adjust inventory item quantity"})
-	}
-
-	// Get the updated item
-	item, err := h.inventoryItemService.GetInventoryItemByID(c.Request().Context(), uint(itemID))
-	if err != nil {
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to get updated inventory item"})
-	}
-
-	return c.JSON(http.StatusOK, item)
 }

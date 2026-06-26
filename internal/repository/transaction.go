@@ -30,3 +30,17 @@ func dbFromContext(ctx context.Context, fallback *gorm.DB) *gorm.DB {
 	}
 	return fallback
 }
+
+// runInTx runs fn against the caller's ambient transaction when one is present
+// (so the work joins that single atomic unit and avoids opening a nested
+// gorm SAVEPOINT transaction), and opens its own one-shot transaction otherwise.
+// This is the tx-aware replacement for `r.db.Transaction(...)` in methods that
+// must be a single atomic unit standalone yet enlist in a caller's WithinTx (e.g.
+// the reconcile Start-Processing apply, which already holds an advisory lock +
+// row locks in its tx — opening a nested transaction there risks self-blocking).
+func runInTx(ctx context.Context, base *gorm.DB, fn func(tx *gorm.DB) error) error {
+	if tx := dbFromContext(ctx, nil); tx != nil {
+		return fn(tx.WithContext(ctx))
+	}
+	return base.WithContext(ctx).Transaction(fn)
+}

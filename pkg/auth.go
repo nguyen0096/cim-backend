@@ -29,13 +29,21 @@ const (
 	RBACActionInitiateReconciliation = "initiate_reconciliation"
 
 	// Staff reconciliation child-item actions (epic #38, Part 4). Granted to
-	// staff (own, non-applied rows) and to admin/accountant. They gate the
-	// child-item CRUD + state-machine endpoints; the in-service ownership/status
+	// staff (own rows, while the submission is open) and to admin/accountant. They
+	// gate the child-item CRUD endpoints; the in-service ownership + closed-status
 	// guards are the data-correctness backstop behind these route gates.
 	RBACActionReconItemCreate = "recon_item_create"
 	RBACActionReconItemUpdate = "recon_item_update"
-	RBACActionReconItemReady  = "recon_item_ready"
 	RBACActionReconItemDelete = "recon_item_delete"
+
+	// RBACActionReconManage gates the admin/accountant reconciliation management
+	// endpoints (epic #38, Part 6 redesign — locked decision Q5, one combined
+	// action): close (open->closed), reopen (closed->open), and start-processing
+	// (closed -> processing -> processed, the atomic apply). Granted to admin and
+	// accountant only (accountant = admin-equivalent for reconciliation); staff
+	// never holds it. It also flags "this caller may edit a CLOSED submission's
+	// child rows" in the in-service guards (guardParentEditable / guardOwnership).
+	RBACActionReconManage = "recon_manage"
 )
 
 // GetUserEmailFromContext gets the user email from the context

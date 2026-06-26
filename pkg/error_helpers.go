@@ -64,6 +64,13 @@ const (
 	ErrKeyReconItemNegativeQuantity         = "recon_item_negative_quantity"
 	ErrKeyReconItemDuplicateLine            = "recon_item_duplicate_line"
 
+	// Reconciliation management Error Keys (epic #38, Part 6 redesign)
+
+	ErrKeyReconSubmissionClosed           = "recon_submission_closed"
+	ErrKeyReconInvalidLifecycleTransition = "recon_invalid_lifecycle_transition"
+	ErrKeyReconDriftWarning               = "recon_drift_warning"
+	ErrKeyReconCannotRejectInLifecycle    = "recon_cannot_reject_in_lifecycle"
+
 	// Unit Error Keys
 
 	ErrKeyUnitAlreadyExists                 = "unit_already_exists"
@@ -271,6 +278,23 @@ var ErrorMessages = map[string]ErrorMessage{
 	ErrKeyReconItemDuplicateLine: {
 		EN: "Inventory item %d appears more than once in the reconciliation item payload",
 		VI: "Sản phẩm %d xuất hiện nhiều lần trong mục kiểm kê",
+	},
+	// Reconciliation management (epic #38, Part 6 redesign)
+	ErrKeyReconSubmissionClosed: {
+		EN: "Reconciliation submission %d is closed (status %s); staff can no longer edit its items",
+		VI: "Phiếu kiểm kê %d đã được đóng (trạng thái %s); nhân viên không thể chỉnh sửa các mục của phiếu",
+	},
+	ErrKeyReconInvalidLifecycleTransition: {
+		EN: "Reconciliation submission %d cannot move from status %s to %s",
+		VI: "Phiếu kiểm kê %d không thể chuyển từ trạng thái %s sang %s",
+	},
+	ErrKeyReconDriftWarning: {
+		EN: "A stock-consuming submission (#%d, type %s) was processed at %s during this reconciliation; the counted baseline is no longer valid",
+		VI: "Một phiếu làm giảm tồn kho (#%d, loại %s) đã được xử lý lúc %s trong thời gian kiểm kê; số liệu nền đã đếm không còn hợp lệ",
+	},
+	ErrKeyReconCannotRejectInLifecycle: {
+		EN: "Reconciliation submission %d can no longer be rejected (lifecycle status %s); it must be reopened first, and a processed reconciliation is final",
+		VI: "Phiếu kiểm kê %d không thể bị từ chối nữa (trạng thái %s); cần mở lại trước, và phiếu kiểm kê đã xử lý là kết quả cuối cùng",
 	},
 	// Unit Errors
 	ErrKeyUnitAlreadyExists: {
@@ -657,6 +681,44 @@ func ErrReconItemNegativeQuantity(ctx context.Context, itemID uint) *AppError {
 func ErrReconItemDuplicateLine(ctx context.Context, itemID uint) *AppError {
 	return NewAppError(ErrorCodeValidation,
 		fmt.Sprintf(getErrorMessage(ctx, ErrKeyReconItemDuplicateLine), itemID), nil)
+}
+
+// --- Reconciliation management domain errors (epic #38, Part 6 redesign) ---
+
+// ErrReconSubmissionClosed is a 409/conflict: a staff member tried to edit a
+// child row of a reconciliation that an admin/accountant has already closed (or
+// that is processing/processed). Staff are locked out once closed.
+func ErrReconSubmissionClosed(ctx context.Context, submissionID uint, status string) *AppError {
+	return NewAppError(ErrorCodeConflict,
+		fmt.Sprintf(getErrorMessage(ctx, ErrKeyReconSubmissionClosed), submissionID, status), nil)
+}
+
+// ErrReconInvalidLifecycleTransition is a 409/conflict for an illegal
+// close/reopen/start-processing transition (e.g. close on an already-closed
+// submission, start-processing on an open one).
+func ErrReconInvalidLifecycleTransition(ctx context.Context, submissionID uint, from, to string) *AppError {
+	return NewAppError(ErrorCodeConflict,
+		fmt.Sprintf(getErrorMessage(ctx, ErrKeyReconInvalidLifecycleTransition), submissionID, from, to), nil)
+}
+
+// ErrReconCannotRejectInLifecycle is a 409/conflict: a legacy reject was attempted
+// on an initiated reconcile that has already left the staff-editable `open` state
+// (it is closed/processing/processed). Once closed, the admin must reopen before a
+// reject is meaningful; once processing/processed the apply has consumed stock and
+// the reconcile is terminal, so a reject can no longer flip it without corrupting
+// the applied consuming inventory transactions. Evaluated under the parent FOR
+// UPDATE lock on the freshly-read status, so it cannot race StartProcessing.
+func ErrReconCannotRejectInLifecycle(ctx context.Context, submissionID uint, status string) *AppError {
+	return NewAppError(ErrorCodeConflict,
+		fmt.Sprintf(getErrorMessage(ctx, ErrKeyReconCannotRejectInLifecycle), submissionID, status), nil)
+}
+
+// ReconDriftWarning renders one warning-shaped line for a consuming submission
+// that processed during the reconcile window (locked decision Q8). It is a plain
+// localized string, not an error — Start Processing returns these in the result's
+// Warnings list after rolling back.
+func ReconDriftWarning(ctx context.Context, submissionID uint, submissionType, processedAt string) string {
+	return fmt.Sprintf(getErrorMessage(ctx, ErrKeyReconDriftWarning), submissionID, submissionType, processedAt)
 }
 
 func ErrDisposeValidationFailed(message string) *AppError {

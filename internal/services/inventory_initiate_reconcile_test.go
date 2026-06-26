@@ -58,6 +58,15 @@ func expectInventoryExists(mock sqlmock.Sqlmock, inventoryID uint) {
 		WillReturnRows(sqlmock.NewRows([]string{"1"}).AddRow(true))
 }
 
+// expectAdvisoryLock asserts the pg_advisory_xact_lock(inventory_id) that
+// InitiateReconcile now takes (epic #38, Part 6 — serializes snapshot capture
+// with consuming applies) right after the parent INSERT and before the snapshot
+// INSERT.
+func expectAdvisoryLock(mock sqlmock.Sqlmock) {
+	mock.ExpectExec(regexp.QuoteMeta(`SELECT pg_advisory_xact_lock(`)).
+		WillReturnResult(sqlmock.NewResult(0, 0))
+}
+
 // initiateCtx returns a context carrying both a user email (required by the
 // models.Base BeforeCreate hook) and the initiate_reconciliation permission
 // (required by the in-service RBAC guard).
@@ -87,12 +96,15 @@ func TestBuildReconciliationSnapshots_RawQuery(t *testing.T) {
 	// items of the inventory, parameterised (no value interpolation).
 	// The postgres driver renders the parameterised query with $N placeholders.
 	// Asserting the SELECT list (prev_quantity comes from `quantity`) and the
-	// active/non-deleted scope locks the data-correctness shape.
+	// active/non-deleted scope locks the data-correctness shape. created_at/updated_at
+	// are stamped with clock_timestamp() (NOT NOW()/transaction_timestamp()), so the
+	// capture time is the real post-lock statement instant — the correct drift
+	// window-start for Start-Processing (epic #38, Part 6; Codex P2).
 	const userEmail = "admin@cim.local"
 	mock.ExpectExec(regexp.QuoteMeta(
 		`INSERT INTO reconciliation_snapshots
 	(submission_id, inventory_item_id, prev_quantity, created_by, updated_by, created_at, updated_at)
-SELECT $1, id, quantity, $2, $3, NOW(), NOW()
+SELECT $1, id, quantity, $2, $3, clock_timestamp(), clock_timestamp()
 FROM inventory_items
 WHERE inventory_id = $4
   AND status = $5
@@ -176,6 +188,9 @@ func TestInitiateReconcile_CapturesSnapshotsAtomically(t *testing.T) {
 	mock.ExpectQuery(regexp.QuoteMeta(`INSERT INTO "inventory_submissions"`)).
 		WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(99))
 
+	// 1b) Advisory lock serializes the snapshot capture with consuming applies.
+	expectAdvisoryLock(mock)
+
 	// 2) Capture the baseline with one set-based INSERT ... SELECT; two active
 	// items -> two rows affected.
 	mock.ExpectExec(regexp.QuoteMeta(`INSERT INTO reconciliation_snapshots`)).
@@ -206,6 +221,7 @@ func TestInitiateReconcile_RollsBackOnSnapshotFailure(t *testing.T) {
 	expectActivePending(mock, 0)
 	mock.ExpectQuery(regexp.QuoteMeta(`INSERT INTO "inventory_submissions"`)).
 		WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(99))
+	expectAdvisoryLock(mock)
 	mock.ExpectExec(regexp.QuoteMeta(`INSERT INTO reconciliation_snapshots`)).
 		WillReturnError(errors.New("insert snapshots boom"))
 	mock.ExpectRollback()
@@ -230,6 +246,7 @@ func TestInitiateReconcile_NoActiveItems(t *testing.T) {
 	expectActivePending(mock, 0)
 	mock.ExpectQuery(regexp.QuoteMeta(`INSERT INTO "inventory_submissions"`)).
 		WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(99))
+	expectAdvisoryLock(mock)
 	mock.ExpectExec(regexp.QuoteMeta(`INSERT INTO reconciliation_snapshots`)).
 		WillReturnResult(sqlmock.NewResult(0, 0))
 	mock.ExpectRollback()

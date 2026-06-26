@@ -31,6 +31,7 @@ var _ = Describe("Reconciliation request item lifecycle", func() {
 		svc          services.InventoryService
 		staffCtx     context.Context
 		otherCtx     context.Context
+		adminCtx     context.Context
 		inventory    *models.Inventory
 		inventoryItm *models.InventoryItem
 		submission   *models.InventorySubmission
@@ -59,16 +60,28 @@ var _ = Describe("Reconciliation request item lifecycle", func() {
 		perms := map[pkg.UserPermission]struct{}{
 			{Resource: pkg.RBACResourceInventorySubmissions, Action: pkg.RBACActionReconItemCreate}: {},
 			{Resource: pkg.RBACResourceInventorySubmissions, Action: pkg.RBACActionReconItemUpdate}: {},
-			{Resource: pkg.RBACResourceInventorySubmissions, Action: pkg.RBACActionReconItemReady}:  {},
 			{Resource: pkg.RBACResourceInventorySubmissions, Action: pkg.RBACActionReconItemDelete}: {},
 		}
 		return context.WithValue(ctx, pkg.AuthContextKeyUserPermissions, perms)
 	}
 
+	// adminPerms is an admin/accountant: holds recon_manage (close/reopen/start-
+	// processing + edit-while-closed) in addition to the child-item actions.
+	adminPerms := func(email string) context.Context {
+		ctx := pkg.WithUserEmail(context.Background(), email)
+		perms := map[pkg.UserPermission]struct{}{
+			{Resource: pkg.RBACResourceInventorySubmissions, Action: pkg.RBACActionReconItemCreate}: {},
+			{Resource: pkg.RBACResourceInventorySubmissions, Action: pkg.RBACActionReconItemUpdate}: {},
+			{Resource: pkg.RBACResourceInventorySubmissions, Action: pkg.RBACActionReconItemDelete}: {},
+			{Resource: pkg.RBACResourceInventorySubmissions, Action: pkg.RBACActionReconManage}:     {},
+		}
+		return context.WithValue(ctx, pkg.AuthContextKeyUserPermissions, perms)
+	}
 	BeforeEach(func() {
 		svc = buildService()
 		staffCtx = staffPerms(staffEmail)
 		otherCtx = staffPerms(otherEmail)
+		adminCtx = adminPerms("p6-admin@cim.local")
 
 		db := tenv.ContextfulDB()
 		suffix := uuid.NewString()[:8]
@@ -91,12 +104,13 @@ var _ = Describe("Reconciliation request item lifecycle", func() {
 		Expect(db.Create(inventoryItm).Error).NotTo(HaveOccurred())
 		DeferCleanup(func() { db.Unscoped().Delete(inventoryItm) })
 
-		// Parent placeholder reconcile submission (as initiate would create).
+		// Parent placeholder reconcile submission (as initiate would create): open.
 		submission = &models.InventorySubmission{
 			InventoryID:      inventory.ID,
 			SubmissionType:   models.InventorySubmissionTypeReconcile,
 			ProcessingStatus: models.InventorySubmissionStatusPending,
 			ApprovalStatus:   models.InventorySubmissionApprovalStatusPending,
+			ReconcileStatus:  models.ReconcileLifecycleStatusOpen,
 		}
 		Expect(db.Create(submission).Error).NotTo(HaveOccurred())
 		DeferCleanup(func() { db.Unscoped().Delete(submission) })
@@ -218,43 +232,67 @@ var _ = Describe("Reconciliation request item lifecycle", func() {
 		Expect(pkg.IsErrorCode(err, pkg.ErrorCodeValidation)).To(BeTrue())
 	})
 
-	It("marks ready then back to in_progress (valid transitions)", func() {
+	It("locks staff out once the submission is closed, and lets admin edit + reopen", func() {
 		item, err := svc.CreateReconciliationItem(staffCtx, dto.CreateReconciliationItemRequest{
 			SubmissionID: submission.ID, Items: countItems(80),
 		})
 		Expect(err).NotTo(HaveOccurred())
 		DeferCleanup(func() { tenv.ContextfulDB().Unscoped().Delete(item) })
 
-		ready, err := svc.SetReconciliationItemReady(staffCtx, dto.SetReconciliationItemReadyRequest{
-			SubmissionID: submission.ID, ItemID: item.ID, Ready: true,
-		})
+		// Admin closes the submission (open -> closed).
+		closed, err := svc.CloseReconciliation(adminCtx, submission.ID)
 		Expect(err).NotTo(HaveOccurred())
-		Expect(ready.Status).To(Equal(models.ReconciliationRequestItemStatusReady))
+		Expect(closed.ReconcileStatus).To(Equal(models.ReconcileLifecycleStatusClosed))
 
-		back, err := svc.SetReconciliationItemReady(staffCtx, dto.SetReconciliationItemReadyRequest{
-			SubmissionID: submission.ID, ItemID: item.ID, Ready: false,
+		// Staff edit is now rejected (conflict).
+		_, err = svc.UpdateReconciliationItem(staffCtx, dto.UpdateReconciliationItemRequest{
+			SubmissionID: submission.ID, ItemID: item.ID, Items: countItems(70),
 		})
-		Expect(err).NotTo(HaveOccurred())
-		Expect(back.Status).To(Equal(models.ReconciliationRequestItemStatusInProgress))
-	})
+		Expect(err).To(HaveOccurred())
+		Expect(pkg.IsErrorCode(err, pkg.ErrorCodeConflict)).To(BeTrue())
 
-	It("resets an approved row to in_progress when its payload is edited (escape hatch)", func() {
-		item, err := svc.CreateReconciliationItem(staffCtx, dto.CreateReconciliationItemRequest{
-			SubmissionID: submission.ID, Items: countItems(80),
-		})
-		Expect(err).NotTo(HaveOccurred())
-		DeferCleanup(func() { tenv.ContextfulDB().Unscoped().Delete(item) })
-
-		// Simulate an admin approval of the row (Part 6 path not built; set directly).
-		Expect(tenv.ContextfulDB().Model(item).
-			Update("status", models.ReconciliationRequestItemStatusApproved).Error).NotTo(HaveOccurred())
-
-		updated, err := svc.UpdateReconciliationItem(staffCtx, dto.UpdateReconciliationItemRequest{
+		// Admin may still edit the staff row while closed (ownership bypassed).
+		updated, err := svc.UpdateReconciliationItem(adminCtx, dto.UpdateReconciliationItemRequest{
 			SubmissionID: submission.ID, ItemID: item.ID, Items: countItems(70),
 		})
 		Expect(err).NotTo(HaveOccurred())
-		Expect(updated.Status).To(Equal(models.ReconciliationRequestItemStatusInProgress),
-			"editing an approved row must reset it to in_progress")
+		Expect(updated.Status).To(Equal(models.ReconciliationRequestItemStatusInProgress))
+
+		// Reopen (closed -> open) lets staff edit again.
+		reopened, err := svc.ReopenReconciliation(adminCtx, submission.ID)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(reopened.ReconcileStatus).To(Equal(models.ReconcileLifecycleStatusOpen))
+
+		_, err = svc.UpdateReconciliationItem(staffCtx, dto.UpdateReconciliationItemRequest{
+			SubmissionID: submission.ID, ItemID: item.ID, Items: countItems(60),
+		})
+		Expect(err).NotTo(HaveOccurred(), "staff may edit again after reopen")
+	})
+
+	It("rejects close from a non-open status and rejects start-processing from open", func() {
+		// Double-close: open -> closed OK, then close again is an illegal transition.
+		_, err := svc.CloseReconciliation(adminCtx, submission.ID)
+		Expect(err).NotTo(HaveOccurred())
+		_, err = svc.CloseReconciliation(adminCtx, submission.ID)
+		Expect(err).To(HaveOccurred())
+		Expect(pkg.IsErrorCode(err, pkg.ErrorCodeConflict)).To(BeTrue())
+
+		// Reopen so we can test start-processing rejection from open.
+		_, err = svc.ReopenReconciliation(adminCtx, submission.ID)
+		Expect(err).NotTo(HaveOccurred())
+		_, err = svc.StartProcessing(adminCtx, submission.ID)
+		Expect(err).To(HaveOccurred(), "start-processing requires closed")
+		Expect(pkg.IsErrorCode(err, pkg.ErrorCodeConflict)).To(BeTrue())
+	})
+
+	It("denies close/start-processing to staff (no recon_manage)", func() {
+		_, err := svc.CloseReconciliation(staffCtx, submission.ID)
+		Expect(err).To(HaveOccurred())
+		Expect(pkg.IsErrorCode(err, pkg.ErrorCodeForbidden)).To(BeTrue())
+
+		_, err = svc.StartProcessing(staffCtx, submission.ID)
+		Expect(err).To(HaveOccurred())
+		Expect(pkg.IsErrorCode(err, pkg.ErrorCodeForbidden)).To(BeTrue())
 	})
 
 	It("forbids a staff member from editing another staff member's row", func() {
@@ -271,25 +309,25 @@ var _ = Describe("Reconciliation request item lifecycle", func() {
 		Expect(pkg.IsErrorCode(err, pkg.ErrorCodeForbidden)).To(BeTrue())
 	})
 
-	It("soft-deletes an in_progress row and refuses to delete an approved row", func() {
+	It("soft-deletes an in_progress row (round-trip) and refuses staff delete once closed", func() {
 		item, err := svc.CreateReconciliationItem(staffCtx, dto.CreateReconciliationItemRequest{
 			SubmissionID: submission.ID, Items: countItems(80),
 		})
 		Expect(err).NotTo(HaveOccurred())
 		DeferCleanup(func() { tenv.ContextfulDB().Unscoped().Delete(item) })
 
-		// approved row cannot be deleted
-		Expect(tenv.ContextfulDB().Model(item).
-			Update("status", models.ReconciliationRequestItemStatusApproved).Error).NotTo(HaveOccurred())
+		// Once closed, staff cannot delete.
+		_, err = svc.CloseReconciliation(adminCtx, submission.ID)
+		Expect(err).NotTo(HaveOccurred())
 		err = svc.DeleteReconciliationItem(staffCtx, dto.DeleteReconciliationItemRequest{
 			SubmissionID: submission.ID, ItemID: item.ID,
 		})
 		Expect(err).To(HaveOccurred())
 		Expect(pkg.IsErrorCode(err, pkg.ErrorCodeConflict)).To(BeTrue())
 
-		// move back to in_progress, then delete succeeds (soft delete)
-		Expect(tenv.ContextfulDB().Model(item).
-			Update("status", models.ReconciliationRequestItemStatusInProgress).Error).NotTo(HaveOccurred())
+		// Reopen, then staff delete succeeds (soft delete).
+		_, err = svc.ReopenReconciliation(adminCtx, submission.ID)
+		Expect(err).NotTo(HaveOccurred())
 		Expect(svc.DeleteReconciliationItem(staffCtx, dto.DeleteReconciliationItemRequest{
 			SubmissionID: submission.ID, ItemID: item.ID,
 		})).To(Succeed())

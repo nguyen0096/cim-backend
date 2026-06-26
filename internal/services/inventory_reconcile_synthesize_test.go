@@ -52,14 +52,14 @@ func findItem(items []dto.QuantityItem, id uint) (dto.QuantityItem, bool) {
 func TestSynthesizeReconcile_SumsByItemAcrossRowsAndItems(t *testing.T) {
 	rows := []models.ReconciliationRequestItem{
 		// item 1: 30 + 25 across two rows; item 2: 40 in row 1.
-		childRow(1, models.ReconciliationRequestItemStatusReady, line(1, "30"), line(2, "40")),
-		childRow(2, models.ReconciliationRequestItemStatusReady, line(1, "25")),
+		childRow(1, models.ReconciliationRequestItemStatusInProgress, line(1, "30"), line(2, "40")),
+		childRow(2, models.ReconciliationRequestItemStatusInProgress, line(1, "25")),
 		// item 3 only in row 3.
-		childRow(3, models.ReconciliationRequestItemStatusReady, line(3, "10")),
+		childRow(3, models.ReconciliationRequestItemStatusInProgress, line(3, "10")),
 	}
 	baselines := baselineMap(map[uint]string{1: "100", 2: "100", 3: "100"})
 
-	syn, err := synthesizeReconcile(7, rows, baselines)
+	syn, err := synthesizeReconcile(7, models.ReconcileLifecycleStatusOpen, rows, baselines)
 	require.NoError(t, err)
 	assert.Equal(t, uint(7), syn.Request.InventoryID)
 	assert.Empty(t, syn.Anomalies)
@@ -81,12 +81,12 @@ func TestSynthesizeReconcile_SumsByItemAcrossRowsAndItems(t *testing.T) {
 
 func TestSynthesizeReconcile_DecimalMath(t *testing.T) {
 	rows := []models.ReconciliationRequestItem{
-		childRow(1, models.ReconciliationRequestItemStatusReady, line(1, "10.25")),
-		childRow(2, models.ReconciliationRequestItemStatusReady, line(1, "5.50")),
+		childRow(1, models.ReconciliationRequestItemStatusInProgress, line(1, "10.25")),
+		childRow(2, models.ReconciliationRequestItemStatusInProgress, line(1, "5.50")),
 	}
 	baselines := baselineMap(map[uint]string{1: "100"})
 
-	syn, err := synthesizeReconcile(1, rows, baselines)
+	syn, err := synthesizeReconcile(1, models.ReconcileLifecycleStatusOpen, rows, baselines)
 	require.NoError(t, err)
 	require.Len(t, syn.Request.Items, 1)
 	assert.True(t, syn.Request.Items[0].Quantity.Equal(decimal.RequireFromString("15.75")),
@@ -98,12 +98,12 @@ func TestSynthesizeReconcile_EmptyPayloadRowsAndNoRows(t *testing.T) {
 	// A row with an empty payload contributes nothing.
 	empty := models.ReconciliationRequestItem{Status: models.ReconciliationRequestItemStatusInProgress}
 	empty.ID = 1
-	syn, err := synthesizeReconcile(1, []models.ReconciliationRequestItem{empty}, map[uint]decimal.Decimal{})
+	syn, err := synthesizeReconcile(1, models.ReconcileLifecycleStatusOpen, []models.ReconciliationRequestItem{empty}, map[uint]decimal.Decimal{})
 	require.NoError(t, err)
 	assert.Empty(t, syn.Request.Items)
 
 	// No rows at all -> empty items, in_progress label.
-	syn, err = synthesizeReconcile(1, nil, map[uint]decimal.Decimal{})
+	syn, err = synthesizeReconcile(1, models.ReconcileLifecycleStatusOpen, nil, map[uint]decimal.Decimal{})
 	require.NoError(t, err)
 	assert.Empty(t, syn.Request.Items)
 	assert.Equal(t, dto.ReconcileReviewLabelInProgress, syn.Label)
@@ -115,12 +115,12 @@ func TestSynthesizeReconcile_AggregateExceedsBaselineIsSurfacedAndCapped(t *test
 	// anomaly and cap the emitted counted at the baseline so a downstream consume
 	// can never go negative.
 	rows := []models.ReconciliationRequestItem{
-		childRow(1, models.ReconciliationRequestItemStatusReady, line(1, "80")),
-		childRow(2, models.ReconciliationRequestItemStatusReady, line(1, "80")),
+		childRow(1, models.ReconciliationRequestItemStatusInProgress, line(1, "80")),
+		childRow(2, models.ReconciliationRequestItemStatusInProgress, line(1, "80")),
 	}
 	baselines := baselineMap(map[uint]string{1: "100"})
 
-	syn, err := synthesizeReconcile(1, rows, baselines)
+	syn, err := synthesizeReconcile(1, models.ReconcileLifecycleStatusOpen, rows, baselines)
 	require.NoError(t, err)
 	require.Len(t, syn.Request.Items, 1)
 	require.Len(t, syn.Anomalies, 1)
@@ -130,9 +130,9 @@ func TestSynthesizeReconcile_AggregateExceedsBaselineIsSurfacedAndCapped(t *test
 
 func TestSynthesizeReconcile_MissingBaselineIsSurfaced(t *testing.T) {
 	rows := []models.ReconciliationRequestItem{
-		childRow(1, models.ReconciliationRequestItemStatusReady, line(9, "5")),
+		childRow(1, models.ReconciliationRequestItemStatusInProgress, line(9, "5")),
 	}
-	syn, err := synthesizeReconcile(1, rows, map[uint]decimal.Decimal{}) // no baseline for item 9
+	syn, err := synthesizeReconcile(1, models.ReconcileLifecycleStatusOpen, rows, map[uint]decimal.Decimal{}) // no baseline for item 9
 	require.NoError(t, err)
 	require.Len(t, syn.Request.Items, 1)
 	require.Len(t, syn.Anomalies, 1)
@@ -145,29 +145,22 @@ func TestSynthesizeReconcile_MissingBaselineIsSurfaced(t *testing.T) {
 }
 
 func TestComputeReviewLabel(t *testing.T) {
-	ready := models.ReconciliationRequestItemStatusReady
-	inProgress := models.ReconciliationRequestItemStatusInProgress
-	approved := models.ReconciliationRequestItemStatusApproved
-	applied := models.ReconciliationRequestItemStatusApplied
-
+	// The label now mirrors the SUBMISSION lifecycle (Q1 collapse): open =>
+	// in-progress; closed/processing/processed => ready-for-review.
 	cases := []struct {
-		name     string
-		statuses []models.ReconciliationRequestItemStatus
-		want     dto.ReconcileReviewLabel
+		name   string
+		status models.ReconcileLifecycleStatus
+		want   dto.ReconcileReviewLabel
 	}{
-		{"no rows", nil, dto.ReconcileReviewLabelInProgress},
-		{"all ready", []models.ReconciliationRequestItemStatus{ready, ready}, dto.ReconcileReviewLabelReadyForReview},
-		{"mixed ready+in_progress", []models.ReconciliationRequestItemStatus{ready, inProgress}, dto.ReconcileReviewLabelInProgress},
-		{"all beyond ready", []models.ReconciliationRequestItemStatus{approved, applied, ready}, dto.ReconcileReviewLabelReadyForReview},
-		{"single in_progress", []models.ReconciliationRequestItemStatus{inProgress}, dto.ReconcileReviewLabelInProgress},
+		{"empty (legacy)", "", dto.ReconcileReviewLabelInProgress},
+		{"open", models.ReconcileLifecycleStatusOpen, dto.ReconcileReviewLabelInProgress},
+		{"closed", models.ReconcileLifecycleStatusClosed, dto.ReconcileReviewLabelReadyForReview},
+		{"processing", models.ReconcileLifecycleStatusProcessing, dto.ReconcileReviewLabelReadyForReview},
+		{"processed", models.ReconcileLifecycleStatusProcessed, dto.ReconcileReviewLabelReadyForReview},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			rows := make([]models.ReconciliationRequestItem, len(tc.statuses))
-			for i, st := range tc.statuses {
-				rows[i] = models.ReconciliationRequestItem{Status: st}
-			}
-			assert.Equal(t, tc.want, computeReviewLabel(rows))
+			assert.Equal(t, tc.want, computeReviewLabel(tc.status))
 		})
 	}
 }

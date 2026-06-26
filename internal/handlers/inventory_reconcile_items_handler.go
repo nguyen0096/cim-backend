@@ -92,63 +92,7 @@ func (h *InventoryHandler) UpdateReconciliationItem(c echo.Context) error {
 	return c.JSON(http.StatusOK, item)
 }
 
-// MarkReconciliationItemReady transitions an owned child item to ready.
-// @Summary Mark reconciliation item ready
-// @Description Staff marks their own in_progress child item as ready for review.
-// @Tags inventories
-// @Produce json
-// @Param id path int true "Parent submission ID"
-// @Param item_id path int true "Child item ID"
-// @Success 200 {object} models.ReconciliationRequestItem
-// @Failure 403 {object} map[string]string
-// @Failure 404 {object} map[string]string
-// @Failure 409 {object} map[string]string
-// @Security BearerAuth
-// @Router /inventories/submissions/{id}/reconciliation-items/{item_id}/ready [post]
-func (h *InventoryHandler) MarkReconciliationItemReady(c echo.Context) error {
-	return h.setReconciliationItemReady(c, true)
-}
-
-// MarkReconciliationItemNotReady transitions an owned child item back to in_progress.
-// @Summary Mark reconciliation item not ready
-// @Description Staff moves their own ready child item back to in_progress.
-// @Tags inventories
-// @Produce json
-// @Param id path int true "Parent submission ID"
-// @Param item_id path int true "Child item ID"
-// @Success 200 {object} models.ReconciliationRequestItem
-// @Failure 403 {object} map[string]string
-// @Failure 404 {object} map[string]string
-// @Failure 409 {object} map[string]string
-// @Security BearerAuth
-// @Router /inventories/submissions/{id}/reconciliation-items/{item_id}/not-ready [post]
-func (h *InventoryHandler) MarkReconciliationItemNotReady(c echo.Context) error {
-	return h.setReconciliationItemReady(c, false)
-}
-
-func (h *InventoryHandler) setReconciliationItemReady(c echo.Context, ready bool) error {
-	submissionID, itemID, err := extractSubmissionAndItemID(c)
-	if err != nil {
-		return err
-	}
-
-	req := dto.SetReconciliationItemReadyRequest{
-		SubmissionID: submissionID,
-		ItemID:       itemID,
-		Ready:        ready,
-	}
-	if err := pkg.Validator.Struct(req); err != nil {
-		return pkg.ErrValidation(err.Error(), err)
-	}
-
-	item, err := h.inventoryService.SetReconciliationItemReady(c.Request().Context(), req)
-	if err != nil {
-		return err
-	}
-	return c.JSON(http.StatusOK, item)
-}
-
-// DeleteReconciliationItem soft-deletes an owned in_progress/ready child item.
+// DeleteReconciliationItem soft-deletes a child item.
 // @Summary Delete reconciliation item
 // @Description Staff soft-deletes their own in_progress or ready child item. Approved/applied items cannot be deleted.
 // @Tags inventories
@@ -179,6 +123,86 @@ func (h *InventoryHandler) DeleteReconciliationItem(c echo.Context) error {
 		return err
 	}
 	return c.NoContent(http.StatusNoContent)
+}
+
+// CloseReconciliation locks staff out of a reconciliation (admin/accountant).
+// @Summary Close reconciliation submission
+// @Description Admin/accountant closes an open reconciliation (open -> closed). Staff can no longer edit child items; admin/accountant may still edit, then start processing or reopen.
+// @Tags inventories
+// @Produce json
+// @Param id path int true "Submission ID"
+// @Success 200 {object} models.InventorySubmission
+// @Failure 403 {object} map[string]string
+// @Failure 404 {object} map[string]string
+// @Failure 409 {object} map[string]string
+// @Security BearerAuth
+// @Router /inventories/submissions/{id}/close [post]
+func (h *InventoryHandler) CloseReconciliation(c echo.Context) error {
+	submissionID, err := pkg.ExtractIDParam(c)
+	if err != nil {
+		return err
+	}
+	submission, err := h.inventoryService.CloseReconciliation(c.Request().Context(), submissionID)
+	if err != nil {
+		return err
+	}
+	return c.JSON(http.StatusOK, submission)
+}
+
+// ReopenReconciliation re-opens a closed reconciliation (admin/accountant).
+// @Summary Reopen reconciliation submission
+// @Description Admin/accountant reopens a closed reconciliation (closed -> open) so staff can edit child items again.
+// @Tags inventories
+// @Produce json
+// @Param id path int true "Submission ID"
+// @Success 200 {object} models.InventorySubmission
+// @Failure 403 {object} map[string]string
+// @Failure 404 {object} map[string]string
+// @Failure 409 {object} map[string]string
+// @Security BearerAuth
+// @Router /inventories/submissions/{id}/reopen [post]
+func (h *InventoryHandler) ReopenReconciliation(c echo.Context) error {
+	submissionID, err := pkg.ExtractIDParam(c)
+	if err != nil {
+		return err
+	}
+	submission, err := h.inventoryService.ReopenReconciliation(c.Request().Context(), submissionID)
+	if err != nil {
+		return err
+	}
+	return c.JSON(http.StatusOK, submission)
+}
+
+// StartProcessing applies a closed reconciliation (admin/accountant). One atomic,
+// advisory-locked transaction: event-based drift re-check then snapshot-aware
+// apply. On drift, returns HTTP 409 with the warning-shaped payload and applies
+// nothing.
+// @Summary Start processing a reconciliation
+// @Description Admin/accountant applies a closed reconciliation in one atomic transaction. Re-checks for a consuming submission processed during the reconciliation window; on drift it rolls back and returns a warning payload (HTTP 409). Otherwise it creates the consuming transactions (snapshot - counted) and finalizes the submission.
+// @Tags inventories
+// @Produce json
+// @Param id path int true "Submission ID"
+// @Success 200 {object} dto.StartProcessingResult
+// @Failure 403 {object} map[string]string
+// @Failure 404 {object} map[string]string
+// @Failure 409 {object} dto.StartProcessingResult
+// @Security BearerAuth
+// @Router /inventories/submissions/{id}/start-processing [post]
+func (h *InventoryHandler) StartProcessing(c echo.Context) error {
+	submissionID, err := pkg.ExtractIDParam(c)
+	if err != nil {
+		return err
+	}
+	result, err := h.inventoryService.StartProcessing(c.Request().Context(), submissionID)
+	if err != nil {
+		return err
+	}
+	// Drift: nothing was applied (rolled back). Surface the warning-shaped payload
+	// with a 409 so the client distinguishes it from a successful apply.
+	if result.DriftDetected {
+		return c.JSON(http.StatusConflict, result)
+	}
+	return c.JSON(http.StatusOK, result)
 }
 
 // extractSubmissionAndItemID reads the path-scoped parent submission id (`:id`)

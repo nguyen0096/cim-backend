@@ -53,7 +53,7 @@ func (s *inventoryService) SynthesizeSubmissionPayload(ctx context.Context, subm
 		return nil, fmt.Errorf("failed to load snapshot baselines for submission %d: %w", submissionID, err)
 	}
 
-	return synthesizeReconcile(submission.InventoryID, rows, baselines)
+	return synthesizeReconcile(submission.InventoryID, submission.ReconcileStatus, rows, baselines)
 }
 
 // synthesizeReconcile is the pure core of SynthesizeSubmissionPayload, split out
@@ -63,6 +63,7 @@ func (s *inventoryService) SynthesizeSubmissionPayload(ctx context.Context, subm
 // and surfaces (rather than hides) any aggregate that exceeds its baseline.
 func synthesizeReconcile(
 	inventoryID uint,
+	reconcileStatus models.ReconcileLifecycleStatus,
 	rows []models.ReconciliationRequestItem,
 	baselines map[uint]decimal.Decimal,
 ) (*dto.SynthesizedReconcile, error) {
@@ -141,33 +142,21 @@ func synthesizeReconcile(
 			InventoryID: inventoryID,
 			Items:       items,
 		},
-		Label:     computeReviewLabel(rows),
+		Label:     computeReviewLabel(reconcileStatus),
 		Anomalies: anomalies,
 	}, nil
 }
 
-// computeReviewLabel derives the admin-facing progress label from the live child
-// rows (epic #38, Part 5 / S4):
+// computeReviewLabel derives the admin-facing progress label from the SUBMISSION
+// lifecycle status (epic #38, Part 6 redesign — Q1 collapse). The per-row
+// ready/approved states were removed, so the label now mirrors open vs closed:
 //
-//	Ready-for-review  iff there is >= 1 live row AND every live row is at `ready`
-//	                  or beyond (ready / approved / applied);
-//	In-progress       otherwise (any row still in_progress, or no live rows yet).
-//
-// rows are the LIVE child rows (ListBySubmission already excludes soft-deleted).
-func computeReviewLabel(rows []models.ReconciliationRequestItem) dto.ReconcileReviewLabel {
-	if len(rows) == 0 {
+//	In-progress       while the submission is `open` (staff are still editing);
+//	Ready-for-review  once it is `closed` (or beyond) — the admin has frozen staff
+//	                  entry and is reviewing before Start Processing.
+func computeReviewLabel(status models.ReconcileLifecycleStatus) dto.ReconcileReviewLabel {
+	if status == models.ReconcileLifecycleStatusOpen || status == "" {
 		return dto.ReconcileReviewLabelInProgress
-	}
-	for _, row := range rows {
-		switch row.Status {
-		case models.ReconciliationRequestItemStatusReady,
-			models.ReconciliationRequestItemStatusApproved,
-			models.ReconciliationRequestItemStatusApplied:
-			// at or beyond ready
-		default:
-			// in_progress (or any unexpected status) => not ready as a whole
-			return dto.ReconcileReviewLabelInProgress
-		}
 	}
 	return dto.ReconcileReviewLabelReadyForReview
 }

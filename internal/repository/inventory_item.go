@@ -223,12 +223,38 @@ func (r *inventoryItemRepository) CountLowStockItems(ctx context.Context) (int64
 	return count, err
 }
 
+// inventoryItemMetadataColumns is the explicit whitelist of columns the
+// metadata-update path (UpdateInventoryItem CRUD) is allowed to write. Movement-owned
+// columns (quantity, consuming_transaction_id) are deliberately excluded: stock changes
+// flow only through movement/submission flows (PO receive, dispose/transfer, reconcile
+// apply) via SaveInventoryItemChanges, each recording an inventory_submission/transaction
+// the reconcile drift check can observe. Scoping the UPDATE to these columns keeps
+// quantity immutable here AND guarantees a concurrent movement's quantity write is never
+// clobbered (the metadata UPDATE simply does not touch that column), so this is not a
+// read-modify-write of quantity.
+var inventoryItemMetadataColumns = []string{
+	"inventory_id",
+	"product_id",
+	"unit_id",
+	"status",
+	"updated_by",
+	"updated_at",
+}
+
 func (r *inventoryItemRepository) Update(
 	ctx context.Context,
 	items []*models.InventoryItem,
 	transactions []*models.InventoryTransaction,
 ) error {
-	return r.db.WithContext(ctx).Save(items).Error
+	db := r.db.WithContext(ctx)
+	for _, item := range items {
+		if err := db.Model(item).
+			Select(inventoryItemMetadataColumns).
+			Updates(item).Error; err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // GetActiveInventoryItems returns active inventory items for the given inventory ID and item IDs
@@ -238,7 +264,12 @@ func (r *inventoryItemRepository) GetActiveInventoryItems(
 	ids []uint,
 ) ([]*models.InventoryItem, error) {
 	var items []*models.InventoryItem
-	return items, r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+	// runInTx enlists in the caller's transaction when there is one (e.g. the
+	// reconcile Start-Processing apply tx, which must read the items under the same
+	// advisory lock as the subsequent write) WITHOUT opening a nested gorm
+	// SAVEPOINT, and opens its own one-shot tx otherwise — preserving the legacy
+	// standalone behavior.
+	return items, runInTx(ctx, r.db, func(tx *gorm.DB) error {
 		err := tx.
 			Preload("Inventory").
 			Preload("Product").
@@ -409,7 +440,13 @@ func (r *inventoryItemRepository) SaveInventoryItemChanges(
 	changes []*models.InventoryItemChange,
 	txns []*models.InventoryTransaction,
 ) error {
-	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+	// runInTx enlists in the caller's transaction when present (the reconcile
+	// Start-Processing apply runs the FIFO consume + save inside its one
+	// advisory-locked tx so the drift re-check is authoritative) WITHOUT opening a
+	// nested gorm SAVEPOINT; otherwise it opens its own one-shot tx exactly as the
+	// legacy ProcessSubmission path did. The FOR UPDATE in updateInventoryItems is
+	// then held on the ambient tx's connection.
+	return runInTx(ctx, r.db, func(tx *gorm.DB) error {
 		err := r.updateInventoryItems(ctx, tx, changes)
 		if err != nil {
 			return fmt.Errorf("failed to update inventory items: %w", err)

@@ -3,6 +3,7 @@ package apptest
 import (
 	"cim-backend/internal/models"
 	"cim-backend/internal/repository"
+	"cim-backend/internal/services"
 	"cim-backend/pkg"
 	"cim-backend/pkg/testutil/fixture"
 	"context"
@@ -961,8 +962,8 @@ var _ = Describe("SaveInventoryItemChanges", func() {
 			It("should apply multiple filters together", func() {
 				// Create items
 				items := []models.InventoryItem{
-					{InventoryID: inventory.ID, ProductID: products[0].ID, Quantity: decimal.NewFromInt(10), Status: models.InventoryItemStatusActive, UnitID: unit.ID},   // material, active
-					{InventoryID: inventory.ID, ProductID: products[1].ID, Quantity: decimal.NewFromInt(5), Status: models.InventoryItemStatusActive, UnitID: unit.ID},    // finished_good, active
+					{InventoryID: inventory.ID, ProductID: products[0].ID, Quantity: decimal.NewFromInt(10), Status: models.InventoryItemStatusActive, UnitID: unit.ID},  // material, active
+					{InventoryID: inventory.ID, ProductID: products[1].ID, Quantity: decimal.NewFromInt(5), Status: models.InventoryItemStatusActive, UnitID: unit.ID},   // finished_good, active
 					{InventoryID: inventory.ID, ProductID: products[2].ID, Quantity: decimal.NewFromInt(8), Status: models.InventoryItemStatusInactive, UnitID: unit.ID}, // material, inactive
 				}
 				err := db.WithContext(ctx).Create(&items).Error
@@ -983,6 +984,161 @@ var _ = Describe("SaveInventoryItemChanges", func() {
 				Expect(result[0].Status).To(Equal(models.InventoryItemStatusActive))
 				Expect(result[0].Product.ProductType).To(Equal("material"))
 			})
+		})
+	})
+})
+
+var _ = Describe("InventoryItemService.UpdateInventoryItem", func() {
+	var (
+		svc services.InventoryItemService
+		ctx context.Context
+		db  *gorm.DB
+	)
+
+	BeforeEach(func() {
+		ctx = tenv.DefaultContext
+		db = tenv.ContextfulDB()
+		base := repository.NewBaseRepository(db)
+		svc = services.NewInventoryItemService(
+			repository.NewInventoryItemRepository(base),
+			repository.NewInventoryRepository(base),
+			repository.NewProductRepository(base),
+		)
+	})
+
+	// setupItem creates a unit/product/inventory and one inventory item with the
+	// given quantity, returning the persisted item.
+	setupItem := func(qty decimal.Decimal) *models.InventoryItem {
+		unit := fixture.WithUnit(db.WithContext(ctx), models.Unit{
+			Name: fmt.Sprintf("U-%d", time.Now().UnixNano()), Symbol: "U", UnitType: "general",
+		})
+		product := fixture.WithProduct(db.WithContext(ctx), models.Product{
+			Name: fmt.Sprintf("P-%d", time.Now().UnixNano()), Status: "active", UnitID: unit.ID,
+		})
+		inventory := fixture.WithInventory(db.WithContext(ctx), models.Inventory{
+			Name: fmt.Sprintf("Inv-%d", time.Now().UnixNano()), Status: models.InventoryStatusActive,
+		})
+		item := &models.InventoryItem{
+			InventoryID: inventory.ID,
+			ProductID:   product.ID,
+			Quantity:    qty,
+			Status:      models.InventoryItemStatusActive,
+			UnitID:      unit.ID,
+		}
+		Expect(db.WithContext(ctx).Create(item).Error).To(BeNil())
+		DeferCleanup(func() {
+			db.WithContext(ctx).Where("id = ?", item.ID).Delete(&models.InventoryItem{})
+		})
+		return item
+	}
+
+	Context("when a caller sends a changed quantity through the metadata update", func() {
+		It("does NOT alter the stored quantity (quantity is immutable on this path)", func() {
+			original := decimal.NewFromInt(10)
+			item := setupItem(original)
+
+			// Caller attempts to bump the quantity directly via the CRUD update.
+			update := &models.InventoryItem{
+				Base:        models.Base{ID: item.ID},
+				InventoryID: item.InventoryID,
+				ProductID:   item.ProductID,
+				UnitID:      item.UnitID,
+				Status:      models.InventoryItemStatusActive,
+				Quantity:    decimal.NewFromInt(999),
+			}
+
+			returned, err := svc.UpdateInventoryItem(ctx, update)
+			Expect(err).To(BeNil())
+
+			// The metadata UPDATE never writes the quantity column, so the inbound
+			// value is ignored and the persisted row is unchanged.
+			stored, err := svc.GetInventoryItemByID(ctx, item.ID)
+			Expect(err).To(BeNil())
+			Expect(stored.Quantity.Equal(original)).To(BeTrue(),
+				"stored quantity should be preserved, got %s", stored.Quantity.String())
+
+			// The service returns the PERSISTED item, not the request-bound one: the
+			// response must reflect the stored quantity (original), never the ignored
+			// request quantity (999) — otherwise a client could think a stock change
+			// succeeded.
+			Expect(returned).NotTo(BeNil())
+			Expect(returned.Quantity.Equal(original)).To(BeTrue(),
+				"response quantity should reflect persisted value, got %s", returned.Quantity.String())
+		})
+	})
+
+	Context("when a concurrent stock movement writes quantity around the metadata update", func() {
+		It("does not clobber the movement's quantity (quantity column is excluded from the metadata UPDATE)", func() {
+			original := decimal.NewFromInt(10)
+			item := setupItem(original)
+
+			// A legitimate movement (PO receive / dispose / transfer / reconcile apply)
+			// writes a new quantity directly to the row, standing in for a movement that
+			// commits while a metadata update is in flight. The metadata UPDATE must NOT
+			// overwrite this with a stale value.
+			movementQty := decimal.NewFromInt(42)
+			Expect(db.WithContext(ctx).Model(&models.InventoryItem{}).
+				Where("id = ?", item.ID).
+				Update("quantity", movementQty).Error).To(BeNil())
+
+			// Metadata update carries the pre-movement quantity (stale) and a metadata change.
+			update := &models.InventoryItem{
+				Base:        models.Base{ID: item.ID},
+				InventoryID: item.InventoryID,
+				ProductID:   item.ProductID,
+				UnitID:      item.UnitID,
+				Status:      models.InventoryItemStatusInactive,
+				Quantity:    original, // stale pre-movement value
+			}
+			returned, err := svc.UpdateInventoryItem(ctx, update)
+			Expect(err).To(BeNil())
+
+			stored, err := svc.GetInventoryItemByID(ctx, item.ID)
+			Expect(err).To(BeNil())
+			// The movement's quantity survives — the metadata UPDATE did not touch the column.
+			Expect(stored.Quantity.Equal(movementQty)).To(BeTrue(),
+				"movement quantity should survive metadata update, got %s", stored.Quantity.String())
+			// And the metadata change was still applied.
+			Expect(stored.Status).To(Equal(models.InventoryItemStatusInactive))
+
+			// The returned (persisted) item reflects the movement's quantity, not the
+			// stale request value, and carries the applied metadata change.
+			Expect(returned).NotTo(BeNil())
+			Expect(returned.Quantity.Equal(movementQty)).To(BeTrue(),
+				"response quantity should reflect persisted (movement) value, got %s", returned.Quantity.String())
+			Expect(returned.Status).To(Equal(models.InventoryItemStatusInactive))
+		})
+	})
+
+	Context("when updating metadata fields", func() {
+		It("still updates non-quantity fields while preserving quantity", func() {
+			original := decimal.NewFromInt(7)
+			item := setupItem(original)
+
+			update := &models.InventoryItem{
+				Base:        models.Base{ID: item.ID},
+				InventoryID: item.InventoryID,
+				ProductID:   item.ProductID,
+				UnitID:      item.UnitID,
+				Status:      models.InventoryItemStatusInactive, // metadata change
+				Quantity:    decimal.NewFromInt(123),            // attempted stock change (ignored)
+			}
+
+			returned, err := svc.UpdateInventoryItem(ctx, update)
+			Expect(err).To(BeNil())
+
+			stored, err := svc.GetInventoryItemByID(ctx, item.ID)
+			Expect(err).To(BeNil())
+			Expect(stored.Status).To(Equal(models.InventoryItemStatusInactive))
+			Expect(stored.Quantity.Equal(original)).To(BeTrue(),
+				"stored quantity should be preserved, got %s", stored.Quantity.String())
+
+			// The response reflects the persisted state: metadata change applied,
+			// quantity unchanged (the request's 123 is ignored, not echoed).
+			Expect(returned).NotTo(BeNil())
+			Expect(returned.Status).To(Equal(models.InventoryItemStatusInactive))
+			Expect(returned.Quantity.Equal(original)).To(BeTrue(),
+				"response quantity should reflect persisted value, got %s", returned.Quantity.String())
 		})
 	})
 })

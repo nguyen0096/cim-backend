@@ -73,25 +73,56 @@ func (s *inventoryService) loadActiveReconcileParent(ctx context.Context, submis
 	}
 
 	// The parent must still be in-flight (approval pending). An initiated reconcile
-	// stays at approval_status=pending until the Part 6/7 synthesize→approve→apply
-	// path, but it can already be REJECTED today via ProcessSubmission (which sets
-	// approval_status=rejected + processing_status=canceled while leaving the
-	// snapshot rows in place). Without this guard, staff could keep creating/
-	// editing/deleting child items under a closed/terminal parent. Any non-pending
-	// approval status (rejected, or a future approved/applied) closes the window.
-	// This check is evaluated while holding the FOR UPDATE lock acquired above and
-	// in the same tx as the child write, so a concurrent terminal transition is
-	// serialized against it rather than slipping through a stale read.
+	// stays at approval_status=pending through the open/closed phases until the
+	// Start-Processing apply, but it can already be REJECTED via ProcessSubmission
+	// (which sets approval_status=rejected + processing_status=canceled while
+	// leaving the snapshot rows in place). Without this guard, callers could keep
+	// creating/editing/deleting child items under a terminal parent. Any
+	// non-pending approval status (rejected, or post-apply approved) closes the
+	// window. Evaluated while holding the FOR UPDATE lock acquired above, in the
+	// same tx as the child write, so a concurrent terminal transition is serialized
+	// against it rather than slipping through a stale read.
 	if submission.ApprovalStatus != models.InventorySubmissionApprovalStatusPending {
 		return nil, pkg.ErrReconParentNotInFlight(ctx, submissionID, string(submission.ApprovalStatus))
 	}
 	return submission, nil
 }
 
-// loadOwnedItemInParent loads a child item, then enforces (in order): it belongs
-// to the path-scoped parent, the caller owns it, and it is not applied
-// (immutable). Returns the loaded row for the caller's status-transition logic.
-func (s *inventoryService) loadOwnedItemInParent(ctx context.Context, submissionID, itemID uint) (*models.ReconciliationRequestItem, error) {
+// guardParentEditable enforces the locked staff-immutability rule (epic #38,
+// Part 6): once a reconcile is `closed` (or beyond — processing/processed), staff
+// can no longer mutate child rows; only admin/accountant (the recon_manage
+// holders) may still edit while closed. While `open`, everyone with child-item
+// permission may edit.
+//
+// It runs under the parent FOR UPDATE lock held by loadActiveReconcileParent and
+// in the same tx as the child write, so a concurrent `close` is serialized
+// against an in-flight staff edit: either the close commits first and this guard
+// (re-reading the locked parent row in this tx) sees `closed` and rejects the
+// staff write, or the staff write holds the lock and the close blocks until it
+// commits. No staff edit can interleave past a committed close.
+func (s *inventoryService) guardParentEditable(ctx context.Context, parent *models.InventorySubmission) error {
+	if parent.ReconcileStatus == models.ReconcileLifecycleStatusOpen {
+		return nil
+	}
+	// Not open => closed/processing/processed. Admin/accountant (recon_manage) may
+	// still edit while closed; everyone else (staff) is locked out.
+	if pkg.HasPermission(ctx, pkg.RBACResourceInventorySubmissions, pkg.RBACActionReconManage) {
+		// Admin/accountant may edit while `closed`, but never once the apply has
+		// begun (processing) or completed (processed) — those are terminal/in-flight.
+		if parent.ReconcileStatus == models.ReconcileLifecycleStatusClosed {
+			return nil
+		}
+	}
+	return pkg.ErrReconSubmissionClosed(ctx, parent.ID, string(parent.ReconcileStatus))
+}
+
+// loadItemInParent loads a child item and enforces that it belongs to the
+// path-scoped parent. Ownership is enforced separately by the caller (staff are
+// ownership-scoped; admin/accountant editing a closed submission are not — they
+// may edit any staff row, epic #38 Part 6). There is no longer an applied/
+// immutable per-row guard: row immutability is enforced at the submission level
+// (guardParentEditable) by the parent's reconcile_status.
+func (s *inventoryService) loadItemInParent(ctx context.Context, submissionID, itemID uint) (*models.ReconciliationRequestItem, error) {
 	item, err := s.reconItemRepo.GetByID(ctx, itemID)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -105,24 +136,18 @@ func (s *inventoryService) loadOwnedItemInParent(ctx context.Context, submission
 	if item.SubmissionID != submissionID {
 		return nil, pkg.ErrReconItemNotInParent(ctx, itemID, submissionID)
 	}
-
-	if err := s.guardOwnership(ctx, item); err != nil {
-		return nil, err
-	}
-
-	// Applied rows are terminal/immutable — never editable by staff or admin.
-	if item.Status == models.ReconciliationRequestItemStatusApplied {
-		return nil, pkg.ErrReconItemImmutable(ctx, itemID)
-	}
 	return item, nil
 }
 
 // guardOwnership enforces that the caller created the row. Ownership is keyed on
 // models.Base.CreatedBy (the contributor's email), matching how every other
-// table records its actor. Applies to all callers (staff and admin/accountant):
-// Part 4 is the staff self-service lifecycle; admin approval of others' rows is
-// Part 6.
+// table records its actor. Admin/accountant (recon_manage holders) bypass this:
+// while a submission is `closed` they review and may edit ANY staff row (epic
+// #38, Part 6); staff remain restricted to their own rows.
 func (s *inventoryService) guardOwnership(ctx context.Context, item *models.ReconciliationRequestItem) error {
+	if pkg.HasPermission(ctx, pkg.RBACResourceInventorySubmissions, pkg.RBACActionReconManage) {
+		return nil
+	}
 	userEmail, err := pkg.GetUserEmailFromContext(ctx)
 	if err != nil {
 		return pkg.ErrUnauthorized("user not authenticated", err)
@@ -287,14 +312,20 @@ func buildReconItemPayload(items []dto.ReconciliationCountItem) reconItemPayload
 }
 
 // CreateReconciliationItem files a new staff child item under a parent initiated
-// reconcile. The new row starts in_progress and is owned by the caller. Counts
-// are validated against the snapshot baseline. Parent load + create run in one
-// tx so a parent that disappears (or loses its snapshots) mid-create can't leave
-// an orphan row.
+// reconcile. The new row is in_progress and is owned by the caller. Counts are
+// validated against the snapshot baseline. Parent load + create run in one tx so
+// a parent that disappears (or loses its snapshots) mid-create can't leave an
+// orphan row. Rejected once the parent is closed (staff) — see guardParentEditable.
 func (s *inventoryService) CreateReconciliationItem(ctx context.Context, req dto.CreateReconciliationItemRequest) (*models.ReconciliationRequestItem, error) {
 	var created *models.ReconciliationRequestItem
 	err := s.baseRepo.WithinTx(ctx, func(txCtx context.Context) error {
-		if _, err := s.loadActiveReconcileParent(txCtx, req.SubmissionID); err != nil {
+		parent, err := s.loadActiveReconcileParent(txCtx, req.SubmissionID)
+		if err != nil {
+			return err
+		}
+		// Staff-immutability: once the submission is closed, only admin/accountant
+		// may file/edit rows (under the parent FOR UPDATE lock).
+		if err := s.guardParentEditable(txCtx, parent); err != nil {
 			return err
 		}
 
@@ -322,19 +353,26 @@ func (s *inventoryService) CreateReconciliationItem(ctx context.Context, req dto
 	return created, nil
 }
 
-// UpdateReconciliationItem replaces the counted payload of an owned child item.
-// Editing a `ready` or `approved` row resets it to `in_progress` (the approved ->
-// in_progress escape hatch); an `in_progress` row stays in_progress; an `applied`
-// row is rejected as immutable (guarded in loadOwnedItemInParent). The whole op
-// is one tx (load + validate + write).
+// UpdateReconciliationItem replaces the counted payload of a child item. Staff
+// may edit only their own rows while the parent is `open`; admin/accountant may
+// edit any row while the parent is `closed` (the review edit). The row stays
+// in_progress (the only status). The whole op is one tx (load + guard + validate
+// + write) under the parent FOR UPDATE lock.
 func (s *inventoryService) UpdateReconciliationItem(ctx context.Context, req dto.UpdateReconciliationItemRequest) (*models.ReconciliationRequestItem, error) {
 	var updated *models.ReconciliationRequestItem
 	err := s.baseRepo.WithinTx(ctx, func(txCtx context.Context) error {
-		if _, err := s.loadActiveReconcileParent(txCtx, req.SubmissionID); err != nil {
+		parent, err := s.loadActiveReconcileParent(txCtx, req.SubmissionID)
+		if err != nil {
 			return err
 		}
-		item, err := s.loadOwnedItemInParent(txCtx, req.SubmissionID, req.ItemID)
+		if err := s.guardParentEditable(txCtx, parent); err != nil {
+			return err
+		}
+		item, err := s.loadItemInParent(txCtx, req.SubmissionID, req.ItemID)
 		if err != nil {
+			return err
+		}
+		if err := s.guardOwnership(txCtx, item); err != nil {
 			return err
 		}
 
@@ -346,15 +384,11 @@ func (s *inventoryService) UpdateReconciliationItem(ctx context.Context, req dto
 			return err
 		}
 
-		// Any payload edit drops the row back to in_progress: a ready row is no
-		// longer "ready for review" once its counts changed, and an approved row
-		// must be re-reviewed (the escape hatch). in_progress stays in_progress.
-		newStatus := models.ReconciliationRequestItemStatusInProgress
-		if err := s.reconItemRepo.UpdatePayloadAndStatus(txCtx, item.ID, payloadBytes, newStatus); err != nil {
+		if err := s.reconItemRepo.UpdatePayloadAndStatus(txCtx, item.ID, payloadBytes, models.ReconciliationRequestItemStatusInProgress); err != nil {
 			return fmt.Errorf("failed to update reconciliation item: %w", err)
 		}
 		item.Payload = payloadBytes
-		item.Status = newStatus
+		item.Status = models.ReconciliationRequestItemStatusInProgress
 		updated = item
 		return nil
 	})
@@ -364,67 +398,24 @@ func (s *inventoryService) UpdateReconciliationItem(ctx context.Context, req dto
 	return updated, nil
 }
 
-// SetReconciliationItemReady transitions an owned child item between in_progress
-// and ready (status-only). Ready=true requires in_progress -> ready; Ready=false
-// requires ready -> in_progress. Any other source status is an illegal transition
-// (e.g. you cannot mark an approved/applied row ready here).
-func (s *inventoryService) SetReconciliationItemReady(ctx context.Context, req dto.SetReconciliationItemReadyRequest) (*models.ReconciliationRequestItem, error) {
-	var updated *models.ReconciliationRequestItem
-	err := s.baseRepo.WithinTx(ctx, func(txCtx context.Context) error {
-		if _, err := s.loadActiveReconcileParent(txCtx, req.SubmissionID); err != nil {
-			return err
-		}
-		item, err := s.loadOwnedItemInParent(txCtx, req.SubmissionID, req.ItemID)
-		if err != nil {
-			return err
-		}
-
-		var target models.ReconciliationRequestItemStatus
-		if req.Ready {
-			if item.Status != models.ReconciliationRequestItemStatusInProgress {
-				return pkg.ErrReconItemInvalidTransition(ctx, string(item.Status), string(models.ReconciliationRequestItemStatusReady))
-			}
-			target = models.ReconciliationRequestItemStatusReady
-		} else {
-			if item.Status != models.ReconciliationRequestItemStatusReady {
-				return pkg.ErrReconItemInvalidTransition(ctx, string(item.Status), string(models.ReconciliationRequestItemStatusInProgress))
-			}
-			target = models.ReconciliationRequestItemStatusInProgress
-		}
-
-		if err := s.reconItemRepo.UpdateStatus(txCtx, item.ID, target); err != nil {
-			return fmt.Errorf("failed to update reconciliation item status: %w", err)
-		}
-		item.Status = target
-		updated = item
-		return nil
-	})
-	if err != nil {
-		return nil, err
-	}
-	return updated, nil
-}
-
-// DeleteReconciliationItem soft-deletes an owned child item. Only in_progress or
-// ready rows may be deleted; approved and applied rows are preserved (an approved
-// row's escape hatch is to edit it back to in_progress, not delete it, which
-// keeps the audit intent — locked decision #3).
+// DeleteReconciliationItem soft-deletes a child item. Staff may delete only their
+// own rows while the parent is `open`; admin/accountant may delete any row while
+// the parent is `closed`. The whole op is one tx under the parent FOR UPDATE lock.
 func (s *inventoryService) DeleteReconciliationItem(ctx context.Context, req dto.DeleteReconciliationItemRequest) error {
 	return s.baseRepo.WithinTx(ctx, func(txCtx context.Context) error {
-		if _, err := s.loadActiveReconcileParent(txCtx, req.SubmissionID); err != nil {
-			return err
-		}
-		item, err := s.loadOwnedItemInParent(txCtx, req.SubmissionID, req.ItemID)
+		parent, err := s.loadActiveReconcileParent(txCtx, req.SubmissionID)
 		if err != nil {
 			return err
 		}
-
-		switch item.Status {
-		case models.ReconciliationRequestItemStatusInProgress,
-			models.ReconciliationRequestItemStatusReady:
-			// deletable
-		default:
-			return pkg.ErrReconItemCannotDeleteStatus(ctx, item.ID, string(item.Status))
+		if err := s.guardParentEditable(txCtx, parent); err != nil {
+			return err
+		}
+		item, err := s.loadItemInParent(txCtx, req.SubmissionID, req.ItemID)
+		if err != nil {
+			return err
+		}
+		if err := s.guardOwnership(txCtx, item); err != nil {
+			return err
 		}
 
 		if err := s.reconItemRepo.SoftDelete(txCtx, item.ID); err != nil {

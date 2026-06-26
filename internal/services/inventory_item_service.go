@@ -7,21 +7,22 @@ import (
 	"cim-backend/pkg"
 	"context"
 	"fmt"
-
-	"github.com/shopspring/decimal"
 )
 
 //go:generate mockery --name=InventoryItemService --structname=InventoryItemService --output=../mocks/servicemocks --outpkg=servicemocks
 type InventoryItemService interface {
 	CreateInventoryItem(ctx context.Context, item *models.InventoryItem) error
 	GetInventoryItemByID(ctx context.Context, id uint) (*models.InventoryItem, error)
-	UpdateInventoryItem(ctx context.Context, item *models.InventoryItem) error
+	// UpdateInventoryItem applies the metadata update and returns the PERSISTED item
+	// (reloaded from the DB). Quantity is immutable on this path, so the returned item
+	// reflects the actual stored stock level (any quantity in the request is ignored),
+	// not the request-bound value — preventing the API from echoing an ignored quantity.
+	UpdateInventoryItem(ctx context.Context, item *models.InventoryItem) (*models.InventoryItem, error)
 	DeleteInventoryItem(ctx context.Context, id uint) error
 	ListInventoryItems(ctx context.Context, limit, offset int) ([]models.InventoryItem, error)
 	GetInventoryItemsByInventoryIDWithFilters(ctx context.Context, inventoryID uint, productType string, params models.ListParams) ([]models.InventoryItem, error)
 	GetInventoryItemByProductID(ctx context.Context, productID uint) (*models.InventoryItem, error)
 	GetLowStockItems(ctx context.Context, limit, offset int) ([]models.InventoryItem, error)
-	AdjustInventoryItemQuantity(ctx context.Context, id uint, quantity decimal.Decimal, notes string) error
 	CountInventoryItems(ctx context.Context) (int64, error)
 	CountInventoryItemsByInventoryIDWithFilters(ctx context.Context, inventoryID uint, productType string, params models.ListParams) (int64, error)
 	CountLowStockItems(ctx context.Context) (int64, error)
@@ -84,24 +85,24 @@ func (s *inventoryItemService) GetInventoryItemByID(ctx context.Context, id uint
 	return item, nil
 }
 
-func (s *inventoryItemService) UpdateInventoryItem(ctx context.Context, item *models.InventoryItem) error {
+func (s *inventoryItemService) UpdateInventoryItem(ctx context.Context, item *models.InventoryItem) (*models.InventoryItem, error) {
 	// Validate that inventory item exists
 	existingItem, err := s.inventoryItemRepo.GetByID(ctx, item.ID)
 	if err != nil {
-		return fmt.Errorf("failed to get inventory item: %w", err)
+		return nil, fmt.Errorf("failed to get inventory item: %w", err)
 	}
 	if existingItem == nil {
-		return pkg.NewAppError(pkg.ErrorCodeNotFound, "inventory item not found", nil)
+		return nil, pkg.NewAppError(pkg.ErrorCodeNotFound, "inventory item not found", nil)
 	}
 
 	// Validate that inventory exists if inventory_id is being changed
 	if item.InventoryID != existingItem.InventoryID {
 		inventory, err := s.inventoryRepo.GetByID(ctx, item.InventoryID)
 		if err != nil {
-			return fmt.Errorf("failed to get inventory: %w", err)
+			return nil, fmt.Errorf("failed to get inventory: %w", err)
 		}
 		if inventory == nil {
-			return pkg.NewAppError(pkg.ErrorCodeNotFound, "inventory not found", nil)
+			return nil, pkg.NewAppError(pkg.ErrorCodeNotFound, "inventory not found", nil)
 		}
 	}
 
@@ -109,21 +110,51 @@ func (s *inventoryItemService) UpdateInventoryItem(ctx context.Context, item *mo
 	if item.ProductID != existingItem.ProductID {
 		product, err := s.productRepo.GetByID(ctx, item.ProductID)
 		if err != nil {
-			return fmt.Errorf("failed to get product: %w", err)
+			return nil, fmt.Errorf("failed to get product: %w", err)
 		}
 		if product == nil {
-			return pkg.NewAppError(pkg.ErrorCodeNotFound, "product not found", nil)
+			return nil, pkg.NewAppError(pkg.ErrorCodeNotFound, "product not found", nil)
 		}
 
 		// Check if another inventory item already exists for this product in this inventory
 		duplicateItem, err := s.inventoryItemRepo.GetByProductID(ctx, item.ProductID)
 		if err == nil && duplicateItem != nil && duplicateItem.ID != item.ID && duplicateItem.InventoryID == item.InventoryID {
-			return pkg.NewAppError(pkg.ErrorCodeValidation, "inventory item already exists for this product in this inventory", nil)
+			return nil, pkg.NewAppError(pkg.ErrorCodeValidation, "inventory item already exists for this product in this inventory", nil)
 		}
 
 	}
 
-	return s.inventoryItemRepo.Update(ctx, []*models.InventoryItem{item}, nil)
+	// Quantity is immutable on this metadata-update path. Stock changes only flow
+	// through movement/submission flows (PO receive, dispose/transfer, reconcile
+	// apply), each of which records an inventory_submission/transaction so the
+	// reconcile drift check can observe it. A direct quantity write here would
+	// bypass that drift check (epic #38 redesign dropped the old live-vs-prev
+	// optimistic check).
+	//
+	// We do NOT read-then-rewrite quantity here: the repository Update scopes the
+	// UPDATE to the metadata columns only (see inventoryItemMetadataColumns), so the
+	// quantity column is never written by this path. That both keeps quantity
+	// immutable AND guarantees a concurrent legitimate movement that commits between
+	// this read and our write is never clobbered by a stale quantity — any inbound
+	// quantity on the request is simply ignored.
+
+	if err := s.inventoryItemRepo.Update(ctx, []*models.InventoryItem{item}, nil); err != nil {
+		return nil, err
+	}
+
+	// Return the PERSISTED row rather than the request-bound item. The UPDATE is
+	// column-scoped and deliberately omits quantity (immutable on this path), so the
+	// request-bound struct can carry a quantity the DB never stored. Reloading makes the
+	// API response reflect the actual stored quantity together with the applied metadata,
+	// so a client can never mistake an ignored quantity for a successful stock change.
+	persisted, err := s.inventoryItemRepo.GetByID(ctx, item.ID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to reload inventory item: %w", err)
+	}
+	if persisted == nil {
+		return nil, pkg.NewAppError(pkg.ErrorCodeNotFound, "inventory item not found", nil)
+	}
+	return persisted, nil
 }
 
 func (s *inventoryItemService) DeleteInventoryItem(ctx context.Context, id uint) error {
@@ -210,27 +241,6 @@ func (s *inventoryItemService) GetLowStockItems(ctx context.Context, limit, offs
 		return nil, fmt.Errorf("failed to get low stock items: %w", err)
 	}
 	return items, nil
-}
-
-func (s *inventoryItemService) AdjustInventoryItemQuantity(ctx context.Context, id uint, quantity decimal.Decimal, notes string) error {
-	// Get the inventory item
-	item, err := s.inventoryItemRepo.GetByID(ctx, id)
-	if err != nil {
-		return fmt.Errorf("failed to get inventory item: %w", err)
-	}
-	if item == nil {
-		return pkg.NewAppError(pkg.ErrorCodeNotFound, "inventory item not found", nil)
-	}
-
-	// Check if adjustment would result in negative quantity
-	if item.Quantity.Add(quantity).LessThan(decimal.Zero) {
-		return pkg.NewAppError(pkg.ErrorCodeValidation, "insufficient inventory quantity", nil)
-	}
-
-	// Update the quantity
-	item.Quantity = item.Quantity.Add(quantity)
-
-	return s.inventoryItemRepo.Update(ctx, []*models.InventoryItem{item}, nil)
 }
 
 func (s *inventoryItemService) CountInventoryItems(ctx context.Context) (int64, error) {

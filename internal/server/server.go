@@ -255,9 +255,13 @@ func SetupServer(
 	// the parent submission. `:id` is the parent submission id, `:item_id` the child row.
 	inventories.POST("/submissions/:id/reconciliation-items", inventoryHandler.CreateReconciliationItem)
 	inventories.PUT("/submissions/:id/reconciliation-items/:item_id", inventoryHandler.UpdateReconciliationItem)
-	inventories.POST("/submissions/:id/reconciliation-items/:item_id/ready", inventoryHandler.MarkReconciliationItemReady)
-	inventories.POST("/submissions/:id/reconciliation-items/:item_id/not-ready", inventoryHandler.MarkReconciliationItemNotReady)
 	inventories.DELETE("/submissions/:id/reconciliation-items/:item_id", inventoryHandler.DeleteReconciliationItem)
+	// Admin/accountant reconciliation management (epic #38, Part 6 redesign). Close
+	// locks staff out; reopen re-opens; start-processing is the atomic apply. All
+	// gated by recon_manage (admin + accountant only).
+	inventories.POST("/submissions/:id/close", inventoryHandler.CloseReconciliation)
+	inventories.POST("/submissions/:id/reopen", inventoryHandler.ReopenReconciliation)
+	inventories.POST("/submissions/:id/start-processing", inventoryHandler.StartProcessing)
 	inventories.GET("/:id/export/monthly-transaction", inventoryHandler.ExportMonthlyTransactionReport)
 	inventories.GET("/:id/timeline", inventoryTimelineHandler.GetInventoryTimeline)
 	inventories.GET("/:id/export/inventory-in-out", inventoryInOutExportHandler.ExportInventoryInOut)
@@ -268,7 +272,6 @@ func SetupServer(
 	inventories.GET("/:id/inventory-items/:item_id", inventoryItemHandler.GetInventoryItem)
 	inventories.PUT("/:id/inventory-items/:item_id", inventoryItemHandler.UpdateInventoryItem)
 	inventories.DELETE("/:id/inventory-items/:item_id", inventoryItemHandler.DeleteInventoryItem)
-	inventories.PUT("/:id/inventory-items/:item_id/adjust", inventoryItemHandler.AdjustInventoryItemQuantity)
 
 	// Standalone inventory item routes (for backward compatibility and specific use cases)
 	inventoryItems := api.Group("/inventory-items")

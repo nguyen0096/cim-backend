@@ -24,11 +24,10 @@ func TestReconciliationItemRBACPolicy(t *testing.T) {
 	staffActions := []string{
 		"recon_item_create",
 		"recon_item_update",
-		"recon_item_ready",
 		"recon_item_delete",
 	}
 
-	t.Run("staff allowed the four child-item actions", func(t *testing.T) {
+	t.Run("staff allowed the child-item actions", func(t *testing.T) {
 		for _, action := range staffActions {
 			ok, err := enforcer.Enforce("staff", resource, action)
 			require.NoError(t, err)
@@ -37,14 +36,24 @@ func TestReconciliationItemRBACPolicy(t *testing.T) {
 	})
 
 	t.Run("staff NOT allowed admin-only reconciliation actions", func(t *testing.T) {
-		for _, action := range []string{"approve", "initiate_reconciliation"} {
+		// recon_manage (epic #38 Part 6 redesign) is admin/accountant-only like
+		// approve / initiate_reconciliation; staff must never hold it.
+		for _, action := range []string{"approve", "initiate_reconciliation", "recon_manage"} {
 			ok, err := enforcer.Enforce("staff", resource, action)
 			require.NoError(t, err)
 			assert.False(t, ok, "staff must NOT be allowed %s on %s", action, resource)
 		}
 	})
 
-	t.Run("admin and accountant allowed all four child-item actions", func(t *testing.T) {
+	t.Run("admin and accountant allowed recon_manage", func(t *testing.T) {
+		for _, role := range []string{"admin", "accountant"} {
+			ok, err := enforcer.Enforce(role, resource, "recon_manage")
+			require.NoError(t, err)
+			assert.True(t, ok, "%s should be allowed recon_manage on %s", role, resource)
+		}
+	})
+
+	t.Run("admin and accountant allowed all child-item actions", func(t *testing.T) {
 		for _, role := range []string{"admin", "accountant"} {
 			for _, action := range staffActions {
 				ok, err := enforcer.Enforce(role, resource, action)

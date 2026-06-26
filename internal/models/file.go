@@ -10,6 +10,6 @@ const (
 
 type ExportFile struct {
 	Content     []byte        `json:"-"`
-	FileType    mimetype.MIME `json:"file_type"`
+	FileType    mimetype.MIME `json:"file_type" swaggertype:"string"`
 	DownloadURL string        `json:"download_url"`
 }

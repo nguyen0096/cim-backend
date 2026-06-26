@@ -102,50 +102,6 @@ func TestUpdateReconciliationItem_PathScopedIDs(t *testing.T) {
 	mockService.AssertExpectations(t)
 }
 
-func TestMarkReady_PassesReadyTrue(t *testing.T) {
-	handler, mockService, e := newReconItemHandler(t)
-
-	mockService.
-		On("SetReconciliationItemReady", mock.Anything, mock.MatchedBy(func(req dto.SetReconciliationItemReadyRequest) bool {
-			return req.SubmissionID == 50 && req.ItemID == 777 && req.Ready
-		})).
-		Return(&models.ReconciliationRequestItem{Base: models.Base{ID: 777}, Status: models.ReconciliationRequestItemStatusReady}, nil).
-		Once()
-
-	req, _ := createRequest(http.MethodPost, "/inventories/submissions/50/reconciliation-items/777/ready", nil)
-	rec := httptest.NewRecorder()
-	c := e.NewContext(req, rec)
-	c.SetPath("/inventories/submissions/:id/reconciliation-items/:item_id/ready")
-	c.SetParamNames("id", "item_id")
-	c.SetParamValues("50", "777")
-
-	require.NoError(t, handler.MarkReconciliationItemReady(c))
-	assert.Equal(t, http.StatusOK, rec.Code)
-	mockService.AssertExpectations(t)
-}
-
-func TestMarkNotReady_PassesReadyFalse(t *testing.T) {
-	handler, mockService, e := newReconItemHandler(t)
-
-	mockService.
-		On("SetReconciliationItemReady", mock.Anything, mock.MatchedBy(func(req dto.SetReconciliationItemReadyRequest) bool {
-			return req.SubmissionID == 50 && req.ItemID == 777 && !req.Ready
-		})).
-		Return(&models.ReconciliationRequestItem{Base: models.Base{ID: 777}, Status: models.ReconciliationRequestItemStatusInProgress}, nil).
-		Once()
-
-	req, _ := createRequest(http.MethodPost, "/inventories/submissions/50/reconciliation-items/777/not-ready", nil)
-	rec := httptest.NewRecorder()
-	c := e.NewContext(req, rec)
-	c.SetPath("/inventories/submissions/:id/reconciliation-items/:item_id/not-ready")
-	c.SetParamNames("id", "item_id")
-	c.SetParamValues("50", "777")
-
-	require.NoError(t, handler.MarkReconciliationItemNotReady(c))
-	assert.Equal(t, http.StatusOK, rec.Code)
-	mockService.AssertExpectations(t)
-}
-
 func TestDeleteReconciliationItem_NoContent(t *testing.T) {
 	handler, mockService, e := newReconItemHandler(t)
 
@@ -180,4 +136,102 @@ func TestDeleteReconciliationItem_InvalidItemID(t *testing.T) {
 
 	require.Error(t, handler.DeleteReconciliationItem(c))
 	mockService.AssertNotCalled(t, "DeleteReconciliationItem", mock.Anything, mock.Anything)
+}
+
+// --- Admin reconciliation management handlers (epic #38, Part 6 redesign) ---
+
+func TestCloseReconciliation_PathScopedID(t *testing.T) {
+	handler, mockService, e := newReconItemHandler(t)
+
+	mockService.
+		On("CloseReconciliation", mock.Anything, uint(50)).
+		Return(&models.InventorySubmission{Base: models.Base{ID: 50}, ReconcileStatus: models.ReconcileLifecycleStatusClosed}, nil).
+		Once()
+
+	req, _ := createRequest(http.MethodPost, "/inventories/submissions/50/close", nil)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetPath("/inventories/submissions/:id/close")
+	c.SetParamNames("id")
+	c.SetParamValues("50")
+
+	require.NoError(t, handler.CloseReconciliation(c))
+	assert.Equal(t, http.StatusOK, rec.Code)
+	mockService.AssertExpectations(t)
+}
+
+func TestReopenReconciliation_PathScopedID(t *testing.T) {
+	handler, mockService, e := newReconItemHandler(t)
+
+	mockService.
+		On("ReopenReconciliation", mock.Anything, uint(50)).
+		Return(&models.InventorySubmission{Base: models.Base{ID: 50}, ReconcileStatus: models.ReconcileLifecycleStatusOpen}, nil).
+		Once()
+
+	req, _ := createRequest(http.MethodPost, "/inventories/submissions/50/reopen", nil)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetPath("/inventories/submissions/:id/reopen")
+	c.SetParamNames("id")
+	c.SetParamValues("50")
+
+	require.NoError(t, handler.ReopenReconciliation(c))
+	assert.Equal(t, http.StatusOK, rec.Code)
+	mockService.AssertExpectations(t)
+}
+
+// TestStartProcessing_Success returns 200 with the finalized submission.
+func TestStartProcessing_Success(t *testing.T) {
+	handler, mockService, e := newReconItemHandler(t)
+
+	mockService.
+		On("StartProcessing", mock.Anything, uint(50)).
+		Return(&dto.StartProcessingResult{Submission: &models.InventorySubmission{Base: models.Base{ID: 50}}}, nil).
+		Once()
+
+	req, _ := createRequest(http.MethodPost, "/inventories/submissions/50/start-processing", nil)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetPath("/inventories/submissions/:id/start-processing")
+	c.SetParamNames("id")
+	c.SetParamValues("50")
+
+	require.NoError(t, handler.StartProcessing(c))
+	assert.Equal(t, http.StatusOK, rec.Code)
+	mockService.AssertExpectations(t)
+}
+
+// TestStartProcessing_Drift returns 409 with the warning-shaped payload.
+func TestStartProcessing_Drift(t *testing.T) {
+	handler, mockService, e := newReconItemHandler(t)
+
+	mockService.
+		On("StartProcessing", mock.Anything, uint(50)).
+		Return(&dto.StartProcessingResult{DriftDetected: true, Warnings: []string{"drift"}}, nil).
+		Once()
+
+	req, _ := createRequest(http.MethodPost, "/inventories/submissions/50/start-processing", nil)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetPath("/inventories/submissions/:id/start-processing")
+	c.SetParamNames("id")
+	c.SetParamValues("50")
+
+	require.NoError(t, handler.StartProcessing(c))
+	assert.Equal(t, http.StatusConflict, rec.Code)
+	mockService.AssertExpectations(t)
+}
+
+func TestStartProcessing_InvalidPathID(t *testing.T) {
+	handler, mockService, e := newReconItemHandler(t)
+
+	req, _ := createRequest(http.MethodPost, "/inventories/submissions/abc/start-processing", nil)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetPath("/inventories/submissions/:id/start-processing")
+	c.SetParamNames("id")
+	c.SetParamValues("abc")
+
+	require.Error(t, handler.StartProcessing(c))
+	mockService.AssertNotCalled(t, "StartProcessing", mock.Anything, mock.Anything)
 }

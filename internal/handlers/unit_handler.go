@@ -154,12 +154,6 @@ type createUnitRequest struct {
 // @Accept json
 // @Produce json
 // @Param unit body createUnitRequest true "Unit information"
-// @Param unit.body.unit_type string false "Unit type (e.g., general, mass, volume)"
-// @Param unit.body.name string true "Unit name"
-// @Param unit.body.symbol string false "Unit symbol"
-// @Param unit.body.base_unit_id integer false "Base unit ID (for derived units)"
-// @Param unit.body.conversion_factor number true "Conversion factor (must be > 0)"
-// @Param unit.body.decimal_places integer false "Number of decimal places (0-10, default: 2)"
 // @Success 201 {object} models.Unit
 // @Failure 400 {object} map[string]string
 // @Failure 409 {object} map[string]string
@@ -211,12 +205,6 @@ func (h *UnitHandler) CreateUnit(c echo.Context) error {
 // @Produce json
 // @Param id path int true "Unit ID"
 // @Param unit body createUnitRequest true "Updated unit information"
-// @Param unit.body.unit_type string false "Unit type (e.g., general, mass, volume)"
-// @Param unit.body.name string true "Unit name"
-// @Param unit.body.symbol string false "Unit symbol"
-// @Param unit.body.base_unit_id integer false "Base unit ID (for derived units)"
-// @Param unit.body.conversion_factor number true "Conversion factor (must be > 0)"
-// @Param unit.body.decimal_places integer false "Number of decimal places (0-10)"
 // @Success 200 {object} models.Unit
 // @Failure 400 {object} map[string]string
 // @Failure 404 {object} map[string]string

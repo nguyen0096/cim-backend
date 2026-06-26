@@ -246,7 +246,7 @@ func (h *PaymentReceiptFormHandler) GetPaymentReceiptForm(c echo.Context) error 
 // @Param statuses query []string false "Filter by statuses (pending, submitted, approved, rejected)"
 // @Param sort query string false "Sort field (full_name, department, total_amount, date, created_at, updated_at)"
 // @Param order query string false "Sort direction (asc, desc, default: asc)"
-// @Success 200 {object} models.PaginatedResponse[models.PaymentReceiptForm]
+// @Success 200 {object} map[string]interface{} "Paginated list of payment receipt forms"
 // @Failure 400 {object} map[string]string
 // @Failure 500 {object} map[string]string
 // @Security BearerAuth

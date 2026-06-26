@@ -41,8 +41,18 @@ type InventoryService interface {
 	// Staff reconciliation child-item lifecycle (epic #38, Part 4).
 	CreateReconciliationItem(ctx context.Context, req dto.CreateReconciliationItemRequest) (*models.ReconciliationRequestItem, error)
 	UpdateReconciliationItem(ctx context.Context, req dto.UpdateReconciliationItemRequest) (*models.ReconciliationRequestItem, error)
-	SetReconciliationItemReady(ctx context.Context, req dto.SetReconciliationItemReadyRequest) (*models.ReconciliationRequestItem, error)
 	DeleteReconciliationItem(ctx context.Context, req dto.DeleteReconciliationItemRequest) error
+
+	// Admin/accountant reconciliation management (epic #38, Part 6 redesign; one
+	// recon_manage action, admin+accountant only). Close locks staff out
+	// (open->closed); reopen re-opens (closed->open). StartProcessing is the ONE
+	// atomic apply transaction: advisory-locked per inventory, runs the event-based
+	// drift re-check (roll back + warning payload on drift), and otherwise applies
+	// the synthesized reconcile with snapshot-aware consume sizing and finalizes the
+	// submission to processed.
+	CloseReconciliation(ctx context.Context, submissionID uint) (*models.InventorySubmission, error)
+	ReopenReconciliation(ctx context.Context, submissionID uint) (*models.InventorySubmission, error)
+	StartProcessing(ctx context.Context, submissionID uint) (*dto.StartProcessingResult, error)
 
 	// SynthesizeSubmissionPayload folds the live (non-deleted) staff child rows of
 	// an initiated reconcile into the legacy ReconcileInventoryRequest-shaped
@@ -310,6 +320,9 @@ func (s *inventoryService) InitiateReconcile(ctx context.Context, req dto.Initia
 		SubmissionType:   models.InventorySubmissionTypeReconcile,
 		ProcessingStatus: models.InventorySubmissionStatusPending,
 		ApprovalStatus:   models.InventorySubmissionApprovalStatusPending,
+		// The reconcile starts `open`: staff may freely file/edit/delete count rows
+		// until an admin/accountant closes it (epic #38, Part 6).
+		ReconcileStatus: models.ReconcileLifecycleStatusOpen,
 	}
 
 	// One tx threaded via txCtx so the placeholder submission and its baseline
@@ -328,6 +341,30 @@ func (s *inventoryService) InitiateReconcile(ctx context.Context, req dto.Initia
 				return err
 			}
 			return fmt.Errorf("failed to create reconcile submission: %w", err)
+		}
+
+		// Serialize the snapshot capture with consuming applies (epic #38, Part 6 —
+		// closes the stale-baseline race the review raised). The snapshot below is a
+		// plain MVCC read of inventory_items row versions; it takes NO row locks, so
+		// without this a consuming dispose/transfer/reconcile apply could stamp its
+		// processed_at just before this parent's created_at yet COMMIT just after the
+		// snapshot reads the pre-apply versions — its stock effect would be neither in
+		// our baseline nor caught by StartProcessing's processed_at >= created_at drift
+		// re-check, leaving us to apply a stale baseline. By taking
+		// pg_advisory_xact_lock(inventory_id) here — the SAME lock every consuming
+		// apply (ProcessSubmission approve) and StartProcessing already takes BEFORE it
+		// reads/writes stock — snapshot capture and consuming applies fully serialize:
+		// a consuming apply either commits entirely before this snapshot (its effect is
+		// in the baseline) or is blocked until this initiate tx commits and then
+		// stamps a processed_at inside StartProcessing's drift window (caught by the
+		// re-check). No interleaving yields a stale baseline.
+		//
+		// Deadlock-free: initiate takes ONLY this advisory lock plus its own
+		// snapshot/submission inserts; it never grabs an inventory_items row lock
+		// while holding the advisory lock, and every other holder also acquires the
+		// advisory lock FIRST, so there is no lock-ordering cycle.
+		if err := s.inventorySubmissionRepo.AcquireInventoryAdvisoryLock(txCtx, req.InventoryID); err != nil {
+			return fmt.Errorf("failed to acquire inventory advisory lock: %w", err)
 		}
 
 		// Capture the baseline via one set-based INSERT ... SELECT: one snapshot per
@@ -680,23 +717,134 @@ func (s *inventoryService) ProcessSubmission(ctx context.Context, req dto.Submis
 		}
 	}
 
-	// Step 1: Persist approval status and reason first
-	if err := s.inventorySubmissionRepo.UpdateApprovalStatus(ctx, submission.ID, approvalStatus, req.Reason); err != nil {
-		return nil, fmt.Errorf("failed to update approval status: %w", err)
-	}
-	submission.ApprovalStatus = approvalStatus
-	submission.Reason = req.Reason
-
-	// Step 2: Handle submission based on approval status
+	// Step 2: Handle submission based on approval status. Note: the approval-status
+	// write is performed INSIDE each branch (under the branch's transaction/lock),
+	// not before the switch, so the reject path can re-check the reconcile lifecycle
+	// under the parent lock BEFORE committing to any write (TOCTOU fix below).
 	switch approvalStatus {
 	case models.InventorySubmissionApprovalStatusApproved:
-		s.processSubmission(ctx, submission)
-	case models.InventorySubmissionApprovalStatusRejected:
-		// Set processing status to canceled when rejected
-		if err := s.inventorySubmissionRepo.UpdateProcessingStatus(ctx, submission.ID, models.InventorySubmissionStatusCanceled); err != nil {
-			return nil, fmt.Errorf("failed to update processing status to canceled: %w", err)
+		// Take the per-inventory advisory lock (epic #38, Part 6) around the
+		// consuming apply so it serializes with a concurrent reconcile Start-
+		// Processing on the same inventory: pg_advisory_xact_lock(inventory_id) is
+		// transaction-scoped, so the apply (which now enlists in this tx via the
+		// tx-aware repos) and the processed_at stamp commit together and the
+		// reconcile's drift re-check either blocks on this lock or sees this row's
+		// processed_at in its window. This is the one sanctioned touch of the
+		// consuming ProcessSubmission path. On apply failure the whole tx now rolls
+		// back (no partial stock commit) and the failed-status audit is recorded
+		// out-of-tx afterwards (epic #38, Part 6 — see processSubmission/recordFailure).
+		var failedPS *processingState
+		txErr := s.baseRepo.WithinTx(ctx, func(txCtx context.Context) error {
+			if err := s.inventorySubmissionRepo.UpdateApprovalStatus(txCtx, submission.ID, approvalStatus, req.Reason); err != nil {
+				return fmt.Errorf("failed to update approval status: %w", err)
+			}
+			if err := s.inventorySubmissionRepo.AcquireInventoryAdvisoryLock(txCtx, submission.InventoryID); err != nil {
+				return fmt.Errorf("failed to acquire inventory advisory lock: %w", err)
+			}
+			applied, ps, applyErr := s.processSubmission(txCtx, submission, true /* atomic */)
+			if applyErr != nil {
+				// ATOMIC apply path (epic #38, Part 6): the apply enlists in THIS tx
+				// via the tx-aware repos, so a failed apply may already have flushed a
+				// partial stock mutation into the open tx. We MUST roll the whole tx
+				// back — returning the error aborts WithinTx so neither the partial
+				// inventory_items/transactions writes NOR the approval-status flip
+				// commit. (When the repo owned its own tx, a failed save rolled back on
+				// its own; now that it enlists, the rollback responsibility is ours.)
+				// The failed-status audit write is deferred to AFTER the tx unwinds
+				// (failedPS.recordFailure below) so it neither deadlocks against this
+				// tx's row lock nor gets erased by the rollback.
+				failedPS = ps
+				return applyErr
+			}
+			if applied {
+				// Stamp processed_at inside the same tx as the stock change so a
+				// concurrent reconcile drift re-check sees them atomically. The repo
+				// stamps it with the DB clock (clock_timestamp()) so it shares a clock
+				// with the snapshot created_at it is compared against (no host skew).
+				if err := s.inventorySubmissionRepo.SetProcessedAt(txCtx, submission.ID); err != nil {
+					return fmt.Errorf("failed to set processed_at: %w", err)
+				}
+			}
+			return nil
+		})
+		if txErr != nil {
+			// Persist the failure-audit trail now that the tx has rolled back and the
+			// submission row lock is released (no partial stock committed).
+			if failedPS != nil {
+				failedPS.recordFailure(ctx)
+			}
+			return nil, txErr
 		}
-		submission.ProcessingStatus = models.InventorySubmissionStatusCanceled
+		// Refresh from the COMMITTED row before returning (epic #38, Part 6 — Codex
+		// P2). `submission` was read by GetByID BEFORE the tx, so on a RETRY after an
+		// earlier failed apply it still carries processing_status=failed + the old
+		// error JSON. The committed tx cleared the error, set processing_status=
+		// completed, and DB-stamped processed_at (SetProcessedAt/clock_timestamp()).
+		// Patching only approval/reason on the stale struct would make the success
+		// response echo the prior failure; reload so the response mirrors the
+		// persisted state (status, cleared error, DB-stamped processed_at).
+		refreshed, err := s.inventorySubmissionRepo.GetByID(ctx, submission.ID)
+		if err != nil {
+			return nil, fmt.Errorf("failed to reload submission after approve: %w", err)
+		}
+		submission = refreshed
+	case models.InventorySubmissionApprovalStatusRejected:
+		// Reject under the parent FOR UPDATE lock with an AFTER-lock state re-check
+		// (epic #38, Part 6 — closes the reject-vs-StartProcessing TOCTOU). The
+		// submission was read above WITHOUT a lock; a concurrent StartProcessing on an
+		// initiated reconcile can take the parent FOR UPDATE lock, consume stock, and
+		// mark the row processed/approved/completed while this request is mid-flight.
+		// Acting on the stale pre-lock read would flip an already-applied reconcile to
+		// rejected/canceled, orphaning the consuming inventory transactions. So we
+		// re-load the row under the lock and re-evaluate on the FRESH status: once the
+		// initiated reconcile has left the staff-editable `open` state
+		// (closed/processing/processed), the legacy reject is blocked — the admin must
+		// reopen first, and a processed reconcile is terminal. Both this path and
+		// StartProcessing serialize on the same parent row lock, so a reject can never
+		// interleave between StartProcessing's lifecycle check and its apply.
+		txErr := s.baseRepo.WithinTx(ctx, func(txCtx context.Context) error {
+			locked, err := s.inventorySubmissionRepo.GetByIDForUpdate(txCtx, submission.ID)
+			if err != nil {
+				return fmt.Errorf("failed to re-load submission for reject: %w", err)
+			}
+			// Re-assert approval is still pending on the freshly-read, locked row: a
+			// concurrent StartProcessing (approved+completed) or another reject may
+			// have already terminalized it.
+			if locked.ApprovalStatus != models.InventorySubmissionApprovalStatusPending {
+				return pkg.NewAppError(pkg.ErrorCodeValidation,
+					fmt.Sprintf("submission approval is not pending, current approval status: %s", locked.ApprovalStatus), nil)
+			}
+			// For an INITIATED reconcile (has snapshot rows), reject is only valid
+			// while `open`. closed/processing/processed mean the admin took it out of
+			// the staff-editable window or StartProcessing has applied it; rejecting
+			// then would corrupt applied state. Legacy reconciles / dispose / transfer
+			// carry no reconcile_status and are unaffected.
+			if locked.SubmissionType == models.InventorySubmissionTypeReconcile &&
+				locked.ReconcileStatus != "" &&
+				locked.ReconcileStatus != models.ReconcileLifecycleStatusOpen {
+				return pkg.ErrReconCannotRejectInLifecycle(txCtx, locked.ID, string(locked.ReconcileStatus))
+			}
+
+			if err := s.inventorySubmissionRepo.UpdateApprovalStatus(txCtx, submission.ID, approvalStatus, req.Reason); err != nil {
+				return fmt.Errorf("failed to update approval status: %w", err)
+			}
+			// Set processing status to canceled when rejected.
+			if err := s.inventorySubmissionRepo.UpdateProcessingStatus(txCtx, submission.ID, models.InventorySubmissionStatusCanceled); err != nil {
+				return fmt.Errorf("failed to update processing status to canceled: %w", err)
+			}
+			return nil
+		})
+		if txErr != nil {
+			return nil, txErr
+		}
+		// Reload the committed row so the response reflects the persisted state
+		// (approval_status=rejected, processing_status=canceled) rather than a struct
+		// read before the tx — mirrors the approve path above (epic #38, Part 6).
+		refreshed, err := s.inventorySubmissionRepo.GetByID(ctx, submission.ID)
+		if err != nil {
+			return nil, fmt.Errorf("failed to reload submission after reject: %w", err)
+		}
+		submission = refreshed
 	case models.InventorySubmissionApprovalStatusPending:
 		// No action needed for pending status
 	}
@@ -704,38 +852,55 @@ func (s *inventoryService) ProcessSubmission(ctx context.Context, req dto.Submis
 	return submission, nil
 }
 
-// processSubmission executes the actual inventory operation based on submission type
-func (s *inventoryService) processSubmission(ctx context.Context, submission *models.InventorySubmission) {
+// processSubmission executes the actual inventory operation based on submission
+// type. It returns (applied, ps, err):
+//   - applied is true iff the apply completed without errors (so the caller can
+//     stamp processed_at);
+//   - ps is the processing state; on the atomic path the caller calls
+//     ps.recordFailure AFTER its tx unwinds to persist the failure-audit trail;
+//   - err is the underlying apply error (the first accumulated error) when the
+//     apply failed, and nil otherwise.
+//
+// When atomic is true (the approve tx, which enlists the apply via the tx-aware
+// repos), returning the error lets the caller roll the whole transaction back on
+// failure instead of committing a partial stock mutation alongside a failed
+// status — the data-correctness fix for epic #38, Part 6. On that path ps.end
+// does NOT write the failed status (it would deadlock against the open tx's row
+// lock and be rolled back regardless); the caller records it post-tx via
+// ps.recordFailure. When atomic is false (the legacy non-atomic path, repo owns
+// its own tx), ps.end records completed/failed inline exactly as before.
+func (s *inventoryService) processSubmission(ctx context.Context, submission *models.InventorySubmission, atomic bool) (bool, *processingState, error) {
 	ps := newProcessingState(s, submission)
+	ps.deferFailureToCaller = atomic
 	defer ps.end(ctx)
 
 	switch submission.SubmissionType {
 	case models.InventorySubmissionTypeReconcile:
 		var req dto.ReconcileInventoryRequest
 		if err := json.Unmarshal(submission.Payload, &req); err != nil {
-			_ = ps.addError(fmt.Errorf("failed to unmarshal reconcile payload: %w", err))
-			return
+			return false, ps, ps.addError(fmt.Errorf("failed to unmarshal reconcile payload: %w", err))
 		}
 		_ = s.reconcileInventory(ctx, ps, req)
 	case models.InventorySubmissionTypeDispose:
 		var req dto.DisposeInventoryRequest
 		if err := json.Unmarshal(submission.Payload, &req); err != nil {
-			_ = ps.addError(fmt.Errorf("failed to unmarshal dispose payload: %w", err))
-			return
+			return false, ps, ps.addError(fmt.Errorf("failed to unmarshal dispose payload: %w", err))
 		}
 		_ = s.disposeInventory(ctx, ps, req)
 	case models.InventorySubmissionTypeTransfer:
 		var req dto.TransferInventoryRequest
 		if err := json.Unmarshal(submission.Payload, &req); err != nil {
-			_ = ps.addError(fmt.Errorf("failed to unmarshal transfer payload: %w", err))
-			return
+			return false, ps, ps.addError(fmt.Errorf("failed to unmarshal transfer payload: %w", err))
 		}
 		_ = s.transferInventory(ctx, ps, req)
 	default:
-		_ = ps.addError(pkg.NewAppError(pkg.ErrorCodeValidation,
+		return false, ps, ps.addError(pkg.NewAppError(pkg.ErrorCodeValidation,
 			fmt.Sprintf("unknown submission type: %s", submission.SubmissionType), nil))
-		return
 	}
+	if ps.hasAnyErrors() {
+		return false, ps, ps.firstError()
+	}
+	return true, ps, nil
 }
 
 // GetLastPurchasePrices retrieves the most recent purchase transaction prices for each product_id + supplier_id combination
@@ -1037,10 +1202,30 @@ type processingState struct {
 	svc        *inventoryService
 	submission *models.InventorySubmission
 	errors     []error
+	// deferFailureToCaller is set on the ATOMIC apply path (the approve tx, which
+	// enlists the apply via the tx-aware repos). On that path ps.end must NOT write
+	// the failed processing status itself: that write would run on ps.end's OWN base
+	// connection while the still-open apply tx holds a row lock on this same
+	// submission (taken by UpdateApprovalStatus), self-deadlocking; and even if it
+	// did not, the apply tx is about to roll back, so an in-tx failed write would be
+	// erased. Instead the caller records the failure AFTER the tx unwinds, on a
+	// clean connection (epic #38, Part 6 — data-correctness fix). The legacy
+	// non-atomic path leaves this false and keeps recording failures inline.
+	deferFailureToCaller bool
 }
 
 func (s *processingState) hasAnyErrors() bool {
 	return len(s.errors) > 0
+}
+
+// firstError returns the earliest accumulated apply error (the root cause), or
+// nil if none. The atomic approve path returns this from its tx closure to force
+// a full rollback while surfacing a meaningful error to the caller.
+func (s *processingState) firstError() error {
+	if len(s.errors) == 0 {
+		return nil
+	}
+	return s.errors[0]
 }
 
 func (s *processingState) addError(err error) error {
@@ -1050,6 +1235,12 @@ func (s *processingState) addError(err error) error {
 
 func (s *processingState) end(ctx context.Context) {
 	if s.hasAnyErrors() {
+		// On the atomic apply path the caller records the failure after the tx
+		// unwinds (see deferFailureToCaller); writing it here would deadlock against
+		// the open tx's row lock and be rolled back anyway.
+		if s.deferFailureToCaller {
+			return
+		}
 		if err := s.svc.inventorySubmissionRepo.FailSubmissionProcessingWithErrors(ctx, s.submission.ID, s.errors); err != nil {
 			log.Error("failed to fail submission processing with errors: %w", err)
 		}
@@ -1058,6 +1249,19 @@ func (s *processingState) end(ctx context.Context) {
 
 	if err := s.svc.inventorySubmissionRepo.UpdateProcessingStatus(ctx, s.submission.ID, models.InventorySubmissionStatusCompleted); err != nil {
 		log.Error("failed to update submission status: %w", err)
+	}
+}
+
+// recordFailure persists processing_status=failed + the accumulated errors on the
+// repo's own connection. The atomic approve path calls this AFTER its tx has
+// rolled back so the failure-audit trail survives the rollback without
+// contending on the (now-released) row lock.
+func (s *processingState) recordFailure(ctx context.Context) {
+	if !s.hasAnyErrors() {
+		return
+	}
+	if err := s.svc.inventorySubmissionRepo.FailSubmissionProcessingWithErrors(ctx, s.submission.ID, s.errors); err != nil {
+		log.Error("failed to fail submission processing with errors: %w", err)
 	}
 }
 

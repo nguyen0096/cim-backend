@@ -23,6 +23,7 @@ import (
 func newLegacyGuardService(gormDB *gorm.DB) *inventoryService {
 	baseRepo := repository.NewBaseRepository(gormDB)
 	return &inventoryService{
+		baseRepo:                baseRepo,
 		inventorySubmissionRepo: repository.NewInventorySubmissionRepository(baseRepo),
 		snapshotRepo:            repository.NewReconciliationSnapshotRepository(baseRepo),
 	}
@@ -78,35 +79,51 @@ func TestProcessSubmission_RejectsInitiatedReconcile(t *testing.T) {
 }
 
 // TestProcessSubmission_AllowsRejectOfInitiatedReconcile is the safety carve-out:
-// action=reject on an initiated reconcile (pending, empty payload, has snapshot
-// rows) must be ALLOWED. Reject only marks the submission rejected/canceled and
-// never unmarshals the payload, so it carries no snapshot-bypass risk. The guard
-// (which runs only for approve) must therefore NOT fire here — no snapshot count
-// query is issued — and the submission ends rejected/canceled.
+// action=reject on an OPEN initiated reconcile (pending, has snapshot rows,
+// reconcile_status=open) must be ALLOWED. Reject only marks the submission
+// rejected/canceled and never unmarshals the payload, so it carries no snapshot-
+// bypass risk. The reject path re-loads the row under FOR UPDATE (the TOCTOU fix)
+// and, seeing it is still `open`, proceeds: approval_status=rejected +
+// processing_status=canceled, both inside one transaction under the parent lock.
 func TestProcessSubmission_AllowsRejectOfInitiatedReconcile(t *testing.T) {
 	gormDB, mock := newInventoryServiceTestDB(t)
 	svc := newLegacyGuardService(gormDB)
 
 	const submissionID = uint(42)
 
-	// Load the initiated reconcile placeholder. Crucially, NO snapshot count query
-	// is queued: the guard must be skipped for reject.
+	// Initial (unlocked) load. NO snapshot count query is queued: the snapshot guard
+	// runs only for approve, never for reject.
 	mock.ExpectQuery(regexp.QuoteMeta(`SELECT * FROM "inventory_submissions"`)).
-		WillReturnRows(sqlmock.NewRows([]string{"id", "inventory_id", "submission_type", "approval_status", "processing_status", "payload"}).
+		WillReturnRows(sqlmock.NewRows([]string{"id", "inventory_id", "submission_type", "approval_status", "processing_status", "reconcile_status", "payload"}).
 			AddRow(submissionID, 7, string(models.InventorySubmissionTypeReconcile),
 				string(models.InventorySubmissionApprovalStatusPending),
-				string(models.InventorySubmissionStatusPending), []byte("")))
+				string(models.InventorySubmissionStatusPending),
+				string(models.ReconcileLifecycleStatusOpen), []byte("")))
 
-	// Reject persists approval_status=rejected then processing_status=canceled.
-	// Each repo Updates runs in GORM's implicit transaction (Begin/Commit).
+	// The reject runs in ONE transaction: re-load FOR UPDATE (fresh state still
+	// pending + open), then approval_status=rejected, then processing_status=canceled.
 	mock.ExpectBegin()
+	mock.ExpectQuery(regexp.QuoteMeta(`SELECT * FROM "inventory_submissions"`)).
+		WillReturnRows(sqlmock.NewRows([]string{"id", "inventory_id", "submission_type", "approval_status", "processing_status", "reconcile_status", "payload"}).
+			AddRow(submissionID, 7, string(models.InventorySubmissionTypeReconcile),
+				string(models.InventorySubmissionApprovalStatusPending),
+				string(models.InventorySubmissionStatusPending),
+				string(models.ReconcileLifecycleStatusOpen), []byte("")))
+	mock.ExpectExec(regexp.QuoteMeta(`UPDATE "inventory_submissions"`)).
+		WillReturnResult(sqlmock.NewResult(0, 1))
 	mock.ExpectExec(regexp.QuoteMeta(`UPDATE "inventory_submissions"`)).
 		WillReturnResult(sqlmock.NewResult(0, 1))
 	mock.ExpectCommit()
-	mock.ExpectBegin()
-	mock.ExpectExec(regexp.QuoteMeta(`UPDATE "inventory_submissions"`)).
-		WillReturnResult(sqlmock.NewResult(0, 1))
-	mock.ExpectCommit()
+
+	// Post-commit reload (epic #38, Part 6 — Codex P2): the response reflects the
+	// COMMITTED row, so ProcessSubmission re-reads it on the base connection after
+	// the tx. The persisted row is now rejected + canceled.
+	mock.ExpectQuery(regexp.QuoteMeta(`SELECT * FROM "inventory_submissions"`)).
+		WillReturnRows(sqlmock.NewRows([]string{"id", "inventory_id", "submission_type", "approval_status", "processing_status", "reconcile_status", "payload"}).
+			AddRow(submissionID, 7, string(models.InventorySubmissionTypeReconcile),
+				string(models.InventorySubmissionApprovalStatusRejected),
+				string(models.InventorySubmissionStatusCanceled),
+				string(models.ReconcileLifecycleStatusOpen), []byte("")))
 
 	resp, err := svc.ProcessSubmission(approveCtx(), dto.SubmissionApprovalRequest{
 		SubmissionID: submissionID,
@@ -116,6 +133,97 @@ func TestProcessSubmission_AllowsRejectOfInitiatedReconcile(t *testing.T) {
 	require.NotNil(t, resp)
 	assert.Equal(t, models.InventorySubmissionApprovalStatusRejected, resp.ApprovalStatus)
 	assert.Equal(t, models.InventorySubmissionStatusCanceled, resp.ProcessingStatus)
+	assert.NoError(t, mock.ExpectationsWereMet())
+}
+
+// TestProcessSubmission_BlocksRejectOfProcessedReconcile is the TOCTOU regression
+// guard (epic #38, Part 6 — the race Codex flagged): a legacy reject must NOT be
+// able to flip an initiated reconcile that StartProcessing has already applied.
+// The initial unlocked read sees a still-pending row (the stale pre-lock view a
+// real reject would race on), but the FOR UPDATE re-load inside the reject tx sees
+// the FRESH terminal state (approved + completed + reconcile_status=processed) that
+// StartProcessing committed. The reject is rejected with the localized conflict
+// domain error and NO status UPDATE is issued, so the applied consuming
+// transactions stay intact.
+func TestProcessSubmission_BlocksRejectOfProcessedReconcile(t *testing.T) {
+	gormDB, mock := newInventoryServiceTestDB(t)
+	svc := newLegacyGuardService(gormDB)
+
+	const submissionID = uint(42)
+
+	// Stale pre-lock read: still pending (this is the read a racing reject acts on).
+	mock.ExpectQuery(regexp.QuoteMeta(`SELECT * FROM "inventory_submissions"`)).
+		WillReturnRows(sqlmock.NewRows([]string{"id", "inventory_id", "submission_type", "approval_status", "processing_status", "reconcile_status", "payload"}).
+			AddRow(submissionID, 7, string(models.InventorySubmissionTypeReconcile),
+				string(models.InventorySubmissionApprovalStatusPending),
+				string(models.InventorySubmissionStatusPending),
+				string(models.ReconcileLifecycleStatusOpen), []byte("")))
+
+	// Inside the reject tx: the FOR UPDATE re-load returns the state StartProcessing
+	// committed while we were blocked on the lock — approved + completed + processed.
+	// The re-check fires; NO UPDATE follows; the tx rolls back.
+	mock.ExpectBegin()
+	mock.ExpectQuery(regexp.QuoteMeta(`SELECT * FROM "inventory_submissions"`)).
+		WillReturnRows(sqlmock.NewRows([]string{"id", "inventory_id", "submission_type", "approval_status", "processing_status", "reconcile_status", "payload"}).
+			AddRow(submissionID, 7, string(models.InventorySubmissionTypeReconcile),
+				string(models.InventorySubmissionApprovalStatusApproved),
+				string(models.InventorySubmissionStatusCompleted),
+				string(models.ReconcileLifecycleStatusProcessed), []byte("{}")))
+	mock.ExpectRollback()
+
+	resp, err := svc.ProcessSubmission(approveCtx(), dto.SubmissionApprovalRequest{
+		SubmissionID: submissionID,
+		Action:       string(models.InventorySubmissionActionReject),
+	})
+	require.Error(t, err)
+	assert.Nil(t, resp)
+
+	var appErr *pkg.AppError
+	require.True(t, errors.As(err, &appErr), "expected *pkg.AppError, got %T", err)
+	assert.Equal(t, pkg.ErrorCodeValidation, appErr.Code,
+		"a non-pending re-loaded row should fail the pending re-assertion")
+	assert.NoError(t, mock.ExpectationsWereMet())
+}
+
+// TestProcessSubmission_BlocksRejectOfClosedReconcile covers the closed/processing
+// branch of the same re-check: even when the re-loaded row is still approval-
+// pending (so the pending assertion passes), an initiated reconcile that an admin
+// has moved to `closed` (or that is `processing`) can no longer be rejected through
+// the legacy path — the admin must reopen first. The lifecycle conflict error
+// fires and no status UPDATE is issued.
+func TestProcessSubmission_BlocksRejectOfClosedReconcile(t *testing.T) {
+	gormDB, mock := newInventoryServiceTestDB(t)
+	svc := newLegacyGuardService(gormDB)
+
+	const submissionID = uint(42)
+
+	mock.ExpectQuery(regexp.QuoteMeta(`SELECT * FROM "inventory_submissions"`)).
+		WillReturnRows(sqlmock.NewRows([]string{"id", "inventory_id", "submission_type", "approval_status", "processing_status", "reconcile_status", "payload"}).
+			AddRow(submissionID, 7, string(models.InventorySubmissionTypeReconcile),
+				string(models.InventorySubmissionApprovalStatusPending),
+				string(models.InventorySubmissionStatusPending),
+				string(models.ReconcileLifecycleStatusOpen), []byte("")))
+
+	mock.ExpectBegin()
+	mock.ExpectQuery(regexp.QuoteMeta(`SELECT * FROM "inventory_submissions"`)).
+		WillReturnRows(sqlmock.NewRows([]string{"id", "inventory_id", "submission_type", "approval_status", "processing_status", "reconcile_status", "payload"}).
+			AddRow(submissionID, 7, string(models.InventorySubmissionTypeReconcile),
+				string(models.InventorySubmissionApprovalStatusPending),
+				string(models.InventorySubmissionStatusPending),
+				string(models.ReconcileLifecycleStatusClosed), []byte("")))
+	mock.ExpectRollback()
+
+	resp, err := svc.ProcessSubmission(approveCtx(), dto.SubmissionApprovalRequest{
+		SubmissionID: submissionID,
+		Action:       string(models.InventorySubmissionActionReject),
+	})
+	require.Error(t, err)
+	assert.Nil(t, resp)
+
+	var appErr *pkg.AppError
+	require.True(t, errors.As(err, &appErr), "expected *pkg.AppError, got %T", err)
+	assert.Equal(t, pkg.ErrorCodeConflict, appErr.Code,
+		"a closed initiated reconcile reject should fail with the lifecycle conflict error")
 	assert.NoError(t, mock.ExpectationsWereMet())
 }
 

@@ -51,7 +51,7 @@
                     },
                     {
                         "type": "string",
-                        "description": "Search term for order number or notes",
+                        "description": "Search term for order number, notes, or supplier name",
                         "name": "q",
                         "in": "query"
                     },
@@ -227,14 +227,14 @@
                 }
             }
         },
-        "/api/purchase-orders/{id}/confirm": {
-            "post": {
+        "/api/purchase-orders/{id}": {
+            "get": {
                 "security": [
                     {
                         "BearerAuth": []
                     }
                 ],
-                "description": "Confirm a purchase order with confirmation notes",
+                "description": "Retrieve a purchase order by its ID with all related items and relationships",
                 "consumes": [
                     "application/json"
                 ],
@@ -244,7 +244,7 @@
                 "tags": [
                     "purchase-orders"
                 ],
-                "summary": "Confirm a purchase order",
+                "summary": "Get purchase order by ID",
                 "parameters": [
                     {
                         "type": "integer",
@@ -252,43 +252,17 @@
                         "name": "id",
                         "in": "path",
                         "required": true
-                    },
-                    {
-                        "description": "Confirmation request with notes",
-                        "name": "request",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "type": "object",
-                            "properties": {
-                                "confirmation_notes": {
-                                    "type": "string"
-                                }
-                            }
-                        }
                     }
                 ],
                 "responses": {
                     "200": {
-                        "description": "Successfully confirmed purchase order",
+                        "description": "Successfully retrieved purchase order",
                         "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
+                            "$ref": "#/definitions/models.PurchaseOrder"
                         }
                     },
                     "400": {
-                        "description": "Invalid request body or validation failed",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
-                        }
-                    },
-                    "403": {
-                        "description": "Access denied",
+                        "description": "Invalid purchase order ID",
                         "schema": {
                             "type": "object",
                             "additionalProperties": {
@@ -305,8 +279,79 @@
                             }
                         }
                     },
-                    "409": {
-                        "description": "Purchase order already confirmed",
+                    "500": {
+                        "description": "Failed to get purchase order",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            },
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Update a purchase order's inventory, notes, and items while preserving received quantities",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "purchase-orders"
+                ],
+                "summary": "Update a purchase order",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Purchase Order ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Purchase order update data",
+                        "name": "purchase_order",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/dto.UpdatePurchaseOrderRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successfully updated purchase order",
+                        "schema": {
+                            "$ref": "#/definitions/models.PurchaseOrder"
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid request body or validation failed",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Purchase order not found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Cannot edit completed or cancelled purchase order",
                         "schema": {
                             "type": "object",
                             "additionalProperties": {
@@ -315,7 +360,7 @@
                         }
                     },
                     "500": {
-                        "description": "Failed to confirm purchase order",
+                        "description": "Failed to update purchase order",
                         "schema": {
                             "type": "object",
                             "additionalProperties": {
@@ -411,9 +456,76 @@
                 }
             }
         },
+        "/api/v1/purchase-orders/revenue-expense/{payment_receipt_form_id}/retry": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Retry queueing a revenue expense request for a payment receipt form",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "purchase-orders"
+                ],
+                "summary": "Retry queue revenue expense request",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Payment Receipt Form ID",
+                        "name": "payment_receipt_form_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successfully queued revenue expense request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid payment receipt form ID",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Payment receipt form not found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Failed to queue revenue expense request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/excel/verify": {
             "post": {
-                "description": "Verifies that the specified filepath and sheetname exist and are valid",
+                "description": "Verifies that the specified file (local Excel or Google Sheets URL) and sheetname exist and are valid",
                 "consumes": [
                     "application/json"
                 ],
@@ -423,7 +535,7 @@
                 "tags": [
                     "excel"
                 ],
-                "summary": "Verify Excel file and sheet",
+                "summary": "Verify file and sheet",
                 "parameters": [
                     {
                         "description": "File verification request",
@@ -591,7 +703,7 @@
                         "BearerAuth": []
                     }
                 ],
-                "description": "Confirm the actual inventory count for multiple inventory items",
+                "description": "Creates a pending submission to confirm the actual inventory count for multiple inventory items",
                 "consumes": [
                     "application/json"
                 ],
@@ -614,8 +726,11 @@
                     }
                 ],
                 "responses": {
-                    "204": {
-                        "description": "No Content"
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.InventorySubmission"
+                        }
                     },
                     "400": {
                         "description": "Bad Request",
@@ -654,7 +769,7 @@
                         "BearerAuth": []
                     }
                 ],
-                "description": "Dispose multiple inventory items by reducing their quantities",
+                "description": "Creates a pending submission to dispose multiple inventory items",
                 "consumes": [
                     "application/json"
                 ],
@@ -680,8 +795,7 @@
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "type": "object",
-                            "additionalProperties": true
+                            "$ref": "#/definitions/models.InventorySubmission"
                         }
                     },
                     "400": {
@@ -721,7 +835,7 @@
                         "BearerAuth": []
                     }
                 ],
-                "description": "Get the last purchase transaction price for each Supplier Product as a nested map (product_id -\u003e supplier_id -\u003e price)",
+                "description": "Get the 2 most recent purchase transaction prices for each Supplier Product as a nested map (product_id -\u003e supplier_id -\u003e []PriceHistory). Optionally filter by supplier_id.",
                 "consumes": [
                     "application/json"
                 ],
@@ -731,12 +845,655 @@
                 "tags": [
                     "inventories"
                 ],
-                "summary": "Get last purchase prices",
+                "summary": "Get 2 latest purchase prices",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Supplier ID to filter by",
+                        "name": "supplier_id",
+                        "in": "query"
+                    }
+                ],
                 "responses": {
                     "200": {
                         "description": "OK",
                         "schema": {
                             "$ref": "#/definitions/dto.LastPurchasePriceMap"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/inventories/submissions/{id}": {
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Update the quantity items in an inventory submission. Only submissions with pending approval status can be updated.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "inventories"
+                ],
+                "summary": "Update submission items",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Submission ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Update request",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/dto.UpdateSubmissionRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/dto.SubmissionResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/inventories/submissions/{id}/close": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Admin/accountant closes an open reconciliation (open -\u003e closed). Staff can no longer edit child items; admin/accountant may still edit, then start processing or reopen.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "inventories"
+                ],
+                "summary": "Close reconciliation submission",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Submission ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.InventorySubmission"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/inventories/submissions/{id}/process": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Approve or reject a pending inventory submission. Approve will execute the inventory operation, reject will mark as rejected.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "inventories"
+                ],
+                "summary": "Process submission (approve/reject)",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Submission ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Process request",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/dto.SubmissionApprovalRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.InventorySubmission"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/inventories/submissions/{id}/reconciliation-items": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Staff submits counted quantities as a new in_progress child item under an initiated reconcile submission. Counts must not exceed the per-item snapshot baseline.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "inventories"
+                ],
+                "summary": "Create reconciliation item",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Parent submission ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Counted items",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/dto.CreateReconciliationItemRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/models.ReconciliationRequestItem"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/inventories/submissions/{id}/reconciliation-items/{item_id}": {
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Staff replaces the counted quantities of their own child item. Editing a ready/approved row resets it to in_progress.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "inventories"
+                ],
+                "summary": "Update reconciliation item",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Parent submission ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Child item ID",
+                        "name": "item_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Counted items",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/dto.UpdateReconciliationItemRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.ReconciliationRequestItem"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Staff soft-deletes their own in_progress or ready child item. Approved/applied items cannot be deleted.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "inventories"
+                ],
+                "summary": "Delete reconciliation item",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Parent submission ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Child item ID",
+                        "name": "item_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/inventories/submissions/{id}/reopen": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Admin/accountant reopens a closed reconciliation (closed -\u003e open) so staff can edit child items again.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "inventories"
+                ],
+                "summary": "Reopen reconciliation submission",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Submission ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.InventorySubmission"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/inventories/submissions/{id}/start-processing": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Admin/accountant applies a closed reconciliation in one atomic transaction. Re-checks for a consuming submission processed during the reconciliation window; on drift it rolls back and returns a warning payload (HTTP 409). Otherwise it creates the consuming transactions (snapshot - counted) and finalizes the submission.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "inventories"
+                ],
+                "summary": "Start processing a reconciliation",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Submission ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/dto.StartProcessingResult"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/dto.StartProcessingResult"
+                        }
+                    }
+                }
+            }
+        },
+        "/inventories/transfer": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Creates a pending submission to transfer inventory items from source inventory to destination inventory",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "inventories"
+                ],
+                "summary": "Transfer inventory items",
+                "parameters": [
+                    {
+                        "description": "Transfer data",
+                        "name": "transfer",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/dto.TransferInventoryRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.InventorySubmission"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
                         }
                     },
                     "500": {
@@ -1337,14 +2094,14 @@
                 }
             }
         },
-        "/inventories/{id}/inventory-items/{item_id}/adjust": {
-            "put": {
+        "/inventories/{id}/reconcile/initiate": {
+            "post": {
                 "security": [
                     {
                         "BearerAuth": []
                     }
                 ],
-                "description": "Adjust the quantity of an inventory item",
+                "description": "Creates a placeholder reconcile submission and captures a per-item baseline snapshot (prev_quantity = live quantity at initiate time) for every active item in the inventory. Admin/accountant only.",
                 "consumes": [
                     "application/json"
                 ],
@@ -1352,9 +2109,82 @@
                     "application/json"
                 ],
                 "tags": [
-                    "inventory-items"
+                    "inventories"
                 ],
-                "summary": "Adjust inventory item quantity",
+                "summary": "Initiate reconciliation",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Inventory ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.InventorySubmission"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/inventories/{id}/reports/monthly-transactions": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Export monthly transaction report as Excel file for a specific inventory",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "inventories"
+                ],
+                "summary": "Export monthly transaction report",
                 "parameters": [
                     {
                         "type": "integer",
@@ -1365,27 +2195,22 @@
                     },
                     {
                         "type": "integer",
-                        "description": "Inventory item ID",
-                        "name": "item_id",
-                        "in": "path",
-                        "required": true
+                        "description": "Month (1-12), defaults to current month",
+                        "name": "month",
+                        "in": "query"
                     },
                     {
-                        "description": "Adjustment data",
-                        "name": "adjustment",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": true
-                        }
+                        "type": "integer",
+                        "description": "Year (e.g., 2024), defaults to current year",
+                        "name": "year",
+                        "in": "query"
                     }
                 ],
                 "responses": {
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/models.InventoryItem"
+                            "$ref": "#/definitions/models.ExportFile"
                         }
                     },
                     "400": {
@@ -1399,6 +2224,88 @@
                     },
                     "404": {
                         "description": "Not Found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/inventories/{id}/submissions": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Get all approved or rejected inventory submissions with pagination, optionally filtered by approval status or submission types",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "inventories"
+                ],
+                "summary": "List submissions",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Inventory ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "default": 1,
+                        "description": "Page number",
+                        "name": "page",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "default": 20,
+                        "description": "Items per page",
+                        "name": "limit",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filter by approval status (comma-separated: approved,rejected,pending)",
+                        "name": "approval_status",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filter by submission types (comma-separated: reconcile,dispose,transfer)",
+                        "name": "submission_type",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
                         "schema": {
                             "type": "object",
                             "additionalProperties": {
@@ -1590,6 +2497,1294 @@
                 }
             }
         },
+        "/menu-items": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "List all menu items with pagination, search, and tag filtering",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "menu-items"
+                ],
+                "summary": "List menu items",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "default": 1,
+                        "description": "Page number",
+                        "name": "page",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "default": 20,
+                        "description": "Items per page",
+                        "name": "limit",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Search query (searches by name)",
+                        "name": "q",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Comma-separated list of tags to filter by (e.g., appetizer,mains,desserts)",
+                        "name": "tags",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Create a new menu item",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "menu-items"
+                ],
+                "summary": "Create menu item",
+                "parameters": [
+                    {
+                        "description": "Menu item data",
+                        "name": "menuItem",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/handlers.CreateMenuItemRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/models.MenuItem"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/menu-items/{id}": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Get a menu item by ID",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "menu-items"
+                ],
+                "summary": "Get menu item",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Menu item ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.MenuItem"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            },
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Update a menu item",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "menu-items"
+                ],
+                "summary": "Update menu item",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Menu item ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Menu item data",
+                        "name": "menuItem",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/handlers.UpdateMenuItemRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.MenuItem"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Delete a menu item",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "menu-items"
+                ],
+                "summary": "Delete menu item",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Menu item ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/menus": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "List all menus with pagination",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "menus"
+                ],
+                "summary": "List menus",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "default": 1,
+                        "description": "Page number",
+                        "name": "page",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "default": 20,
+                        "description": "Items per page",
+                        "name": "limit",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Search term for menu name",
+                        "name": "q",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Sort field (name, created_at, updated_at)",
+                        "name": "sort",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "default": "desc",
+                        "description": "Sort direction (asc, desc)",
+                        "name": "order",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.PaginationResult-models_Menu"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Create a new menu",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "menus"
+                ],
+                "summary": "Create menu",
+                "parameters": [
+                    {
+                        "description": "Menu data",
+                        "name": "menu",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/handlers.CreateMenuRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/models.Menu"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/menus/{id}": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Get a menu by ID",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "menus"
+                ],
+                "summary": "Get menu",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Menu ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.Menu"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            },
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Update a menu",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "menus"
+                ],
+                "summary": "Update menu",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Menu ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Menu data",
+                        "name": "menu",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/handlers.UpdateMenuRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.Menu"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Delete a menu",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "menus"
+                ],
+                "summary": "Delete menu",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Menu ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/payment-receipt-forms": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Retrieve a paginated list of payment receipt forms with optional search, sorting, and filtering",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "payment-receipt-forms"
+                ],
+                "summary": "List payment receipt forms",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Page number (default: 1, minimum: 1)",
+                        "name": "page",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Number of items per page (default: 20, minimum: 1, maximum: 100)",
+                        "name": "limit",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Search term for full name, department, or details",
+                        "name": "q",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Filter by purchase order ID",
+                        "name": "purchase_order_id",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Filter by inventory ID",
+                        "name": "inventory_id",
+                        "in": "query"
+                    },
+                    {
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        },
+                        "collectionFormat": "csv",
+                        "description": "Filter by statuses (pending, submitted, approved, rejected)",
+                        "name": "statuses",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Sort field (full_name, department, total_amount, date, created_at, updated_at)",
+                        "name": "sort",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Sort direction (asc, desc, default: asc)",
+                        "name": "order",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Paginated list of payment receipt forms",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Create a new payment receipt form with auto-generated form number if not provided",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "payment-receipt-forms"
+                ],
+                "summary": "Create payment receipt form",
+                "parameters": [
+                    {
+                        "description": "Payment receipt form data",
+                        "name": "paymentReceiptForm",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/dto.PaymentReceiptFormPayload"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/models.PaymentReceiptForm"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/payment-receipt-forms/pending": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Stream the latest payment receipt form in pending status using Server-Sent Events. The connection will remain open and send updates when the pending form changes. Events are sent every 5 seconds with keep-alive every 30 seconds.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "text/event-stream"
+                ],
+                "tags": [
+                    "payment-receipt-forms"
+                ],
+                "summary": "Get latest pending payment receipt form (SSE)",
+                "responses": {
+                    "200": {
+                        "description": "Server-Sent Events stream",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/payment-receipt-forms/{id}": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Get a payment receipt form by ID",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "payment-receipt-forms"
+                ],
+                "summary": "Get payment receipt form",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Payment receipt form ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.PaymentReceiptForm"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            },
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Update a payment receipt form by ID (used by admin/accountant, form still needs approval after update)",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "payment-receipt-forms"
+                ],
+                "summary": "Update payment receipt form",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Payment receipt form ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Payment receipt form data",
+                        "name": "paymentReceiptForm",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/dto.PaymentReceiptFormPayload"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.PaymentReceiptForm"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Delete a payment receipt form by ID",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "payment-receipt-forms"
+                ],
+                "summary": "Delete payment receipt form",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Payment receipt form ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/payment-receipt-forms/{id}/approve": {
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Approve a payment receipt form by ID",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "payment-receipt-forms"
+                ],
+                "summary": "Approve payment receipt form",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Payment receipt form ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/payment-receipt-forms/{id}/notify": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Resend the initial pending form event to all connected SSE clients",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "payment-receipt-forms"
+                ],
+                "summary": "Notify payment receipt form",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/payment-receipt-forms/{id}/reject": {
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Reject a payment receipt form by ID",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "payment-receipt-forms"
+                ],
+                "summary": "Reject payment receipt form",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Payment receipt form ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/payment-receipt-forms/{id}/submit": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Submit a payment receipt form by ID (used by bot_form role)",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "payment-receipt-forms"
+                ],
+                "summary": "Submit payment receipt form",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Payment receipt form ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Payment receipt form data",
+                        "name": "paymentReceiptForm",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/dto.PaymentReceiptFormPayload"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.PaymentReceiptForm"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/products": {
             "get": {
                 "security": [
@@ -1726,6 +3921,116 @@
                 }
             }
         },
+        "/products/export-csv": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Export products to CSV file with the same format as the import template. CSV uses semicolon (;) as delimiter. Products with multiple suppliers will have one row per supplier.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "text/csv"
+                ],
+                "tags": [
+                    "products"
+                ],
+                "summary": "Export products to CSV",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Filter by status (active/inactive)",
+                        "name": "status",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filter by product type",
+                        "name": "product_type",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Filter by supplier ID",
+                        "name": "supplier_id",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "CSV file download",
+                        "schema": {
+                            "type": "file"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
+        "/products/export-excel": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Export products to Excel file with the same format as the import template. Products with multiple suppliers will have one row per supplier.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                ],
+                "tags": [
+                    "products"
+                ],
+                "summary": "Export products to Excel",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Filter by status (active/inactive)",
+                        "name": "status",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filter by product type",
+                        "name": "product_type",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Filter by supplier ID",
+                        "name": "supplier_id",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Excel file download",
+                        "schema": {
+                            "type": "file"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
         "/products/import-csv": {
             "post": {
                 "security": [
@@ -1733,7 +4038,7 @@
                         "BearerAuth": []
                     }
                 ],
-                "description": "Import products and their suppliers from a CSV or Excel file upload. Files must have headers: Name, Description, ProductType, Suppliers, ContactEmail, ContactPhone, Address. CSV uses semicolon (;) as delimiter. Products can have multiple suppliers by repeating rows with empty product fields.",
+                "description": "Import products and their suppliers from a CSV or Excel file upload. Files must have headers: Name, Description, ProductType, Unit, Suppliers, ContactEmail, ContactPhone, Address. CSV uses semicolon (;) as delimiter. Products can have multiple suppliers by repeating rows with empty product fields.",
                 "consumes": [
                     "multipart/form-data"
                 ],
@@ -1943,6 +4248,673 @@
                         "schema": {
                             "type": "object",
                             "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
+        "/purchase-orders/upload": {
+            "post": {
+                "description": "Upload an XLSX file and validate all sheets. Returns validation results for each sheet.",
+                "consumes": [
+                    "multipart/form-data"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "purchase-orders"
+                ],
+                "summary": "Upload and validate purchase order file",
+                "parameters": [
+                    {
+                        "type": "file",
+                        "description": "Purchase order XLSX file",
+                        "name": "file",
+                        "in": "formData",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/dto.UploadPurchaseOrderFileResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/pkg.AppError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/pkg.AppError"
+                        }
+                    }
+                }
+            }
+        },
+        "/purchase-orders/upload-files/{uid}/process": {
+            "post": {
+                "description": "Process a specific sheet from an uploaded file and create a purchase order. File is deleted after processing.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "purchase-orders"
+                ],
+                "summary": "Process import purchase order from uploaded file",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "File UID from upload response",
+                        "name": "uid",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Sheet selection request",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/dto.ProcessImportRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/models.PurchaseOrder"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/pkg.AppError"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/pkg.AppError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/pkg.AppError"
+                        }
+                    }
+                }
+            }
+        },
+        "/revenue-expenses/finalize": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Creates a new row with the next day's date in the revenue-expense excel/sheet based on the provided date",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "revenue-expenses"
+                ],
+                "summary": "Finalize revenue expense",
+                "parameters": [
+                    {
+                        "description": "Finalize request with date",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/handlers.FinalizeRevenueExpenseRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successfully finalized",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.FinalizeRevenueExpenseResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/revenue-expenses/finalized-dates": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Get a paginated list of revenue expense finalizations (finalized dates)",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "revenue-expenses"
+                ],
+                "summary": "List finalized dates",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "default": 1,
+                        "description": "Page number",
+                        "name": "page",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "default": 20,
+                        "description": "Items per page",
+                        "name": "limit",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "List of finalized dates",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/sale-orders": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "List all sale orders with pagination and optional tag filtering",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "sale-orders"
+                ],
+                "summary": "List sale orders",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "default": 1,
+                        "description": "Page number",
+                        "name": "page",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "default": 20,
+                        "description": "Items per page",
+                        "name": "limit",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Search term for order number or notes",
+                        "name": "q",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Sort field (order_number, status, created_at, updated_at, tag)",
+                        "name": "sort",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "default": "desc",
+                        "description": "Sort direction (asc, desc)",
+                        "name": "order",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filter by status (comma-separated)",
+                        "name": "status",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Filter by tag",
+                        "name": "tag",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Start date for filtering (format: YYYY-MM-DD)",
+                        "name": "start_date",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "End date for filtering (format: YYYY-MM-DD)",
+                        "name": "end_date",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.PaginationResult-models_SaleOrder"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Create a new sale order with previousOrderId null and isLatest true by default",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "sale-orders"
+                ],
+                "summary": "Create sale order",
+                "parameters": [
+                    {
+                        "description": "Sale order data",
+                        "name": "sale_order",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/models.SaleOrder"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/models.SaleOrder"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/sale-orders/{id}": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Get a sale order by ID",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "sale-orders"
+                ],
+                "summary": "Get sale order",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Sale Order ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.SaleOrder"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            },
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Updates a sale order by creating a new version with previousOrderId pointing to existing order",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "sale-orders"
+                ],
+                "summary": "Update sale order",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Sale Order ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Sale order update data",
+                        "name": "sale_order",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/models.SaleOrder"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.SaleOrder"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/sale-orders/{id}/status": {
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Update only the status of a sale order without creating a new record",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "sale-orders"
+                ],
+                "summary": "Update sale order status",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Sale Order ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Status update",
+                        "name": "status",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "type": "object"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/selling-prices/{id}/backfill": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Re-point PO items to the start selling price (:id) across its server-resolved effective range. end_effective_from (\"YYYY-MM-DD\") must match the previewed boundary date (null = open-ended) or a 409 is returned.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "selling-prices"
+                ],
+                "summary": "Apply a selling price to PO items in its effective range",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Start selling price ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Previewed end-of-range boundary date (optimistic-concurrency assertion)",
+                        "name": "body",
+                        "in": "body",
+                        "schema": {
+                            "$ref": "#/definitions/dto.BackfillSellingPriceRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
                         }
                     }
                 }
@@ -2219,6 +5191,336 @@
                 }
             }
         },
+        "/units": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Retrieve units with pagination, optional filtering by type, and search query",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "units"
+                ],
+                "summary": "List measurement units",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "default": 20,
+                        "description": "Number of items per page",
+                        "name": "limit",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "default": 1,
+                        "description": "Page number",
+                        "name": "page",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "default": "\"created_at\"",
+                        "description": "Sort field",
+                        "name": "sort",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "default": "\"desc\"",
+                        "description": "Sort order (asc/desc)",
+                        "name": "order",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filter by unit type (e.g., mass, volume)",
+                        "name": "unit_type",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Search units by name or symbol",
+                        "name": "q",
+                        "in": "query"
+                    },
+                    {
+                        "type": "boolean",
+                        "default": false,
+                        "description": "Filter to show only base units",
+                        "name": "base_only",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Create a measurement unit definition",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "units"
+                ],
+                "summary": "Create a new unit",
+                "parameters": [
+                    {
+                        "description": "Unit information",
+                        "name": "unit",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/handlers.createUnitRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/models.Unit"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/units/{id}": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Retrieve a single unit by its ID",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "units"
+                ],
+                "summary": "Get unit by ID",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Unit ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.Unit"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            },
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Update a measurement unit definition",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "units"
+                ],
+                "summary": "Update an existing unit",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Unit ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Updated unit information",
+                        "name": "unit",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/handlers.createUnitRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.Unit"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Soft delete a measurement unit",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "units"
+                ],
+                "summary": "Delete a unit",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Unit ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "Unit deleted successfully"
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/users": {
             "post": {
                 "security": [
@@ -2486,6 +5788,30 @@
         }
     },
     "definitions": {
+        "dto.BackfillSellingPriceRequest": {
+            "type": "object",
+            "properties": {
+                "end_effective_from": {
+                    "description": "\"YYYY-MM-DD\"",
+                    "type": "string"
+                }
+            }
+        },
+        "dto.CreateReconciliationItemRequest": {
+            "type": "object",
+            "required": [
+                "items"
+            ],
+            "properties": {
+                "items": {
+                    "type": "array",
+                    "minItems": 1,
+                    "items": {
+                        "$ref": "#/definitions/dto.ReconciliationCountItem"
+                    }
+                }
+            }
+        },
         "dto.CreateUserRequest": {
             "type": "object",
             "required": [
@@ -2507,7 +5833,8 @@
                     "enum": [
                         "admin",
                         "accountant",
-                        "staff"
+                        "staff",
+                        "bot_form"
                     ],
                     "example": "staff"
                 },
@@ -2573,29 +5900,8 @@
                     "type": "array",
                     "minItems": 1,
                     "items": {
-                        "$ref": "#/definitions/dto.DisposeItem"
+                        "$ref": "#/definitions/dto.QuantityItem"
                     }
-                }
-            }
-        },
-        "dto.DisposeItem": {
-            "type": "object",
-            "required": [
-                "inventory_item_id",
-                "prev_quantity",
-                "quantity"
-            ],
-            "properties": {
-                "inventory_item_id": {
-                    "type": "integer"
-                },
-                "prev_quantity": {
-                    "type": "integer",
-                    "minimum": 1
-                },
-                "quantity": {
-                    "type": "integer",
-                    "minimum": 1
                 }
             }
         },
@@ -2604,8 +5910,111 @@
             "additionalProperties": {
                 "type": "object",
                 "additionalProperties": {
-                    "type": "number",
-                    "format": "float64"
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/dto.PriceHistory"
+                    }
+                }
+            }
+        },
+        "dto.PaymentReceiptFormPayload": {
+            "type": "object",
+            "required": [
+                "details",
+                "full_name",
+                "total_amount"
+            ],
+            "properties": {
+                "amount_in_words": {
+                    "type": "string"
+                },
+                "date": {
+                    "type": "string"
+                },
+                "department": {
+                    "type": "string"
+                },
+                "details": {
+                    "type": "string"
+                },
+                "form_number": {
+                    "type": "string"
+                },
+                "full_name": {
+                    "type": "string"
+                },
+                "inventory_id": {
+                    "type": "integer"
+                },
+                "purchase_order_id": {
+                    "type": "integer"
+                },
+                "status": {
+                    "enum": [
+                        "pending",
+                        "submitted",
+                        "approved",
+                        "rejected"
+                    ],
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/models.PaymentReceiptFormStatus"
+                        }
+                    ]
+                },
+                "total_amount": {
+                    "type": "number"
+                }
+            }
+        },
+        "dto.PriceHistory": {
+            "type": "object",
+            "properties": {
+                "price": {
+                    "type": "number"
+                },
+                "purchase_date": {
+                    "type": "string"
+                }
+            }
+        },
+        "dto.ProcessImportRequest": {
+            "type": "object",
+            "required": [
+                "sheet_name"
+            ],
+            "properties": {
+                "sheet_name": {
+                    "type": "string"
+                }
+            }
+        },
+        "dto.QuantityItem": {
+            "type": "object",
+            "required": [
+                "inventory_item_id",
+                "prev_quantity",
+                "quantity"
+            ],
+            "properties": {
+                "current_quantity": {
+                    "type": "number"
+                },
+                "inventory_item": {
+                    "$ref": "#/definitions/models.InventoryItem"
+                },
+                "inventory_item_id": {
+                    "type": "integer"
+                },
+                "prev_quantity": {
+                    "description": "PrevQuantity is previus stock state.\nOnly available for stateful submission like Reconcile.",
+                    "type": "number"
+                },
+                "product_name": {
+                    "type": "string"
+                },
+                "quantity": {
+                    "type": "number"
                 }
             }
         },
@@ -2623,29 +6032,195 @@
                     "type": "array",
                     "minItems": 1,
                     "items": {
-                        "$ref": "#/definitions/dto.ReconcileItem"
+                        "$ref": "#/definitions/dto.QuantityItem"
                     }
                 }
             }
         },
-        "dto.ReconcileItem": {
+        "dto.ReconcileReviewLabel": {
+            "type": "string",
+            "enum": [
+                "in_progress",
+                "ready_for_review"
+            ],
+            "x-enum-varnames": [
+                "ReconcileReviewLabelInProgress",
+                "ReconcileReviewLabelReadyForReview"
+            ]
+        },
+        "dto.ReconciliationCountItem": {
             "type": "object",
             "required": [
-                "actual_quantity",
-                "inventory_item_id",
-                "prev_quantity"
+                "inventory_item_id"
             ],
             "properties": {
-                "actual_quantity": {
-                    "type": "integer",
-                    "minimum": 0
-                },
                 "inventory_item_id": {
                     "type": "integer"
                 },
-                "prev_quantity": {
-                    "type": "integer",
-                    "minimum": 1
+                "quantity": {
+                    "description": "Quantity is a pointer so an omitted `quantity` (nil) is distinguishable from\nan explicit zero count. It deliberately carries NO validate:\"required\" tag:\nthe binding-layer validator would otherwise short-circuit a missing/null\nquantity into a generic validation error before the service runs, hiding the\nlocalized recon_item_missing_quantity domain error. Letting nil through to\nthe service's nil-check (validateCountsAgainstSnapshot) yields that localized\nerror instead. An explicit 0 still binds as a non-nil pointer and is a valid\ncount; the service validates the dereferenced value (non-negative, \u003c=\nsnapshot baseline).",
+                    "type": "number"
+                }
+            }
+        },
+        "dto.SheetPreview": {
+            "type": "object",
+            "properties": {
+                "inventory_name": {
+                    "type": "string"
+                },
+                "items_count": {
+                    "type": "integer"
+                },
+                "order_date": {
+                    "description": "Format: YYYY-MM-DD",
+                    "type": "string"
+                },
+                "supplier_name": {
+                    "type": "string"
+                }
+            }
+        },
+        "dto.SheetValidationResult": {
+            "type": "object",
+            "properties": {
+                "error": {
+                    "$ref": "#/definitions/pkg.BatchError"
+                },
+                "is_valid": {
+                    "type": "boolean"
+                },
+                "preview": {
+                    "$ref": "#/definitions/dto.SheetPreview"
+                },
+                "sheet_name": {
+                    "type": "string"
+                }
+            }
+        },
+        "dto.StartProcessingResult": {
+            "type": "object",
+            "properties": {
+                "drift_detected": {
+                    "type": "boolean"
+                },
+                "submission": {
+                    "$ref": "#/definitions/models.InventorySubmission"
+                },
+                "warnings": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                }
+            }
+        },
+        "dto.SubmissionApprovalRequest": {
+            "type": "object",
+            "required": [
+                "action",
+                "submission_id"
+            ],
+            "properties": {
+                "action": {
+                    "type": "string",
+                    "enum": [
+                        "approve",
+                        "reject"
+                    ]
+                },
+                "reason": {
+                    "type": "string"
+                },
+                "submission_id": {
+                    "type": "integer"
+                }
+            }
+        },
+        "dto.SubmissionResponse": {
+            "type": "object",
+            "properties": {
+                "approval_status": {
+                    "$ref": "#/definitions/models.SubmissionApprovalStatus"
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "created_by": {
+                    "type": "string"
+                },
+                "destination_inventory_id": {
+                    "type": "integer"
+                },
+                "error": {
+                    "type": "object"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "inventory": {
+                    "$ref": "#/definitions/models.Inventory"
+                },
+                "inventory_id": {
+                    "type": "integer"
+                },
+                "items": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/dto.QuantityItem"
+                    }
+                },
+                "processing_status": {
+                    "$ref": "#/definitions/models.SubmissionProcessingStatus"
+                },
+                "reason": {
+                    "type": "string"
+                },
+                "review_label": {
+                    "description": "ReviewLabel is populated only for ACTIVE reconcile submissions (initiated via\nthe new flow, not yet applied); it is empty for every other submission. It is\nderived from the live child rows and is presentation-only (not persisted).",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/dto.ReconcileReviewLabel"
+                        }
+                    ]
+                },
+                "submission_type": {
+                    "$ref": "#/definitions/models.SubmissionType"
+                },
+                "updated_at": {
+                    "type": "string"
+                },
+                "updated_by": {
+                    "type": "string"
+                },
+                "warnings": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                }
+            }
+        },
+        "dto.TransferInventoryRequest": {
+            "type": "object",
+            "required": [
+                "destination_inventory_id",
+                "items",
+                "source_inventory_id"
+            ],
+            "properties": {
+                "destination_inventory_id": {
+                    "type": "integer"
+                },
+                "items": {
+                    "type": "array",
+                    "minItems": 1,
+                    "items": {
+                        "$ref": "#/definitions/dto.QuantityItem"
+                    }
+                },
+                "source_inventory_id": {
+                    "type": "integer"
                 }
             }
         },
@@ -2656,6 +6231,9 @@
                 "purchase_order_id"
             ],
             "properties": {
+                "confirmation_notes": {
+                    "type": "string"
+                },
                 "items": {
                     "type": "array",
                     "minItems": 1,
@@ -2670,14 +6248,40 @@
                                 "type": "integer"
                             },
                             "received_quantity": {
-                                "type": "integer",
-                                "minimum": 1
+                                "type": "number"
                             }
                         }
                     }
                 },
                 "purchase_order_id": {
                     "type": "integer"
+                }
+            }
+        },
+        "dto.UpdatePurchaseOrderItemRequest": {
+            "type": "object",
+            "required": [
+                "product_id",
+                "quantity",
+                "supplier_id",
+                "unit_id"
+            ],
+            "properties": {
+                "product_id": {
+                    "type": "integer"
+                },
+                "quantity": {
+                    "type": "number"
+                },
+                "supplier_id": {
+                    "type": "integer"
+                },
+                "unit_id": {
+                    "type": "integer"
+                },
+                "unit_price": {
+                    "type": "number",
+                    "minimum": 0
                 }
             }
         },
@@ -2702,6 +6306,62 @@
                 }
             }
         },
+        "dto.UpdatePurchaseOrderRequest": {
+            "type": "object",
+            "required": [
+                "inventory_id",
+                "items"
+            ],
+            "properties": {
+                "inventory_id": {
+                    "type": "integer"
+                },
+                "items": {
+                    "type": "array",
+                    "minItems": 1,
+                    "items": {
+                        "$ref": "#/definitions/dto.UpdatePurchaseOrderItemRequest"
+                    }
+                },
+                "notes": {
+                    "type": "string"
+                }
+            }
+        },
+        "dto.UpdateReconciliationItemRequest": {
+            "type": "object",
+            "required": [
+                "items"
+            ],
+            "properties": {
+                "items": {
+                    "type": "array",
+                    "minItems": 1,
+                    "items": {
+                        "$ref": "#/definitions/dto.ReconciliationCountItem"
+                    }
+                }
+            }
+        },
+        "dto.UpdateSubmissionRequest": {
+            "type": "object",
+            "required": [
+                "items",
+                "submission_id"
+            ],
+            "properties": {
+                "items": {
+                    "type": "array",
+                    "minItems": 1,
+                    "items": {
+                        "$ref": "#/definitions/dto.QuantityItem"
+                    }
+                },
+                "submission_id": {
+                    "type": "integer"
+                }
+            }
+        },
         "dto.UpdateUserRequest": {
             "type": "object",
             "required": [
@@ -2718,7 +6378,8 @@
                     "enum": [
                         "admin",
                         "accountant",
-                        "staff"
+                        "staff",
+                        "bot_form"
                     ],
                     "example": "staff"
                 },
@@ -2730,6 +6391,198 @@
                         "inactive"
                     ],
                     "example": "active"
+                }
+            }
+        },
+        "dto.UploadPurchaseOrderFileResponse": {
+            "type": "object",
+            "properties": {
+                "file_extension": {
+                    "type": "string"
+                },
+                "file_name": {
+                    "type": "string"
+                },
+                "file_uid": {
+                    "type": "string"
+                },
+                "sheets": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/dto.SheetValidationResult"
+                    }
+                },
+                "uploaded_at": {
+                    "type": "string"
+                }
+            }
+        },
+        "handlers.CreateMenuItemRequest": {
+            "type": "object",
+            "required": [
+                "name"
+            ],
+            "properties": {
+                "menu_ids": {
+                    "type": "array",
+                    "items": {
+                        "type": "integer"
+                    }
+                },
+                "name": {
+                    "type": "string"
+                },
+                "product_ids": {
+                    "type": "array",
+                    "items": {
+                        "type": "integer"
+                    }
+                },
+                "tags": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                }
+            }
+        },
+        "handlers.CreateMenuRequest": {
+            "type": "object",
+            "required": [
+                "name"
+            ],
+            "properties": {
+                "inventory_ids": {
+                    "type": "array",
+                    "items": {
+                        "type": "integer"
+                    }
+                },
+                "menu_item_ids": {
+                    "type": "array",
+                    "items": {
+                        "type": "integer"
+                    }
+                },
+                "name": {
+                    "type": "string"
+                }
+            }
+        },
+        "handlers.FinalizeRevenueExpenseRequest": {
+            "type": "object",
+            "properties": {
+                "date_in_excel": {
+                    "type": "string"
+                },
+                "prefix_date": {
+                    "type": "string"
+                }
+            }
+        },
+        "handlers.FinalizeRevenueExpenseResponse": {
+            "type": "object",
+            "properties": {
+                "date": {
+                    "type": "string"
+                },
+                "message": {
+                    "type": "string"
+                },
+                "next_day": {
+                    "type": "string"
+                }
+            }
+        },
+        "handlers.UpdateMenuItemRequest": {
+            "type": "object",
+            "required": [
+                "name"
+            ],
+            "properties": {
+                "menu_ids": {
+                    "type": "array",
+                    "items": {
+                        "type": "integer"
+                    }
+                },
+                "name": {
+                    "type": "string"
+                },
+                "product_ids": {
+                    "type": "array",
+                    "items": {
+                        "type": "integer"
+                    }
+                },
+                "tags": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                }
+            }
+        },
+        "handlers.UpdateMenuRequest": {
+            "type": "object",
+            "required": [
+                "name"
+            ],
+            "properties": {
+                "inventory_ids": {
+                    "type": "array",
+                    "items": {
+                        "type": "integer"
+                    }
+                },
+                "menu_item_ids": {
+                    "type": "array",
+                    "items": {
+                        "type": "integer"
+                    }
+                },
+                "name": {
+                    "type": "string"
+                }
+            }
+        },
+        "handlers.createUnitRequest": {
+            "type": "object",
+            "required": [
+                "conversion_factor",
+                "name"
+            ],
+            "properties": {
+                "base_unit_id": {
+                    "type": "integer"
+                },
+                "conversion_factor": {
+                    "type": "number"
+                },
+                "decimal_places": {
+                    "type": "integer",
+                    "maximum": 10,
+                    "minimum": 0
+                },
+                "name": {
+                    "type": "string"
+                },
+                "symbol": {
+                    "type": "string"
+                },
+                "unit_type": {
+                    "type": "string"
+                }
+            }
+        },
+        "models.ExportFile": {
+            "type": "object",
+            "properties": {
+                "download_url": {
+                    "type": "string"
+                },
+                "file_type": {
+                    "type": "string"
                 }
             }
         },
@@ -2775,10 +6628,16 @@
                 "name": {
                     "type": "string"
                 },
+                "restricted_delivery_hours": {
+                    "type": "string"
+                },
                 "status": {
                     "$ref": "#/definitions/models.InventoryStatus"
                 },
                 "updated_at": {
+                    "type": "string"
+                },
+                "updated_by": {
                     "type": "string"
                 }
             }
@@ -2820,12 +6679,21 @@
                     "type": "integer"
                 },
                 "quantity": {
-                    "type": "integer"
+                    "type": "number"
                 },
                 "status": {
                     "$ref": "#/definitions/models.InventoryItemStatus"
                 },
+                "unit": {
+                    "$ref": "#/definitions/models.Unit"
+                },
+                "unit_id": {
+                    "type": "integer"
+                },
                 "updated_at": {
+                    "type": "string"
+                },
+                "updated_by": {
                     "type": "string"
                 }
             }
@@ -2852,11 +6720,70 @@
                 "InventoryStatusInactive"
             ]
         },
+        "models.InventorySubmission": {
+            "type": "object",
+            "properties": {
+                "approval_status": {
+                    "$ref": "#/definitions/models.SubmissionApprovalStatus"
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "created_by": {
+                    "type": "string"
+                },
+                "deleted_at": {
+                    "type": "string"
+                },
+                "error": {
+                    "type": "object"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "inventory": {
+                    "$ref": "#/definitions/models.Inventory"
+                },
+                "inventory_id": {
+                    "type": "integer"
+                },
+                "payload": {
+                    "type": "object"
+                },
+                "processed_at": {
+                    "description": "ProcessedAt is the precise instant a CONSUMING submission's processing\ncompleted (epic #38, Part 6, locked decision Q6). It is the authoritative\nwindow bound for the Start-Processing drift re-check (a sibling consuming\nsubmission with processed_at inside [snapshot_capture, now] is drift). Set\nwhen processing completes; nil while pending/failed.",
+                    "type": "string"
+                },
+                "processing_status": {
+                    "$ref": "#/definitions/models.SubmissionProcessingStatus"
+                },
+                "reason": {
+                    "type": "string"
+                },
+                "reconcile_status": {
+                    "description": "ReconcileStatus is the reconciliation lifecycle status (epic #38, Part 6).\nSet only for initiated reconciles (open at initiate); empty for every other\nsubmission type/flow. Drives the staff-immutability guard and the\nclose/reopen/start-processing transitions.",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/models.ReconcileLifecycleStatus"
+                        }
+                    ]
+                },
+                "submission_type": {
+                    "$ref": "#/definitions/models.SubmissionType"
+                },
+                "updated_at": {
+                    "type": "string"
+                },
+                "updated_by": {
+                    "type": "string"
+                }
+            }
+        },
         "models.InventoryTransaction": {
             "type": "object",
             "properties": {
                 "consumed_quantity": {
-                    "type": "integer"
+                    "type": "number"
                 },
                 "counter_transaction_id": {
                     "type": "integer"
@@ -2886,7 +6813,7 @@
                     "type": "integer"
                 },
                 "quantity": {
-                    "type": "integer"
+                    "type": "number"
                 },
                 "supplier": {
                     "$ref": "#/definitions/models.Supplier"
@@ -2899,6 +6826,9 @@
                 },
                 "updated_at": {
                     "type": "string"
+                },
+                "updated_by": {
+                    "type": "string"
                 }
             }
         },
@@ -2907,12 +6837,256 @@
             "enum": [
                 "purchase",
                 "disposal",
-                "sell"
+                "sell",
+                "transfer_out",
+                "transfer_in"
             ],
             "x-enum-varnames": [
                 "InventoryTransactionTypePurchase",
                 "InventoryTransactionTypeDisposal",
-                "InventoryTransactionTypeSell"
+                "InventoryTransactionTypeSell",
+                "InventoryTransactionTypeTransferOut",
+                "InventoryTransactionTypeTransferIn"
+            ]
+        },
+        "models.Menu": {
+            "type": "object",
+            "properties": {
+                "created_at": {
+                    "type": "string"
+                },
+                "created_by": {
+                    "type": "string"
+                },
+                "deleted_at": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "inventories": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/models.Inventory"
+                    }
+                },
+                "menu_items": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/models.MenuItem"
+                    }
+                },
+                "name": {
+                    "type": "string"
+                },
+                "updated_at": {
+                    "type": "string"
+                },
+                "updated_by": {
+                    "type": "string"
+                }
+            }
+        },
+        "models.MenuItem": {
+            "type": "object",
+            "properties": {
+                "created_at": {
+                    "type": "string"
+                },
+                "created_by": {
+                    "type": "string"
+                },
+                "deleted_at": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "menus": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/models.Menu"
+                    }
+                },
+                "name": {
+                    "type": "string"
+                },
+                "products": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/models.Product"
+                    }
+                },
+                "tags": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "updated_at": {
+                    "type": "string"
+                },
+                "updated_by": {
+                    "type": "string"
+                }
+            }
+        },
+        "models.POItemSellingPrice": {
+            "type": "object",
+            "properties": {
+                "created_at": {
+                    "type": "string"
+                },
+                "created_by": {
+                    "type": "string"
+                },
+                "deleted_at": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "purchase_order_item": {
+                    "$ref": "#/definitions/models.PurchaseOrderItem"
+                },
+                "purchase_order_item_id": {
+                    "type": "integer"
+                },
+                "selling_price": {
+                    "type": "number"
+                },
+                "selling_price_id": {
+                    "type": "integer"
+                },
+                "selling_price_ref": {
+                    "$ref": "#/definitions/models.SellingPrice"
+                },
+                "updated_at": {
+                    "type": "string"
+                },
+                "updated_by": {
+                    "type": "string"
+                }
+            }
+        },
+        "models.PaginationResult-models_Menu": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/models.Menu"
+                    }
+                },
+                "limit": {
+                    "type": "integer",
+                    "example": 20
+                },
+                "page": {
+                    "type": "integer",
+                    "example": 1
+                },
+                "total": {
+                    "type": "integer",
+                    "example": 100
+                },
+                "totalPages": {
+                    "type": "integer",
+                    "example": 5
+                }
+            }
+        },
+        "models.PaginationResult-models_SaleOrder": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/models.SaleOrder"
+                    }
+                },
+                "limit": {
+                    "type": "integer",
+                    "example": 20
+                },
+                "page": {
+                    "type": "integer",
+                    "example": 1
+                },
+                "total": {
+                    "type": "integer",
+                    "example": 100
+                },
+                "totalPages": {
+                    "type": "integer",
+                    "example": 5
+                }
+            }
+        },
+        "models.PaymentReceiptForm": {
+            "type": "object",
+            "properties": {
+                "created_at": {
+                    "type": "string"
+                },
+                "created_by": {
+                    "type": "string"
+                },
+                "date": {
+                    "type": "string"
+                },
+                "deleted_at": {
+                    "type": "string"
+                },
+                "department": {
+                    "type": "string"
+                },
+                "details": {
+                    "type": "string"
+                },
+                "form_number": {
+                    "type": "string",
+                    "example": "20250101-1-1"
+                },
+                "full_name": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "purchase_order": {
+                    "$ref": "#/definitions/models.PurchaseOrder"
+                },
+                "purchase_order_id": {
+                    "type": "integer"
+                },
+                "status": {
+                    "$ref": "#/definitions/models.PaymentReceiptFormStatus"
+                },
+                "total_amount": {
+                    "type": "number"
+                },
+                "updated_at": {
+                    "type": "string"
+                },
+                "updated_by": {
+                    "type": "string"
+                }
+            }
+        },
+        "models.PaymentReceiptFormStatus": {
+            "type": "string",
+            "enum": [
+                "pending",
+                "submitted",
+                "approved",
+                "rejected"
+            ],
+            "x-enum-varnames": [
+                "PaymentReceiptFormStatusPending",
+                "PaymentReceiptFormStatusSubmitted",
+                "PaymentReceiptFormStatusApproved",
+                "PaymentReceiptFormStatusRejected"
             ]
         },
         "models.Product": {
@@ -2942,6 +7116,12 @@
                 "name": {
                     "type": "string"
                 },
+                "product_image": {
+                    "type": "array",
+                    "items": {
+                        "type": "integer"
+                    }
+                },
                 "product_type": {
                     "type": "string"
                 },
@@ -2955,9 +7135,15 @@
                     }
                 },
                 "unit": {
-                    "type": "string"
+                    "$ref": "#/definitions/models.Unit"
+                },
+                "unit_id": {
+                    "type": "integer"
                 },
                 "updated_at": {
+                    "type": "string"
+                },
+                "updated_by": {
                     "type": "string"
                 }
             }
@@ -2978,9 +7164,6 @@
                     "type": "string",
                     "example": "2023-01-01T12:00:00Z"
                 },
-                "confirmed_by": {
-                    "type": "integer"
-                },
                 "created_at": {
                     "type": "string"
                 },
@@ -2992,6 +7175,9 @@
                 },
                 "id": {
                     "type": "integer"
+                },
+                "inventory": {
+                    "$ref": "#/definitions/models.Inventory"
                 },
                 "inventory_id": {
                     "type": "integer"
@@ -3020,11 +7206,13 @@
                     "example": "order_placed"
                 },
                 "total_amount": {
-                    "description": "Calculated field, not stored in DB",
                     "type": "number",
                     "example": 999.99
                 },
                 "updated_at": {
+                    "type": "string"
+                },
+                "updated_by": {
                     "type": "string"
                 }
             }
@@ -3034,7 +7222,8 @@
             "required": [
                 "product_id",
                 "quantity",
-                "supplier_id"
+                "supplier_id",
+                "unit_id"
             ],
             "properties": {
                 "created_at": {
@@ -3049,6 +7238,14 @@
                 "id": {
                     "type": "integer"
                 },
+                "po_item_selling_price": {
+                    "description": "Relationships",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/models.POItemSellingPrice"
+                        }
+                    ]
+                },
                 "product": {
                     "$ref": "#/definitions/models.Product"
                 },
@@ -3062,11 +7259,10 @@
                     "type": "integer"
                 },
                 "quantity": {
-                    "type": "integer",
-                    "minimum": 1
+                    "type": "number"
                 },
                 "received_quantity": {
-                    "type": "integer"
+                    "type": "number"
                 },
                 "status": {
                     "allOf": [
@@ -3083,14 +7279,22 @@
                     "type": "integer"
                 },
                 "total_amount": {
-                    "description": "Calculated field, not stored in DB",
                     "type": "number"
+                },
+                "unit": {
+                    "$ref": "#/definitions/models.Unit"
+                },
+                "unit_id": {
+                    "type": "integer"
                 },
                 "unit_price": {
                     "type": "number",
                     "minimum": 0
                 },
                 "updated_at": {
+                    "type": "string"
+                },
+                "updated_by": {
                     "type": "string"
                 }
             }
@@ -3101,12 +7305,14 @@
                 "awaiting_delivery",
                 "partially_delivered",
                 "delivered",
+                "over_delivered",
                 "cancelled"
             ],
             "x-enum-varnames": [
                 "PurchaseOrderItemStatusAwaitingDelivery",
                 "PurchaseOrderItemStatusPartiallyDelivered",
                 "PurchaseOrderItemStatusDelivered",
+                "PurchaseOrderItemStatusOverDelivered",
                 "PurchaseOrderItemStatusCancelled"
             ]
         },
@@ -3126,6 +7332,241 @@
                 "PurchaseOrderStatusCompleted",
                 "PurchaseOrderStatusCancelled"
             ]
+        },
+        "models.ReconcileLifecycleStatus": {
+            "type": "string",
+            "enum": [
+                "open",
+                "closed",
+                "processing",
+                "processed"
+            ],
+            "x-enum-varnames": [
+                "ReconcileLifecycleStatusOpen",
+                "ReconcileLifecycleStatusClosed",
+                "ReconcileLifecycleStatusProcessing",
+                "ReconcileLifecycleStatusProcessed"
+            ]
+        },
+        "models.ReconciliationRequestItem": {
+            "type": "object",
+            "properties": {
+                "created_at": {
+                    "type": "string"
+                },
+                "created_by": {
+                    "type": "string"
+                },
+                "deleted_at": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "payload": {
+                    "type": "object"
+                },
+                "status": {
+                    "$ref": "#/definitions/models.ReconciliationRequestItemStatus"
+                },
+                "submission": {
+                    "$ref": "#/definitions/models.InventorySubmission"
+                },
+                "submission_id": {
+                    "type": "integer"
+                },
+                "updated_at": {
+                    "type": "string"
+                },
+                "updated_by": {
+                    "type": "string"
+                }
+            }
+        },
+        "models.ReconciliationRequestItemStatus": {
+            "type": "string",
+            "enum": [
+                "in_progress"
+            ],
+            "x-enum-varnames": [
+                "ReconciliationRequestItemStatusInProgress"
+            ]
+        },
+        "models.SaleOrder": {
+            "description": "Sale order entity with items and status tracking",
+            "type": "object",
+            "required": [
+                "customer_id",
+                "inventory_id",
+                "items"
+            ],
+            "properties": {
+                "created_at": {
+                    "type": "string"
+                },
+                "created_by": {
+                    "type": "string"
+                },
+                "customer_id": {
+                    "type": "string"
+                },
+                "deleted_at": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "inventory": {
+                    "$ref": "#/definitions/models.Inventory"
+                },
+                "inventory_id": {
+                    "type": "integer"
+                },
+                "is_latest": {
+                    "type": "boolean"
+                },
+                "items": {
+                    "type": "array",
+                    "minItems": 1,
+                    "items": {
+                        "$ref": "#/definitions/models.SaleOrderItem"
+                    }
+                },
+                "notes": {
+                    "type": "string",
+                    "example": "Sale order notes"
+                },
+                "order_number": {
+                    "type": "string",
+                    "example": "SO-2023-001"
+                },
+                "previous_order": {
+                    "$ref": "#/definitions/models.SaleOrder"
+                },
+                "previous_order_id": {
+                    "type": "integer"
+                },
+                "status": {
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/models.SaleOrderStatus"
+                        }
+                    ],
+                    "example": "ordered"
+                },
+                "tag": {
+                    "type": "integer"
+                },
+                "total_price": {
+                    "description": "Display fields, not stored in DB",
+                    "type": "number",
+                    "example": 999.99
+                },
+                "updated_at": {
+                    "type": "string"
+                },
+                "updated_by": {
+                    "type": "string"
+                }
+            }
+        },
+        "models.SaleOrderItem": {
+            "type": "object",
+            "properties": {
+                "created_at": {
+                    "type": "string"
+                },
+                "created_by": {
+                    "type": "string"
+                },
+                "deleted_at": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "menu_items": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/models.MenuItem"
+                    }
+                },
+                "sale_order": {
+                    "$ref": "#/definitions/models.SaleOrder"
+                },
+                "sale_order_id": {
+                    "type": "integer"
+                },
+                "total_price": {
+                    "description": "Display fields, not stored in DB",
+                    "type": "number"
+                },
+                "updated_at": {
+                    "type": "string"
+                },
+                "updated_by": {
+                    "type": "string"
+                }
+            }
+        },
+        "models.SaleOrderStatus": {
+            "type": "string",
+            "enum": [
+                "ordered",
+                "served",
+                "completed",
+                "cancelled"
+            ],
+            "x-enum-varnames": [
+                "SaleOrderStatusOrdered",
+                "SaleOrderStatusServed",
+                "SaleOrderStatusCompleted",
+                "SaleOrderStatusCancelled"
+            ]
+        },
+        "models.SellingPrice": {
+            "type": "object",
+            "properties": {
+                "created_at": {
+                    "type": "string"
+                },
+                "created_by": {
+                    "type": "string"
+                },
+                "deleted_at": {
+                    "type": "string"
+                },
+                "effective_from": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "inventory": {
+                    "$ref": "#/definitions/models.Inventory"
+                },
+                "inventory_id": {
+                    "type": "integer"
+                },
+                "notes": {
+                    "type": "string"
+                },
+                "price": {
+                    "type": "number"
+                },
+                "product": {
+                    "$ref": "#/definitions/models.Product"
+                },
+                "product_id": {
+                    "type": "integer"
+                },
+                "updated_at": {
+                    "type": "string"
+                },
+                "updated_by": {
+                    "type": "string"
+                }
+            }
         },
         "models.SetSettingResponse": {
             "description": "Response after successfully setting a configuration value",
@@ -3148,6 +7589,47 @@
                     "type": "object"
                 }
             }
+        },
+        "models.SubmissionApprovalStatus": {
+            "type": "string",
+            "enum": [
+                "pending",
+                "approved",
+                "rejected"
+            ],
+            "x-enum-varnames": [
+                "InventorySubmissionApprovalStatusPending",
+                "InventorySubmissionApprovalStatusApproved",
+                "InventorySubmissionApprovalStatusRejected"
+            ]
+        },
+        "models.SubmissionProcessingStatus": {
+            "type": "string",
+            "enum": [
+                "pending",
+                "failed",
+                "completed",
+                "canceled"
+            ],
+            "x-enum-varnames": [
+                "InventorySubmissionStatusPending",
+                "InventorySubmissionStatusFailed",
+                "InventorySubmissionStatusCompleted",
+                "InventorySubmissionStatusCanceled"
+            ]
+        },
+        "models.SubmissionType": {
+            "type": "string",
+            "enum": [
+                "reconcile",
+                "dispose",
+                "transfer"
+            ],
+            "x-enum-varnames": [
+                "InventorySubmissionTypeReconcile",
+                "InventorySubmissionTypeDispose",
+                "InventorySubmissionTypeTransfer"
+            ]
         },
         "models.Supplier": {
             "type": "object",
@@ -3187,8 +7669,222 @@
                 },
                 "updated_at": {
                     "type": "string"
+                },
+                "updated_by": {
+                    "type": "string"
                 }
             }
+        },
+        "models.Unit": {
+            "type": "object",
+            "properties": {
+                "base_unit": {
+                    "$ref": "#/definitions/models.Unit"
+                },
+                "base_unit_id": {
+                    "type": "integer"
+                },
+                "conversion_factor": {
+                    "type": "number"
+                },
+                "conversion_factor_to_current": {
+                    "description": "Calculated field, not stored in DB",
+                    "type": "number"
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "created_by": {
+                    "type": "string"
+                },
+                "decimal_places": {
+                    "type": "integer"
+                },
+                "deleted_at": {
+                    "type": "string"
+                },
+                "derived_units": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/models.Unit"
+                    }
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "level": {
+                    "type": "integer"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "products": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/models.Product"
+                    }
+                },
+                "symbol": {
+                    "type": "string"
+                },
+                "unit_type": {
+                    "type": "string"
+                },
+                "updated_at": {
+                    "type": "string"
+                },
+                "updated_by": {
+                    "type": "string"
+                }
+            }
+        },
+        "pkg.AppError": {
+            "type": "object",
+            "properties": {
+                "cause": {},
+                "code": {
+                    "$ref": "#/definitions/pkg.ErrorCode"
+                },
+                "message": {
+                    "type": "string"
+                },
+                "messageArgs": {
+                    "type": "array",
+                    "items": {}
+                },
+                "messageKey": {
+                    "description": "MessageKey, when set, is an ErrorMessages catalog key the error handler\nresolves to a request-localized message at response time (formatted with\nMessageArgs). Lets lower layers (e.g. repositories) return a domain error\nwithout knowing the caller's language. Message is the fallback if unset.",
+                    "type": "string"
+                },
+                "stack": {
+                    "description": "Stack holds a stack trace captured at error creation time. It is used for\nserver-side logging only and MUST NOT be exposed in MarshalJSON / client\nresponses.",
+                    "type": "string"
+                }
+            }
+        },
+        "pkg.BatchError": {
+            "type": "object",
+            "properties": {
+                "cause": {},
+                "code": {
+                    "$ref": "#/definitions/pkg.ErrorCode"
+                },
+                "locations": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/pkg.BatchErrorLocation"
+                    }
+                },
+                "message": {
+                    "type": "string"
+                },
+                "messageArgs": {
+                    "type": "array",
+                    "items": {}
+                },
+                "messageKey": {
+                    "description": "MessageKey, when set, is an ErrorMessages catalog key the error handler\nresolves to a request-localized message at response time (formatted with\nMessageArgs). Lets lower layers (e.g. repositories) return a domain error\nwithout knowing the caller's language. Message is the fallback if unset.",
+                    "type": "string"
+                },
+                "stack": {
+                    "description": "Stack holds a stack trace captured at error creation time. It is used for\nserver-side logging only and MUST NOT be exposed in MarshalJSON / client\nresponses.",
+                    "type": "string"
+                }
+            }
+        },
+        "pkg.BatchErrorLocation": {
+            "type": "object",
+            "properties": {
+                "location": {
+                    "type": "string"
+                },
+                "message": {
+                    "type": "string"
+                }
+            }
+        },
+        "pkg.ErrorCode": {
+            "type": "integer",
+            "enum": [
+                0,
+                1,
+                2,
+                3,
+                4,
+                5,
+                6,
+                9,
+                7,
+                14,
+                8,
+                10,
+                17,
+                11,
+                12,
+                13,
+                15,
+                16
+            ],
+            "x-enum-comments": {
+                "ErrorCodeActivePendingReconcileConflict": "active-pending-reconcile-conflict",
+                "ErrorCodeBadInventoryItemState": "bad-inventory-item-state",
+                "ErrorCodeConflict": "conflict",
+                "ErrorCodeConsumeFIFOFailed": "consume-fifo-failed",
+                "ErrorCodeDisposeValidationFailed": "dispose-validation-failed",
+                "ErrorCodeDuplicate": "duplicate",
+                "ErrorCodeEmptyDataFile": "data-row-not-found",
+                "ErrorCodeForbidden": "forbidden",
+                "ErrorCodeInternal": "internal",
+                "ErrorCodeInvalidRequestBody": "invalid-request-body",
+                "ErrorCodeNotFound": "not-found",
+                "ErrorCodePurchaseOrderNoApprovedPaymentReceipt": "purchase-order-no-approved-payment-receipt",
+                "ErrorCodePurchaseOrderNoItems": "purchase-order-no-items",
+                "ErrorCodeReconcileValidationFailed": "reconcile-validation-failed",
+                "ErrorCodeTransferValidationFailed": "transfer-validation-failed",
+                "ErrorCodeUnauthorized": "unauthorized",
+                "ErrorCodeUnsupportedFileFormat": "unsupported-file-format",
+                "ErrorCodeValidation": "validation"
+            },
+            "x-enum-descriptions": [
+                "internal",
+                "invalid-request-body",
+                "not-found",
+                "unauthorized",
+                "forbidden",
+                "validation",
+                "duplicate",
+                "conflict",
+                "purchase-order-no-items",
+                "purchase-order-no-approved-payment-receipt",
+                "bad-inventory-item-state",
+                "reconcile-validation-failed",
+                "active-pending-reconcile-conflict",
+                "dispose-validation-failed",
+                "transfer-validation-failed",
+                "consume-fifo-failed",
+                "unsupported-file-format",
+                "data-row-not-found"
+            ],
+            "x-enum-varnames": [
+                "ErrorCodeInternal",
+                "ErrorCodeInvalidRequestBody",
+                "ErrorCodeNotFound",
+                "ErrorCodeUnauthorized",
+                "ErrorCodeForbidden",
+                "ErrorCodeValidation",
+                "ErrorCodeDuplicate",
+                "ErrorCodeConflict",
+                "ErrorCodePurchaseOrderNoItems",
+                "ErrorCodePurchaseOrderNoApprovedPaymentReceipt",
+                "ErrorCodeBadInventoryItemState",
+                "ErrorCodeReconcileValidationFailed",
+                "ErrorCodeActivePendingReconcileConflict",
+                "ErrorCodeDisposeValidationFailed",
+                "ErrorCodeTransferValidationFailed",
+                "ErrorCodeConsumeFIFOFailed",
+                "ErrorCodeUnsupportedFileFormat",
+                "ErrorCodeEmptyDataFile"
+            ]
         }
     },
     "securityDefinitions": {
