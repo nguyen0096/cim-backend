@@ -110,10 +110,18 @@ func HandleError(c echo.Context, err error) error {
 		// Localize the message per request language (falls back to appErr.Message
 		// when the error carries no MessageKey) so domain errors raised by
 		// language-agnostic layers (e.g. repositories) are translated here.
-		return c.JSON(appErr.HTTPStatus(), map[string]interface{}{
+		body := map[string]interface{}{
 			"message": appErr.LocalizedMessage(c.Request().Context()),
 			"code":    appErr.Code.String(),
-		})
+		}
+		// Expose the stable, language-independent catalog key so the frontend can
+		// route the error to the offending field/control without parsing the
+		// localized message (issue #42). Omitted for errors without a key, so this
+		// is additive and does not affect existing error responses.
+		if appErr.MessageKey != "" {
+			body["key"] = appErr.MessageKey
+		}
+		return c.JSON(appErr.HTTPStatus(), body)
 	}
 
 	// Handle other (unknown) errors as internal server errors. Always logged at

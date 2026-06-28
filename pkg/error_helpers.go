@@ -620,6 +620,23 @@ func ErrReconcileValidationFailed(message string) *AppError {
 // Each maps a child-item rejection to a localized message + the correct HTTP
 // status via its ErrorCode, mirroring the Part 3 layering (no raw errors leak).
 
+// newKeyedValidationError builds a 400/validation AppError that carries its
+// catalog key so the error handler can expose a stable, language-independent
+// "key" field for frontend routing (issue #42). It also resolves Message eagerly
+// (so the static fallback and any json.Marshal path stay populated) while setting
+// MessageKey/MessageArgs so the handler re-localizes per request language.
+func newKeyedValidationError(ctx context.Context, key string, args ...interface{}) *AppError {
+	tmpl := getErrorMessage(ctx, key)
+	message := tmpl
+	if len(args) > 0 {
+		message = fmt.Sprintf(tmpl, args...)
+	}
+	err := NewAppError(ErrorCodeValidation, message, nil)
+	err.MessageKey = key
+	err.MessageArgs = args
+	return err
+}
+
 // ErrReconItemNotFound is a 404 for a missing/soft-deleted child item.
 func ErrReconItemNotFound(ctx context.Context, itemID uint) *AppError {
 	return NewAppError(ErrorCodeNotFound,
@@ -650,8 +667,7 @@ func ErrReconParentNotInFlight(ctx context.Context, submissionID uint, status st
 // ErrReconItemMissingQuantity is a 400/validation: a counted line omitted the
 // quantity entirely (distinct from an explicit zero count).
 func ErrReconItemMissingQuantity(ctx context.Context, itemID uint) *AppError {
-	return NewAppError(ErrorCodeValidation,
-		fmt.Sprintf(getErrorMessage(ctx, ErrKeyReconItemMissingQuantity), itemID), nil)
+	return newKeyedValidationError(ctx, ErrKeyReconItemMissingQuantity, itemID)
 }
 
 // ErrReconItemNotOwned is a 403: a staff user tried to touch another user's row.
@@ -728,46 +744,41 @@ func ErrReconItemDuplicateLine(ctx context.Context, itemID uint) *AppError {
 // further count must carry a non-empty label so the two contributions can be told
 // apart in review (synthesis sums them by item, erasing the distinction otherwise).
 func ErrReconItemLabelRequiredForDuplicate(ctx context.Context, itemID uint) *AppError {
-	return NewAppError(ErrorCodeValidation,
-		fmt.Sprintf(getErrorMessage(ctx, ErrKeyReconItemLabelRequiredForDuplicate), itemID), nil)
+	return newKeyedValidationError(ctx, ErrKeyReconItemLabelRequiredForDuplicate, itemID)
 }
 
 // ErrReconItemLabelConflict is a 400/validation for the issue #73 rule: the label
 // supplied for a count collides with a label already used by another live count of
 // the same inventory item in this submission (labels must be distinct per item).
 func ErrReconItemLabelConflict(ctx context.Context, itemID uint, label string) *AppError {
-	return NewAppError(ErrorCodeValidation,
-		fmt.Sprintf(getErrorMessage(ctx, ErrKeyReconItemLabelConflict), itemID, label), nil)
+	return newKeyedValidationError(ctx, ErrKeyReconItemLabelConflict, itemID, label)
 }
 
 // ErrReconItemLabelTooLong is a 400/validation: a count label exceeds the
 // app-validated maximum length in RUNES (issue #73; the JSONB payload has no
 // length constraint, so the cap is enforced here).
 func ErrReconItemLabelTooLong(ctx context.Context, itemID uint, maxLen int) *AppError {
-	return NewAppError(ErrorCodeValidation,
-		fmt.Sprintf(getErrorMessage(ctx, ErrKeyReconItemLabelTooLong), itemID, maxLen), nil)
+	return newKeyedValidationError(ctx, ErrKeyReconItemLabelTooLong, itemID, maxLen)
 }
 
 // ErrReconRowLabelRequired is a 400/validation for the issue #73 ROW-level rule: a
 // count session (reconciliation_request_items row) needs a label once its owner
 // already has another live row in the submission (the first/only row may be blank).
 func ErrReconRowLabelRequired(ctx context.Context) *AppError {
-	return NewAppError(ErrorCodeValidation, getErrorMessage(ctx, ErrKeyReconRowLabelRequired), nil)
+	return newKeyedValidationError(ctx, ErrKeyReconRowLabelRequired)
 }
 
 // ErrReconRowLabelConflict is a 400/validation for the issue #73 ROW-level rule:
 // the row label collides with a label already used by another of the owner's live
 // rows in this submission (row labels must be distinct per (submission, user)).
 func ErrReconRowLabelConflict(ctx context.Context, label string) *AppError {
-	return NewAppError(ErrorCodeValidation,
-		fmt.Sprintf(getErrorMessage(ctx, ErrKeyReconRowLabelConflict), label), nil)
+	return newKeyedValidationError(ctx, ErrKeyReconRowLabelConflict, label)
 }
 
 // ErrReconRowLabelTooLong is a 400/validation: a row (count-session) label exceeds
 // the app-validated maximum length in RUNES (issue #73).
 func ErrReconRowLabelTooLong(ctx context.Context, maxLen int) *AppError {
-	return NewAppError(ErrorCodeValidation,
-		fmt.Sprintf(getErrorMessage(ctx, ErrKeyReconRowLabelTooLong), maxLen), nil)
+	return newKeyedValidationError(ctx, ErrKeyReconRowLabelTooLong, maxLen)
 }
 
 // --- Reconciliation management domain errors (epic #38, Part 6 redesign) ---

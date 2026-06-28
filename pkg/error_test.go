@@ -369,6 +369,43 @@ func TestStackNeverInMarshalJSON(t *testing.T) {
 	})
 }
 
+// TestMarshalJSONKey covers the issue #42 additive "key" field: it is emitted
+// when MessageKey is set and omitted otherwise, for both AppError and BatchError.
+func TestMarshalJSONKey(t *testing.T) {
+	t.Run("AppError emits key when MessageKey set", func(t *testing.T) {
+		appErr := NewAppError(ErrorCodeValidation, "msg", nil)
+		appErr.MessageKey = ErrKeyReconRowLabelRequired
+
+		data, err := json.Marshal(appErr)
+		require.NoError(t, err)
+		var obj map[string]interface{}
+		require.NoError(t, json.Unmarshal(data, &obj))
+		assert.Equal(t, ErrKeyReconRowLabelRequired, obj["key"])
+	})
+
+	t.Run("AppError omits key when MessageKey empty", func(t *testing.T) {
+		appErr := NewAppError(ErrorCodeValidation, "msg", nil)
+
+		data, err := json.Marshal(appErr)
+		require.NoError(t, err)
+		var obj map[string]interface{}
+		require.NoError(t, json.Unmarshal(data, &obj))
+		_, hasKey := obj["key"]
+		assert.False(t, hasKey)
+	})
+
+	t.Run("BatchError emits key when MessageKey set", func(t *testing.T) {
+		batchErr := NewBatchError(ErrorCodeValidation, "msg", nil)
+		batchErr.MessageKey = ErrKeyReconItemLabelConflict
+
+		data, err := batchErr.MarshalJSON()
+		require.NoError(t, err)
+		var obj map[string]interface{}
+		require.NoError(t, json.Unmarshal(data, &obj))
+		assert.Equal(t, ErrKeyReconItemLabelConflict, obj["key"])
+	})
+}
+
 func TestStackTraceHelper(t *testing.T) {
 	t.Run("returns AppError stack directly", func(t *testing.T) {
 		appErr := NewAppError(ErrorCodeInternal, "boom", nil)

@@ -2,6 +2,7 @@ package middleware
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -178,6 +179,107 @@ func TestHandleErrorLogsStackTrace(t *testing.T) {
 		assert.Equal(t, "error", entry["level"])
 		assert.Contains(t, entry, "stack_trace")
 		assert.NotEmpty(t, entry["stack_trace"])
+	})
+}
+
+// TestHandleErrorExposesStableKey is the issue #42 contract: every recon
+// validation error the frontend routes on must surface BOTH a stable,
+// language-independent "key" (matched verbatim by the FE) AND a non-empty
+// localized "message" — and the HTTP status stays 400 / code stays "validation".
+// A normal validation error WITHOUT a key must still respond and omit "key".
+func TestHandleErrorExposesStableKey(t *testing.T) {
+	newReconContext := func(lang string) (echo.Context, *httptest.ResponseRecorder) {
+		e := echo.New()
+		req := httptest.NewRequest(http.MethodPost, "/inventories/7/reconcile/items", nil)
+		req = req.WithContext(pkg.WithLanguage(req.Context(), lang))
+		rec := httptest.NewRecorder()
+		return e.NewContext(req, rec), rec
+	}
+
+	readBody := func(t *testing.T, rec *httptest.ResponseRecorder) map[string]interface{} {
+		t.Helper()
+		var body map[string]interface{}
+		require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &body))
+		return body
+	}
+
+	// Each recon error helper paired with the exact catalog key the FE matches on.
+	cases := []struct {
+		name    string
+		err     func(ctx context.Context) *pkg.AppError
+		wantKey string
+	}{
+		{
+			name:    "row label required",
+			err:     func(ctx context.Context) *pkg.AppError { return pkg.ErrReconRowLabelRequired(ctx) },
+			wantKey: pkg.ErrKeyReconRowLabelRequired,
+		},
+		{
+			name:    "row label conflict",
+			err:     func(ctx context.Context) *pkg.AppError { return pkg.ErrReconRowLabelConflict(ctx, "morning") },
+			wantKey: pkg.ErrKeyReconRowLabelConflict,
+		},
+		{
+			name:    "row label too long",
+			err:     func(ctx context.Context) *pkg.AppError { return pkg.ErrReconRowLabelTooLong(ctx, 64) },
+			wantKey: pkg.ErrKeyReconRowLabelTooLong,
+		},
+		{
+			name:    "count label required for duplicate",
+			err:     func(ctx context.Context) *pkg.AppError { return pkg.ErrReconItemLabelRequiredForDuplicate(ctx, 42) },
+			wantKey: pkg.ErrKeyReconItemLabelRequiredForDuplicate,
+		},
+		{
+			name:    "count label conflict",
+			err:     func(ctx context.Context) *pkg.AppError { return pkg.ErrReconItemLabelConflict(ctx, 42, "morning") },
+			wantKey: pkg.ErrKeyReconItemLabelConflict,
+		},
+		{
+			name:    "count label too long",
+			err:     func(ctx context.Context) *pkg.AppError { return pkg.ErrReconItemLabelTooLong(ctx, 42, 64) },
+			wantKey: pkg.ErrKeyReconItemLabelTooLong,
+		},
+		{
+			name:    "missing quantity",
+			err:     func(ctx context.Context) *pkg.AppError { return pkg.ErrReconItemMissingQuantity(ctx, 42) },
+			wantKey: pkg.ErrKeyReconItemMissingQuantity,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			// English
+			cEN, recEN := newReconContext(pkg.LangEN)
+			require.NoError(t, HandleError(cEN, tc.err(cEN.Request().Context())))
+
+			assert.Equal(t, http.StatusBadRequest, recEN.Code, "status must stay 400")
+			bodyEN := readBody(t, recEN)
+			assert.Equal(t, pkg.ErrorCodeValidation.String(), bodyEN["code"], "code must stay validation")
+			assert.Equal(t, tc.wantKey, bodyEN["key"], "stable key must match the catalog key verbatim")
+			assert.NotEmpty(t, bodyEN["message"], "localized message must stay populated")
+			// The message must NOT be the raw catalog key (i.e. it is the localized text).
+			assert.NotEqual(t, tc.wantKey, bodyEN["message"])
+
+			// Vietnamese: same stable key, but a different (still non-empty) message.
+			cVI, recVI := newReconContext(pkg.LangVI)
+			require.NoError(t, HandleError(cVI, tc.err(cVI.Request().Context())))
+			bodyVI := readBody(t, recVI)
+			assert.Equal(t, tc.wantKey, bodyVI["key"], "key is language-independent")
+			assert.NotEmpty(t, bodyVI["message"])
+			assert.NotEqual(t, bodyEN["message"], bodyVI["message"], "VI message must differ from EN")
+		})
+	}
+
+	t.Run("validation error without a key still works and omits key", func(t *testing.T) {
+		c, rec := newReconContext(pkg.LangEN)
+		require.NoError(t, HandleError(c, pkg.NewAppError(pkg.ErrorCodeValidation, "plain bad input", nil)))
+
+		assert.Equal(t, http.StatusBadRequest, rec.Code)
+		body := readBody(t, rec)
+		assert.Equal(t, pkg.ErrorCodeValidation.String(), body["code"])
+		assert.Equal(t, "plain bad input", body["message"])
+		_, hasKey := body["key"]
+		assert.False(t, hasKey, "errors without a MessageKey must not emit a key field")
 	})
 }
 

@@ -105,11 +105,19 @@ func (e *AppError) Error() string {
 	return e.Message
 }
 
-// MarshalJSON implements json.Marshaler interface
+// MarshalJSON implements json.Marshaler interface.
+//
+// When MessageKey is set it is emitted as a stable, language-independent "key"
+// field so clients can route an error to the offending field/control without
+// parsing the localized "message" (issue #42). The field is omitted entirely for
+// errors that carry no key, so this is additive and harmless for existing errors.
 func (e *AppError) MarshalJSON() ([]byte, error) {
 	obj := map[string]interface{}{
 		"code":    e.Code.String(),
 		"message": e.Message,
+	}
+	if e.MessageKey != "" {
+		obj["key"] = e.MessageKey
 	}
 	if e.Cause != nil {
 		obj["cause"] = e.Cause.Error()
@@ -262,11 +270,15 @@ func (e *BatchError) Error() string {
 	return result
 }
 
-// MarshalJSON implements json.Marshaler interface
+// MarshalJSON implements json.Marshaler interface. Like AppError it emits the
+// stable "key" field when MessageKey is set (omitted otherwise); see #42.
 func (e *BatchError) MarshalJSON() ([]byte, error) {
 	obj := map[string]interface{}{
 		"code":    e.Code.String(),
 		"message": e.Message,
+	}
+	if e.MessageKey != "" {
+		obj["key"] = e.MessageKey
 	}
 	if e.Cause != nil {
 		obj["cause"] = e.Cause.Error()
