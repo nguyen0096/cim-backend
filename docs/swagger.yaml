@@ -13,6 +13,14 @@ definitions:
           $ref: '#/definitions/dto.ReconciliationCountItem'
         minItems: 1
         type: array
+      label:
+        description: |-
+          Label is the optional ROW-level count-session identifier (issue #73). It
+          carries no validate:"required" tag: the row-label rule (required once the user
+          already has a 2nd live row; ≤255 runes; distinct per (submission,user)) is
+          enforced in the service so the localized domain errors surface instead of a
+          generic binding error.
+        type: string
     required:
     - items
     type: object
@@ -174,6 +182,15 @@ definitions:
     - inventory_id
     - items
     type: object
+  dto.ReconcileItemBreakdown:
+    properties:
+      inventory_item_id:
+        type: integer
+      label:
+        type: string
+      quantity:
+        type: number
+    type: object
   dto.ReconcileReviewLabel:
     enum:
     - in_progress
@@ -186,6 +203,18 @@ definitions:
     properties:
       inventory_item_id:
         type: integer
+      label:
+        description: |-
+          Label is an OPTIONAL free-text identifier for this count (e.g. "shelf",
+          "loading dock") so multiple counts of the SAME inventory_item_id across staff
+          child rows can be told apart in review/audit (issue #73). It is
+          representation-only: synthesis still sums by inventory_item_id and ignores the
+          label for the apply math. Max length 255 RUNES (app-validated;
+          utf8.RuneCountInString — Vietnamese is multibyte so a byte cap would reject
+          valid labels). The distinct-labels-at-most-one-blank rule is enforced at write
+          time across the live sibling rows of the same parent plus this payload — see
+          validateCountsAgainstSnapshot.
+        type: string
       quantity:
         description: |-
           Quantity is a pointer so an omitted `quantity` (nil) is distinguishable from
@@ -200,6 +229,38 @@ definitions:
         type: number
     required:
     - inventory_item_id
+    type: object
+  dto.ReconciliationItemLine:
+    properties:
+      inventory_item_id:
+        type: integer
+      label:
+        type: string
+      quantity:
+        type: number
+    type: object
+  dto.ReconciliationItemResponse:
+    properties:
+      created_at:
+        type: string
+      created_by:
+        type: string
+      id:
+        type: integer
+      items:
+        items:
+          $ref: '#/definitions/dto.ReconciliationItemLine'
+        type: array
+      label:
+        type: string
+      status:
+        type: string
+      submission_id:
+        type: integer
+      updated_at:
+        type: string
+      updated_by:
+        type: string
     type: object
   dto.SheetPreview:
     properties:
@@ -254,6 +315,15 @@ definitions:
     properties:
       approval_status:
         $ref: '#/definitions/models.SubmissionApprovalStatus'
+      count_breakdown:
+        description: |-
+          CountBreakdown is populated only for ACTIVE reconcile submissions: the
+          per-(inventory_item, label) contributions behind each summed item line (issue
+          #73), so the review screen can show each labeled count, not just the total. It
+          is presentation-only and derived from the live child rows.
+        items:
+          $ref: '#/definitions/dto.ReconcileItemBreakdown'
+        type: array
       created_at:
         type: string
       created_by:
@@ -385,6 +455,11 @@ definitions:
           $ref: '#/definitions/dto.ReconciliationCountItem'
         minItems: 1
         type: array
+      label:
+        description: |-
+          Label fully replaces the row's existing label on update (issue #73); see the
+          CreateReconciliationItemRequest.Label note on why it has no required tag.
+        type: string
     required:
     - items
     type: object
@@ -1079,35 +1154,6 @@ definitions:
     - ReconcileLifecycleStatusClosed
     - ReconcileLifecycleStatusProcessing
     - ReconcileLifecycleStatusProcessed
-  models.ReconciliationRequestItem:
-    properties:
-      created_at:
-        type: string
-      created_by:
-        type: string
-      deleted_at:
-        type: string
-      id:
-        type: integer
-      payload:
-        type: object
-      status:
-        $ref: '#/definitions/models.ReconciliationRequestItemStatus'
-      submission:
-        $ref: '#/definitions/models.InventorySubmission'
-      submission_id:
-        type: integer
-      updated_at:
-        type: string
-      updated_by:
-        type: string
-    type: object
-  models.ReconciliationRequestItemStatus:
-    enum:
-    - in_progress
-    type: string
-    x-enum-varnames:
-    - ReconciliationRequestItemStatusInProgress
   models.SaleOrder:
     description: Sale order entity with items and status tracking
     properties:
@@ -2745,19 +2791,56 @@ paths:
       tags:
       - inventories
   /inventories/submissions/{id}/reconciliation-items:
-    post:
-      consumes:
-      - application/json
-      description: Staff submits counted quantities as a new in_progress child item
-        under an initiated reconcile submission. Counts must not exceed the per-item
-        snapshot baseline.
+    get:
+      description: Returns the live count-session rows of an initiated reconcile,
+        each with its row label and flattened count lines (inventory_item_id, quantity,
+        count label). Staff see only their own rows; admin/accountant see all rows.
+        Ordered by id ascending.
       parameters:
       - description: Parent submission ID
         in: path
         name: id
         required: true
         type: integer
-      - description: Counted items
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/dto.ReconciliationItemResponse'
+            type: array
+        "403":
+          description: Forbidden
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: List reconciliation items
+      tags:
+      - inventories
+    post:
+      consumes:
+      - application/json
+      description: Staff submits a count session (optional row label + counted quantities,
+        each with an optional count label) as a new in_progress row under an initiated
+        reconcile submission. Counts must not exceed the per-item snapshot baseline.
+      parameters:
+      - description: Parent submission ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: Row label + counted items
         in: body
         name: request
         required: true
@@ -2769,7 +2852,7 @@ paths:
         "201":
           description: Created
           schema:
-            $ref: '#/definitions/models.ReconciliationRequestItem'
+            $ref: '#/definitions/dto.ReconciliationItemResponse'
         "400":
           description: Bad Request
           schema:
@@ -2839,8 +2922,8 @@ paths:
     put:
       consumes:
       - application/json
-      description: Staff replaces the counted quantities of their own child item.
-        Editing a ready/approved row resets it to in_progress.
+      description: Staff replaces their own count session in full — the row label
+        and the entire counted-quantities payload are overwritten.
       parameters:
       - description: Parent submission ID
         in: path
@@ -2852,7 +2935,7 @@ paths:
         name: item_id
         required: true
         type: integer
-      - description: Counted items
+      - description: Row label + counted items
         in: body
         name: request
         required: true
@@ -2864,7 +2947,7 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/models.ReconciliationRequestItem'
+            $ref: '#/definitions/dto.ReconciliationItemResponse'
         "400":
           description: Bad Request
           schema:

@@ -25,6 +25,7 @@ func TestReconciliationItemRBACPolicy(t *testing.T) {
 		"recon_item_create",
 		"recon_item_update",
 		"recon_item_delete",
+		"recon_item_view", // GET list-rows (issue #73); granted to staff + admin/accountant
 	}
 
 	t.Run("staff allowed the child-item actions", func(t *testing.T) {

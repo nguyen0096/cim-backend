@@ -24,10 +24,16 @@ type ReconciliationRequestItemRepository interface {
 	// ListBySubmission returns all live (non-soft-deleted) child rows for a parent
 	// submission, oldest first. Tx-aware via DB(ctx).
 	ListBySubmission(ctx context.Context, submissionID uint) ([]models.ReconciliationRequestItem, error)
-	// UpdatePayloadAndStatus writes both the counted-quantity payload and the new
-	// status of a child row in one update (used by the staff edit path, including
-	// the approved -> in_progress escape hatch). Tx-aware via DB(ctx).
-	UpdatePayloadAndStatus(ctx context.Context, id uint, payload json.RawMessage, status models.ReconciliationRequestItemStatus) error
+	// ListBySubmissionAndCreator returns the live (non-soft-deleted) child rows for a
+	// parent submission created by a specific user (created_by == createdBy), ordered
+	// by id ascending. Used by the List-rows endpoint to scope staff to their own
+	// rows (issue #73). Tx-aware via DB(ctx).
+	ListBySubmissionAndCreator(ctx context.Context, submissionID uint, createdBy string) ([]models.ReconciliationRequestItem, error)
+	// UpdateLabelPayloadAndStatus writes the row-level label, the counted-quantity
+	// payload, and the new status of a child row in one update (the staff edit path;
+	// update is a full replace, so the label is overwritten too — issue #73).
+	// Tx-aware via DB(ctx).
+	UpdateLabelPayloadAndStatus(ctx context.Context, id uint, label string, payload json.RawMessage, status models.ReconciliationRequestItemStatus) error
 	// SoftDelete soft-deletes a child row (sets deleted_at). Tx-aware via DB(ctx).
 	SoftDelete(ctx context.Context, id uint) error
 }
@@ -66,8 +72,21 @@ func (r *reconciliationRequestItemRepository) ListBySubmission(ctx context.Conte
 	return items, nil
 }
 
-func (r *reconciliationRequestItemRepository) UpdatePayloadAndStatus(ctx context.Context, id uint, payload json.RawMessage, status models.ReconciliationRequestItemStatus) error {
+func (r *reconciliationRequestItemRepository) ListBySubmissionAndCreator(ctx context.Context, submissionID uint, createdBy string) ([]models.ReconciliationRequestItem, error) {
+	var items []models.ReconciliationRequestItem
+	err := r.DB(ctx).WithContext(ctx).
+		Where("submission_id = ? AND created_by = ?", submissionID, createdBy).
+		Order("id ASC").
+		Find(&items).Error
+	if err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+func (r *reconciliationRequestItemRepository) UpdateLabelPayloadAndStatus(ctx context.Context, id uint, label string, payload json.RawMessage, status models.ReconciliationRequestItemStatus) error {
 	updates, err := pkg.WithUpdateFields(ctx, map[string]interface{}{
+		"label":   label,
 		"payload": payload,
 		"status":  status,
 	})

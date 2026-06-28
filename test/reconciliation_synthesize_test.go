@@ -102,6 +102,15 @@ var _ = Describe("Reconciliation synthesize + list/detail/label/warnings", func(
 		return []dto.ReconciliationCountItem{{InventoryItemID: itm.ID, Quantity: &qty}}
 	}
 
+	// labeledCountItems builds a single labeled count line. Used to give a row's count
+	// a distinct count label so the synthesized per-(item, label) breakdown has
+	// something to surface; count labels are representation-only and per-row (issue
+	// #73), so this is purely about what the review breakdown renders, not a rule.
+	labeledCountItems := func(q int64, label string) []dto.ReconciliationCountItem {
+		qty := decimal.NewFromInt(q)
+		return []dto.ReconciliationCountItem{{InventoryItemID: itm.ID, Quantity: &qty, Label: label}}
+	}
+
 	BeforeEach(func() {
 		svc = buildService()
 		staffCtx = staffPerms(staffEmail)
@@ -149,14 +158,18 @@ var _ = Describe("Reconciliation synthesize + list/detail/label/warnings", func(
 	})
 
 	It("synthesizes the summed payload + snapshot baseline for an active reconcile", func() {
+		// Two rows count the SAME item — one with a blank count label, one with "dock"
+		// (count labels are per-ROW, issue #73; the labels here just give the breakdown
+		// two entries to surface). Synthesis sums by item (label ignored for the apply
+		// math) and surfaces the per-(item, label) breakdown.
 		first, err := svc.CreateReconciliationItem(staffCtx, dto.CreateReconciliationItemRequest{
-			SubmissionID: submission.ID, Items: countItems(30),
+			SubmissionID: submission.ID, Items: countItems(30), // blank count label
 		})
 		Expect(err).NotTo(HaveOccurred())
 		DeferCleanup(func() { tenv.ContextfulDB().Unscoped().Delete(first) })
 
 		second, err := svc.CreateReconciliationItem(otherCtx, dto.CreateReconciliationItemRequest{
-			SubmissionID: submission.ID, Items: countItems(25),
+			SubmissionID: submission.ID, Items: labeledCountItems(25, "dock"),
 		})
 		Expect(err).NotTo(HaveOccurred())
 		DeferCleanup(func() { tenv.ContextfulDB().Unscoped().Delete(second) })
@@ -169,6 +182,16 @@ var _ = Describe("Reconciliation synthesize + list/detail/label/warnings", func(
 		Expect(syn.Request.Items[0].Quantity.Equal(decimal.NewFromInt(55))).To(BeTrue(), "30 + 25")
 		Expect(syn.Request.Items[0].PrevQuantity.Equal(baseline)).To(BeTrue())
 		Expect(syn.Anomalies).To(BeEmpty())
+
+		// Breakdown surfaces each labeled count behind the summed total (issue #73).
+		Expect(syn.Breakdown).To(HaveLen(2))
+		labels := map[string]string{}
+		for _, b := range syn.Breakdown {
+			Expect(b.InventoryItemID).To(Equal(itm.ID))
+			labels[b.Label] = b.Quantity.String()
+		}
+		Expect(labels[""]).To(Equal("30"))
+		Expect(labels["dock"]).To(Equal("25"))
 	})
 
 	It("renders synthesized items via ListSubmissions for the active reconcile", func() {
@@ -235,6 +258,8 @@ var _ = Describe("Reconciliation synthesize + list/detail/label/warnings", func(
 		Expect(err).NotTo(HaveOccurred())
 		DeferCleanup(func() { tenv.ContextfulDB().Unscoped().Delete(first) })
 
+		// A 2nd live row counts the same item with a blank count label — allowed (count
+		// labels are per-ROW, issue #73). Only the aggregate quantity ceiling applies.
 		second, err := svc.CreateReconciliationItem(otherCtx, dto.CreateReconciliationItemRequest{
 			SubmissionID: submission.ID, Items: countItems(20),
 		})

@@ -8,10 +8,22 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"sort"
+	"strings"
+	"unicode/utf8"
 
 	"github.com/shopspring/decimal"
 	"gorm.io/gorm"
 )
+
+// maxReconItemLabelLength is the app-validated max length of a reconciliation label
+// (issue #73), measured in RUNES (not bytes) so multibyte Vietnamese labels are not
+// rejected below the documented 255-character cap. It applies to BOTH the per-COUNT
+// labels in the JSONB payload and the ROW-level count-session label column. The
+// count labels live in schemaless JSONB (no DB constraint); the row label column is
+// VARCHAR(255), but it is also rune-checked here so a multibyte label up to 255
+// runes is accepted and the error is the localized domain error, not a DB error.
+const maxReconItemLabelLength = 255
 
 // This file implements the STAFF reconciliation child-item lifecycle (epic #38,
 // Part 4): create / update / mark ready / mark not_ready / soft-delete of
@@ -159,13 +171,22 @@ func (s *inventoryService) guardOwnership(ctx context.Context, item *models.Reco
 }
 
 // validateCountsAgainstSnapshot enforces the per-item validation for a child
-// payload: non-negative, no duplicate lines, every counted item has a snapshot
-// baseline, and — the data-correctness guard — the AGGREGATE counted quantity per
-// item across ALL live (non-deleted) sibling child rows of the same parent plus
-// this payload must not exceed the snapshot baseline (S2: counted > snapshot is
-// rejected; there is no positive-adjustment mechanism in this epic). The snapshot
-// baseline is read from the parent's snapshot rows (the sole source of truth for
-// prev_quantity).
+// payload: non-negative quantities, the issue-#73 PER-ROW count-label rule (within
+// THIS row's payload, counts of the same inventory_item_id must have DISTINCT
+// labels with AT MOST ONE blank; label > 255 RUNES is rejected), every counted
+// item has a snapshot baseline, and — the data-correctness guard — the AGGREGATE
+// counted quantity per item across ALL live (non-deleted) sibling child rows of the
+// same parent plus this payload must not exceed the snapshot baseline (S2: counted
+// > snapshot is rejected; there is no positive-adjustment mechanism in this epic).
+// The snapshot baseline is read from the parent's snapshot rows (the sole source of
+// truth for prev_quantity).
+//
+// Label scope (issue #73 re-scope, FE contract cim-ui #42): the count-label
+// distinctness rule is PER ROW — validated only against the row being written, NOT
+// across sibling rows. The FE edits one row at a time and the ROW-level label (on
+// the row itself) distinguishes rows, so two different rows MAY reuse the same
+// count label (or both be blank). The aggregate QUANTITY guard below stays
+// per-submission (summed across siblings) — only the label comparison narrowed.
 //
 // Why the aggregate (not just per-row): multiple live child rows can count the
 // SAME inventory_item_id and are summed by item at synthesis. A per-row-only check
@@ -186,28 +207,28 @@ func (s *inventoryService) guardOwnership(ctx context.Context, item *models.Reco
 // concurrent staff submissions for the same parent are ordered, and the second
 // sees the first's committed row in its sum.
 //
+// siblingRows is the full set of live child rows for the parent (loaded ONCE by the
+// caller under the FOR UPDATE lock and shared with validateRowLabel); the row with
+// id excludeItemID is filtered out of the aggregate here.
+//
 // Returns the normalized counted payload bytes to persist.
-func (s *inventoryService) validateCountsAgainstSnapshot(ctx context.Context, submissionID uint, items []dto.ReconciliationCountItem, excludeItemID uint) (json.RawMessage, error) {
+func (s *inventoryService) validateCountsAgainstSnapshot(ctx context.Context, submissionID uint, items []dto.ReconciliationCountItem, excludeItemID uint, siblingRows []models.ReconciliationRequestItem) (json.RawMessage, error) {
 	baselines, err := s.snapshotRepo.GetPrevQuantitiesBySubmission(ctx, submissionID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to load snapshot baselines: %w", err)
 	}
 
-	// Sum counted quantities, per inventory_item_id, across all OTHER live child
-	// rows of this parent (excluding the row being updated). Read under the parent
-	// FOR UPDATE lock in this tx; siblings are stable for the duration.
-	siblingTotals, err := s.sumLiveSiblingCounts(ctx, submissionID, excludeItemID)
+	// Seed the per-item running counted totals from all OTHER live child rows of this
+	// parent (excluding the row being updated). The rows were read under the parent
+	// FOR UPDATE lock in this tx; siblings are stable for the duration. We then fold
+	// THIS payload's quantities into the running totals so the aggregate quantity
+	// guard is enforced over the union (this payload + the other live rows).
+	totals, err := sumLiveSiblingCounts(siblingRows, excludeItemID)
 	if err != nil {
 		return nil, err
 	}
 
-	seen := make(map[uint]struct{}, len(items))
 	for _, item := range items {
-		if _, dup := seen[item.InventoryItemID]; dup {
-			return nil, pkg.ErrReconItemDuplicateLine(ctx, item.InventoryItemID)
-		}
-		seen[item.InventoryItemID] = struct{}{}
-
 		// Quantity is a pointer: nil means the field was omitted entirely, which is
 		// rejected here so a malformed payload can never be silently read as a
 		// full-shrinkage zero count. An explicit 0 (non-nil) is a valid count.
@@ -220,6 +241,12 @@ func (s *inventoryService) validateCountsAgainstSnapshot(ctx context.Context, su
 			return nil, pkg.ErrReconItemNegativeQuantity(ctx, item.InventoryItemID)
 		}
 
+		// Rune-length is per-line and order-independent (Count RUNES, not bytes — the
+		// 255-CHARACTER cap must not reject multibyte Vietnamese labels).
+		if utf8.RuneCountInString(strings.TrimSpace(item.Label)) > maxReconItemLabelLength {
+			return nil, pkg.ErrReconItemLabelTooLong(ctx, item.InventoryItemID, maxReconItemLabelLength)
+		}
+
 		baseline, ok := baselines[item.InventoryItemID]
 		if !ok {
 			return nil, pkg.ErrReconItemNoSnapshotBaseline(ctx, item.InventoryItemID)
@@ -228,11 +255,26 @@ func (s *inventoryService) validateCountsAgainstSnapshot(ctx context.Context, su
 		if quantity.GreaterThan(baseline) {
 			return nil, pkg.ErrReconItemCountExceedsBaseline(ctx, item.InventoryItemID, quantity, baseline)
 		}
-		// Aggregate guard: this row + every other live sibling row for the same item.
-		total := siblingTotals[item.InventoryItemID].Add(quantity)
+		// Aggregate guard: this line + every prior line of this payload for the same
+		// item + every other live sibling row's count for it.
+		total := totals[item.InventoryItemID].Add(quantity)
 		if total.GreaterThan(baseline) {
 			return nil, pkg.ErrReconItemAggregateExceedsBaseline(ctx, item.InventoryItemID, total, baseline)
 		}
+		totals[item.InventoryItemID] = total
+	}
+
+	// Count-label rule (issue #73, PER ROW) — evaluated on each item's label SET so the
+	// result is ORDER-INSENSITIVE (a payload and any permutation of it validate the
+	// same; Codex P2). Within THIS payload, counts for the same inventory_item_id must
+	// have DISTINCT labels with AT MOST ONE blank: ≥2 blanks for an item is the
+	// duplicate-needs-label error; any repeated non-blank label is the conflict error.
+	// There is no positional "first count may be blank" notion — a lone blank is fine,
+	// a second blank is not, regardless of position. Labels are NOT compared across
+	// sibling rows (the re-scope): two different rows may reuse a count label / both be
+	// blank — the row-level label distinguishes them.
+	if err := validateCountLabelDistinctness(ctx, items); err != nil {
+		return nil, err
 	}
 
 	// Persist in the legacy reconcile payload shape (counts only) so
@@ -245,18 +287,106 @@ func (s *inventoryService) validateCountsAgainstSnapshot(ctx context.Context, su
 	return bytes, nil
 }
 
-// sumLiveSiblingCounts returns, per inventory_item_id, the total counted quantity
-// across all live (non-soft-deleted) child rows of the parent submission, EXCLUDING
-// the row with id excludeItemID (0 = exclude nothing). It reads via DB(ctx), so when
-// called inside a child-write WithinTx it enlists in that tx and reads under the
-// parent FOR UPDATE lock — making the aggregate check race-safe against concurrent
-// staff submissions for the same parent.
-func (s *inventoryService) sumLiveSiblingCounts(ctx context.Context, submissionID, excludeItemID uint) (map[uint]decimal.Decimal, error) {
-	rows, err := s.reconItemRepo.ListBySubmission(ctx, submissionID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to load sibling reconciliation items: %w", err)
+// validateCountLabelDistinctness enforces the issue-#73 PER-ROW count-label rule on
+// each inventory_item_id's label SET, independently of array position (Codex P2):
+// within the payload, an item's counts must have DISTINCT labels with AT MOST ONE
+// blank. For any permutation of the same payload the verdict is identical — it
+// inspects the whole group's labels, not "the first one seen". A second blank for an
+// item -> ErrReconItemLabelRequiredForDuplicate; a repeated non-blank label ->
+// ErrReconItemLabelConflict. Labels are trimmed (matching how they persist) and
+// compared case-sensitively (free text; no normalization).
+func validateCountLabelDistinctness(ctx context.Context, items []dto.ReconciliationCountItem) error {
+	blanks := make(map[uint]int)
+	nonBlank := make(map[uint]map[string]struct{})
+	for _, item := range items {
+		label := strings.TrimSpace(item.Label)
+		if label == "" {
+			blanks[item.InventoryItemID]++
+			if blanks[item.InventoryItemID] > 1 {
+				return pkg.ErrReconItemLabelRequiredForDuplicate(ctx, item.InventoryItemID)
+			}
+			continue
+		}
+		set, ok := nonBlank[item.InventoryItemID]
+		if !ok {
+			set = make(map[string]struct{})
+			nonBlank[item.InventoryItemID] = set
+		}
+		if _, clash := set[label]; clash {
+			return pkg.ErrReconItemLabelConflict(ctx, item.InventoryItemID, label)
+		}
+		set[label] = struct{}{}
+	}
+	return nil
+}
+
+// validateRowLabel enforces the issue-#73 ROW-level label rule for a Create/Update
+// of a count session, scoped per (submission, ownerEmail):
+//
+//   - trim + reject label > maxReconItemLabelLength RUNES (utf8.RuneCountInString,
+//     not bytes — Vietnamese is multibyte);
+//   - REQUIRED once the owner already has >= 1 OTHER live row in this submission
+//     (the first/only row may be blank; it is not retro-labeled);
+//   - DISTINCT among the owner's live rows (no two of the owner's rows share a label;
+//     blanks can never collide because a blank is only allowed when it is the owner's
+//     only row).
+//
+// ownerEmail is the row's owner: the caller on Create (Base.BeforeCreate stamps
+// created_by = caller) and the existing item.CreatedBy on Update (ownership is not
+// reassigned). excludeItemID is the row being updated (0 on Create) so the row's own
+// current label is not compared against itself.
+//
+// rows is the full set of live child rows for the parent (loaded ONCE by the caller
+// under the FOR UPDATE lock and shared with validateCountsAgainstSnapshot), so the
+// owner's other live rows are stable against concurrent writes for the same parent.
+// Returns the trimmed label to persist.
+func validateRowLabel(ctx context.Context, ownerEmail, rawLabel string, excludeItemID uint, rows []models.ReconciliationRequestItem) (string, error) {
+	label := strings.TrimSpace(rawLabel)
+	if utf8.RuneCountInString(label) > maxReconItemLabelLength {
+		return "", pkg.ErrReconRowLabelTooLong(ctx, maxReconItemLabelLength)
 	}
 
+	otherLabels := make(map[string]struct{})
+	ownerOtherRows := 0
+	for _, row := range rows {
+		if row.ID == excludeItemID {
+			continue
+		}
+		if row.CreatedBy != ownerEmail {
+			continue
+		}
+		ownerOtherRows++
+		otherLabels[strings.TrimSpace(row.Label)] = struct{}{}
+	}
+
+	// Required once the owner already has another live row: a 2nd+ session must be
+	// labelled so it can be told apart from the first.
+	if ownerOtherRows > 0 && label == "" {
+		return "", pkg.ErrReconRowLabelRequired(ctx)
+	}
+	// Distinct among the owner's live rows.
+	if label != "" {
+		if _, clash := otherLabels[label]; clash {
+			return "", pkg.ErrReconRowLabelConflict(ctx, label)
+		}
+	}
+	return label, nil
+}
+
+// sumLiveSiblingCounts returns, per inventory_item_id, the total counted quantity
+// across the supplied live (non-soft-deleted) child rows, EXCLUDING the row with id
+// excludeItemID (0 = exclude nothing). The rows are loaded once by the caller under
+// the parent FOR UPDATE lock (so the aggregate check is race-safe against concurrent
+// staff submissions for the same parent).
+//
+// Note (issue #73 re-scope): this returns QUANTITY totals only. The count-label
+// distinctness rule is now PER ROW (validated within the payload being written, not
+// across siblings — see validateCountsAgainstSnapshot), because the FE edits one row
+// at a time and the row-level label distinguishes rows; two different rows may
+// legitimately reuse the same count label. The aggregate quantity-vs-snapshot guard
+// stays per-submission (summed across siblings), which is why the totals are still
+// gathered here.
+func sumLiveSiblingCounts(rows []models.ReconciliationRequestItem, excludeItemID uint) (map[uint]decimal.Decimal, error) {
 	totals := make(map[uint]decimal.Decimal)
 	for _, row := range rows {
 		if row.ID == excludeItemID {
@@ -290,6 +420,10 @@ type reconItemPayload struct {
 type reconItemPayloadLine struct {
 	InventoryItemID uint            `json:"inventory_item_id"`
 	Quantity        decimal.Decimal `json:"quantity"`
+	// Label is the optional free-text count identifier (issue #73). Persisted as-is
+	// (already validated/trimmed by validateCountsAgainstSnapshot); omitempty so a
+	// blank label keeps the stored shape backward-compatible with pre-#73 rows.
+	Label string `json:"label,omitempty"`
 }
 
 // buildReconItemPayload assumes every line has already passed
@@ -306,6 +440,7 @@ func buildReconItemPayload(items []dto.ReconciliationCountItem) reconItemPayload
 		lines = append(lines, reconItemPayloadLine{
 			InventoryItemID: item.InventoryItemID,
 			Quantity:        quantity,
+			Label:           strings.TrimSpace(item.Label),
 		})
 	}
 	return reconItemPayload{Items: lines}
@@ -316,7 +451,7 @@ func buildReconItemPayload(items []dto.ReconciliationCountItem) reconItemPayload
 // validated against the snapshot baseline. Parent load + create run in one tx so
 // a parent that disappears (or loses its snapshots) mid-create can't leave an
 // orphan row. Rejected once the parent is closed (staff) — see guardParentEditable.
-func (s *inventoryService) CreateReconciliationItem(ctx context.Context, req dto.CreateReconciliationItemRequest) (*models.ReconciliationRequestItem, error) {
+func (s *inventoryService) CreateReconciliationItem(ctx context.Context, req dto.CreateReconciliationItemRequest) (*dto.ReconciliationItemResponse, error) {
 	var created *models.ReconciliationRequestItem
 	err := s.baseRepo.WithinTx(ctx, func(txCtx context.Context) error {
 		parent, err := s.loadActiveReconcileParent(txCtx, req.SubmissionID)
@@ -329,15 +464,34 @@ func (s *inventoryService) CreateReconciliationItem(ctx context.Context, req dto
 			return err
 		}
 
+		// Load the parent's live child rows ONCE under the FOR UPDATE lock; both the
+		// row-label rule and the aggregate-vs-snapshot guard read from this set.
+		siblingRows, err := s.reconItemRepo.ListBySubmission(txCtx, req.SubmissionID)
+		if err != nil {
+			return fmt.Errorf("failed to load reconciliation rows: %w", err)
+		}
+
+		// Row-level label rule (issue #73), scoped to the caller's own live rows. The
+		// new row's owner is the caller (Base.BeforeCreate stamps created_by).
+		callerEmail, err := pkg.GetUserEmailFromContext(txCtx)
+		if err != nil {
+			return pkg.ErrUnauthorized("user not authenticated", err)
+		}
+		rowLabel, err := validateRowLabel(txCtx, callerEmail, req.Label, 0, siblingRows)
+		if err != nil {
+			return err
+		}
+
 		// excludeItemID = 0 on create: there is no existing row to exclude from the
 		// sibling aggregate; this new row's counts are the payload being validated.
-		payloadBytes, err := s.validateCountsAgainstSnapshot(txCtx, req.SubmissionID, req.Items, 0)
+		payloadBytes, err := s.validateCountsAgainstSnapshot(txCtx, req.SubmissionID, req.Items, 0, siblingRows)
 		if err != nil {
 			return err
 		}
 
 		item := &models.ReconciliationRequestItem{
 			SubmissionID: req.SubmissionID,
+			Label:        rowLabel,
 			Payload:      payloadBytes,
 			Status:       models.ReconciliationRequestItemStatusInProgress,
 		}
@@ -350,7 +504,11 @@ func (s *inventoryService) CreateReconciliationItem(ctx context.Context, req dto
 	if err != nil {
 		return nil, err
 	}
-	return created, nil
+	resp, err := toReconciliationItemResponse(created)
+	if err != nil {
+		return nil, err
+	}
+	return &resp, nil
 }
 
 // UpdateReconciliationItem replaces the counted payload of a child item. Staff
@@ -358,7 +516,7 @@ func (s *inventoryService) CreateReconciliationItem(ctx context.Context, req dto
 // edit any row while the parent is `closed` (the review edit). The row stays
 // in_progress (the only status). The whole op is one tx (load + guard + validate
 // + write) under the parent FOR UPDATE lock.
-func (s *inventoryService) UpdateReconciliationItem(ctx context.Context, req dto.UpdateReconciliationItemRequest) (*models.ReconciliationRequestItem, error) {
+func (s *inventoryService) UpdateReconciliationItem(ctx context.Context, req dto.UpdateReconciliationItemRequest) (*dto.ReconciliationItemResponse, error) {
 	var updated *models.ReconciliationRequestItem
 	err := s.baseRepo.WithinTx(ctx, func(txCtx context.Context) error {
 		parent, err := s.loadActiveReconcileParent(txCtx, req.SubmissionID)
@@ -376,17 +534,33 @@ func (s *inventoryService) UpdateReconciliationItem(ctx context.Context, req dto
 			return err
 		}
 
-		// Exclude this row from the sibling aggregate: its current persisted counts
-		// are being REPLACED by req.Items, so the new payload — not the old one — is
-		// what counts toward the per-item baseline.
-		payloadBytes, err := s.validateCountsAgainstSnapshot(txCtx, req.SubmissionID, req.Items, item.ID)
+		// Load the parent's live child rows ONCE under the FOR UPDATE lock; both the
+		// row-label rule and the aggregate-vs-snapshot guard read from this set.
+		siblingRows, err := s.reconItemRepo.ListBySubmission(txCtx, req.SubmissionID)
+		if err != nil {
+			return fmt.Errorf("failed to load reconciliation rows: %w", err)
+		}
+
+		// Row-level label rule (issue #73), scoped to the row OWNER's live rows (not
+		// the caller's — ownership is not reassigned on an admin/accountant review
+		// edit). Exclude this row so its own current label is not compared to itself.
+		rowLabel, err := validateRowLabel(txCtx, item.CreatedBy, req.Label, item.ID, siblingRows)
 		if err != nil {
 			return err
 		}
 
-		if err := s.reconItemRepo.UpdatePayloadAndStatus(txCtx, item.ID, payloadBytes, models.ReconciliationRequestItemStatusInProgress); err != nil {
+		// Exclude this row from the sibling aggregate: its current persisted counts
+		// are being REPLACED by req.Items, so the new payload — not the old one — is
+		// what counts toward the per-item baseline.
+		payloadBytes, err := s.validateCountsAgainstSnapshot(txCtx, req.SubmissionID, req.Items, item.ID, siblingRows)
+		if err != nil {
+			return err
+		}
+
+		if err := s.reconItemRepo.UpdateLabelPayloadAndStatus(txCtx, item.ID, rowLabel, payloadBytes, models.ReconciliationRequestItemStatusInProgress); err != nil {
 			return fmt.Errorf("failed to update reconciliation item: %w", err)
 		}
+		item.Label = rowLabel
 		item.Payload = payloadBytes
 		item.Status = models.ReconciliationRequestItemStatusInProgress
 		updated = item
@@ -395,7 +569,11 @@ func (s *inventoryService) UpdateReconciliationItem(ctx context.Context, req dto
 	if err != nil {
 		return nil, err
 	}
-	return updated, nil
+	resp, err := toReconciliationItemResponse(updated)
+	if err != nil {
+		return nil, err
+	}
+	return &resp, nil
 }
 
 // DeleteReconciliationItem soft-deletes a child item. Staff may delete only their
@@ -423,4 +601,101 @@ func (s *inventoryService) DeleteReconciliationItem(ctx context.Context, req dto
 		}
 		return nil
 	})
+}
+
+// ListReconciliationItems returns the live (non-soft-deleted) count-session rows of
+// an initiated reconcile, each with its row Label and its flattened count lines
+// (issue #73 / FE contract cim-ui #42). Read-only.
+//
+// RBAC scoping: holders of recon_manage (admin/accountant) see ALL rows under the
+// submission; everyone else (staff) sees only their OWN rows (created_by == caller).
+// Rows are returned in deterministic id-ascending order.
+//
+// Unlike the write paths this does not take the parent FOR UPDATE lock or apply the
+// editability guard — it is a pure read that must work while the submission is open
+// OR closed (the admin reviews rows after close). It still confirms the parent is an
+// initiated reconcile (a reconcile with snapshot rows) so callers cannot read rows
+// across an unrelated submission.
+func (s *inventoryService) ListReconciliationItems(ctx context.Context, submissionID uint) ([]dto.ReconciliationItemResponse, error) {
+	submission, err := s.inventorySubmissionRepo.GetByID(ctx, submissionID)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, pkg.ErrReconParentNotFound(ctx, submissionID)
+		}
+		return nil, fmt.Errorf("failed to load reconciliation submission: %w", err)
+	}
+	if submission.SubmissionType != models.InventorySubmissionTypeReconcile {
+		return nil, pkg.ErrReconParentNotInitiated(ctx, submissionID)
+	}
+	hasSnapshots, err := s.snapshotRepo.ExistsForSubmission(ctx, submissionID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to check reconciliation snapshots: %w", err)
+	}
+	if !hasSnapshots {
+		return nil, pkg.ErrReconParentNotInitiated(ctx, submissionID)
+	}
+
+	var rows []models.ReconciliationRequestItem
+	if pkg.HasPermission(ctx, pkg.RBACResourceInventorySubmissions, pkg.RBACActionReconManage) {
+		// Admin/accountant: all rows under the submission, ordered by id for stability.
+		rows, err = s.reconItemRepo.ListBySubmission(ctx, submissionID)
+		if err != nil {
+			return nil, fmt.Errorf("failed to list reconciliation items: %w", err)
+		}
+		sort.Slice(rows, func(i, j int) bool { return rows[i].ID < rows[j].ID })
+	} else {
+		// Staff: only their own rows (created_by == caller), already id-ascending.
+		callerEmail, emailErr := pkg.GetUserEmailFromContext(ctx)
+		if emailErr != nil {
+			return nil, pkg.ErrUnauthorized("user not authenticated", emailErr)
+		}
+		rows, err = s.reconItemRepo.ListBySubmissionAndCreator(ctx, submissionID, callerEmail)
+		if err != nil {
+			return nil, fmt.Errorf("failed to list reconciliation items: %w", err)
+		}
+	}
+
+	responses := make([]dto.ReconciliationItemResponse, 0, len(rows))
+	for i := range rows {
+		resp, mapErr := toReconciliationItemResponse(&rows[i])
+		if mapErr != nil {
+			return nil, mapErr
+		}
+		responses = append(responses, resp)
+	}
+	return responses, nil
+}
+
+// toReconciliationItemResponse maps a persisted row to the FE row response shape,
+// flattening the JSONB payload into the lean {inventory_item_id, quantity, label}
+// lines and formatting timestamps with pkg.DateTimeFormat (matching the other
+// submission responses). Used by Create / Update / List so all three return the
+// contract row shape rather than the raw model.
+func toReconciliationItemResponse(row *models.ReconciliationRequestItem) (dto.ReconciliationItemResponse, error) {
+	lines := make([]dto.ReconciliationItemLine, 0)
+	if len(row.Payload) > 0 {
+		var parsed reconItemPayload
+		if err := json.Unmarshal(row.Payload, &parsed); err != nil {
+			return dto.ReconciliationItemResponse{}, fmt.Errorf("failed to parse reconciliation item %d payload: %w", row.ID, err)
+		}
+		lines = make([]dto.ReconciliationItemLine, 0, len(parsed.Items))
+		for _, line := range parsed.Items {
+			lines = append(lines, dto.ReconciliationItemLine{
+				InventoryItemID: line.InventoryItemID,
+				Quantity:        line.Quantity,
+				Label:           line.Label,
+			})
+		}
+	}
+	return dto.ReconciliationItemResponse{
+		ID:           row.ID,
+		SubmissionID: row.SubmissionID,
+		Label:        row.Label,
+		Status:       string(row.Status),
+		Items:        lines,
+		CreatedBy:    row.CreatedBy,
+		CreatedAt:    row.CreatedAt.Format(pkg.DateTimeFormat),
+		UpdatedBy:    row.UpdatedBy,
+		UpdatedAt:    row.UpdatedAt.Format(pkg.DateTimeFormat),
+	}, nil
 }

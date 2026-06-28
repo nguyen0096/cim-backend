@@ -31,6 +31,11 @@ func line(itemID uint, qty string) reconItemPayloadLine {
 	return reconItemPayloadLine{InventoryItemID: itemID, Quantity: decimal.RequireFromString(qty)}
 }
 
+// labeledLine builds a count line carrying an issue-#73 label.
+func labeledLine(itemID uint, qty, label string) reconItemPayloadLine {
+	return reconItemPayloadLine{InventoryItemID: itemID, Quantity: decimal.RequireFromString(qty), Label: label}
+}
+
 func baselineMap(pairs map[uint]string) map[uint]decimal.Decimal {
 	out := make(map[uint]decimal.Decimal, len(pairs))
 	for id, v := range pairs {
@@ -77,6 +82,51 @@ func TestSynthesizeReconcile_SumsByItemAcrossRowsAndItems(t *testing.T) {
 
 	it2, _ := findItem(syn.Request.Items, 2)
 	assert.True(t, it2.Quantity.Equal(decimal.NewFromInt(40)))
+}
+
+func TestSynthesizeReconcile_LabelBreakdownPerItemLabel(t *testing.T) {
+	// Issue #73: synthesis sums by inventory_item_id (label is representation-only),
+	// AND surfaces a per-(item, label) breakdown so review can show each labeled
+	// count behind a total. Item 1 is counted under "shelf" (30) + "dock" (25) across
+	// two rows -> total 55, two breakdown lines. Item 2 has a single blank-label count.
+	rows := []models.ReconciliationRequestItem{
+		childRow(1, models.ReconciliationRequestItemStatusInProgress, labeledLine(1, "30", "shelf"), labeledLine(2, "40", "")),
+		childRow(2, models.ReconciliationRequestItemStatusInProgress, labeledLine(1, "25", "dock")),
+	}
+	baselines := baselineMap(map[uint]string{1: "100", 2: "100"})
+
+	syn, err := synthesizeReconcile(7, models.ReconcileLifecycleStatusOpen, rows, baselines)
+	require.NoError(t, err)
+	assert.Empty(t, syn.Anomalies)
+
+	// Totals are summed by item regardless of label (apply math ignores the label).
+	it1, _ := findItem(syn.Request.Items, 1)
+	require.NotNil(t, it1.Quantity)
+	assert.True(t, it1.Quantity.Equal(decimal.NewFromInt(55)), "item 1 total = shelf 30 + dock 25")
+
+	// Breakdown: item 1 -> shelf 30, dock 25 (first-seen label order); item 2 -> blank 40.
+	require.Len(t, syn.Breakdown, 3)
+	assert.Equal(t, dto.ReconcileItemBreakdown{InventoryItemID: 1, Label: "shelf", Quantity: decimal.NewFromInt(30)}, syn.Breakdown[0])
+	assert.Equal(t, dto.ReconcileItemBreakdown{InventoryItemID: 1, Label: "dock", Quantity: decimal.NewFromInt(25)}, syn.Breakdown[1])
+	assert.Equal(t, uint(2), syn.Breakdown[2].InventoryItemID)
+	assert.Equal(t, "", syn.Breakdown[2].Label)
+	assert.True(t, syn.Breakdown[2].Quantity.Equal(decimal.NewFromInt(40)))
+}
+
+func TestSynthesizeReconcile_SameLabelAcrossRowsSummedInBreakdown(t *testing.T) {
+	// Two rows contribute to item 1 under the SAME label "shelf" (e.g. an admin
+	// review edit + a staff row): the breakdown collapses them into one line summing
+	// the quantity (issue #73 breakdown is keyed per (item, label)).
+	rows := []models.ReconciliationRequestItem{
+		childRow(1, models.ReconciliationRequestItemStatusInProgress, labeledLine(1, "30", "shelf")),
+		childRow(2, models.ReconciliationRequestItemStatusInProgress, labeledLine(1, "20", "shelf")),
+	}
+	baselines := baselineMap(map[uint]string{1: "100"})
+
+	syn, err := synthesizeReconcile(7, models.ReconcileLifecycleStatusOpen, rows, baselines)
+	require.NoError(t, err)
+	require.Len(t, syn.Breakdown, 1)
+	assert.Equal(t, dto.ReconcileItemBreakdown{InventoryItemID: 1, Label: "shelf", Quantity: decimal.NewFromInt(50)}, syn.Breakdown[0])
 }
 
 func TestSynthesizeReconcile_DecimalMath(t *testing.T) {

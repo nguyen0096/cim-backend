@@ -3,6 +3,8 @@ package dto
 import (
 	"cim-backend/internal/models"
 	"encoding/json"
+
+	"github.com/shopspring/decimal"
 )
 
 // ReconcileReviewLabel is the admin-facing progress label for an ACTIVE
@@ -36,6 +38,48 @@ type SynthesizedReconcile struct {
 	Request   ReconcileInventoryRequest
 	Label     ReconcileReviewLabel
 	Anomalies []string
+	// Breakdown carries the per-(item, label) contributions that were summed into
+	// Request (issue #73). The apply math uses only the summed Request totals; this
+	// is review/audit-only so an admin can see each labeled count behind a total
+	// (e.g. milk "shelf" 30 + "dock" 25 -> total 55) rather than just the sum.
+	Breakdown []ReconcileItemBreakdown
+}
+
+// ReconcileItemBreakdown is the review-only, per-(inventory_item, label) view of
+// the counts that were summed into one synthesized line (issue #73). One entry per
+// distinct label for an item (blank label allowed for the single/first count);
+// Quantity is the summed counted quantity contributed under that label across the
+// live staff child rows. Presentation-only — never feeds the apply math.
+type ReconcileItemBreakdown struct {
+	InventoryItemID uint            `json:"inventory_item_id"`
+	Label           string          `json:"label"`
+	Quantity        decimal.Decimal `json:"quantity"`
+}
+
+// ReconciliationItemLine is one count line inside a reconciliation row response
+// (issue #73 / FE contract cim-ui #42): the lean {inventory_item_id, quantity,
+// label} shape the FE consumes, flattened out of the row's JSONB payload. Quantity
+// is a decimal serialized as a string (shopspring default).
+type ReconciliationItemLine struct {
+	InventoryItemID uint            `json:"inventory_item_id"`
+	Quantity        decimal.Decimal `json:"quantity"`
+	Label           string          `json:"label"`
+}
+
+// ReconciliationItemResponse is the row (count-session) response shape returned by
+// Create / Update / List of reconciliation items (issue #73 / FE contract cim-ui
+// #42). It surfaces the ROW-level Label and flattens the JSONB payload into Items,
+// rather than leaking the raw model (payload bytes + the submission association).
+type ReconciliationItemResponse struct {
+	ID           uint                     `json:"id"`
+	SubmissionID uint                     `json:"submission_id"`
+	Label        string                   `json:"label"`
+	Status       string                   `json:"status"`
+	Items        []ReconciliationItemLine `json:"items"`
+	CreatedBy    string                   `json:"created_by"`
+	CreatedAt    string                   `json:"created_at"`
+	UpdatedBy    string                   `json:"updated_by"`
+	UpdatedAt    string                   `json:"updated_at"`
 }
 
 // SubmissionResponse represents a simplified pending submission
@@ -55,10 +99,15 @@ type SubmissionResponse struct {
 	// the new flow, not yet applied); it is empty for every other submission. It is
 	// derived from the live child rows and is presentation-only (not persisted).
 	ReviewLabel ReconcileReviewLabel `json:"review_label,omitempty"`
-	CreatedBy   string               `json:"created_by"`
-	CreatedAt   string               `json:"created_at"`
-	UpdatedBy   string               `json:"updated_by"`
-	UpdatedAt   string               `json:"updated_at"`
+	// CountBreakdown is populated only for ACTIVE reconcile submissions: the
+	// per-(inventory_item, label) contributions behind each summed item line (issue
+	// #73), so the review screen can show each labeled count, not just the total. It
+	// is presentation-only and derived from the live child rows.
+	CountBreakdown []ReconcileItemBreakdown `json:"count_breakdown,omitempty"`
+	CreatedBy      string                   `json:"created_by"`
+	CreatedAt      string                   `json:"created_at"`
+	UpdatedBy      string                   `json:"updated_by"`
+	UpdatedAt      string                   `json:"updated_at"`
 }
 
 // SubmissionApprovalRequest represents a request to approve or reject a submission

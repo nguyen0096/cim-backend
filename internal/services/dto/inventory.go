@@ -103,6 +103,16 @@ type ReconciliationCountItem struct {
 	// count; the service validates the dereferenced value (non-negative, <=
 	// snapshot baseline).
 	Quantity *decimal.Decimal `json:"quantity"`
+	// Label is an OPTIONAL free-text identifier for this count (e.g. "shelf",
+	// "loading dock") so multiple counts of the SAME inventory_item_id across staff
+	// child rows can be told apart in review/audit (issue #73). It is
+	// representation-only: synthesis still sums by inventory_item_id and ignores the
+	// label for the apply math. Max length 255 RUNES (app-validated;
+	// utf8.RuneCountInString — Vietnamese is multibyte so a byte cap would reject
+	// valid labels). The distinct-labels-at-most-one-blank rule is enforced at write
+	// time across the live sibling rows of the same parent plus this payload — see
+	// validateCountsAgainstSnapshot.
+	Label string `json:"label,omitempty"`
 }
 
 // CreateReconciliationItemRequest creates a new staff child item under a parent
@@ -110,17 +120,26 @@ type ReconciliationCountItem struct {
 // `:id` path param after binding) and intentionally not JSON-bindable so a body
 // cannot retarget which submission the item is filed under.
 type CreateReconciliationItemRequest struct {
-	SubmissionID uint                      `json:"-" validate:"required"`
-	Items        []ReconciliationCountItem `json:"items" validate:"required,min=1,dive"`
+	SubmissionID uint `json:"-" validate:"required"`
+	// Label is the optional ROW-level count-session identifier (issue #73). It
+	// carries no validate:"required" tag: the row-label rule (required once the user
+	// already has a 2nd live row; ≤255 runes; distinct per (submission,user)) is
+	// enforced in the service so the localized domain errors surface instead of a
+	// generic binding error.
+	Label string                    `json:"label"`
+	Items []ReconciliationCountItem `json:"items" validate:"required,min=1,dive"`
 }
 
 // UpdateReconciliationItemRequest replaces the counted payload of an existing
-// child item. SubmissionID and ItemID are path-scoped (not JSON-bindable). A
-// staff edit of an `approved` row resets it back to `in_progress` (escape hatch).
+// child item. SubmissionID and ItemID are path-scoped (not JSON-bindable). Update
+// is a full replace: the row Label and the entire Items payload are overwritten.
 type UpdateReconciliationItemRequest struct {
-	SubmissionID uint                      `json:"-" validate:"required"`
-	ItemID       uint                      `json:"-" validate:"required"`
-	Items        []ReconciliationCountItem `json:"items" validate:"required,min=1,dive"`
+	SubmissionID uint `json:"-" validate:"required"`
+	ItemID       uint `json:"-" validate:"required"`
+	// Label fully replaces the row's existing label on update (issue #73); see the
+	// CreateReconciliationItemRequest.Label note on why it has no required tag.
+	Label string                    `json:"label"`
+	Items []ReconciliationCountItem `json:"items" validate:"required,min=1,dive"`
 }
 
 // DeleteReconciliationItemRequest soft-deletes a child item. Both ids are

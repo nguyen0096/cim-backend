@@ -38,10 +38,16 @@ type InventoryService interface {
 	UpdateSubmission(ctx context.Context, req dto.UpdateSubmissionRequest) (*dto.SubmissionResponse, error)
 	GetMonthlyTransactionReport(ctx context.Context, inventoryID uint, month, year int) (*models.TxnReportInventory, error)
 
-	// Staff reconciliation child-item lifecycle (epic #38, Part 4).
-	CreateReconciliationItem(ctx context.Context, req dto.CreateReconciliationItemRequest) (*models.ReconciliationRequestItem, error)
-	UpdateReconciliationItem(ctx context.Context, req dto.UpdateReconciliationItemRequest) (*models.ReconciliationRequestItem, error)
+	// Staff reconciliation child-item lifecycle (epic #38, Part 4; row + count
+	// labels issue #73). Create/Update/List return the FE row response shape
+	// (dto.ReconciliationItemResponse) — row label + flattened count lines — rather
+	// than the raw model.
+	CreateReconciliationItem(ctx context.Context, req dto.CreateReconciliationItemRequest) (*dto.ReconciliationItemResponse, error)
+	UpdateReconciliationItem(ctx context.Context, req dto.UpdateReconciliationItemRequest) (*dto.ReconciliationItemResponse, error)
 	DeleteReconciliationItem(ctx context.Context, req dto.DeleteReconciliationItemRequest) error
+	// ListReconciliationItems returns the live count-session rows of an initiated
+	// reconcile, RBAC-scoped (staff: own rows; admin/accountant: all), id-ascending.
+	ListReconciliationItems(ctx context.Context, submissionID uint) ([]dto.ReconciliationItemResponse, error)
 
 	// Admin/accountant reconciliation management (epic #38, Part 6 redesign; one
 	// recon_manage action, admin+accountant only). Close locks staff out
@@ -1327,12 +1333,16 @@ func (s *inventoryService) ListSubmissions(ctx context.Context, params models.Li
 		warnings := formatWarnings(submission, items, inventoryItemMap)
 
 		var label dto.ReconcileReviewLabel
+		var countBreakdown []dto.ReconcileItemBreakdown
 		if syn, ok := synthesized[submission.ID]; ok {
 			label = syn.Label
 			// Surface synthesis anomalies (e.g. a stored aggregate exceeding its
 			// snapshot baseline) alongside the drift warnings so the admin sees the
 			// data oddity rather than it being silently corrected.
 			warnings = append(warnings, syn.Anomalies...)
+			// Per-(item, label) breakdown behind each summed line (issue #73), so the
+			// review screen can show each labeled count, not just the total.
+			countBreakdown = syn.Breakdown
 		}
 
 		responses[i] = dto.SubmissionResponse{
@@ -1346,6 +1356,7 @@ func (s *inventoryService) ListSubmissions(ctx context.Context, params models.Li
 			Warnings:       warnings,
 			Items:          items,
 			ReviewLabel:    label,
+			CountBreakdown: countBreakdown,
 			Reason:         submission.Reason,
 			CreatedBy:      submission.CreatedBy,
 			CreatedAt:      submission.CreatedAt.Format(pkg.DateTimeFormat),

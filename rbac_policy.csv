@@ -24,6 +24,7 @@ p, admin, inventory-submissions, initiate_reconciliation, allow
 p, admin, inventory-submissions, recon_item_create, allow
 p, admin, inventory-submissions, recon_item_update, allow
 p, admin, inventory-submissions, recon_item_delete, allow
+p, admin, inventory-submissions, recon_item_view, allow
 p, admin, inventory-submissions, recon_manage, allow
 
 p, admin, inventory-items, view, allow
@@ -107,6 +108,7 @@ p, accountant, inventory-submissions, initiate_reconciliation, allow
 p, accountant, inventory-submissions, recon_item_create, allow
 p, accountant, inventory-submissions, recon_item_update, allow
 p, accountant, inventory-submissions, recon_item_delete, allow
+p, accountant, inventory-submissions, recon_item_view, allow
 p, accountant, inventory-submissions, recon_manage, allow
 
 p, accountant, revenue-expenses, create, allow
@@ -141,6 +143,7 @@ p, staff, inventory-items, view, allow
 p, staff, inventory-submissions, recon_item_create, allow
 p, staff, inventory-submissions, recon_item_update, allow
 p, staff, inventory-submissions, recon_item_delete, allow
+p, staff, inventory-submissions, recon_item_view, allow
 p, staff, settings, view, allow
 p, staff, payment-receipt-forms, update, allow
 p, staff, units, view, allow

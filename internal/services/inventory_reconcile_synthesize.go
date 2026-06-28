@@ -68,6 +68,12 @@ func synthesizeReconcile(
 	baselines map[uint]decimal.Decimal,
 ) (*dto.SynthesizedReconcile, error) {
 	totals := make(map[uint]decimal.Decimal)
+	// breakdown accumulates the per-(inventory_item, label) contributions behind each
+	// summed total (issue #73), review-only. labelOrder preserves first-seen label
+	// order per item so the rendered breakdown is stable. The label is
+	// representation-only: it never affects totals (the apply math).
+	breakdown := make(map[uint]map[string]decimal.Decimal)
+	labelOrder := make(map[uint][]string)
 	for _, row := range rows {
 		if len(row.Payload) == 0 {
 			continue
@@ -82,6 +88,16 @@ func synthesizeReconcile(
 				cur = decimal.Zero
 			}
 			totals[line.InventoryItemID] = cur.Add(line.Quantity)
+
+			byLabel, ok := breakdown[line.InventoryItemID]
+			if !ok {
+				byLabel = make(map[string]decimal.Decimal)
+				breakdown[line.InventoryItemID] = byLabel
+			}
+			if _, seen := byLabel[line.Label]; !seen {
+				labelOrder[line.InventoryItemID] = append(labelOrder[line.InventoryItemID], line.Label)
+			}
+			byLabel[line.Label] = byLabel[line.Label].Add(line.Quantity)
 		}
 	}
 
@@ -92,6 +108,20 @@ func synthesizeReconcile(
 		itemIDs = append(itemIDs, id)
 	}
 	sort.Slice(itemIDs, func(i, j int) bool { return itemIDs[i] < itemIDs[j] })
+
+	// Emit the per-(item, label) breakdown in the same deterministic item order as
+	// the summed lines, preserving first-seen label order within each item.
+	var breakdownLines []dto.ReconcileItemBreakdown
+	for _, id := range itemIDs {
+		for _, label := range labelOrder[id] {
+			qty := breakdown[id][label]
+			breakdownLines = append(breakdownLines, dto.ReconcileItemBreakdown{
+				InventoryItemID: id,
+				Label:           label,
+				Quantity:        qty,
+			})
+		}
+	}
 
 	var anomalies []string
 	items := make([]dto.QuantityItem, 0, len(itemIDs))
@@ -144,6 +174,7 @@ func synthesizeReconcile(
 		},
 		Label:     computeReviewLabel(reconcileStatus),
 		Anomalies: anomalies,
+		Breakdown: breakdownLines,
 	}, nil
 }
 

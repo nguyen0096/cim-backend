@@ -230,6 +230,15 @@ var customRouteMappings = []RouteMapping{
 		Resource:    "inventory-submissions",
 		Action:      "recon_item_create",
 	},
+	// List rows (issue #73). Same collection path as create but GET; gated by its own
+	// recon_item_view action (held by staff + admin/accountant). The in-service RBAC
+	// scoping narrows staff to their own rows while recon_manage holders see all.
+	{
+		Method:      "GET",
+		PathPattern: "/inventories/submissions/*/reconciliation-items",
+		Resource:    "inventory-submissions",
+		Action:      "recon_item_view",
+	},
 	{
 		Method:      "*",
 		PathPattern: "/inventories/*/dispose",

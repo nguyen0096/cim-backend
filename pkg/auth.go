@@ -35,6 +35,10 @@ const (
 	RBACActionReconItemCreate = "recon_item_create"
 	RBACActionReconItemUpdate = "recon_item_update"
 	RBACActionReconItemDelete = "recon_item_delete"
+	// RBACActionReconItemView gates the GET list-rows endpoint (issue #73). Granted
+	// to staff and admin/accountant alike; the in-service RBAC scoping then narrows
+	// staff to their OWN rows while admin/accountant (recon_manage holders) see all.
+	RBACActionReconItemView = "recon_item_view"
 
 	// RBACActionReconManage gates the admin/accountant reconciliation management
 	// endpoints (epic #38, Part 6 redesign — locked decision Q5, one combined

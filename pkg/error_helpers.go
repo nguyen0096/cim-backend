@@ -64,6 +64,20 @@ const (
 	ErrKeyReconItemNegativeQuantity         = "recon_item_negative_quantity"
 	ErrKeyReconItemDuplicateLine            = "recon_item_duplicate_line"
 
+	// Per-count label keys (issue #73): distinguishing multiple counts of the same
+	// inventory item within a reconciliation submission.
+
+	ErrKeyReconItemLabelRequiredForDuplicate = "recon_item_label_required_for_duplicate"
+	ErrKeyReconItemLabelConflict             = "recon_item_label_conflict"
+	ErrKeyReconItemLabelTooLong              = "recon_item_label_too_long"
+
+	// Row-level (count-session) label keys (issue #73): the label on the
+	// reconciliation_request_items row that identifies a staff user's count session.
+
+	ErrKeyReconRowLabelRequired = "recon_row_label_required"
+	ErrKeyReconRowLabelConflict = "recon_row_label_conflict"
+	ErrKeyReconRowLabelTooLong  = "recon_row_label_too_long"
+
 	// Reconciliation management Error Keys (epic #38, Part 6 redesign)
 
 	ErrKeyReconSubmissionClosed           = "recon_submission_closed"
@@ -278,6 +292,32 @@ var ErrorMessages = map[string]ErrorMessage{
 	ErrKeyReconItemDuplicateLine: {
 		EN: "Inventory item %d appears more than once in the reconciliation item payload",
 		VI: "Sản phẩm %d xuất hiện nhiều lần trong mục kiểm kê",
+	},
+	// Per-count labels (issue #73)
+	ErrKeyReconItemLabelRequiredForDuplicate: {
+		EN: "Inventory item %d is already counted in this reconciliation; this additional count needs a non-empty label to tell it apart",
+		VI: "Sản phẩm %d đã được đếm trong phiếu kiểm kê này; lần đếm thêm này cần một nhãn không để trống để phân biệt",
+	},
+	ErrKeyReconItemLabelConflict: {
+		EN: "Label \"%[2]s\" is already used by another count of inventory item %[1]d in this reconciliation; use a distinct label",
+		VI: "Nhãn \"%[2]s\" đã được dùng cho một lần đếm khác của sản phẩm %[1]d trong phiếu kiểm kê này; hãy dùng nhãn khác",
+	},
+	ErrKeyReconItemLabelTooLong: {
+		EN: "Label for inventory item %d is too long (max %d characters)",
+		VI: "Nhãn cho sản phẩm %d quá dài (tối đa %d ký tự)",
+	},
+	// Row-level (count-session) labels (issue #73)
+	ErrKeyReconRowLabelRequired: {
+		EN: "A label is required for this count session: you already have another count in this reconciliation, so each one needs a label to tell them apart",
+		VI: "Cần nhập nhãn cho lần kiểm đếm này: bạn đã có một lần kiểm đếm khác trong phiếu kiểm kê này, nên mỗi lần cần một nhãn để phân biệt",
+	},
+	ErrKeyReconRowLabelConflict: {
+		EN: "Label \"%s\" is already used by another of your count sessions in this reconciliation; use a distinct label",
+		VI: "Nhãn \"%s\" đã được dùng cho một lần kiểm đếm khác của bạn trong phiếu kiểm kê này; hãy dùng nhãn khác",
+	},
+	ErrKeyReconRowLabelTooLong: {
+		EN: "Count-session label is too long (max %d characters)",
+		VI: "Nhãn lần kiểm đếm quá dài (tối đa %d ký tự)",
 	},
 	// Reconciliation management (epic #38, Part 6 redesign)
 	ErrKeyReconSubmissionClosed: {
@@ -681,6 +721,53 @@ func ErrReconItemNegativeQuantity(ctx context.Context, itemID uint) *AppError {
 func ErrReconItemDuplicateLine(ctx context.Context, itemID uint) *AppError {
 	return NewAppError(ErrorCodeValidation,
 		fmt.Sprintf(getErrorMessage(ctx, ErrKeyReconItemDuplicateLine), itemID), nil)
+}
+
+// ErrReconItemLabelRequiredForDuplicate is a 400/validation for the issue #73 rule:
+// once an inventory item already has another live count in the submission, a
+// further count must carry a non-empty label so the two contributions can be told
+// apart in review (synthesis sums them by item, erasing the distinction otherwise).
+func ErrReconItemLabelRequiredForDuplicate(ctx context.Context, itemID uint) *AppError {
+	return NewAppError(ErrorCodeValidation,
+		fmt.Sprintf(getErrorMessage(ctx, ErrKeyReconItemLabelRequiredForDuplicate), itemID), nil)
+}
+
+// ErrReconItemLabelConflict is a 400/validation for the issue #73 rule: the label
+// supplied for a count collides with a label already used by another live count of
+// the same inventory item in this submission (labels must be distinct per item).
+func ErrReconItemLabelConflict(ctx context.Context, itemID uint, label string) *AppError {
+	return NewAppError(ErrorCodeValidation,
+		fmt.Sprintf(getErrorMessage(ctx, ErrKeyReconItemLabelConflict), itemID, label), nil)
+}
+
+// ErrReconItemLabelTooLong is a 400/validation: a count label exceeds the
+// app-validated maximum length in RUNES (issue #73; the JSONB payload has no
+// length constraint, so the cap is enforced here).
+func ErrReconItemLabelTooLong(ctx context.Context, itemID uint, maxLen int) *AppError {
+	return NewAppError(ErrorCodeValidation,
+		fmt.Sprintf(getErrorMessage(ctx, ErrKeyReconItemLabelTooLong), itemID, maxLen), nil)
+}
+
+// ErrReconRowLabelRequired is a 400/validation for the issue #73 ROW-level rule: a
+// count session (reconciliation_request_items row) needs a label once its owner
+// already has another live row in the submission (the first/only row may be blank).
+func ErrReconRowLabelRequired(ctx context.Context) *AppError {
+	return NewAppError(ErrorCodeValidation, getErrorMessage(ctx, ErrKeyReconRowLabelRequired), nil)
+}
+
+// ErrReconRowLabelConflict is a 400/validation for the issue #73 ROW-level rule:
+// the row label collides with a label already used by another of the owner's live
+// rows in this submission (row labels must be distinct per (submission, user)).
+func ErrReconRowLabelConflict(ctx context.Context, label string) *AppError {
+	return NewAppError(ErrorCodeValidation,
+		fmt.Sprintf(getErrorMessage(ctx, ErrKeyReconRowLabelConflict), label), nil)
+}
+
+// ErrReconRowLabelTooLong is a 400/validation: a row (count-session) label exceeds
+// the app-validated maximum length in RUNES (issue #73).
+func ErrReconRowLabelTooLong(ctx context.Context, maxLen int) *AppError {
+	return NewAppError(ErrorCodeValidation,
+		fmt.Sprintf(getErrorMessage(ctx, ErrKeyReconRowLabelTooLong), maxLen), nil)
 }
 
 // --- Reconciliation management domain errors (epic #38, Part 6 redesign) ---

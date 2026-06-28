@@ -253,6 +253,7 @@ func SetupServer(
 	inventories.POST("/:id/reconcile", inventoryHandler.ReconcileInventory)
 	// Staff reconciliation child-item lifecycle (epic #38, Part 4), nested under
 	// the parent submission. `:id` is the parent submission id, `:item_id` the child row.
+	inventories.GET("/submissions/:id/reconciliation-items", inventoryHandler.ListReconciliationItems)
 	inventories.POST("/submissions/:id/reconciliation-items", inventoryHandler.CreateReconciliationItem)
 	inventories.PUT("/submissions/:id/reconciliation-items/:item_id", inventoryHandler.UpdateReconciliationItem)
 	inventories.DELETE("/submissions/:id/reconciliation-items/:item_id", inventoryHandler.DeleteReconciliationItem)

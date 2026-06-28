@@ -15,15 +15,15 @@ import (
 // DTOs). Errors are returned to the central CustomErrorHandler, which localizes
 // the domain errors (EN/VI) and maps them to the right HTTP status.
 
-// CreateReconciliationItem files a new staff child item under a parent reconcile.
+// CreateReconciliationItem files a new staff count-session row under a reconcile.
 // @Summary Create reconciliation item
-// @Description Staff submits counted quantities as a new in_progress child item under an initiated reconcile submission. Counts must not exceed the per-item snapshot baseline.
+// @Description Staff submits a count session (optional row label + counted quantities, each with an optional count label) as a new in_progress row under an initiated reconcile submission. Counts must not exceed the per-item snapshot baseline.
 // @Tags inventories
 // @Accept json
 // @Produce json
 // @Param id path int true "Parent submission ID"
-// @Param request body dto.CreateReconciliationItemRequest true "Counted items"
-// @Success 201 {object} models.ReconciliationRequestItem
+// @Param request body dto.CreateReconciliationItemRequest true "Row label + counted items"
+// @Success 201 {object} dto.ReconciliationItemResponse
 // @Failure 400 {object} map[string]string
 // @Failure 403 {object} map[string]string
 // @Failure 404 {object} map[string]string
@@ -52,16 +52,40 @@ func (h *InventoryHandler) CreateReconciliationItem(c echo.Context) error {
 	return c.JSON(http.StatusCreated, item)
 }
 
+// ListReconciliationItems lists the live count-session rows under a reconcile.
+// @Summary List reconciliation items
+// @Description Returns the live count-session rows of an initiated reconcile, each with its row label and flattened count lines (inventory_item_id, quantity, count label). Staff see only their own rows; admin/accountant see all rows. Ordered by id ascending.
+// @Tags inventories
+// @Produce json
+// @Param id path int true "Parent submission ID"
+// @Success 200 {array} dto.ReconciliationItemResponse
+// @Failure 403 {object} map[string]string
+// @Failure 404 {object} map[string]string
+// @Security BearerAuth
+// @Router /inventories/submissions/{id}/reconciliation-items [get]
+func (h *InventoryHandler) ListReconciliationItems(c echo.Context) error {
+	submissionID, err := pkg.ExtractIDParam(c)
+	if err != nil {
+		return err
+	}
+
+	items, err := h.inventoryService.ListReconciliationItems(c.Request().Context(), submissionID)
+	if err != nil {
+		return err
+	}
+	return c.JSON(http.StatusOK, items)
+}
+
 // UpdateReconciliationItem replaces the counted payload of an owned child item.
 // @Summary Update reconciliation item
-// @Description Staff replaces the counted quantities of their own child item. Editing a ready/approved row resets it to in_progress.
+// @Description Staff replaces their own count session in full — the row label and the entire counted-quantities payload are overwritten.
 // @Tags inventories
 // @Accept json
 // @Produce json
 // @Param id path int true "Parent submission ID"
 // @Param item_id path int true "Child item ID"
-// @Param request body dto.UpdateReconciliationItemRequest true "Counted items"
-// @Success 200 {object} models.ReconciliationRequestItem
+// @Param request body dto.UpdateReconciliationItemRequest true "Row label + counted items"
+// @Success 200 {object} dto.ReconciliationItemResponse
 // @Failure 400 {object} map[string]string
 // @Failure 403 {object} map[string]string
 // @Failure 404 {object} map[string]string

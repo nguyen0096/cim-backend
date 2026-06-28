@@ -40,7 +40,7 @@ func TestCreateReconciliationItem_PathScopedSubmissionID(t *testing.T) {
 		On("CreateReconciliationItem", mock.Anything, mock.MatchedBy(func(req dto.CreateReconciliationItemRequest) bool {
 			return req.SubmissionID == pathSubmissionID && len(req.Items) == 1 && req.Items[0].InventoryItemID == 10
 		})).
-		Return(&models.ReconciliationRequestItem{Base: models.Base{ID: 777}, SubmissionID: pathSubmissionID}, nil).
+		Return(&dto.ReconciliationItemResponse{ID: 777, SubmissionID: pathSubmissionID}, nil).
 		Once()
 
 	// Body carries a stray submission_id which must be ignored (not bindable).
@@ -74,6 +74,33 @@ func TestCreateReconciliationItem_InvalidPathID(t *testing.T) {
 	mockService.AssertNotCalled(t, "CreateReconciliationItem", mock.Anything, mock.Anything)
 }
 
+// TestListReconciliationItems_PathScopedSubmissionID asserts the GET list handler
+// passes the path submission id to the service and returns the row responses.
+func TestListReconciliationItems_PathScopedSubmissionID(t *testing.T) {
+	handler, mockService, e := newReconItemHandler(t)
+
+	const pathSubmissionID uint = 50
+	mockService.
+		On("ListReconciliationItems", mock.Anything, pathSubmissionID).
+		Return([]dto.ReconciliationItemResponse{
+			{ID: 7, SubmissionID: pathSubmissionID, Label: "Morning", Status: "in_progress"},
+		}, nil).
+		Once()
+
+	req, err := createRequest(http.MethodGet, "/inventories/submissions/50/reconciliation-items", nil)
+	require.NoError(t, err)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetPath("/inventories/submissions/:id/reconciliation-items")
+	c.SetParamNames("id")
+	c.SetParamValues("50")
+
+	require.NoError(t, handler.ListReconciliationItems(c))
+	assert.Equal(t, http.StatusOK, rec.Code)
+	assert.Contains(t, rec.Body.String(), `"label":"Morning"`)
+	mockService.AssertExpectations(t)
+}
+
 // TestUpdateReconciliationItem_PathScopedIDs asserts both parent and child ids
 // come from the path, never the body.
 func TestUpdateReconciliationItem_PathScopedIDs(t *testing.T) {
@@ -86,7 +113,7 @@ func TestUpdateReconciliationItem_PathScopedIDs(t *testing.T) {
 		On("UpdateReconciliationItem", mock.Anything, mock.MatchedBy(func(req dto.UpdateReconciliationItemRequest) bool {
 			return req.SubmissionID == pathSubmissionID && req.ItemID == pathItemID
 		})).
-		Return(&models.ReconciliationRequestItem{Base: models.Base{ID: pathItemID}}, nil).
+		Return(&dto.ReconciliationItemResponse{ID: pathItemID}, nil).
 		Once()
 
 	body := `{"submission_id":1,"item_id":2,"items":[{"inventory_item_id":10,"quantity":"3"}]}`

@@ -47,6 +47,7 @@ func TestExtractResourceAndAction_ReconciliationChildItems(t *testing.T) {
 		name, method, path, wantAction string
 	}{
 		{"create", http.MethodPost, "/api/v1/inventories/submissions/50/reconciliation-items", "recon_item_create"},
+		{"list", http.MethodGet, "/api/v1/inventories/submissions/50/reconciliation-items", "recon_item_view"},
 		{"update", http.MethodPut, "/api/v1/inventories/submissions/50/reconciliation-items/777", "recon_item_update"},
 		{"delete", http.MethodDelete, "/api/v1/inventories/submissions/50/reconciliation-items/777", "recon_item_delete"},
 		{"close", http.MethodPost, "/api/v1/inventories/submissions/50/close", "recon_manage"},

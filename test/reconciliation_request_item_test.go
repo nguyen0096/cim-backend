@@ -137,7 +137,7 @@ var _ = Describe("Reconciliation request item lifecycle", func() {
 		})
 		Expect(err).NotTo(HaveOccurred())
 		Expect(item.ID).NotTo(BeZero())
-		Expect(item.Status).To(Equal(models.ReconciliationRequestItemStatusInProgress))
+		Expect(item.Status).To(Equal(string(models.ReconciliationRequestItemStatusInProgress)))
 		Expect(item.CreatedBy).To(Equal(staffEmail))
 		DeferCleanup(func() { tenv.ContextfulDB().Unscoped().Delete(item) })
 	})
@@ -159,9 +159,12 @@ var _ = Describe("Reconciliation request item lifecycle", func() {
 		Expect(err).NotTo(HaveOccurred())
 		DeferCleanup(func() { tenv.ContextfulDB().Unscoped().Delete(first) })
 
-		// Second row of 80 passes per-row (80 <= 100) but 80 + 80 = 160 > 100:
-		// the aggregate guard (sum across live sibling rows under the parent lock)
-		// must reject it. A different staff member to model real fragmented counts.
+		// Second row of 80 passes per-row (80 <= 100) but 80 + 80 = 160 > 100: the
+		// aggregate guard (sum across live sibling rows under the parent lock) must
+		// reject it. Count labels are per-ROW (issue #73 re-scope), so a sibling's blank
+		// count does NOT force this row's count to be labelled — both rows may be blank;
+		// the AGGREGATE quantity error is the one that fires. Different staff member to
+		// model real fragmented counts.
 		_, err = svc.CreateReconciliationItem(otherCtx, dto.CreateReconciliationItemRequest{
 			SubmissionID: submission.ID, Items: countItems(80),
 		})
@@ -176,6 +179,8 @@ var _ = Describe("Reconciliation request item lifecycle", func() {
 		Expect(err).NotTo(HaveOccurred())
 		DeferCleanup(func() { tenv.ContextfulDB().Unscoped().Delete(first) })
 
+		// Two different rows may both count the same item with blank count labels
+		// (per-ROW scope); only the aggregate quantity ceiling applies: 60 + 40 == 100.
 		second, err := svc.CreateReconciliationItem(otherCtx, dto.CreateReconciliationItemRequest{
 			SubmissionID: submission.ID, Items: countItems(40),
 		})
@@ -212,6 +217,8 @@ var _ = Describe("Reconciliation request item lifecycle", func() {
 		Expect(err).NotTo(HaveOccurred())
 		DeferCleanup(func() { tenv.ContextfulDB().Unscoped().Delete(sibling) })
 
+		// A 2nd row counts the same item with a blank count label — allowed (count
+		// labels are per-ROW); exercises the aggregate path: 40 + 50 == 90 <= 100.
 		row, err := svc.CreateReconciliationItem(staffCtx, dto.CreateReconciliationItemRequest{
 			SubmissionID: submission.ID, Items: countItems(50), // 40 + 50 == 90 <= 100 OK
 		})
@@ -222,7 +229,7 @@ var _ = Describe("Reconciliation request item lifecycle", func() {
 			SubmissionID: submission.ID, ItemID: row.ID, Items: countItems(60),
 		})
 		Expect(err).NotTo(HaveOccurred(), "40 (sibling) + 60 (new) == 100; own old 50 excluded")
-		Expect(updated.Status).To(Equal(models.ReconciliationRequestItemStatusInProgress))
+		Expect(updated.Status).To(Equal(string(models.ReconciliationRequestItemStatusInProgress)))
 
 		// Pushing it to 80 now (40 + 80 = 120 > 100) must be rejected.
 		_, err = svc.UpdateReconciliationItem(staffCtx, dto.UpdateReconciliationItemRequest{
@@ -256,7 +263,7 @@ var _ = Describe("Reconciliation request item lifecycle", func() {
 			SubmissionID: submission.ID, ItemID: item.ID, Items: countItems(70),
 		})
 		Expect(err).NotTo(HaveOccurred())
-		Expect(updated.Status).To(Equal(models.ReconciliationRequestItemStatusInProgress))
+		Expect(updated.Status).To(Equal(string(models.ReconciliationRequestItemStatusInProgress)))
 
 		// Reopen (closed -> open) lets staff edit again.
 		reopened, err := svc.ReopenReconciliation(adminCtx, submission.ID)

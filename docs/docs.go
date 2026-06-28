@@ -1105,13 +1105,66 @@ const docTemplate = `{
             }
         },
         "/inventories/submissions/{id}/reconciliation-items": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Returns the live count-session rows of an initiated reconcile, each with its row label and flattened count lines (inventory_item_id, quantity, count label). Staff see only their own rows; admin/accountant see all rows. Ordered by id ascending.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "inventories"
+                ],
+                "summary": "List reconciliation items",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Parent submission ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/dto.ReconciliationItemResponse"
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            },
             "post": {
                 "security": [
                     {
                         "BearerAuth": []
                     }
                 ],
-                "description": "Staff submits counted quantities as a new in_progress child item under an initiated reconcile submission. Counts must not exceed the per-item snapshot baseline.",
+                "description": "Staff submits a count session (optional row label + counted quantities, each with an optional count label) as a new in_progress row under an initiated reconcile submission. Counts must not exceed the per-item snapshot baseline.",
                 "consumes": [
                     "application/json"
                 ],
@@ -1131,7 +1184,7 @@ const docTemplate = `{
                         "required": true
                     },
                     {
-                        "description": "Counted items",
+                        "description": "Row label + counted items",
                         "name": "request",
                         "in": "body",
                         "required": true,
@@ -1144,7 +1197,7 @@ const docTemplate = `{
                     "201": {
                         "description": "Created",
                         "schema": {
-                            "$ref": "#/definitions/models.ReconciliationRequestItem"
+                            "$ref": "#/definitions/dto.ReconciliationItemResponse"
                         }
                     },
                     "400": {
@@ -1184,7 +1237,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Staff replaces the counted quantities of their own child item. Editing a ready/approved row resets it to in_progress.",
+                "description": "Staff replaces their own count session in full — the row label and the entire counted-quantities payload are overwritten.",
                 "consumes": [
                     "application/json"
                 ],
@@ -1211,7 +1264,7 @@ const docTemplate = `{
                         "required": true
                     },
                     {
-                        "description": "Counted items",
+                        "description": "Row label + counted items",
                         "name": "request",
                         "in": "body",
                         "required": true,
@@ -1224,7 +1277,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/models.ReconciliationRequestItem"
+                            "$ref": "#/definitions/dto.ReconciliationItemResponse"
                         }
                     },
                     "400": {
@@ -5815,6 +5868,10 @@ const docTemplate = `{
                     "items": {
                         "$ref": "#/definitions/dto.ReconciliationCountItem"
                     }
+                },
+                "label": {
+                    "description": "Label is the optional ROW-level count-session identifier (issue #73). It\ncarries no validate:\"required\" tag: the row-label rule (required once the user\nalready has a 2nd live row; ≤255 runes; distinct per (submission,user)) is\nenforced in the service so the localized domain errors surface instead of a\ngeneric binding error.",
+                    "type": "string"
                 }
             }
         },
@@ -6043,6 +6100,20 @@ const docTemplate = `{
                 }
             }
         },
+        "dto.ReconcileItemBreakdown": {
+            "type": "object",
+            "properties": {
+                "inventory_item_id": {
+                    "type": "integer"
+                },
+                "label": {
+                    "type": "string"
+                },
+                "quantity": {
+                    "type": "number"
+                }
+            }
+        },
         "dto.ReconcileReviewLabel": {
             "type": "string",
             "enum": [
@@ -6063,9 +6134,62 @@ const docTemplate = `{
                 "inventory_item_id": {
                     "type": "integer"
                 },
+                "label": {
+                    "description": "Label is an OPTIONAL free-text identifier for this count (e.g. \"shelf\",\n\"loading dock\") so multiple counts of the SAME inventory_item_id across staff\nchild rows can be told apart in review/audit (issue #73). It is\nrepresentation-only: synthesis still sums by inventory_item_id and ignores the\nlabel for the apply math. Max length 255 RUNES (app-validated;\nutf8.RuneCountInString — Vietnamese is multibyte so a byte cap would reject\nvalid labels). The distinct-labels-at-most-one-blank rule is enforced at write\ntime across the live sibling rows of the same parent plus this payload — see\nvalidateCountsAgainstSnapshot.",
+                    "type": "string"
+                },
                 "quantity": {
                     "description": "Quantity is a pointer so an omitted ` + "`" + `quantity` + "`" + ` (nil) is distinguishable from\nan explicit zero count. It deliberately carries NO validate:\"required\" tag:\nthe binding-layer validator would otherwise short-circuit a missing/null\nquantity into a generic validation error before the service runs, hiding the\nlocalized recon_item_missing_quantity domain error. Letting nil through to\nthe service's nil-check (validateCountsAgainstSnapshot) yields that localized\nerror instead. An explicit 0 still binds as a non-nil pointer and is a valid\ncount; the service validates the dereferenced value (non-negative, \u003c=\nsnapshot baseline).",
                     "type": "number"
+                }
+            }
+        },
+        "dto.ReconciliationItemLine": {
+            "type": "object",
+            "properties": {
+                "inventory_item_id": {
+                    "type": "integer"
+                },
+                "label": {
+                    "type": "string"
+                },
+                "quantity": {
+                    "type": "number"
+                }
+            }
+        },
+        "dto.ReconciliationItemResponse": {
+            "type": "object",
+            "properties": {
+                "created_at": {
+                    "type": "string"
+                },
+                "created_by": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "items": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/dto.ReconciliationItemLine"
+                    }
+                },
+                "label": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                },
+                "submission_id": {
+                    "type": "integer"
+                },
+                "updated_at": {
+                    "type": "string"
+                },
+                "updated_by": {
+                    "type": "string"
                 }
             }
         },
@@ -6148,6 +6272,13 @@ const docTemplate = `{
             "properties": {
                 "approval_status": {
                     "$ref": "#/definitions/models.SubmissionApprovalStatus"
+                },
+                "count_breakdown": {
+                    "description": "CountBreakdown is populated only for ACTIVE reconcile submissions: the\nper-(inventory_item, label) contributions behind each summed item line (issue\n#73), so the review screen can show each labeled count, not just the total. It\nis presentation-only and derived from the live child rows.",
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/dto.ReconcileItemBreakdown"
+                    }
                 },
                 "created_at": {
                     "type": "string"
@@ -6346,6 +6477,10 @@ const docTemplate = `{
                     "items": {
                         "$ref": "#/definitions/dto.ReconciliationCountItem"
                     }
+                },
+                "label": {
+                    "description": "Label fully replaces the row's existing label on update (issue #73); see the\nCreateReconciliationItemRequest.Label note on why it has no required tag.",
+                    "type": "string"
                 }
             }
         },
@@ -7352,50 +7487,6 @@ const docTemplate = `{
                 "ReconcileLifecycleStatusClosed",
                 "ReconcileLifecycleStatusProcessing",
                 "ReconcileLifecycleStatusProcessed"
-            ]
-        },
-        "models.ReconciliationRequestItem": {
-            "type": "object",
-            "properties": {
-                "created_at": {
-                    "type": "string"
-                },
-                "created_by": {
-                    "type": "string"
-                },
-                "deleted_at": {
-                    "type": "string"
-                },
-                "id": {
-                    "type": "integer"
-                },
-                "payload": {
-                    "type": "object"
-                },
-                "status": {
-                    "$ref": "#/definitions/models.ReconciliationRequestItemStatus"
-                },
-                "submission": {
-                    "$ref": "#/definitions/models.InventorySubmission"
-                },
-                "submission_id": {
-                    "type": "integer"
-                },
-                "updated_at": {
-                    "type": "string"
-                },
-                "updated_by": {
-                    "type": "string"
-                }
-            }
-        },
-        "models.ReconciliationRequestItemStatus": {
-            "type": "string",
-            "enum": [
-                "in_progress"
-            ],
-            "x-enum-varnames": [
-                "ReconciliationRequestItemStatusInProgress"
             ]
         },
         "models.SaleOrder": {
