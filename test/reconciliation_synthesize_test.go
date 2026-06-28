@@ -30,14 +30,15 @@ var _ = Describe("Reconciliation synthesize + list/detail/label/warnings", func(
 	const otherEmail = "p5-other@cim.local"
 
 	var (
-		svc        services.InventoryService
-		staffCtx   context.Context
-		otherCtx   context.Context
-		listCtx    context.Context
-		inventory  *models.Inventory
-		itm        *models.InventoryItem
-		submission *models.InventorySubmission
-		baseline   = decimal.NewFromInt(100)
+		svc         services.InventoryService
+		staffCtx    context.Context
+		otherCtx    context.Context
+		listCtx     context.Context
+		inventory   *models.Inventory
+		itm         *models.InventoryItem
+		submission  *models.InventorySubmission
+		productName string
+		baseline    = decimal.NewFromInt(100)
 	)
 
 	buildService := func() services.InventoryService {
@@ -127,6 +128,7 @@ var _ = Describe("Reconciliation synthesize + list/detail/label/warnings", func(
 
 		unit := fixture.WithUnit(db, fixture.ValidBaseUnit())
 		product := fixture.WithProduct(db, fixture.ValidProduct(unit.ID))
+		productName = product.Name
 
 		itm = &models.InventoryItem{
 			InventoryID: inventory.ID,
@@ -196,7 +198,7 @@ var _ = Describe("Reconciliation synthesize + list/detail/label/warnings", func(
 
 	It("renders synthesized items via ListSubmissions for the active reconcile", func() {
 		item, err := svc.CreateReconciliationItem(staffCtx, dto.CreateReconciliationItemRequest{
-			SubmissionID: submission.ID, Items: countItems(60),
+			SubmissionID: submission.ID, Items: labeledCountItems(60, "dock"),
 		})
 		Expect(err).NotTo(HaveOccurred())
 		DeferCleanup(func() { tenv.ContextfulDB().Unscoped().Delete(item) })
@@ -208,6 +210,17 @@ var _ = Describe("Reconciliation synthesize + list/detail/label/warnings", func(
 		Expect(resp.Items[0].Quantity.Equal(decimal.NewFromInt(60))).To(BeTrue())
 		// Live (100) == snapshot (100) here, so no drift warning yet.
 		Expect(resp.Warnings).To(BeEmpty())
+
+		// FE #42: the submission-level reconcile lifecycle status must be surfaced so
+		// the FE can detect an OPEN reconciliation and drive the editability matrix.
+		Expect(resp.ReconcileStatus).To(Equal(models.ReconcileLifecycleStatusOpen))
+
+		// FE #42: each count_breakdown entry must carry the resolved product_name
+		// (inventory_item -> product), the same way QuantityItem.ProductName is.
+		Expect(resp.CountBreakdown).To(HaveLen(1))
+		Expect(resp.CountBreakdown[0].InventoryItemID).To(Equal(itm.ID))
+		Expect(resp.CountBreakdown[0].Label).To(Equal("dock"))
+		Expect(resp.CountBreakdown[0].ProductName).To(Equal(productName))
 	})
 
 	It("labels In-progress while open, Ready-for-review once closed (Q1 collapse)", func() {

@@ -54,6 +54,11 @@ type ReconcileItemBreakdown struct {
 	InventoryItemID uint            `json:"inventory_item_id"`
 	Label           string          `json:"label"`
 	Quantity        decimal.Decimal `json:"quantity"`
+	// ProductName is the resolved product name for InventoryItemID, populated the
+	// same way QuantityItem.ProductName is (inventory_item -> product join), so the
+	// review screen can label each breakdown row without a second lookup (FE #42).
+	// Presentation-only; omitted when the product can't be resolved.
+	ProductName string `json:"product_name,omitempty"`
 }
 
 // ReconciliationItemLine is one count line inside a reconciliation row response
@@ -104,10 +109,15 @@ type SubmissionResponse struct {
 	// #73), so the review screen can show each labeled count, not just the total. It
 	// is presentation-only and derived from the live child rows.
 	CountBreakdown []ReconcileItemBreakdown `json:"count_breakdown,omitempty"`
-	CreatedBy      string                   `json:"created_by"`
-	CreatedAt      string                   `json:"created_at"`
-	UpdatedBy      string                   `json:"updated_by"`
-	UpdatedAt      string                   `json:"updated_at"`
+	// ReconcileStatus is the submission-level reconciliation lifecycle status
+	// (open/closed/processing/processed). It is set only for initiated reconciles
+	// and empty for every other submission type/flow; the FE uses it to detect an
+	// OPEN reconciliation and drive the role x status editability matrix (FE #42).
+	ReconcileStatus models.ReconcileLifecycleStatus `json:"reconcile_status,omitempty"`
+	CreatedBy       string                          `json:"created_by"`
+	CreatedAt       string                          `json:"created_at"`
+	UpdatedBy       string                          `json:"updated_by"`
+	UpdatedAt       string                          `json:"updated_at"`
 }
 
 // SubmissionApprovalRequest represents a request to approve or reject a submission

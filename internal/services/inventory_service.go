@@ -1341,27 +1341,37 @@ func (s *inventoryService) ListSubmissions(ctx context.Context, params models.Li
 			// data oddity rather than it being silently corrected.
 			warnings = append(warnings, syn.Anomalies...)
 			// Per-(item, label) breakdown behind each summed line (issue #73), so the
-			// review screen can show each labeled count, not just the total.
-			countBreakdown = syn.Breakdown
+			// review screen can show each labeled count, not just the total. Resolve
+			// product_name the same way formatSubmissionItems does (inventory_item ->
+			// product), gracefully leaving it empty when the product can't be resolved
+			// (FE #42).
+			countBreakdown = make([]dto.ReconcileItemBreakdown, len(syn.Breakdown))
+			for j, b := range syn.Breakdown {
+				if inventoryItem, exists := inventoryItemMap[b.InventoryItemID]; exists && inventoryItem.Product != nil {
+					b.ProductName = inventoryItem.Product.Name
+				}
+				countBreakdown[j] = b
+			}
 		}
 
 		responses[i] = dto.SubmissionResponse{
-			ID:             submission.ID,
-			InventoryID:    submission.InventoryID,
-			Inventory:      submission.Inventory,
-			SubmissionType: submission.SubmissionType,
-			Status:         submission.ProcessingStatus,
-			ApprovalStatus: submission.ApprovalStatus,
-			Errors:         s.formatProcessingErrors(submission.Error),
-			Warnings:       warnings,
-			Items:          items,
-			ReviewLabel:    label,
-			CountBreakdown: countBreakdown,
-			Reason:         submission.Reason,
-			CreatedBy:      submission.CreatedBy,
-			CreatedAt:      submission.CreatedAt.Format(pkg.DateTimeFormat),
-			UpdatedBy:      submission.UpdatedBy,
-			UpdatedAt:      submission.UpdatedAt.Format(pkg.DateTimeFormat),
+			ID:              submission.ID,
+			InventoryID:     submission.InventoryID,
+			Inventory:       submission.Inventory,
+			SubmissionType:  submission.SubmissionType,
+			Status:          submission.ProcessingStatus,
+			ApprovalStatus:  submission.ApprovalStatus,
+			Errors:          s.formatProcessingErrors(submission.Error),
+			Warnings:        warnings,
+			Items:           items,
+			ReviewLabel:     label,
+			CountBreakdown:  countBreakdown,
+			ReconcileStatus: submission.ReconcileStatus,
+			Reason:          submission.Reason,
+			CreatedBy:       submission.CreatedBy,
+			CreatedAt:       submission.CreatedAt.Format(pkg.DateTimeFormat),
+			UpdatedBy:       submission.UpdatedBy,
+			UpdatedAt:       submission.UpdatedAt.Format(pkg.DateTimeFormat),
 		}
 	}
 
@@ -1572,19 +1582,20 @@ func (s *inventoryService) UpdateSubmission(ctx context.Context, req dto.UpdateS
 
 	// Build response
 	response := &dto.SubmissionResponse{
-		ID:             submission.ID,
-		InventoryID:    submission.InventoryID,
-		Inventory:      submission.Inventory,
-		SubmissionType: submission.SubmissionType,
-		Status:         submission.ProcessingStatus,
-		ApprovalStatus: submission.ApprovalStatus,
-		Items:          items,
-		Warnings:       formatWarnings(*submission, req.Items, inventoryItemMap),
-		Reason:         submission.Reason,
-		CreatedBy:      submission.CreatedBy,
-		CreatedAt:      submission.CreatedAt.Format(pkg.DateTimeFormat),
-		UpdatedBy:      submission.UpdatedBy,
-		UpdatedAt:      submission.UpdatedAt.Format(pkg.DateTimeFormat),
+		ID:              submission.ID,
+		InventoryID:     submission.InventoryID,
+		Inventory:       submission.Inventory,
+		SubmissionType:  submission.SubmissionType,
+		Status:          submission.ProcessingStatus,
+		ApprovalStatus:  submission.ApprovalStatus,
+		Items:           items,
+		Warnings:        formatWarnings(*submission, req.Items, inventoryItemMap),
+		ReconcileStatus: submission.ReconcileStatus,
+		Reason:          submission.Reason,
+		CreatedBy:       submission.CreatedBy,
+		CreatedAt:       submission.CreatedAt.Format(pkg.DateTimeFormat),
+		UpdatedBy:       submission.UpdatedBy,
+		UpdatedAt:       submission.UpdatedAt.Format(pkg.DateTimeFormat),
 	}
 
 	return response, nil

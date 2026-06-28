@@ -188,6 +188,13 @@ definitions:
         type: integer
       label:
         type: string
+      product_name:
+        description: |-
+          ProductName is the resolved product name for InventoryItemID, populated the
+          same way QuantityItem.ProductName is (inventory_item -> product join), so the
+          review screen can label each breakdown row without a second lookup (FE #42).
+          Presentation-only; omitted when the product can't be resolved.
+        type: string
       quantity:
         type: number
     type: object
@@ -346,6 +353,14 @@ definitions:
         $ref: '#/definitions/models.SubmissionProcessingStatus'
       reason:
         type: string
+      reconcile_status:
+        allOf:
+        - $ref: '#/definitions/models.ReconcileLifecycleStatus'
+        description: |-
+          ReconcileStatus is the submission-level reconciliation lifecycle status
+          (open/closed/processing/processed). It is set only for initiated reconciles
+          and empty for every other submission type/flow; the FE uses it to detect an
+          OPEN reconciliation and drive the role x status editability matrix (FE #42).
       review_label:
         allOf:
         - $ref: '#/definitions/dto.ReconcileReviewLabel'

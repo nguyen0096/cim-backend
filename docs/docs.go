@@ -6109,6 +6109,10 @@ const docTemplate = `{
                 "label": {
                     "type": "string"
                 },
+                "product_name": {
+                    "description": "ProductName is the resolved product name for InventoryItemID, populated the\nsame way QuantityItem.ProductName is (inventory_item -\u003e product join), so the\nreview screen can label each breakdown row without a second lookup (FE #42).\nPresentation-only; omitted when the product can't be resolved.",
+                    "type": "string"
+                },
                 "quantity": {
                     "type": "number"
                 }
@@ -6312,6 +6316,14 @@ const docTemplate = `{
                 },
                 "reason": {
                     "type": "string"
+                },
+                "reconcile_status": {
+                    "description": "ReconcileStatus is the submission-level reconciliation lifecycle status\n(open/closed/processing/processed). It is set only for initiated reconciles\nand empty for every other submission type/flow; the FE uses it to detect an\nOPEN reconciliation and drive the role x status editability matrix (FE #42).",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/models.ReconcileLifecycleStatus"
+                        }
+                    ]
                 },
                 "review_label": {
                     "description": "ReviewLabel is populated only for ACTIVE reconcile submissions (initiated via\nthe new flow, not yet applied); it is empty for every other submission. It is\nderived from the live child rows and is presentation-only (not persisted).",
