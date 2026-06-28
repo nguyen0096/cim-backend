@@ -1,0 +1,103 @@
+name: Deploy to Production (Dokploy)
+
+# Rolls out an already-built release tag to production via Dokploy.
+#
+# ⚠️ This is the dangerous step. It points the Dokploy application at the chosen
+# release image and triggers a deployment. The release image/tag must already
+# exist (created by the "Release" workflow). Gated behind the `production`
+# environment so it can require manual approval.
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: 'Release tag to deploy (e.g. v2.12.0)'
+        required: true
+        type: string
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: hn-corp/cim-backend
+  # Bind the free-form input to an env var so it is never interpolated directly
+  # into a shell/JSON script (prevents script injection). Always use $RELEASE_TAG
+  # in run: blocks, never ${{ github.event.inputs.release_tag }}.
+  RELEASE_TAG: ${{ github.event.inputs.release_tag }}
+
+jobs:
+  deploy:
+    name: Deploy
+    runs-on: ubuntu-latest
+    environment: production
+    permissions:
+      contents: read
+      packages: read  # needed to docker login / inspect the (private) GHCR image
+    steps:
+      - name: Validate release tag
+        run: |
+          # Strict allowlist: vMAJOR.MINOR.PATCH only. Rejects anything that
+          # could carry shell metacharacters before it reaches later steps.
+          if [[ ! "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::Invalid release tag '$RELEASE_TAG'. Expected vMAJOR.MINOR.PATCH (e.g. v2.12.0)."
+            exit 1
+          fi
+
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Verify release tag exists
+        run: |
+          git fetch --tags
+          if ! git rev-parse -q --verify "refs/tags/$RELEASE_TAG" >/dev/null; then
+            echo "::error::Tag '$RELEASE_TAG' does not exist. Run the Release workflow first."
+            exit 1
+          fi
+          echo "Deploying tag: $RELEASE_TAG"
+
+      - name: Verify Docker image exists
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GHCR_ACTOR: ${{ github.actor }}
+        run: |
+          IMAGE="$REGISTRY/$IMAGE_NAME:$RELEASE_TAG"
+          echo "$GHCR_TOKEN" | docker login "$REGISTRY" -u "$GHCR_ACTOR" --password-stdin
+          if ! docker manifest inspect "$IMAGE" >/dev/null 2>&1; then
+            echo "::error::Image '$IMAGE' not found in registry."
+            exit 1
+          fi
+          echo "Image found: $IMAGE"
+
+      - name: Update Dokploy Docker image
+        env:
+          DOKPLOY_API_KEY: ${{ secrets.DOKPLOY_API_KEY }}
+          DOKPLOY_DOMAIN: ${{ vars.DOKPLOY_DOMAIN }}
+          DOKPLOY_APPLICATION_ID: ${{ vars.DOKPLOY_APPLICATION_ID }}
+        run: |
+          curl -fsS -X POST "https://$DOKPLOY_DOMAIN/api/application.saveDockerProvider" \
+            -H "accept: application/json" \
+            -H "Content-Type: application/json" \
+            -H "x-api-key: $DOKPLOY_API_KEY" \
+            -d "{
+              \"dockerImage\": \"$REGISTRY/$IMAGE_NAME:$RELEASE_TAG\",
+              \"applicationId\": \"$DOKPLOY_APPLICATION_ID\"
+            }"
+
+      - name: Trigger Dokploy deployment
+        env:
+          DOKPLOY_API_KEY: ${{ secrets.DOKPLOY_API_KEY }}
+          DOKPLOY_DOMAIN: ${{ vars.DOKPLOY_DOMAIN }}
+          DOKPLOY_APPLICATION_ID: ${{ vars.DOKPLOY_APPLICATION_ID }}
+        run: |
+          curl -fsS -X POST "https://$DOKPLOY_DOMAIN/api/application.deploy" \
+            -H "accept: application/json" \
+            -H "Content-Type: application/json" \
+            -H "x-api-key: $DOKPLOY_API_KEY" \
+            -d "{
+              \"applicationId\": \"$DOKPLOY_APPLICATION_ID\"
+            }"
+
+      - name: Summary
+        run: |
+          echo "✅ Deployment triggered for $RELEASE_TAG" >> $GITHUB_STEP_SUMMARY
+          echo "Image: \`$REGISTRY/$IMAGE_NAME:$RELEASE_TAG\`" >> $GITHUB_STEP_SUMMARY

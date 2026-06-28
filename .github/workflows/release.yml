@@ -1,4 +1,10 @@
-name: Production Release
+name: Release
+
+# Builds, tests, and publishes a release: pushes the Docker image and creates a
+# Git tag + GitHub Release with detailed notes (PRs, migrations, caveats).
+#
+# This workflow does NOT deploy. To roll out a release to production, run the
+# separate "Deploy to Production (Dokploy)" workflow with the tag created here.
 
 on:
   workflow_dispatch:
@@ -53,7 +59,6 @@ jobs:
     name: Build and Release
     runs-on: ubuntu-latest
     needs: [lint, test]  # Only runs if both lint and test pass
-    environment: production
     permissions:
       contents: write
       packages: write
@@ -68,10 +73,10 @@ jobs:
         run: |
           # Fetch all tags
           git fetch --tags
-          
+
           # Get the latest tag matching semantic versioning pattern
           LATEST_TAG=$(git tag -l "v*.*.*" | sort -V | tail -n 1)
-          
+
           # If no tags exist, start with v0.1.0
           if [ -z "$LATEST_TAG" ]; then
             if [ "${{ github.event.inputs.version_bump }}" == "major" ]; then
@@ -83,7 +88,7 @@ jobs:
             # Remove 'v' prefix and split version
             VERSION=${LATEST_TAG#v}
             IFS='.' read -r MAJOR MINOR PATCH <<< "$VERSION"
-            
+
             # Increment based on input
             case "${{ github.event.inputs.version_bump }}" in
               major)
@@ -99,12 +104,43 @@ jobs:
                 PATCH=$((PATCH + 1))
                 ;;
             esac
-            
+
             NEW_VERSION="v${MAJOR}.${MINOR}.${PATCH}"
           fi
-          
+
           echo "new_version=$NEW_VERSION" >> $GITHUB_OUTPUT
-          echo "New version will be: $NEW_VERSION"
+          echo "latest_tag=$LATEST_TAG" >> $GITHUB_OUTPUT
+          echo "New version will be: $NEW_VERSION (previous: ${LATEST_TAG:-none})"
+
+      - name: Detect new migrations
+        id: migrations
+        run: |
+          PREV="${{ steps.version.outputs.latest_tag }}"
+
+          if [ -n "$PREV" ]; then
+            # Newly ADDED up-migrations since the previous tag.
+            NEW_MIGRATIONS=$(git diff --name-only --diff-filter=A "${PREV}..HEAD" -- database/migrations/ \
+              | grep '\.up\.sql$' | sort || true)
+          else
+            # First release (no previous tag): every tracked up-migration ships now.
+            NEW_MIGRATIONS=$(git ls-files -- 'database/migrations/*.up.sql' | sort || true)
+          fi
+
+          {
+            echo "migrations<<MIGRATIONS_EOF"
+            if [ -z "$NEW_MIGRATIONS" ]; then
+              echo "_No new migrations in this release._"
+            else
+              COUNT=$(echo "$NEW_MIGRATIONS" | wc -l | tr -d ' ')
+              echo "⚠️ **$COUNT new migration(s) to be executed:**"
+              echo ""
+              while IFS= read -r f; do
+                [ -z "$f" ] && continue
+                echo "- \`$(basename "$f")\`"
+              done <<< "$NEW_MIGRATIONS"
+            fi
+            echo "MIGRATIONS_EOF"
+          } >> $GITHUB_OUTPUT
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -137,35 +173,6 @@ jobs:
           echo "  📦 ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.version.outputs.new_version }}"
           echo "  📦 ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:stable"
 
-      - name: Update Dokploy Docker image
-        env:
-          DOKPLOY_API_KEY: ${{ secrets.DOKPLOY_API_KEY }}
-          DOKPLOY_DOMAIN: ${{ vars.DOKPLOY_DOMAIN }}
-          DOKPLOY_APPLICATION_ID: ${{ vars.DOKPLOY_APPLICATION_ID }}
-        run: |
-          curl -X POST "https://$DOKPLOY_DOMAIN/api/application.saveDockerProvider" \
-            -H "accept: application/json" \
-            -H "Content-Type: application/json" \
-            -H "x-api-key: $DOKPLOY_API_KEY" \
-            -d "{
-              \"dockerImage\": \"${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.version.outputs.new_version }}\",
-              \"applicationId\": \"$DOKPLOY_APPLICATION_ID\"
-            }"
-
-      - name: Trigger Dokploy deployment
-        env:
-          DOKPLOY_API_KEY: ${{ secrets.DOKPLOY_API_KEY }}
-          DOKPLOY_DOMAIN: ${{ vars.DOKPLOY_DOMAIN }}
-          DOKPLOY_APPLICATION_ID: ${{ vars.DOKPLOY_APPLICATION_ID }}
-        run: |
-          curl -X POST "https://$DOKPLOY_DOMAIN/api/application.deploy" \
-            -H "accept: application/json" \
-            -H "Content-Type: application/json" \
-            -H "x-api-key: $DOKPLOY_API_KEY" \
-            -d "{
-              \"applicationId\": \"$DOKPLOY_APPLICATION_ID\"
-            }"
-
       - name: Create and push Git tag
         run: |
           git config user.name "github-actions[bot]"
@@ -174,17 +181,19 @@ jobs:
           git push origin ${{ steps.version.outputs.new_version }}
 
       - name: Create GitHub Release
-        uses: actions/create-release@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.version.outputs.new_version }}
-          release_name: Release ${{ steps.version.outputs.new_version }}
+          name: Release ${{ steps.version.outputs.new_version }}
+          # GitHub appends an auto-generated "## What's Changed" PR list below this body.
+          generate_release_notes: true
           body: |
             Production release ${{ steps.version.outputs.new_version }}
-            
-            **Version bump type:** ${{ github.event.inputs.version_bump }}
-            **Docker image:** ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.version.outputs.new_version }}
+
+            **Version bump:** ${{ github.event.inputs.version_bump }}
+            **Docker image:** `${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.version.outputs.new_version }}`
+
+            ## Migrations
+            ${{ steps.migrations.outputs.migrations }}
           draft: false
           prerelease: false
-
