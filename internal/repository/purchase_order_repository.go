@@ -40,8 +40,24 @@ func NewPurchaseOrderRepository(base BaseRepository) PurchaseOrderRepository {
 	return &purchaseOrderRepository{baseRepository: asBase(base)}
 }
 
+// orderNumberUniqueConstraint is the Postgres unique constraint on
+// purchase_orders.order_number (auto-named for the column-level UNIQUE). Create
+// translates a violation of THIS constraint into the typed domain error
+// pkg.ErrDuplicateOrderNumber so the service can decide to regenerate-and-retry
+// without knowing any SQLSTATE / constraint-name detail. Any other unique
+// violation from the same INSERT (e.g. the items' idx_product_supplier_po)
+// passes through unchanged so the caller surfaces it immediately.
+const orderNumberUniqueConstraint = "purchase_orders_order_number_key"
+
 func (r *purchaseOrderRepository) Create(ctx context.Context, purchaseOrder *models.PurchaseOrder) error {
-	return r.db.WithContext(ctx).Create(purchaseOrder).Error
+	err := r.db.WithContext(ctx).Create(purchaseOrder).Error
+	if err != nil {
+		constraint := orderNumberUniqueConstraint
+		if isDuplicateError(err, &constraint) {
+			return pkg.ErrDuplicateOrderNumber(err)
+		}
+	}
+	return err
 }
 
 func (r *purchaseOrderRepository) GetByID(id uint) (*models.PurchaseOrder, error) {

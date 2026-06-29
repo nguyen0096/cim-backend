@@ -612,6 +612,17 @@ func ErrActivePendingReconcileConflict(inventoryID uint, cause error) *AppError 
 	return err
 }
 
+// ErrDuplicateOrderNumber is the domain error the purchase-order repository
+// returns when an INSERT violates the order_number unique constraint (#84 race).
+// It lets the repository translate the DB-specific 23505 / constraint-name detail
+// into a typed signal the service can match (via IsErrorCode /
+// ErrorCodeDuplicateOrderNumber) to decide a regenerate-and-retry, without the
+// service knowing any SQLSTATE codes or constraint names. The original DB error
+// is preserved as the cause.
+func ErrDuplicateOrderNumber(cause error) *AppError {
+	return NewAppError(ErrorCodeDuplicateOrderNumber, "duplicate purchase order number", cause)
+}
+
 func ErrReconcileValidationFailed(message string) *AppError {
 	return NewAppError(ErrorCodeReconcileValidationFailed, message, nil)
 }

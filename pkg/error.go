@@ -37,6 +37,11 @@ const (
 	ErrorCodePurchaseOrderNoItems ErrorCode = 7 // purchase-order-no-items
 	// ErrorCodePurchaseOrderNoApprovedPaymentReceipt is used when completing a purchase order without approved payment receipt
 	ErrorCodePurchaseOrderNoApprovedPaymentReceipt ErrorCode = 14 // purchase-order-no-approved-payment-receipt
+	// ErrorCodeDuplicateOrderNumber is returned by the repository when a purchase
+	// order INSERT violates the order_number unique constraint (#84 race). It is the
+	// only signal the create path uses to decide a regenerate-and-retry; the service
+	// stays unaware of the SQLSTATE / constraint name behind it.
+	ErrorCodeDuplicateOrderNumber ErrorCode = 18 // duplicate-order-number
 
 	// Inventory Error Codes
 

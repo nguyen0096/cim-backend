@@ -32,14 +32,14 @@ func Test_generatePurchaseOrderNumber(t *testing.T) {
 		require.NoError(t, err)
 		assert.NotEmpty(t, orderNumber)
 
-		// Verify format: PO-YYMMDD-HHMMSS-XX
-		pattern := `^PO-\d{6}-\d{6}-[A-Z0-9]{2}$`
+		// Verify format: PO-YYMMDD-HHMMSS-XXXX
+		pattern := `^PO-\d{6}-\d{6}-[A-Z0-9]{4}$`
 		matched, err := regexp.MatchString(pattern, orderNumber)
 		require.NoError(t, err)
 		assert.True(t, matched, "Order number %s should match pattern %s", orderNumber, pattern)
 
-		// Verify length: PO- (3) + YYMMDD (6) + - (1) + HHMMSS (6) + - (1) + XX (2) = 19 characters
-		expectedLength := len("PO-250925-143052-AB")
+		// Verify length: PO- (3) + YYMMDD (6) + - (1) + HHMMSS (6) + - (1) + XXXX (4) = 21 characters
+		expectedLength := len("PO-250925-143052-ABCD")
 		assert.Equal(t, expectedLength, len(orderNumber))
 	})
 
@@ -75,7 +75,7 @@ func TestCreatePurchaseOrder(t *testing.T) {
 
 		mockRepo.On("Create", mock.Anything, mock.MatchedBy(func(po *models.PurchaseOrder) bool {
 			// Check that order number was generated and follows the expected pattern
-			pattern := `^PO-\d{6}-\d{6}-[A-Z0-9]{2}$`
+			pattern := `^PO-\d{6}-\d{6}-[A-Z0-9]{4}$`
 			matched, _ := regexp.MatchString(pattern, po.OrderNumber)
 			return matched && po.OrderNumber != ""
 		})).Return(nil)
@@ -90,7 +90,7 @@ func TestCreatePurchaseOrder(t *testing.T) {
 		assert.NotEmpty(t, po.OrderNumber, "Order number should be generated")
 
 		// Verify the generated order number format
-		pattern := `^PO-\d{6}-\d{6}-[A-Z0-9]{2}$`
+		pattern := `^PO-\d{6}-\d{6}-[A-Z0-9]{4}$`
 		matched, err := regexp.MatchString(pattern, po.OrderNumber)
 		require.NoError(t, err)
 		assert.True(t, matched, "Generated order number should match expected format")
@@ -184,6 +184,173 @@ func TestCreatePurchaseOrder(t *testing.T) {
 		assert.NotEmpty(t, purchaseOrder.OrderNumber, "Order number should still be generated even if repository fails")
 
 		mockRepo.AssertExpectations(t)
+	})
+
+	t.Run("should regenerate order number and retry once on duplicate key, then run post-create steps once", func(t *testing.T) {
+		// Reproduces the #84 concurrency collision deterministically: the first
+		// Create fails with a 23505 duplicate-key on the auto-generated
+		// order_number; the service must regenerate the number, reset the
+		// in-memory PKs, retry the Create, and then run the post-create steps once.
+		mockRepo := repositorymocks.NewPurchaseOrderRepository(t)
+		mockProductRepo := repositorymocks.NewProductRepository(t)
+		mockUnitRepo := repositorymocks.NewUnitRepository(t)
+		service := NewPurchaseOrderService(mockRepo, nil, mockUnitRepo, mockProductRepo, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+
+		inventory := fixture.ValidInventory()
+		unit := fixture.ValidBaseUnit()
+		product := fixture.ValidProduct(unit.ID)
+		supplier := fixture.ValidSupplier()
+		po := fixture.ValidPurchaseOrder(inventory.ID, product.ID, supplier.ID, unit.ID)
+
+		mockProductRepo.On("GetByID", mock.Anything, product.ID).Return(&product, nil)
+		mockUnitRepo.On("GetByID", mock.Anything, unit.ID).Return(&unit, nil)
+
+		orderNumberPattern := `^PO-\d{6}-\d{6}-[A-Z0-9]{4}$`
+
+		// Capture the state seen by Create on each attempt via a side-effect-free
+		// Run callback (matchers must stay pure — testify re-evaluates them).
+		type createSnapshot struct {
+			orderNumber     string
+			poID            uint
+			itemPOIDsAllNil bool
+		}
+		var snapshots []createSnapshot
+		recordCreate := func(args mock.Arguments) {
+			poArg := args.Get(1).(*models.PurchaseOrder)
+			allNil := true
+			for _, item := range poArg.Items {
+				if item != nil && item.PurchaseOrderID != nil {
+					allNil = false
+				}
+			}
+			snapshots = append(snapshots, createSnapshot{
+				orderNumber:     poArg.OrderNumber,
+				poID:            poArg.ID,
+				itemPOIDsAllNil: allNil,
+			})
+		}
+
+		// Attempt 1: the repository detected the order_number unique violation and
+		// translated it into the typed pkg.ErrDuplicateOrderNumber domain error — the
+		// only signal the service uses to regenerate-and-retry. (The raw DB 23505 /
+		// constraint-name string never reaches the service.)
+		dupErr := pkg.ErrDuplicateOrderNumber(
+			errors.New("ERROR: duplicate key value violates unique constraint \"purchase_orders_order_number_key\" (SQLSTATE 23505)"))
+		mockRepo.On("Create", mock.Anything, mock.AnythingOfType("*models.PurchaseOrder")).
+			Run(recordCreate).Return(dupErr).Once()
+		// Attempt 2: succeeds.
+		mockRepo.On("Create", mock.Anything, mock.AnythingOfType("*models.PurchaseOrder")).
+			Run(recordCreate).Return(nil).Once()
+
+		// Post-create steps (selling-price creation + reload) must run exactly once.
+		mockRepo.On("GetByID", mock.AnythingOfType("uint")).Return(&po, nil).Once()
+
+		err := service.CreatePurchaseOrder(context.Background(), &po)
+
+		require.NoError(t, err)
+		mockRepo.AssertExpectations(t)
+		mockRepo.AssertNumberOfCalls(t, "Create", 2)
+		mockRepo.AssertNumberOfCalls(t, "GetByID", 1)
+
+		require.Len(t, snapshots, 2, "Create should be attempted exactly twice")
+		// Both attempts use a valid auto-generated order number.
+		for i, s := range snapshots {
+			matched, _ := regexp.MatchString(orderNumberPattern, s.orderNumber)
+			assert.True(t, matched, "attempt %d order number %q should match %s", i+1, s.orderNumber, orderNumberPattern)
+		}
+		// The retry regenerated the order number rather than re-inserting the same one.
+		assert.NotEqual(t, snapshots[0].orderNumber, snapshots[1].orderNumber, "order number should be regenerated on retry")
+		// PK reset fired before the retry: parent ID zeroed and item FK cleared.
+		assert.Equal(t, uint(0), snapshots[1].poID, "purchase order ID should be reset before retry")
+		assert.True(t, snapshots[1].itemPOIDsAllNil, "item PurchaseOrderID should be reset to nil before retry")
+	})
+
+	t.Run("should not regenerate or retry a caller-provided order number on duplicate key", func(t *testing.T) {
+		// A caller-supplied order number is never renumbered: a duplicate-key on it
+		// surfaces as an error after a single Create, with no regeneration.
+		mockRepo := repositorymocks.NewPurchaseOrderRepository(t)
+		mockProductRepo := repositorymocks.NewProductRepository(t)
+		mockUnitRepo := repositorymocks.NewUnitRepository(t)
+		service := NewPurchaseOrderService(mockRepo, nil, mockUnitRepo, mockProductRepo, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+
+		inventory := fixture.ValidInventory()
+		unit := fixture.ValidBaseUnit()
+		product := fixture.ValidProduct(unit.ID)
+		supplier := fixture.ValidSupplier()
+		po := fixture.ValidPurchaseOrder(inventory.ID, product.ID, supplier.ID, unit.ID)
+		providedOrderNumber := "CUSTOM-PO-123"
+		po.OrderNumber = providedOrderNumber
+
+		mockProductRepo.On("GetByID", mock.Anything, product.ID).Return(&product, nil)
+		mockUnitRepo.On("GetByID", mock.Anything, unit.ID).Return(&unit, nil)
+
+		// The repository translates an order_number violation to the typed
+		// pkg.ErrDuplicateOrderNumber regardless of who supplied the number. The
+		// regenerate-and-retry gate is keyed on the number being auto-generated, so a
+		// caller-supplied number must surface this error unwrapped after a single
+		// Create — never renumbered or retried.
+		dupErr := pkg.ErrDuplicateOrderNumber(
+			errors.New("ERROR: duplicate key value violates unique constraint \"purchase_orders_order_number_key\" (SQLSTATE 23505)"))
+		mockRepo.On("Create", mock.Anything, mock.MatchedBy(func(po *models.PurchaseOrder) bool {
+			return po.OrderNumber == providedOrderNumber
+		})).Return(dupErr).Once()
+
+		err := service.CreatePurchaseOrder(context.Background(), &po)
+
+		require.Error(t, err)
+		assert.Equal(t, dupErr, err, "duplicate key on a caller-provided number should surface unwrapped, not retried")
+		assert.Equal(t, providedOrderNumber, po.OrderNumber, "caller-provided order number must not be regenerated")
+		mockRepo.AssertExpectations(t)
+		mockRepo.AssertNumberOfCalls(t, "Create", 1)
+	})
+
+	t.Run("should not regenerate or retry when a non-order-number 23505 (item constraint) is returned", func(t *testing.T) {
+		// Regression for the Codex P2 finding: repo.Create also inserts
+		// PurchaseOrderItems guarded by idx_product_supplier_po. The repository only
+		// translates the order_number violation into pkg.ErrDuplicateOrderNumber; an
+		// item-constraint violation passes through untranslated (here the raw item
+		// 23505). The service keys its regenerate-and-retry solely on the typed
+		// pkg.ErrDuplicateOrderNumber, so it must NOT treat this as an order-number
+		// collision: no regeneration, a single Create attempt, and the real
+		// item-constraint error surfaced unwrapped (not the "...after N retries due to
+		// duplicate key conflicts" wrap).
+		mockRepo := repositorymocks.NewPurchaseOrderRepository(t)
+		mockProductRepo := repositorymocks.NewProductRepository(t)
+		mockUnitRepo := repositorymocks.NewUnitRepository(t)
+		service := NewPurchaseOrderService(mockRepo, nil, mockUnitRepo, mockProductRepo, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+
+		inventory := fixture.ValidInventory()
+		unit := fixture.ValidBaseUnit()
+		product := fixture.ValidProduct(unit.ID)
+		supplier := fixture.ValidSupplier()
+		po := fixture.ValidPurchaseOrder(inventory.ID, product.ID, supplier.ID, unit.ID)
+		// Auto-numbered request (no caller-supplied order number).
+		po.OrderNumber = ""
+
+		mockProductRepo.On("GetByID", mock.Anything, product.ID).Return(&product, nil)
+		mockUnitRepo.On("GetByID", mock.Anything, unit.ID).Return(&unit, nil)
+
+		// 23505 from the ITEM unique index, not the order_number constraint.
+		itemDupErr := errors.New("ERROR: duplicate key value violates unique constraint \"idx_product_supplier_po\" (SQLSTATE 23505)")
+
+		var orderNumbers []string
+		mockRepo.On("Create", mock.Anything, mock.AnythingOfType("*models.PurchaseOrder")).
+			Run(func(args mock.Arguments) {
+				orderNumbers = append(orderNumbers, args.Get(1).(*models.PurchaseOrder).OrderNumber)
+			}).
+			Return(itemDupErr).Once()
+
+		err := service.CreatePurchaseOrder(context.Background(), &po)
+
+		require.Error(t, err)
+		// The real item-constraint error must surface unwrapped — NOT mis-wrapped as
+		// an order-number collision after exhausting retries.
+		assert.Equal(t, itemDupErr, err, "an item-constraint 23505 must surface unwrapped, not be retried or wrapped as an order-number collision")
+		assert.NotContains(t, err.Error(), "retries due to duplicate key conflicts", "must not wrap as an order-number-collision exhaustion error")
+		mockRepo.AssertExpectations(t)
+		// Single attempt: no regeneration loop.
+		mockRepo.AssertNumberOfCalls(t, "Create", 1)
+		require.Len(t, orderNumbers, 1, "Create must be attempted exactly once (no regenerate-and-retry)")
 	})
 }
 

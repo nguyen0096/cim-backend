@@ -18,6 +18,7 @@ func _() {
 	_ = x[ErrorCodeConflict-9]
 	_ = x[ErrorCodePurchaseOrderNoItems-7]
 	_ = x[ErrorCodePurchaseOrderNoApprovedPaymentReceipt-14]
+	_ = x[ErrorCodeDuplicateOrderNumber-18]
 	_ = x[ErrorCodeBadInventoryItemState-8]
 	_ = x[ErrorCodeReconcileValidationFailed-10]
 	_ = x[ErrorCodeActivePendingReconcileConflict-17]
@@ -28,9 +29,9 @@ func _() {
 	_ = x[ErrorCodeEmptyDataFile-16]
 }
 
-const _ErrorCode_name = "internalinvalid-request-bodynot-foundunauthorizedforbiddenvalidationduplicatepurchase-order-no-itemsbad-inventory-item-stateconflictreconcile-validation-faileddispose-validation-failedtransfer-validation-failedconsume-fifo-failedpurchase-order-no-approved-payment-receiptunsupported-file-formatdata-row-not-foundactive-pending-reconcile-conflict"
+const _ErrorCode_name = "internalinvalid-request-bodynot-foundunauthorizedforbiddenvalidationduplicatepurchase-order-no-itemsbad-inventory-item-stateconflictreconcile-validation-faileddispose-validation-failedtransfer-validation-failedconsume-fifo-failedpurchase-order-no-approved-payment-receiptunsupported-file-formatdata-row-not-foundactive-pending-reconcile-conflictduplicate-order-number"
 
-var _ErrorCode_index = [...]uint16{0, 8, 28, 37, 49, 58, 68, 77, 100, 124, 132, 159, 184, 210, 229, 271, 294, 312, 345}
+var _ErrorCode_index = [...]uint16{0, 8, 28, 37, 49, 58, 68, 77, 100, 124, 132, 159, 184, 210, 229, 271, 294, 312, 345, 367}
 
 func (i ErrorCode) String() string {
 	if i < 0 || i >= ErrorCode(len(_ErrorCode_index)-1) {
