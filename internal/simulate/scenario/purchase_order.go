@@ -66,25 +66,10 @@ func (s *PurchaseOrderScenario) Run(ctx context.Context, env *Env) error {
 	}
 
 	// 1. Create the purchase order.
-	const qty = 100
-	create := createPORequest{
-		InventoryID: ref.InventoryID,
-		Notes:       fmt.Sprintf("SIM PO iteration %d", s.iteration),
-		Items: []createPOItem{
-			{ProductID: ref.ProductIDs[0], SupplierID: ref.SupplierIDs[0], UnitID: ref.UnitID, Quantity: qty, UnitPrice: 100},
-		},
+	po, err := createPO(ctx, env, s.iteration, ref.InventoryID)
+	if err != nil {
+		return err
 	}
-	if len(ref.ProductIDs) > 1 {
-		create.Items = append(create.Items, createPOItem{
-			ProductID: ref.ProductIDs[1], SupplierID: supplierAt(ref, 1), UnitID: ref.UnitID, Quantity: qty, UnitPrice: 250,
-		})
-	}
-
-	var po poResponse
-	if err := env.Client.Do(ctx, "POST", "/purchase-orders", create, &po, "POST /purchase-orders"); err != nil {
-		return fmt.Errorf("create PO: %w", err)
-	}
-	env.Report.Created("purchase_order")
 
 	// Variant 2: cancel without receiving (terminal: cancelled).
 	if variant == 2 {
@@ -97,15 +82,64 @@ func (s *PurchaseOrderScenario) Run(ctx context.Context, env *Env) error {
 	}
 
 	// 2. Receive inventory. variant 0 = full (fully_delivered),
-	// variant 1 = partial (partially_delivered). Read item IDs back from the
-	// create response; never assume them.
+	// variant 1 = partial (partially_delivered).
+	full := variant != 1
+	if err := receivePO(ctx, env, po, full); err != nil {
+		return err
+	}
+
+	// 3. Read back the inventory items produced by receiving, by real ID.
+	if _, err := listInventoryItems(ctx, env, ref.InventoryID); err != nil {
+		return fmt.Errorf("list inventory items: %w", err)
+	}
+
+	return nil
+}
+
+// poQty is the per-item quantity each simulated PO orders. Receiving the full
+// amount produces inventory items with this live quantity (the reconcile
+// baseline); a half receive leaves the PO partially_delivered.
+const poQty = 100
+
+// createPO creates a purchase order against inventoryID from the reference
+// products/suppliers/unit and returns the server's response (real PO id + item
+// ids). Shared by the PO, payment, and reconciliation scenarios so all build a
+// valid PO the same way; the target inventory is explicit so a scenario can
+// seed a dedicated inventory.
+func createPO(ctx context.Context, env *Env, iteration int, inventoryID uint) (*poResponse, error) {
+	ref := env.RefIDs
+	create := createPORequest{
+		InventoryID: inventoryID,
+		Notes:       fmt.Sprintf("SIM PO iteration %d", iteration),
+		Items: []createPOItem{
+			{ProductID: ref.ProductIDs[0], SupplierID: ref.SupplierIDs[0], UnitID: ref.UnitID, Quantity: poQty, UnitPrice: 100},
+		},
+	}
+	if len(ref.ProductIDs) > 1 {
+		create.Items = append(create.Items, createPOItem{
+			ProductID: ref.ProductIDs[1], SupplierID: supplierAt(ref, 1), UnitID: ref.UnitID, Quantity: poQty, UnitPrice: 250,
+		})
+	}
+
+	var po poResponse
+	if err := env.Client.Do(ctx, "POST", "/purchase-orders", create, &po, "POST /purchase-orders"); err != nil {
+		return nil, fmt.Errorf("create PO: %w", err)
+	}
+	env.Report.Created("purchase_order")
+	return &po, nil
+}
+
+// receivePO receives a PO's items by their real (server-returned) ids. full
+// receives the whole ordered quantity (fully_delivered); otherwise half
+// (partially_delivered).
+func receivePO(ctx context.Context, env *Env, po *poResponse, full bool) error {
 	recv := dto.UpdatePurchaseOrderDeliveryStatusRequest{
 		PurchaseOrderID:   po.ID,
 		ConfirmationNotes: "SIM receive",
 	}
-	received := qty
-	if variant == 1 {
-		received = qty / 2
+	received := poQty
+	if !full {
+		received = poQty / 2
 	}
 	for _, item := range po.Items {
 		recv.Items = append(recv.Items, struct {
@@ -118,18 +152,6 @@ func (s *PurchaseOrderScenario) Run(ctx context.Context, env *Env) error {
 		return fmt.Errorf("receive PO %d: %w", po.ID, err)
 	}
 	env.Report.Created("purchase_order_received")
-
-	// 3. Read back the inventory items produced by receiving, by real ID.
-	itemsPath := fmt.Sprintf("/inventories/%d/inventory-items?limit=200", ref.InventoryID)
-	var items struct {
-		Data []struct {
-			ID uint `json:"id"`
-		} `json:"data"`
-	}
-	if err := env.Client.Do(ctx, "GET", itemsPath, nil, &items, "GET /inventories/:id/inventory-items"); err != nil {
-		return fmt.Errorf("list inventory items: %w", err)
-	}
-
 	return nil
 }
 

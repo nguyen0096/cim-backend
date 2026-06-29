@@ -74,22 +74,74 @@ func StatusOf(err error) int {
 	return 0
 }
 
+// ExpectedFunc classifies a non-2xx response as an EXPECTED (tolerable) outcome
+// rather than a failure, given the HTTP status and the raw response body. It is
+// only consulted on a non-2xx; returning true records the call as a non-failure
+// and suppresses the error so the caller can branch on the status.
+type ExpectedFunc func(status int, respBody []byte) bool
+
 // Do issues an authenticated request to path (under /api/v1) with an optional
 // JSON body, and decodes a 2xx response into out (if out is non-nil). label is
-// the endpoint name recorded in the report (e.g. "POST /purchase-orders").
+// the endpoint name recorded in the report (e.g. "POST /purchase-orders"). Any
+// non-2xx response is recorded as a failure and returned as an error.
 func (c *Client) Do(ctx context.Context, method, path string, body, out any, label string) error {
+	_, err := c.DoClassified(ctx, method, path, body, out, label, nil)
+	return err
+}
+
+// DoExpectingStatus is Do for endpoints with an EXPECTED non-2xx outcome keyed on
+// the STATUS CODE alone (e.g. start-processing returning 409 on reconciliation
+// drift — the apply rolled back, nothing was mutated; drift is a routine outcome,
+// not a server error). A non-2xx whose status is in expectedStatuses is recorded
+// as a NON-failure and returned without error; any other non-2xx behaves like Do.
+func (c *Client) DoExpectingStatus(ctx context.Context, method, path string, body, out any, label string, expectedStatuses ...int) (int, error) {
+	return c.DoClassified(ctx, method, path, body, out, label, func(status int, _ []byte) bool {
+		return containsStatus(expectedStatuses, status)
+	})
+}
+
+// DoClassified is the shared core. It issues the request, records exactly one
+// call in the report, and decodes a 2xx body into out (if non-nil).
+//
+// For a non-2xx, isExpected (when non-nil) is consulted with the status and raw
+// body: if it returns true the response is a tolerable, expected outcome — the
+// call is recorded with a NIL error (so it is NOT counted as a failure and does
+// not inflate total_failures) and (status, nil) is returned so the caller can
+// branch. Otherwise the non-2xx is recorded as a failure and returned as an
+// *APIError, exactly like a plain Do. This lets a caller tolerate a specific
+// outcome discriminated by status AND body (e.g. a generic 500 whose body
+// carries a known domain message) without masking any other failure.
+func (c *Client) DoClassified(ctx context.Context, method, path string, body, out any, label string, isExpected ExpectedFunc) (int, error) {
 	start := time.Now()
 	status, respBody, err := c.do(ctx, method, path, body)
+
+	// An expected non-2xx is a normal outcome: record the call but NOT as a
+	// failure, and do not return an error for it.
+	if err != nil && isExpected != nil && isExpected(status, respBody) {
+		c.report.RecordCall(label, status, time.Since(start), nil)
+		return status, nil
+	}
+
 	c.report.RecordCall(label, status, time.Since(start), err)
 	if err != nil {
-		return err
+		return status, err
 	}
 	if out != nil && len(respBody) > 0 {
 		if err := json.Unmarshal(respBody, out); err != nil {
-			return fmt.Errorf("%s: decode response: %w", label, err)
+			return status, fmt.Errorf("%s: decode response: %w", label, err)
 		}
 	}
-	return nil
+	return status, nil
+}
+
+// containsStatus reports whether status is in the list.
+func containsStatus(statuses []int, status int) bool {
+	for _, s := range statuses {
+		if s == status {
+			return true
+		}
+	}
+	return false
 }
 
 // do performs the request with one retry on 401 (after invalidating the token).

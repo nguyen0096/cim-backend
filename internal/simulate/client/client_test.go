@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -132,6 +133,188 @@ func TestDoSecond401ReturnsError(t *testing.T) {
 	}
 	if calls != 2 {
 		t.Errorf("server calls = %d, want 2 (bounded retry)", calls)
+	}
+}
+
+// TestDoExpectingStatusExpected409IsNotAFailure verifies an EXPECTED non-2xx
+// (e.g. start-processing 409 reconciliation drift) is recorded as a call but NOT
+// as a failure — so an expected drift never inflates total_failures — and the
+// status is returned (no error) so the caller can branch on it.
+func TestDoExpectingStatusExpected409IsNotAFailure(t *testing.T) {
+	var signIns, refreshes int32
+	fb := fakeFirebase(t, &signIns, &refreshes)
+	defer fb.Close()
+
+	api := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusConflict)
+		_, _ = w.Write([]byte(`{"drift_detected":true,"warnings":["sibling processed"]}`))
+	}))
+	defer api.Close()
+
+	rep := report.New()
+	c := newTestClient(api.URL, fb.URL, rep)
+
+	status, err := c.DoExpectingStatus(context.Background(), "POST", "/x/start-processing", nil, nil, "POST /x/start-processing", http.StatusConflict)
+	if err != nil {
+		t.Fatalf("expected nil error for an expected 409, got %v", err)
+	}
+	if status != http.StatusConflict {
+		t.Errorf("status = %d, want 409", status)
+	}
+
+	s := rep.Snapshot()
+	if s.TotalCalls != 1 {
+		t.Errorf("total calls = %d, want 1 (the call is still counted)", s.TotalCalls)
+	}
+	if s.TotalFailures != 0 {
+		t.Errorf("total failures = %d, want 0 (an expected drift must NOT count as a failure)", s.TotalFailures)
+	}
+	if len(s.Failures) != 0 {
+		t.Errorf("sampled failures = %d, want 0", len(s.Failures))
+	}
+}
+
+// TestDoExpectingStatusUnexpectedStatusStillFails verifies a non-expected non-2xx
+// is still recorded as a failure and returned as an error (genuine errors are
+// unaffected by the expected-status allowance).
+func TestDoExpectingStatusUnexpectedStatusStillFails(t *testing.T) {
+	var signIns, refreshes int32
+	fb := fakeFirebase(t, &signIns, &refreshes)
+	defer fb.Close()
+
+	api := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+		_, _ = w.Write([]byte(`{"error":"boom"}`))
+	}))
+	defer api.Close()
+
+	rep := report.New()
+	c := newTestClient(api.URL, fb.URL, rep)
+
+	// 409 is expected here, but the server returns 500 — that must still fail.
+	status, err := c.DoExpectingStatus(context.Background(), "POST", "/x", nil, nil, "POST /x", http.StatusConflict)
+	if err == nil {
+		t.Fatal("expected an error for an unexpected 500")
+	}
+	if status != http.StatusInternalServerError {
+		t.Errorf("status = %d, want 500", status)
+	}
+	if StatusOf(err) != http.StatusInternalServerError {
+		t.Errorf("StatusOf(err) = %d, want 500", StatusOf(err))
+	}
+
+	s := rep.Snapshot()
+	if s.TotalFailures != 1 {
+		t.Errorf("total failures = %d, want 1 (a genuine 500 must still count)", s.TotalFailures)
+	}
+}
+
+// serve500 returns an httptest server that always replies 500 with body.
+func serve500(body string) *httptest.Server {
+	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+		_, _ = w.Write([]byte(body))
+	}))
+}
+
+// TestDoClassifiedToleratedBodyIsNotAFailure drives the tolerated path through
+// the REAL client: a 500 whose body the predicate accepts is recorded as a call
+// but NOT a failure (total_failures stays 0), and (status, nil) is returned so
+// the caller can branch — this is the exact path the revenue-expense finalize
+// skip relies on.
+func TestDoClassifiedToleratedBodyIsNotAFailure(t *testing.T) {
+	var signIns, refreshes int32
+	fb := fakeFirebase(t, &signIns, &refreshes)
+	defer fb.Close()
+
+	api := serve500(`{"code":"internal","message":"Revenue expense settings not configured"}`)
+	defer api.Close()
+
+	rep := report.New()
+	c := newTestClient(api.URL, fb.URL, rep)
+
+	// Predicate: tolerate a 500 whose body carries the known domain message.
+	expected := func(status int, b []byte) bool {
+		return status == http.StatusInternalServerError &&
+			strings.Contains(string(b), "Revenue expense settings not configured")
+	}
+	status, err := c.DoClassified(context.Background(), "POST", "/revenue-expenses/finalize", struct{}{}, nil, "POST /revenue-expenses/finalize", expected)
+	if err != nil {
+		t.Fatalf("tolerated 500 must not return an error, got %v", err)
+	}
+	if status != http.StatusInternalServerError {
+		t.Errorf("status = %d, want 500", status)
+	}
+
+	s := rep.Snapshot()
+	if s.TotalCalls != 1 {
+		t.Errorf("total calls = %d, want 1 (the call is still counted)", s.TotalCalls)
+	}
+	if s.TotalFailures != 0 {
+		t.Errorf("total failures = %d, want 0 (a tolerated 500 must NOT count as a failure)", s.TotalFailures)
+	}
+	if len(s.Failures) != 0 {
+		t.Errorf("sampled failures = %d, want 0", len(s.Failures))
+	}
+}
+
+// TestDoClassifiedUntoleratedBodyStillFails drives the NOT-tolerated path: a 500
+// whose body the predicate rejects (a different message) is still recorded as a
+// failure and returned as an error — proving the body discriminator does not mask
+// other 500s.
+func TestDoClassifiedUntoleratedBodyStillFails(t *testing.T) {
+	var signIns, refreshes int32
+	fb := fakeFirebase(t, &signIns, &refreshes)
+	defer fb.Close()
+
+	api := serve500(`{"code":"internal","message":"Failed to finalize revenue expense"}`)
+	defer api.Close()
+
+	rep := report.New()
+	c := newTestClient(api.URL, fb.URL, rep)
+
+	expected := func(status int, b []byte) bool {
+		return status == http.StatusInternalServerError &&
+			strings.Contains(string(b), "Revenue expense settings not configured")
+	}
+	status, err := c.DoClassified(context.Background(), "POST", "/revenue-expenses/finalize", struct{}{}, nil, "POST /revenue-expenses/finalize", expected)
+	if err == nil {
+		t.Fatal("a 500 with a different body must still return an error")
+	}
+	if status != http.StatusInternalServerError {
+		t.Errorf("status = %d, want 500", status)
+	}
+
+	s := rep.Snapshot()
+	if s.TotalFailures != 1 {
+		t.Errorf("total failures = %d, want 1 (a non-tolerated 500 must still count)", s.TotalFailures)
+	}
+}
+
+// TestDoBehaviorUnchangedRecordsFailureOn500 is the regression guard for the
+// refactor: plain Do (no predicate, via DoClassified with nil) still records a
+// non-2xx as a failure and returns an *APIError, byte-for-byte as before.
+func TestDoBehaviorUnchangedRecordsFailureOn500(t *testing.T) {
+	var signIns, refreshes int32
+	fb := fakeFirebase(t, &signIns, &refreshes)
+	defer fb.Close()
+
+	api := serve500(`{"code":"internal","message":"boom"}`)
+	defer api.Close()
+
+	rep := report.New()
+	c := newTestClient(api.URL, fb.URL, rep)
+
+	err := c.Do(context.Background(), "POST", "/x", struct{}{}, nil, "POST /x")
+	if err == nil {
+		t.Fatal("Do must return an error on a 500")
+	}
+	if StatusOf(err) != http.StatusInternalServerError {
+		t.Errorf("StatusOf(err) = %d, want 500", StatusOf(err))
+	}
+	s := rep.Snapshot()
+	if s.TotalCalls != 1 || s.TotalFailures != 1 {
+		t.Errorf("calls=%d failures=%d, want 1/1 (Do behavior must be unchanged)", s.TotalCalls, s.TotalFailures)
 	}
 }
 
