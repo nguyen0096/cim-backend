@@ -108,6 +108,61 @@ func expectSnapshotBaselines(mock sqlmock.Sqlmock, baselines map[uint]string) {
 		WillReturnRows(rows)
 }
 
+// expectInventoryItemsByIDs queues the full GetByIDs read that resolveProductName
+// performs on a count-baseline rejection branch: the main inventory_items SELECT
+// PLUS the Inventory/Product/Unit preload SELECTs (GetByIDs is
+// Unscoped().Preload("Inventory").Preload("Product").Preload("Unit")). GORM emits
+// these as separate ordered queries through the single sqlmock queue, so all four
+// must be queued for ExpectationsWereMet() to pass.
+//
+// items maps inventory_item_id -> product name. Each item row carries a distinct
+// product_id/unit_id/inventory_id (derived from the item id) so the preloads have
+// non-zero FKs to resolve.
+func expectInventoryItemsByIDs(mock sqlmock.Sqlmock, items map[uint]string) {
+	itemRows := sqlmock.NewRows([]string{"id", "inventory_id", "product_id", "unit_id"})
+	invRows := sqlmock.NewRows([]string{"id", "name"})
+	prodRows := sqlmock.NewRows([]string{"id", "name"})
+	unitRows := sqlmock.NewRows([]string{"id", "name"})
+	for id, name := range items {
+		// Stable, distinct FK ids derived from the item id.
+		invID := 1000 + id
+		prodID := 2000 + id
+		unitID := 3000 + id
+		itemRows.AddRow(id, invID, prodID, unitID)
+		invRows.AddRow(invID, "Inv")
+		prodRows.AddRow(prodID, name)
+		unitRows.AddRow(unitID, "Unit")
+	}
+	// Main query + the three preloads, matched loosely by table so column/clause
+	// ordering differences across GORM versions don't break the match.
+	mock.ExpectQuery(regexp.QuoteMeta(`FROM "inventory_items"`)).WillReturnRows(itemRows)
+	mock.ExpectQuery(regexp.QuoteMeta(`FROM "inventories"`)).WillReturnRows(invRows)
+	mock.ExpectQuery(regexp.QuoteMeta(`FROM "products"`)).WillReturnRows(prodRows)
+	mock.ExpectQuery(regexp.QuoteMeta(`FROM "units"`)).WillReturnRows(unitRows)
+}
+
+// expectInventoryItemNilProduct queues a GetByIDs read where the inventory item
+// resolves but its product is soft-deleted: GetByIDs is Unscoped() so the item row
+// comes back, but the scoped Preload("Product") finds no row, leaving Product ==
+// nil. resolveProductName must return "" here (its nil-guard) rather than panic.
+// GORM still issues the products preload (product_id is non-zero) but it returns no
+// row. Inventory/Unit preloads resolve normally.
+func expectInventoryItemNilProduct(mock sqlmock.Sqlmock, itemID uint) {
+	invID := 1000 + itemID
+	prodID := 2000 + itemID
+	unitID := 3000 + itemID
+	mock.ExpectQuery(regexp.QuoteMeta(`FROM "inventory_items"`)).
+		WillReturnRows(sqlmock.NewRows([]string{"id", "inventory_id", "product_id", "unit_id"}).
+			AddRow(itemID, invID, prodID, unitID))
+	mock.ExpectQuery(regexp.QuoteMeta(`FROM "inventories"`)).
+		WillReturnRows(sqlmock.NewRows([]string{"id", "name"}).AddRow(invID, "Inv"))
+	// Soft-deleted product: scoped preload returns NO row -> Product stays nil.
+	mock.ExpectQuery(regexp.QuoteMeta(`FROM "products"`)).
+		WillReturnRows(sqlmock.NewRows([]string{"id", "name"}))
+	mock.ExpectQuery(regexp.QuoteMeta(`FROM "units"`)).
+		WillReturnRows(sqlmock.NewRows([]string{"id", "name"}).AddRow(unitID, "Unit"))
+}
+
 // expectSiblingRows queues the ListBySubmission read that the aggregate
 // (sum-across-live-child-rows) baseline check performs inside validateCountsAgainstSnapshot.
 // Each entry is one live child row: its id and its persisted counted payload
@@ -220,14 +275,57 @@ func TestCreateReconciliationItem_CountedExceedsSnapshot_Rejected(t *testing.T) 
 	expectSiblingRows(mock, submissionID, nil)
 	expectSnapshotBaselines(mock, map[uint]string{10: "100"})
 	// counted 120 > baseline 100 -> validation error, rollback, no insert.
+	// resolveProductName resolves item 10 -> "Sản phẩm A" on the rejecting branch.
+	expectInventoryItemsByIDs(mock, map[uint]string{10: "Sản phẩm A"})
 	mock.ExpectRollback()
 
+	// VI locale so we assert the issue's exact reworded VI string.
+	ctx = pkg.WithLanguage(ctx, pkg.LangVI)
 	_, err := svc.CreateReconciliationItem(ctx, dto.CreateReconciliationItemRequest{
 		SubmissionID: submissionID,
 		Items:        []dto.ReconciliationCountItem{{InventoryItemID: 10, Quantity: decPtr(120)}},
 	})
 	require.Error(t, err)
 	assert.Equal(t, pkg.ErrorCodeValidation, appErrCode(t, err))
+	// Message renders the product NAME and the new wording, never the raw item ID.
+	assert.Contains(t, err.Error(), "Sản phẩm A")
+	assert.Contains(t, err.Error(), "số lượng ghi nhận tại thời điểm bắt đầu đối soát")
+	assert.NotContains(t, err.Error(), "sản phẩm 10")
+	assert.NotContains(t, err.Error(), "số liệu nền")
+	assert.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestCreateReconciliationItem_CountedExceedsSnapshot_NilProduct_Graceful(t *testing.T) {
+	// The rejecting item's product is soft-deleted, so GetByIDs (Unscoped) returns the
+	// item but the scoped Product preload finds no row -> Product == nil.
+	// resolveProductName's nil-guard must return "" (no panic), and the message renders
+	// an empty name inside guillemets («») with the new wording.
+	gormDB, mock := newInventoryServiceTestDB(t)
+	svc := newReconItemServiceReal(gormDB)
+	ctx := reconCtx(reconStaffEmail)
+	const submissionID = uint(50)
+
+	mock.ExpectBegin()
+	expectParentReconcileLoad(mock, submissionID)
+	expectSiblingRows(mock, submissionID, nil)
+	expectSnapshotBaselines(mock, map[uint]string{10: "100"})
+	// Soft-deleted product: item resolves, product preload finds nothing.
+	expectInventoryItemNilProduct(mock, 10)
+	mock.ExpectRollback()
+
+	// VI locale so we assert the reworded VI string + empty-name guillemets.
+	ctx = pkg.WithLanguage(ctx, pkg.LangVI)
+	_, err := svc.CreateReconciliationItem(ctx, dto.CreateReconciliationItemRequest{
+		SubmissionID: submissionID,
+		Items:        []dto.ReconciliationCountItem{{InventoryItemID: 10, Quantity: decPtr(120)}},
+	})
+	require.Error(t, err)
+	assert.Equal(t, pkg.ErrorCodeValidation, appErrCode(t, err))
+	// Empty name renders inside guillemets; new wording present; no raw ID, no old jargon.
+	assert.Contains(t, err.Error(), "«»")
+	assert.Contains(t, err.Error(), "số lượng ghi nhận tại thời điểm bắt đầu đối soát")
+	assert.NotContains(t, err.Error(), "sản phẩm 10")
+	assert.NotContains(t, err.Error(), "số liệu nền")
 	assert.NoError(t, mock.ExpectationsWereMet())
 }
 
@@ -285,14 +383,23 @@ func TestCreateReconciliationItem_NoSnapshotBaseline_Rejected(t *testing.T) {
 	// Baseline map has item 10 only; counted item 99 has no snapshot -> reject.
 	expectSiblingRows(mock, submissionID, nil)
 	expectSnapshotBaselines(mock, map[uint]string{10: "100"})
+	// resolveProductName resolves item 99 -> "Sản phẩm Z" on the rejecting branch.
+	expectInventoryItemsByIDs(mock, map[uint]string{99: "Sản phẩm Z"})
 	mock.ExpectRollback()
 
+	// VI locale so we assert the issue's exact reworded VI string.
+	ctx = pkg.WithLanguage(ctx, pkg.LangVI)
 	_, err := svc.CreateReconciliationItem(ctx, dto.CreateReconciliationItemRequest{
 		SubmissionID: submissionID,
 		Items:        []dto.ReconciliationCountItem{{InventoryItemID: 99, Quantity: decPtr(1)}},
 	})
 	require.Error(t, err)
 	assert.Equal(t, pkg.ErrorCodeValidation, appErrCode(t, err))
+	// Message renders the product NAME and the new wording, never the raw item ID.
+	assert.Contains(t, err.Error(), "Sản phẩm Z")
+	assert.Contains(t, err.Error(), "số lượng ghi nhận tại thời điểm bắt đầu đối soát")
+	assert.NotContains(t, err.Error(), "sản phẩm 99")
+	assert.NotContains(t, err.Error(), "số liệu nền")
 	assert.NoError(t, mock.ExpectationsWereMet())
 }
 
@@ -1071,8 +1178,12 @@ func TestCreateReconciliationItem_AggregateExceedsBaseline_SecondRowRejected(t *
 	// One existing live sibling row already counted 80 of item 10.
 	expectSiblingRows(mock, submissionID, []siblingRow{{id: 700, payload: reconLine(10, 80)}})
 	expectSnapshotBaselines(mock, map[uint]string{10: "100"})
+	// resolveProductName resolves item 10 -> "Sản phẩm A" on the aggregate-reject branch.
+	expectInventoryItemsByIDs(mock, map[uint]string{10: "Sản phẩm A"})
 	mock.ExpectRollback()
 
+	// VI locale so we assert the issue's exact reworded VI string.
+	ctx = pkg.WithLanguage(ctx, pkg.LangVI)
 	_, err := svc.CreateReconciliationItem(ctx, dto.CreateReconciliationItemRequest{
 		SubmissionID: submissionID,
 		Items:        []dto.ReconciliationCountItem{{InventoryItemID: 10, Quantity: decPtr(80), Label: "dock"}},
@@ -1080,12 +1191,15 @@ func TestCreateReconciliationItem_AggregateExceedsBaseline_SecondRowRejected(t *
 	require.Error(t, err)
 	assert.Equal(t, pkg.ErrorCodeValidation, appErrCode(t, err))
 	// Specifically the aggregate error (total 160 across staff submissions), not the
-	// per-row exceeds error.
+	// per-row exceeds error. The builder now takes the product NAME (not the item ID),
+	// so both sides resolve to the same name-bearing message.
 	var appErr *pkg.AppError
 	require.ErrorAs(t, err, &appErr)
 	assert.Equal(t,
-		pkg.ErrReconItemAggregateExceedsBaseline(ctx, 10, decimal.NewFromInt(160), decimal.NewFromInt(100)).Error(),
+		pkg.ErrReconItemAggregateExceedsBaseline(ctx, "Sản phẩm A", decimal.NewFromInt(160), decimal.NewFromInt(100)).Error(),
 		appErr.Error())
+	assert.Contains(t, appErr.Error(), "Sản phẩm A")
+	assert.Contains(t, appErr.Error(), "số lượng ghi nhận tại thời điểm bắt đầu đối soát")
 	assert.NoError(t, mock.ExpectationsWereMet())
 }
 
@@ -1195,8 +1309,12 @@ func TestUpdateReconciliationItem_AggregatePushesOverBaseline_Rejected(t *testin
 		{id: 777, payload: reconLine(10, 30)},
 	})
 	expectSnapshotBaselines(mock, map[uint]string{10: "100"})
+	// resolveProductName resolves item 10 -> "Sản phẩm A" on the aggregate-reject branch.
+	expectInventoryItemsByIDs(mock, map[uint]string{10: "Sản phẩm A"})
 	mock.ExpectRollback()
 
+	// VI locale so we assert the issue's exact reworded VI string.
+	ctx = pkg.WithLanguage(ctx, pkg.LangVI)
 	_, err := svc.UpdateReconciliationItem(ctx, dto.UpdateReconciliationItemRequest{
 		SubmissionID: submissionID,
 		ItemID:       itemID,
@@ -1207,8 +1325,10 @@ func TestUpdateReconciliationItem_AggregatePushesOverBaseline_Rejected(t *testin
 	var appErr *pkg.AppError
 	require.ErrorAs(t, err, &appErr)
 	assert.Equal(t,
-		pkg.ErrReconItemAggregateExceedsBaseline(ctx, 10, decimal.NewFromInt(130), decimal.NewFromInt(100)).Error(),
+		pkg.ErrReconItemAggregateExceedsBaseline(ctx, "Sản phẩm A", decimal.NewFromInt(130), decimal.NewFromInt(100)).Error(),
 		appErr.Error())
+	assert.Contains(t, appErr.Error(), "Sản phẩm A")
+	assert.Contains(t, appErr.Error(), "số lượng ghi nhận tại thời điểm bắt đầu đối soát")
 	assert.NoError(t, mock.ExpectationsWereMet())
 }
 

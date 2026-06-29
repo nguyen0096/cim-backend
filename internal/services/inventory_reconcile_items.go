@@ -249,17 +249,20 @@ func (s *inventoryService) validateCountsAgainstSnapshot(ctx context.Context, su
 
 		baseline, ok := baselines[item.InventoryItemID]
 		if !ok {
-			return nil, pkg.ErrReconItemNoSnapshotBaseline(ctx, item.InventoryItemID)
+			// Resolve the product NAME lazily, ONLY on this rejecting branch — the
+			// happy path issues no extra query. Fail-fast guarantees at most one
+			// such lookup per request (see resolveProductName).
+			return nil, pkg.ErrReconItemNoSnapshotBaseline(ctx, s.resolveProductName(ctx, item.InventoryItemID))
 		}
 		// Per-row guard first (clearer single-row message when this row alone exceeds).
 		if quantity.GreaterThan(baseline) {
-			return nil, pkg.ErrReconItemCountExceedsBaseline(ctx, item.InventoryItemID, quantity, baseline)
+			return nil, pkg.ErrReconItemCountExceedsBaseline(ctx, s.resolveProductName(ctx, item.InventoryItemID), quantity, baseline)
 		}
 		// Aggregate guard: this line + every prior line of this payload for the same
 		// item + every other live sibling row's count for it.
 		total := totals[item.InventoryItemID].Add(quantity)
 		if total.GreaterThan(baseline) {
-			return nil, pkg.ErrReconItemAggregateExceedsBaseline(ctx, item.InventoryItemID, total, baseline)
+			return nil, pkg.ErrReconItemAggregateExceedsBaseline(ctx, s.resolveProductName(ctx, item.InventoryItemID), total, baseline)
 		}
 		totals[item.InventoryItemID] = total
 	}
@@ -285,6 +288,28 @@ func (s *inventoryService) validateCountsAgainstSnapshot(ctx context.Context, su
 		return nil, fmt.Errorf("failed to marshal reconciliation item payload: %w", err)
 	}
 	return bytes, nil
+}
+
+// resolveProductName resolves a single inventory item's product display name for
+// a count-baseline rejection message. It is called ONLY on a rejecting branch of
+// validateCountsAgainstSnapshot, which is fail-fast — so a request rejects on at
+// most one row and this issues at most one GetByIDs round-trip; the happy path
+// never queries here.
+//
+// GetByIDs is Unscoped() but Preload("Product") is scoped, so a soft-deleted
+// product comes back with Product == nil even though the item itself resolves.
+// We guard explicitly (mirroring inventory_service.go), returning "" on repo
+// error, item-missing, or nil/soft-deleted product — never a nil deref. An empty
+// name renders inside guillemets («») so the message stays legible.
+func (s *inventoryService) resolveProductName(ctx context.Context, itemID uint) string {
+	items, err := s.inventoryItemRepo.GetByIDs(ctx, []uint{itemID})
+	if err != nil {
+		return ""
+	}
+	if it, ok := s.buildItemMap(items)[itemID]; ok && it.Product != nil {
+		return it.Product.Name
+	}
+	return ""
 }
 
 // validateCountLabelDistinctness enforces the issue-#73 PER-ROW count-label rule on

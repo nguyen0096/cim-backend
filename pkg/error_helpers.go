@@ -274,16 +274,16 @@ var ErrorMessages = map[string]ErrorMessage{
 		VI: "Chuyển trạng thái mục kiểm kê không hợp lệ từ %s sang %s",
 	},
 	ErrKeyReconItemCountExceedsBaseline: {
-		EN: "Counted quantity %s for inventory item %d exceeds the snapshot baseline %s",
-		VI: "Số lượng đếm được %s cho sản phẩm %d vượt quá số liệu nền %s",
+		EN: "Counted quantity %s for product \"%s\" exceeds the quantity recorded at the start of reconciliation %s",
+		VI: "Số lượng đếm được %s cho sản phẩm «%s» vượt quá số lượng ghi nhận tại thời điểm bắt đầu đối soát %s",
 	},
 	ErrKeyReconItemAggregateExceedsBaseline: {
-		EN: "Total counted quantity %s for inventory item %d across all staff submissions exceeds the snapshot baseline %s",
-		VI: "Tổng số lượng đếm được %s cho sản phẩm %d trên tất cả các phiếu kiểm kê của nhân viên vượt quá số liệu nền %s",
+		EN: "Total counted quantity %s for product \"%s\" across all staff submissions exceeds the quantity recorded at the start of reconciliation %s",
+		VI: "Tổng số lượng đếm được %s cho sản phẩm «%s» trên tất cả các phiếu kiểm kê của nhân viên vượt quá số lượng ghi nhận tại thời điểm bắt đầu đối soát %s",
 	},
 	ErrKeyReconItemNoSnapshotBaseline: {
-		EN: "Inventory item %d has no snapshot baseline for this reconciliation",
-		VI: "Sản phẩm %d không có số liệu nền cho phiếu kiểm kê này",
+		EN: "Product \"%s\" has no quantity recorded at the start of reconciliation for this reconciliation",
+		VI: "Sản phẩm «%s» không có số lượng ghi nhận tại thời điểm bắt đầu đối soát cho phiếu kiểm kê này",
 	},
 	ErrKeyReconItemNegativeQuantity: {
 		EN: "Counted quantity for inventory item %d must not be negative",
@@ -714,9 +714,11 @@ func ErrReconItemInvalidTransition(ctx context.Context, from, to string) *AppErr
 
 // ErrReconItemCountExceedsBaseline is a 400/validation for the S2 rule:
 // counted > snapshot baseline is rejected (no positive-adjustment mechanism).
-func ErrReconItemCountExceedsBaseline(ctx context.Context, itemID uint, counted, baseline decimal.Decimal) *AppError {
+// productName is the resolved product display name (empty when it can't be
+// resolved, e.g. a soft-deleted product) — never the raw inventory item ID.
+func ErrReconItemCountExceedsBaseline(ctx context.Context, productName string, counted, baseline decimal.Decimal) *AppError {
 	return NewAppError(ErrorCodeValidation,
-		fmt.Sprintf(getErrorMessage(ctx, ErrKeyReconItemCountExceedsBaseline), counted.String(), itemID, baseline.String()), nil)
+		fmt.Sprintf(getErrorMessage(ctx, ErrKeyReconItemCountExceedsBaseline), counted.String(), productName, baseline.String()), nil)
 }
 
 // ErrReconItemAggregateExceedsBaseline is a 400/validation for the cross-row S2
@@ -725,16 +727,20 @@ func ErrReconItemCountExceedsBaseline(ctx context.Context, itemID uint, counted,
 // by item at synthesis — must not exceed the snapshot baseline. This generalizes
 // the per-row ErrReconItemCountExceedsBaseline so two rows of 80 against a
 // baseline of 100 cannot each pass per-row yet sum to 160.
-func ErrReconItemAggregateExceedsBaseline(ctx context.Context, itemID uint, total, baseline decimal.Decimal) *AppError {
+// productName is the resolved product display name (empty when it can't be
+// resolved, e.g. a soft-deleted product) — never the raw inventory item ID.
+func ErrReconItemAggregateExceedsBaseline(ctx context.Context, productName string, total, baseline decimal.Decimal) *AppError {
 	return NewAppError(ErrorCodeValidation,
-		fmt.Sprintf(getErrorMessage(ctx, ErrKeyReconItemAggregateExceedsBaseline), total.String(), itemID, baseline.String()), nil)
+		fmt.Sprintf(getErrorMessage(ctx, ErrKeyReconItemAggregateExceedsBaseline), total.String(), productName, baseline.String()), nil)
 }
 
 // ErrReconItemNoSnapshotBaseline is a 400/validation: a counted item has no
 // snapshot row (e.g. an item added after initiate), so there is no baseline.
-func ErrReconItemNoSnapshotBaseline(ctx context.Context, itemID uint) *AppError {
+// productName is the resolved product display name (empty when it can't be
+// resolved, e.g. a soft-deleted product) — never the raw inventory item ID.
+func ErrReconItemNoSnapshotBaseline(ctx context.Context, productName string) *AppError {
 	return NewAppError(ErrorCodeValidation,
-		fmt.Sprintf(getErrorMessage(ctx, ErrKeyReconItemNoSnapshotBaseline), itemID), nil)
+		fmt.Sprintf(getErrorMessage(ctx, ErrKeyReconItemNoSnapshotBaseline), productName), nil)
 }
 
 // ErrReconItemNegativeQuantity is a 400/validation for a negative counted qty.
