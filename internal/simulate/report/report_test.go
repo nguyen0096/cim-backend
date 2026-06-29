@@ -51,6 +51,29 @@ func TestLatencyPercentiles(t *testing.T) {
 	if s.Latency.P95ms < 90 || s.Latency.P95ms > 99 {
 		t.Errorf("p95 = %.1f, want ~96", s.Latency.P95ms)
 	}
+	if s.Latency.P99ms < 98 || s.Latency.P99ms > 100 {
+		t.Errorf("p99 = %.1f, want ~100", s.Latency.P99ms)
+	}
+}
+
+func TestThroughputReportedWhenDurationSet(t *testing.T) {
+	r := New()
+	for i := 0; i < 10; i++ {
+		r.RecordCall("e", 200, time.Millisecond, nil)
+	}
+	// No duration: throughput omitted (mock mode).
+	if s := r.Snapshot(); s.DurationSec != 0 || s.CallsPerSecond != 0 {
+		t.Errorf("without duration, got dur=%v cps=%v, want 0/0", s.DurationSec, s.CallsPerSecond)
+	}
+	// With duration: throughput computed (load mode).
+	r.SetDuration(2 * time.Second)
+	s := r.Snapshot()
+	if s.DurationSec != 2 {
+		t.Errorf("DurationSec = %v, want 2", s.DurationSec)
+	}
+	if s.CallsPerSecond != 5 { // 10 calls / 2s
+		t.Errorf("CallsPerSecond = %v, want 5", s.CallsPerSecond)
+	}
 }
 
 func TestFailureCap(t *testing.T) {

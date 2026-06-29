@@ -29,6 +29,18 @@ type Report struct {
 	totalFailures int
 	latencies     []time.Duration
 	maxFailures   int
+	// duration is the wall-clock span of the driven run, set by the runner once
+	// it finishes (load mode). Zero means "not measured" (mock mode), and the
+	// throughput fields are then omitted from the summary.
+	duration time.Duration
+}
+
+// SetDuration records the wall-clock span of the run so the summary can report
+// throughput. Called once by the runner after the workers stop.
+func (r *Report) SetDuration(d time.Duration) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.duration = d
 }
 
 // New returns an empty Report.
@@ -70,13 +82,18 @@ type Summary struct {
 	TotalFailures int            `json:"total_failures"`
 	Failures      []Failure      `json:"failures,omitempty"`
 	Latency       LatencyStats   `json:"latency"`
+	// Throughput fields are populated by the runner for load mode (zero/omitted
+	// in mock mode, where they are not meaningful).
+	DurationSec    float64 `json:"duration_sec,omitempty"`
+	CallsPerSecond float64 `json:"calls_per_second,omitempty"`
 }
 
-// LatencyStats holds simple latency aggregates (ms).
+// LatencyStats holds per-request latency aggregates (ms).
 type LatencyStats struct {
 	Count int     `json:"count"`
 	P50ms float64 `json:"p50_ms"`
 	P95ms float64 `json:"p95_ms"`
+	P99ms float64 `json:"p99_ms"`
 	Maxms float64 `json:"max_ms"`
 }
 
@@ -98,7 +115,7 @@ func (r *Report) Snapshot() Summary {
 	failures := make([]Failure, len(r.failures))
 	copy(failures, r.failures)
 
-	return Summary{
+	s := Summary{
 		Created:       created,
 		Calls:         calls,
 		TotalCalls:    total,
@@ -106,6 +123,11 @@ func (r *Report) Snapshot() Summary {
 		Failures:      failures,
 		Latency:       latencyStats(r.latencies),
 	}
+	if r.duration > 0 {
+		s.DurationSec = r.duration.Seconds()
+		s.CallsPerSecond = float64(total) / r.duration.Seconds()
+	}
+	return s
 }
 
 func latencyStats(ds []time.Duration) LatencyStats {
@@ -119,6 +141,7 @@ func latencyStats(ds []time.Duration) LatencyStats {
 		Count: len(sorted),
 		P50ms: ms(percentile(sorted, 0.50)),
 		P95ms: ms(percentile(sorted, 0.95)),
+		P99ms: ms(percentile(sorted, 0.99)),
 		Maxms: ms(sorted[len(sorted)-1]),
 	}
 }
@@ -163,8 +186,11 @@ func (s Summary) String(asJSON bool) string {
 		out += fmt.Sprintf("  %-40s %d\n", k, s.Calls[k])
 	}
 	out += fmt.Sprintf("\nTotal calls: %d  failures: %d\n", s.TotalCalls, s.TotalFailures)
-	out += fmt.Sprintf("Latency (ms): p50=%.1f p95=%.1f max=%.1f (n=%d)\n",
-		s.Latency.P50ms, s.Latency.P95ms, s.Latency.Maxms, s.Latency.Count)
+	if s.DurationSec > 0 {
+		out += fmt.Sprintf("Duration: %.1fs  throughput: %.1f calls/s\n", s.DurationSec, s.CallsPerSecond)
+	}
+	out += fmt.Sprintf("Latency (ms): p50=%.1f p95=%.1f p99=%.1f max=%.1f (n=%d)\n",
+		s.Latency.P50ms, s.Latency.P95ms, s.Latency.P99ms, s.Latency.Maxms, s.Latency.Count)
 	if len(s.Failures) > 0 {
 		out += "\nFailures (sampled):\n"
 		for _, f := range s.Failures {

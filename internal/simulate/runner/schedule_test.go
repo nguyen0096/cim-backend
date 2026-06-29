@@ -1,6 +1,31 @@
 package runner
 
-import "testing"
+import (
+	"testing"
+
+	"cim-backend/internal/simulate/config"
+)
+
+// Mock seeding must stay scale-driven and ignore the load-only --volume/SIM_VOLUME
+// knob: a leftover SIM_VOLUME must NOT blow up a mock run. mockSchedule is fed
+// cfg.Volume() (scale-derived), never cfg.LoadVolume().
+func TestMockScheduleIgnoresVolumeFlag(t *testing.T) {
+	scaleOnly := &config.Config{Scale: config.ScaleSmall}
+	withFlag := &config.Config{Scale: config.ScaleSmall, VolumeFlag: 5000}
+
+	base := mockSchedule(scaleOnly.Volume())
+	flagged := mockSchedule(withFlag.Volume())
+
+	if len(base) != len(flagged) {
+		t.Fatalf("schedule length changed with --volume: %d vs %d", len(base), len(flagged))
+	}
+	for i := range base {
+		if base[i].runs != flagged[i].runs {
+			t.Errorf("%s runs changed with --volume: %d -> %d (mock must stay scale-driven)",
+				base[i].scenario.Name(), base[i].runs, flagged[i].runs)
+		}
+	}
+}
 
 // mockSchedule must drive every lifecycle, in the dependency-correct order
 // (purchase_order first so reconciliation/sale-order have inventory items), and

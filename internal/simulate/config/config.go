@@ -20,8 +20,8 @@ const (
 	// driving entities across their lifecycle states. Low concurrency,
 	// deterministic where possible.
 	ModeMock Mode = "mock"
-	// ModeLoad stresses the API with many concurrent scenarios. Wired in
-	// PR-3; accepted here so the flag surface is stable.
+	// ModeLoad stresses the API with many concurrent scenarios via a worker
+	// pool, bounded by volume and/or duration and optionally rate-limited.
 	ModeLoad Mode = "load"
 )
 
@@ -50,6 +50,19 @@ type Config struct {
 	Scale Scale
 	Seed  int64
 
+	// Load-mode knobs (ignored in mock mode).
+	//
+	// Concurrency is the number of worker goroutines driving scenarios in
+	// parallel. Volume, when > 0, caps the total number of scenario iterations
+	// the pool runs (0 = derive from --scale). Duration, when > 0, stops the run
+	// after that wall-clock time regardless of volume (0 = run until volume is
+	// reached). Rate, when > 0, caps the scenario start rate to that many
+	// iterations per second across the whole pool (0 = unthrottled).
+	Concurrency int
+	VolumeFlag  int
+	Duration    time.Duration
+	Rate        float64
+
 	// Output.
 	JSONOutput bool
 
@@ -59,10 +72,15 @@ type Config struct {
 	DryRun bool
 }
 
-// Default values shared by flags and tests.
+// Default values and bounds shared by flags and tests.
 const (
 	DefaultBaseURL = "http://localhost:8080"
 	DefaultTimeout = 30 * time.Second
+
+	// DefaultConcurrency is the worker count for load mode when unset.
+	DefaultConcurrency = 10
+	// MaxConcurrency bounds the worker pool so a typo can't fork-bomb the host.
+	MaxConcurrency = 1000
 )
 
 // volumeForScale returns the number of purchase-order lifecycles a run drives
@@ -79,8 +97,27 @@ func volumeForScale(s Scale) int {
 	}
 }
 
-// Volume is the number of primary lifecycle iterations for this run.
-func (c *Config) Volume() int { return volumeForScale(c.Scale) }
+// Volume is the scale-derived number of primary lifecycle iterations. It is
+// always scale-driven and is what MOCK mode seeds; the --volume/SIM_VOLUME knob
+// is load-mode-only (see LoadVolume) and deliberately does NOT change mock
+// seeding.
+func (c *Config) Volume() int {
+	return volumeForScale(c.Scale)
+}
+
+// LoadVolume is the iteration budget for a LOAD run. An explicit --volume (> 0)
+// wins. --volume 0 means "no volume cap": with a duration set the clock bounds
+// the run (0 = unbounded), otherwise it falls back to the scale-derived volume
+// so a bare `--mode load` still terminates. Only consulted in load mode.
+func (c *Config) LoadVolume() int {
+	if c.VolumeFlag > 0 {
+		return c.VolumeFlag
+	}
+	if c.Duration > 0 {
+		return 0 // unbounded; duration stops the run
+	}
+	return c.Volume() // scale fallback
+}
 
 // Validate checks required fields and normalizes values. It does not touch the
 // network, so it is safe to call in DryRun mode and in tests.
@@ -98,15 +135,30 @@ func (c *Config) Validate() error {
 	default:
 		return fmt.Errorf("invalid mode %q (want mock or load)", c.Mode)
 	}
-	if c.Mode == ModeLoad {
-		// Load mode (worker pool, rate/volume/duration) lands in PR-3.
-		return fmt.Errorf("mode %q is not implemented yet (planned for PR-3); use --mode mock", c.Mode)
-	}
 
 	switch c.Scale {
 	case ScaleSmall, ScaleMedium, ScaleLarge:
 	default:
 		return fmt.Errorf("invalid scale %q (want small, medium or large)", c.Scale)
+	}
+
+	// Load-mode bounds. These are only enforced for load mode; mock mode is
+	// always single-threaded and ignores the knobs.
+	if c.VolumeFlag < 0 {
+		return fmt.Errorf("volume must be >= 0, got %d", c.VolumeFlag)
+	}
+	if c.Mode == ModeLoad {
+		if c.Concurrency < 1 || c.Concurrency > MaxConcurrency {
+			return fmt.Errorf("concurrency must be between 1 and %d, got %d", MaxConcurrency, c.Concurrency)
+		}
+		if c.Rate < 0 {
+			return fmt.Errorf("rate must be >= 0, got %g", c.Rate)
+		}
+		if c.Duration < 0 {
+			return fmt.Errorf("duration must be >= 0, got %s", c.Duration)
+		}
+		// A load run always has a stop condition: an explicit --volume, a
+		// --duration, or (failing both) the scale-derived volume fallback.
 	}
 
 	// Credentials are only required for a real run.
@@ -136,6 +188,13 @@ func Parse(args []string) (*Config, error) {
 	mode := fs.String("mode", env("SIM_MODE", string(ModeMock)), "mode: mock|load")
 	scale := fs.String("scale", env("SIM_SCALE", string(ScaleSmall)), "scale: small|medium|large")
 	fs.Int64Var(&c.Seed, "seed", envInt64("SIM_SEED", time.Now().UnixNano()), "RNG seed for reproducible runs")
+
+	// Load-mode knobs (ignored in mock mode).
+	fs.IntVar(&c.Concurrency, "concurrency", envInt("SIM_CONCURRENCY", DefaultConcurrency), "load mode: number of concurrent worker goroutines")
+	fs.IntVar(&c.VolumeFlag, "volume", envInt("SIM_VOLUME", 0), "total scenario iterations to run (0 = derive from --scale)")
+	fs.DurationVar(&c.Duration, "duration", envDuration("SIM_DURATION", 0), "load mode: stop after this wall-clock time (0 = run until volume reached)")
+	fs.Float64Var(&c.Rate, "rate", envFloat("SIM_RATE", 0), "load mode: cap scenario starts per second across the pool (0 = unthrottled)")
+
 	fs.BoolVar(&c.JSONOutput, "json", false, "emit report as JSON")
 	fs.BoolVar(&c.DryRun, "dry-run", false, "validate config and print the plan without making network calls")
 
@@ -177,6 +236,24 @@ func envInt64(key string, def int64) int64 {
 	if v := os.Getenv(key); v != "" {
 		if n, err := strconv.ParseInt(v, 10, 64); err == nil {
 			return n
+		}
+	}
+	return def
+}
+
+func envInt(key string, def int) int {
+	if v := os.Getenv(key); v != "" {
+		if n, err := strconv.Atoi(v); err == nil {
+			return n
+		}
+	}
+	return def
+}
+
+func envFloat(key string, def float64) float64 {
+	if v := os.Getenv(key); v != "" {
+		if f, err := strconv.ParseFloat(v, 64); err == nil {
+			return f
 		}
 	}
 	return def

@@ -4,12 +4,19 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"sync/atomic"
 	"time"
 
 	"cim-backend/internal/services/dto"
 
 	"github.com/shopspring/decimal"
 )
+
+// reconNonceSeq makes each reconciliation scenario instance's nonce unique even
+// when many instances are constructed in the same nanosecond (e.g. a load-mode
+// worker pool spinning up). Combined with the wall-clock base it keeps the
+// per-iteration inventory names unique within AND across runs.
+var reconNonceSeq atomic.Int64
 
 // Reconciliation lifecycle driver (epic #38, Part 6 + issue #73 labels).
 //
@@ -80,7 +87,10 @@ type reconItemResponse struct {
 // plus a reopen+update path.
 func (s *ReconciliationScenario) Run(ctx context.Context, env *Env) error {
 	if s.nonce == 0 {
-		s.nonce = time.Now().UnixNano()
+		// Combine wall clock with a process-global sequence so concurrently
+		// constructed instances never share a nonce (and thus never collide on
+		// inventory names / the one-active-pending guard).
+		s.nonce = time.Now().UnixNano() + reconNonceSeq.Add(1)
 	}
 	variant := s.iteration % 4
 	s.iteration++
