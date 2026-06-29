@@ -1497,6 +1497,7 @@ definitions:
     - 9
     - 7
     - 14
+    - 18
     - 8
     - 10
     - 17
@@ -1513,6 +1514,7 @@ definitions:
       ErrorCodeConsumeFIFOFailed: consume-fifo-failed
       ErrorCodeDisposeValidationFailed: dispose-validation-failed
       ErrorCodeDuplicate: duplicate
+      ErrorCodeDuplicateOrderNumber: duplicate-order-number
       ErrorCodeEmptyDataFile: data-row-not-found
       ErrorCodeForbidden: forbidden
       ErrorCodeInternal: internal
@@ -1536,6 +1538,7 @@ definitions:
     - conflict
     - purchase-order-no-items
     - purchase-order-no-approved-payment-receipt
+    - duplicate-order-number
     - bad-inventory-item-state
     - reconcile-validation-failed
     - active-pending-reconcile-conflict
@@ -1555,6 +1558,7 @@ definitions:
     - ErrorCodeConflict
     - ErrorCodePurchaseOrderNoItems
     - ErrorCodePurchaseOrderNoApprovedPaymentReceipt
+    - ErrorCodeDuplicateOrderNumber
     - ErrorCodeBadInventoryItemState
     - ErrorCodeReconcileValidationFailed
     - ErrorCodeActivePendingReconcileConflict
@@ -2689,7 +2693,7 @@ paths:
         (submission_type=reconcile, processing_status=pending, reconcile_status in
         open/closed), so a list/overview UI can flag inventories with an in-progress
         reconcile in one call. Optionally filter by reconcile_status (open|closed).
-        Requires the recon_manage permission.
+        Requires the recon_item_view permission (held by staff and admin/accountant).
       parameters:
       - default: 1
         description: Page number

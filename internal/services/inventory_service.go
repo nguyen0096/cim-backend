@@ -1388,18 +1388,23 @@ func (s *inventoryService) ListSubmissions(ctx context.Context, params models.Li
 
 // ListReconciliationsAwaitingProcessing returns the cross-inventory awaiting-
 // processing reconcile queue (issue #88). Auth is enforced here in the service
-// (recon_manage => 403), exactly as CloseReconciliation/StartProcessing gate —
-// NOT via route middleware. Every row this returns is, by predicate, an active
-// reconcile (pending + open/closed), so the per-inventory ListSubmissions path
-// would synthesize each row (3 queries/row) — a per-page N+1 on this cross-
-// inventory surface. This queue does not need the synthesized review breakdown
-// (that is the per-inventory detail/review screen's concern, served by the
-// existing GET /{id}/submissions), so it maps directly from the loaded row + the
-// preloaded Inventory with ZERO per-row DB work: the page is a bounded, constant
-// query count regardless of row count.
+// (recon_item_view => 403 otherwise), NOT via route middleware. recon_item_view is
+// the shared read action held by staff AND admin/accountant (recon_manage is
+// admin/accountant-only); the count Page is staff-facing, so staff must see the
+// same active-reconcile queue to reach their open reconciliations. The list is the
+// same for every caller — no per-staff scoping — so a single shared read gate is
+// all that's needed (unlike ListReconciliationItems, which scopes staff to their
+// own child rows). Every row this returns is, by predicate, an active reconcile
+// (pending + open/closed), so the per-inventory ListSubmissions path would
+// synthesize each row (3 queries/row) — a per-page N+1 on this cross-inventory
+// surface. This queue does not need the synthesized review breakdown (that is the
+// per-inventory detail/review screen's concern, served by the existing
+// GET /{id}/submissions), so it maps directly from the loaded row + the preloaded
+// Inventory with ZERO per-row DB work: the page is a bounded, constant query count
+// regardless of row count.
 func (s *inventoryService) ListReconciliationsAwaitingProcessing(ctx context.Context, params models.ListParams, reconcileStatuses []string) ([]dto.SubmissionResponse, int64, error) {
-	if !pkg.HasPermission(ctx, pkg.RBACResourceInventorySubmissions, pkg.RBACActionReconManage) {
-		return nil, 0, pkg.ErrForbidden("user does not have permission to manage reconciliations", nil)
+	if !pkg.HasPermission(ctx, pkg.RBACResourceInventorySubmissions, pkg.RBACActionReconItemView) {
+		return nil, 0, pkg.ErrForbidden("user does not have permission to view reconciliations", nil)
 	}
 
 	submissions, total, err := s.inventorySubmissionRepo.ListReconciliationsAwaitingProcessing(ctx, params, reconcileStatuses)

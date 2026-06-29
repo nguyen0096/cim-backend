@@ -895,7 +895,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Get the cross-inventory queue of not-yet-processed reconcile submissions (submission_type=reconcile, processing_status=pending, reconcile_status in open/closed), so a list/overview UI can flag inventories with an in-progress reconcile in one call. Optionally filter by reconcile_status (open|closed). Requires the recon_manage permission.",
+                "description": "Get the cross-inventory queue of not-yet-processed reconcile submissions (submission_type=reconcile, processing_status=pending, reconcile_status in open/closed), so a list/overview UI can flag inventories with an in-progress reconcile in one call. Optionally filter by reconcile_status (open|closed). Requires the recon_item_view permission (held by staff and admin/accountant).",
                 "consumes": [
                     "application/json"
                 ],
@@ -8029,6 +8029,7 @@ const docTemplate = `{
                 9,
                 7,
                 14,
+                18,
                 8,
                 10,
                 17,
@@ -8045,6 +8046,7 @@ const docTemplate = `{
                 "ErrorCodeConsumeFIFOFailed": "consume-fifo-failed",
                 "ErrorCodeDisposeValidationFailed": "dispose-validation-failed",
                 "ErrorCodeDuplicate": "duplicate",
+                "ErrorCodeDuplicateOrderNumber": "duplicate-order-number",
                 "ErrorCodeEmptyDataFile": "data-row-not-found",
                 "ErrorCodeForbidden": "forbidden",
                 "ErrorCodeInternal": "internal",
@@ -8069,6 +8071,7 @@ const docTemplate = `{
                 "conflict",
                 "purchase-order-no-items",
                 "purchase-order-no-approved-payment-receipt",
+                "duplicate-order-number",
                 "bad-inventory-item-state",
                 "reconcile-validation-failed",
                 "active-pending-reconcile-conflict",
@@ -8089,6 +8092,7 @@ const docTemplate = `{
                 "ErrorCodeConflict",
                 "ErrorCodePurchaseOrderNoItems",
                 "ErrorCodePurchaseOrderNoApprovedPaymentReceipt",
+                "ErrorCodeDuplicateOrderNumber",
                 "ErrorCodeBadInventoryItemState",
                 "ErrorCodeReconcileValidationFailed",
                 "ErrorCodeActivePendingReconcileConflict",

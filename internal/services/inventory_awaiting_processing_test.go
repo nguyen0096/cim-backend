@@ -35,25 +35,27 @@ func newAwaitingProcessingService(t *testing.T) (*inventoryService, sqlmock.Sqlm
 	}, mock
 }
 
-// reconManageCtxAwaiting returns a context carrying the recon_manage permission
-// (admin/accountant), so the service-layer auth gate passes.
-func reconManageCtxAwaiting() context.Context {
-	ctx := pkg.WithUserEmail(context.Background(), "admin@cim.local")
+// reconViewCtxAwaiting returns a context carrying the recon_item_view permission —
+// the shared read action held by staff AND admin/accountant — so the service-layer
+// auth gate passes. Uses a staff identity to make explicit that staff (not just
+// admin/accountant) may read this queue.
+func reconViewCtxAwaiting() context.Context {
+	ctx := pkg.WithUserEmail(context.Background(), "staff@cim.local")
 	perms := map[pkg.UserPermission]struct{}{
-		{Resource: pkg.RBACResourceInventorySubmissions, Action: pkg.RBACActionReconManage}: {},
+		{Resource: pkg.RBACResourceInventorySubmissions, Action: pkg.RBACActionReconItemView}: {},
 	}
 	return context.WithValue(ctx, pkg.AuthContextKeyUserPermissions, perms)
 }
 
-// TestListReconciliationsAwaitingProcessing_RequiresReconManage verifies the
-// service-layer auth gate: without the recon_manage permission the call returns a
-// 403-coded forbidden error and issues NO DB query (mirrors CloseReconciliation /
-// StartProcessing, which gate the same way rather than via route middleware).
-func TestListReconciliationsAwaitingProcessing_RequiresReconManage(t *testing.T) {
+// TestListReconciliationsAwaitingProcessing_RequiresReconItemView verifies the
+// service-layer auth gate: without the recon_item_view permission the call returns
+// a 403-coded forbidden error and issues NO DB query (auth is enforced in the
+// service, not via route middleware).
+func TestListReconciliationsAwaitingProcessing_RequiresReconItemView(t *testing.T) {
 	svc, mock := newAwaitingProcessingService(t)
 
-	// A caller with NO recon_manage permission in context.
-	ctx := pkg.WithUserEmail(context.Background(), "staff@cim.local")
+	// A caller with NO recon_item_view permission in context.
+	ctx := pkg.WithUserEmail(context.Background(), "nobody@cim.local")
 
 	rows, total, err := svc.ListReconciliationsAwaitingProcessing(ctx, models.ListParams{Page: 1, Limit: 20, Sort: "updated_at", Order: "desc"}, nil)
 	require.Error(t, err)
@@ -61,6 +63,26 @@ func TestListReconciliationsAwaitingProcessing_RequiresReconManage(t *testing.T)
 	assert.Zero(t, total)
 	assert.True(t, pkg.IsErrorCode(err, pkg.ErrorCodeForbidden), "expected a 403/forbidden error, got %v", err)
 	// No query may have run — the gate short-circuits before touching the repo.
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+// TestListReconciliationsAwaitingProcessing_AllowsStaffWithReconItemView verifies
+// that a staff caller holding only recon_item_view (NOT recon_manage) passes the
+// gate and reaches the repository — staff must see the same active-reconcile queue
+// as admin/accountant.
+func TestListReconciliationsAwaitingProcessing_AllowsStaffWithReconItemView(t *testing.T) {
+	svc, mock := newAwaitingProcessingService(t)
+
+	mock.ExpectQuery(`SELECT count\(\*\) FROM "inventory_submissions"`).
+		WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(0))
+	mock.ExpectQuery(`SELECT \* FROM "inventory_submissions"`).
+		WillReturnRows(sqlmock.NewRows([]string{"id"}))
+
+	rows, total, err := svc.ListReconciliationsAwaitingProcessing(reconViewCtxAwaiting(),
+		models.ListParams{Page: 1, Limit: 20, Sort: "updated_at", Order: "desc"}, nil)
+	require.NoError(t, err, "a staff caller with recon_item_view must be allowed")
+	assert.Zero(t, total)
+	assert.Empty(t, rows)
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 
@@ -81,7 +103,7 @@ func TestListReconciliationsAwaitingProcessing_LightweightMapping(t *testing.T) 
 	mock.ExpectQuery(`SELECT \* FROM "inventories"`).
 		WillReturnRows(sqlmock.NewRows([]string{"id", "name"}).AddRow(10, "Main Warehouse"))
 
-	rows, total, err := svc.ListReconciliationsAwaitingProcessing(reconManageCtxAwaiting(),
+	rows, total, err := svc.ListReconciliationsAwaitingProcessing(reconViewCtxAwaiting(),
 		models.ListParams{Page: 1, Limit: 20, Sort: "updated_at", Order: "desc"}, nil)
 	require.NoError(t, err)
 	require.Equal(t, int64(1), total)

@@ -449,7 +449,7 @@ func (h *InventoryHandler) ListSubmissions(c echo.Context) error {
 // ListReconciliations retrieves the cross-inventory queue of reconcile
 // submissions awaiting Start-Processing (issue #88) for the #87 list/overview UI.
 // @Summary List reconciliations awaiting processing
-// @Description Get the cross-inventory queue of not-yet-processed reconcile submissions (submission_type=reconcile, processing_status=pending, reconcile_status in open/closed), so a list/overview UI can flag inventories with an in-progress reconcile in one call. Optionally filter by reconcile_status (open|closed). Requires the recon_manage permission.
+// @Description Get the cross-inventory queue of not-yet-processed reconcile submissions (submission_type=reconcile, processing_status=pending, reconcile_status in open/closed), so a list/overview UI can flag inventories with an in-progress reconcile in one call. Optionally filter by reconcile_status (open|closed). Requires the recon_item_view permission (held by staff and admin/accountant).
 // @Tags inventories
 // @Accept json
 // @Produce json
