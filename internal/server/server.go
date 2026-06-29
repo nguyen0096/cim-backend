@@ -247,6 +247,11 @@ func SetupServer(
 	inventories.POST("/submissions/:id/process", inventoryHandler.ProcessSubmission)
 	inventories.PUT("/submissions/:id", inventoryHandler.UpdateSubmission)
 	inventories.GET("/:id/submissions", inventoryHandler.ListSubmissions)
+	// Cross-inventory awaiting-processing reconcile queue (issue #88). Static path
+	// segment, so echo gives it precedence over /:id (precedented by
+	// /last-purchase-prices above). Auth is enforced in the service layer
+	// (recon_manage), not via route middleware — mirrors close/start-processing.
+	inventories.GET("/reconciliations", inventoryHandler.ListReconciliations)
 	inventories.POST("/transfer", inventoryHandler.TransferInventory)
 	inventories.POST("/:id/dispose", inventoryHandler.DisposeInventoryItems)
 	inventories.POST("/:id/reconcile/initiate", inventoryHandler.InitiateReconcile)

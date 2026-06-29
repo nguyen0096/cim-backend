@@ -30,6 +30,14 @@ type InventoryService interface {
 
 	GetLastPurchasePrices(ctx context.Context, supplierID uint) (dto.LastPurchasePriceMap, error)
 	ListSubmissions(ctx context.Context, params models.ListParams, approvalStatuses []string, inventoryID uint, submissionTypes []string) ([]dto.SubmissionResponse, int64, error)
+	// ListReconciliationsAwaitingProcessing returns the cross-inventory queue of
+	// reconcile submissions awaiting Start-Processing (issue #88) for the #87
+	// list/overview UI. It is gated by the recon_manage permission (403 otherwise,
+	// mirroring CloseReconciliation/StartProcessing) and uses a lightweight queue
+	// mapper that does NOT synthesize per-row payloads (so the page is a bounded,
+	// constant query count — no N+1). reconcileStatuses optionally narrows the
+	// open/closed set.
+	ListReconciliationsAwaitingProcessing(ctx context.Context, params models.ListParams, reconcileStatuses []string) ([]dto.SubmissionResponse, int64, error)
 	InitiateReconcile(ctx context.Context, req dto.InitiateReconcileRequest) (*models.InventorySubmission, error)
 	CreateReconcileSubmission(ctx context.Context, req dto.ReconcileInventoryRequest) (*models.InventorySubmission, error)
 	CreateDisposeSubmission(ctx context.Context, req dto.DisposeInventoryRequest) (*models.InventorySubmission, error)
@@ -1376,6 +1384,64 @@ func (s *inventoryService) ListSubmissions(ctx context.Context, params models.Li
 	}
 
 	return responses, total, nil
+}
+
+// ListReconciliationsAwaitingProcessing returns the cross-inventory awaiting-
+// processing reconcile queue (issue #88). Auth is enforced here in the service
+// (recon_manage => 403), exactly as CloseReconciliation/StartProcessing gate —
+// NOT via route middleware. Every row this returns is, by predicate, an active
+// reconcile (pending + open/closed), so the per-inventory ListSubmissions path
+// would synthesize each row (3 queries/row) — a per-page N+1 on this cross-
+// inventory surface. This queue does not need the synthesized review breakdown
+// (that is the per-inventory detail/review screen's concern, served by the
+// existing GET /{id}/submissions), so it maps directly from the loaded row + the
+// preloaded Inventory with ZERO per-row DB work: the page is a bounded, constant
+// query count regardless of row count.
+func (s *inventoryService) ListReconciliationsAwaitingProcessing(ctx context.Context, params models.ListParams, reconcileStatuses []string) ([]dto.SubmissionResponse, int64, error) {
+	if !pkg.HasPermission(ctx, pkg.RBACResourceInventorySubmissions, pkg.RBACActionReconManage) {
+		return nil, 0, pkg.ErrForbidden("user does not have permission to manage reconciliations", nil)
+	}
+
+	submissions, total, err := s.inventorySubmissionRepo.ListReconciliationsAwaitingProcessing(ctx, params, reconcileStatuses)
+	if err != nil {
+		return nil, 0, fmt.Errorf("failed to list awaiting-processing reconciliations: %w", err)
+	}
+
+	responses := make([]dto.SubmissionResponse, len(submissions))
+	for i, submission := range submissions {
+		responses[i] = mapReconcileQueueRow(submission)
+	}
+
+	return responses, total, nil
+}
+
+// mapReconcileQueueRow is the LIGHTWEIGHT queue mapper for the awaiting-processing
+// reconcile queue (issue #88). Unlike the ListSubmissions mapper it does NOT call
+// SynthesizeSubmissionPayload (which is a 3-query-per-row N+1 on this cross-
+// inventory surface): it maps directly from the loaded row + preloaded Inventory,
+// doing zero per-row DB work. The synthesized review fields (review_label,
+// count_breakdown) and the synthesized items/warnings that ride the same call are
+// the per-inventory detail/review screen's concern (served by GET /{id}/submissions
+// on drill-in) and are intentionally dropped here — left as their zero values, so
+// review_label/count_breakdown/warnings (all omitempty) simply do not appear in the
+// JSON. Items is NOT omitempty, so it is initialized to an empty slice to serialize
+// as `"items":[]` rather than null.
+func mapReconcileQueueRow(submission models.InventorySubmission) dto.SubmissionResponse {
+	return dto.SubmissionResponse{
+		ID:              submission.ID,
+		InventoryID:     submission.InventoryID,
+		Inventory:       submission.Inventory,
+		SubmissionType:  submission.SubmissionType,
+		Status:          submission.ProcessingStatus,
+		ApprovalStatus:  submission.ApprovalStatus,
+		Items:           []dto.QuantityItem{},
+		ReconcileStatus: submission.ReconcileStatus,
+		Reason:          submission.Reason,
+		CreatedBy:       submission.CreatedBy,
+		CreatedAt:       submission.CreatedAt.Format(pkg.DateTimeFormat),
+		UpdatedBy:       submission.UpdatedBy,
+		UpdatedAt:       submission.UpdatedAt.Format(pkg.DateTimeFormat),
+	}
 }
 
 // isActiveReconcile reports whether a submission is an in-flight reconciliation

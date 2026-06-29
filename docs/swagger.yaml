@@ -906,6 +906,25 @@ definitions:
       updated_by:
         type: string
     type: object
+  models.PaginationResult-dto_SubmissionResponse:
+    properties:
+      data:
+        items:
+          $ref: '#/definitions/dto.SubmissionResponse'
+        type: array
+      limit:
+        example: 20
+        type: integer
+      page:
+        example: 1
+        type: integer
+      total:
+        example: 100
+        type: integer
+      totalPages:
+        example: 5
+        type: integer
+    type: object
   models.PaginationResult-models_Menu:
     properties:
       data:
@@ -2660,6 +2679,60 @@ paths:
       security:
       - BearerAuth: []
       summary: Get 2 latest purchase prices
+      tags:
+      - inventories
+  /inventories/reconciliations:
+    get:
+      consumes:
+      - application/json
+      description: Get the cross-inventory queue of not-yet-processed reconcile submissions
+        (submission_type=reconcile, processing_status=pending, reconcile_status in
+        open/closed), so a list/overview UI can flag inventories with an in-progress
+        reconcile in one call. Optionally filter by reconcile_status (open|closed).
+        Requires the recon_manage permission.
+      parameters:
+      - default: 1
+        description: Page number
+        in: query
+        name: page
+        type: integer
+      - default: 20
+        description: Items per page
+        in: query
+        name: limit
+        type: integer
+      - description: Filter by reconcile status (open|closed)
+        in: query
+        name: reconcile_status
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.PaginationResult-dto_SubmissionResponse'
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "403":
+          description: Forbidden
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: List reconciliations awaiting processing
       tags:
       - inventories
   /inventories/submissions/{id}:

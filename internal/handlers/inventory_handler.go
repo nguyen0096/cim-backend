@@ -446,6 +446,61 @@ func (h *InventoryHandler) ListSubmissions(c echo.Context) error {
 	return c.JSON(http.StatusOK, response)
 }
 
+// ListReconciliations retrieves the cross-inventory queue of reconcile
+// submissions awaiting Start-Processing (issue #88) for the #87 list/overview UI.
+// @Summary List reconciliations awaiting processing
+// @Description Get the cross-inventory queue of not-yet-processed reconcile submissions (submission_type=reconcile, processing_status=pending, reconcile_status in open/closed), so a list/overview UI can flag inventories with an in-progress reconcile in one call. Optionally filter by reconcile_status (open|closed). Requires the recon_manage permission.
+// @Tags inventories
+// @Accept json
+// @Produce json
+// @Param page query int false "Page number" default(1)
+// @Param limit query int false "Items per page" default(20)
+// @Param reconcile_status query string false "Filter by reconcile status (open|closed)"
+// @Success 200 {object} models.PaginationResult[dto.SubmissionResponse]
+// @Failure 400 {object} map[string]string
+// @Failure 403 {object} map[string]string
+// @Failure 500 {object} map[string]string
+// @Security BearerAuth
+// @Router /inventories/reconciliations [get]
+func (h *InventoryHandler) ListReconciliations(c echo.Context) error {
+	// Parse query parameters into ListParams
+	var params models.ListParams
+	if err := c.Bind(&params); err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid request parameters"})
+	}
+
+	// Validate sort field and order against allowed values (same set as submissions).
+	validSortFields := dto.GetSubmissionSortFields()
+	params.Sort, params.Order = pkg.ValidateAndSetSortParams(
+		params.Sort, params.Order,
+		validSortFields,
+		string(dto.SubmissionSortFieldUpdatedAt),
+		models.DefaultSortOrder)
+
+	// Optional reconcile_status filter, restricted to the queue's lifecycle set
+	// {open,closed}. Any other value is a bad request rather than silently ignored.
+	var reconcileStatuses []string
+	if reconcileStatusParam := strings.TrimSpace(c.QueryParam("reconcile_status")); reconcileStatusParam != "" {
+		status := models.ReconcileLifecycleStatus(reconcileStatusParam)
+		if status != models.ReconcileLifecycleStatusOpen && status != models.ReconcileLifecycleStatusClosed {
+			return c.JSON(http.StatusBadRequest, map[string]string{"error": "reconcile_status must be one of: open, closed"})
+		}
+		reconcileStatuses = []string{reconcileStatusParam}
+	}
+
+	// Validate and set defaults for pagination (clamps limit to MaxLimit).
+	params.ValidateAndSetDefaults()
+
+	submissions, total, err := h.inventoryService.ListReconciliationsAwaitingProcessing(c.Request().Context(), params, reconcileStatuses)
+	if err != nil {
+		return err
+	}
+
+	response := models.NewPaginationResult(submissions, total, params.Page, params.Limit)
+
+	return c.JSON(http.StatusOK, response)
+}
+
 // UpdateSubmission updates the items in a pending submission
 // @Summary Update submission items
 // @Description Update the quantity items in an inventory submission. Only submissions with pending approval status can be updated.

@@ -27,6 +27,19 @@ type InventorySubmissionRepository interface {
 	UpdateProcessingStatus(ctx context.Context, id uint, status models.SubmissionProcessingStatus) error
 	FailSubmissionProcessingWithErrors(ctx context.Context, id uint, errors []error) error
 	ListSubmissions(ctx context.Context, params models.ListParams, inventoryID uint, approvalStatuses []string, submissionTypes []string) ([]models.InventorySubmission, int64, error)
+	// ListReconciliationsAwaitingProcessing returns the CROSS-INVENTORY queue of
+	// reconcile submissions awaiting Start-Processing (issue #88): the locked
+	// predicate `submission_type='reconcile' AND processing_status='pending' AND
+	// reconcile_status IN ('open','closed')` (GORM adds the deleted_at IS NULL
+	// soft-delete scope). Unlike ListSubmissions this is NOT scoped to one
+	// inventory_id — it surfaces the not-yet-processed reconcile queue across all
+	// inventories so a list/overview UI can disable Dispose/Transfer/Start-Reconcile
+	// per row in one call (no N+1 sweep). reconcileStatuses optionally narrows the
+	// IN(...) set to a caller-supplied subset of {open,closed}; empty applies the
+	// full {open,closed} set. The Inventory association is Preload-ed so the mapper
+	// needs no per-row fetch. Returns rows + total => 2 query statements (the
+	// preload adds GORM's bounded follow-up). Paginated/ordered via params.
+	ListReconciliationsAwaitingProcessing(ctx context.Context, params models.ListParams, reconcileStatuses []string) ([]models.InventorySubmission, int64, error)
 	UpdateSubmissionPayload(ctx context.Context, id uint, payload []byte) error
 	// ExistsActivePending reports whether a live pending RECONCILE submission
 	// already exists for the inventory (one-active-pending guard, #38 P3,
@@ -252,6 +265,62 @@ func (r *inventorySubmissionRepository) ListSubmissions(
 		Preload("Inventory")
 	if err := query.Find(&submissions).Error; err != nil {
 		return nil, 0, fmt.Errorf("failed to list submissions: %w", err)
+	}
+
+	return submissions, total, nil
+}
+
+// awaitingProcessingReconcileStatuses is the full lifecycle set the awaiting-
+// processing queue surfaces: a not-yet-processed reconcile is either open (staff
+// still counting) or closed (locked, awaiting Start-Processing). processing and
+// processed are terminal/transient and never part of the queue.
+var awaitingProcessingReconcileStatuses = []models.ReconcileLifecycleStatus{
+	models.ReconcileLifecycleStatusOpen,
+	models.ReconcileLifecycleStatusClosed,
+}
+
+// ListReconciliationsAwaitingProcessing implements the cross-inventory awaiting-
+// processing reconcile queue (issue #88). See the interface doc. The predicate is
+// served largely by the partial unique index uq_inventory_submissions_one_active_
+// pending (migration 20260622000002) — `(inventory_id) WHERE deleted_at IS NULL
+// AND processing_status='pending' AND submission_type='reconcile'` — so the
+// candidate set is the awaiting reconciles and the residual reconcile_status
+// IN(...) filter runs over a tiny set.
+func (r *inventorySubmissionRepository) ListReconciliationsAwaitingProcessing(
+	ctx context.Context,
+	params models.ListParams,
+	reconcileStatuses []string,
+) ([]models.InventorySubmission, int64, error) {
+	var submissions []models.InventorySubmission
+	var total int64
+
+	statuses := reconcileStatuses
+	if len(statuses) == 0 {
+		statuses = make([]string, len(awaitingProcessingReconcileStatuses))
+		for i, s := range awaitingProcessingReconcileStatuses {
+			statuses[i] = string(s)
+		}
+	}
+
+	// Cross-inventory: deliberately NOT scoped to a single inventory_id (that is
+	// ListSubmissions' job). GORM's soft-delete scope adds deleted_at IS NULL.
+	query := r.db.WithContext(ctx).Model(&models.InventorySubmission{}).
+		Where("submission_type = ?", models.InventorySubmissionTypeReconcile).
+		Where("processing_status = ?", models.InventorySubmissionStatusPending).
+		Where("reconcile_status IN ?", statuses)
+
+	if err := query.Count(&total).Error; err != nil {
+		return nil, 0, fmt.Errorf("failed to count awaiting-processing reconciliations: %w", err)
+	}
+
+	orderClause := fmt.Sprintf("%s %s", params.Sort, strings.ToUpper(params.Order))
+	query = query.
+		Order(orderClause).
+		Limit(params.Limit).
+		Offset(params.GetOffset()).
+		Preload("Inventory")
+	if err := query.Find(&submissions).Error; err != nil {
+		return nil, 0, fmt.Errorf("failed to list awaiting-processing reconciliations: %w", err)
 	}
 
 	return submissions, total, nil
