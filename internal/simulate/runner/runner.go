@@ -85,7 +85,6 @@ func newScenarioSet() []scenario.Scenario {
 		&scenario.PurchaseOrderScenario{},
 		&scenario.PaymentScenario{},
 		&scenario.ReconciliationScenario{},
-		&scenario.SaleOrderScenario{},
 	}
 }
 
@@ -103,11 +102,12 @@ func newScenarioSet() []scenario.Scenario {
 //   - The context (SIGINT/SIGTERM) cancels dispatcher and workers; the report is
 //     still complete and the caller prints the summary.
 //
-// Per-entity contention is avoided structurally: the reconciliation scenario
-// uses a per-instance, process-unique nonce for its dedicated inventories (so
-// concurrent workers never collide on the one-active-pending guard), the
+// Per-entity contention is handled structurally: all traffic targets one shared
+// inventory, and since the service allows only one active-pending reconcile per
+// inventory, the reconciliation lifecycle is serialized by a package mutex (each
+// reconcile runs to a terminal state before the next initiates). The
 // purchase-order/payment scenarios own their own POs per iteration, and the
-// idempotent ref-data + selling-price seeding tolerate 409 races.
+// idempotent ref-data seeding tolerates 409 races.
 func (r *Runner) runLoad(ctx context.Context, ref *scenario.RefData) error {
 	workers := r.cfg.Concurrency
 	if workers < 1 {
@@ -250,11 +250,10 @@ func mockSchedule(base int) []scheduledScenario {
 	if base < 1 {
 		base = 1
 	}
-	// Reconciliation has 4 variants; ensure at least 4 runs so a small run still
-	// produces open/closed/processed plus the reopen path.
-	reconRuns := base + 3
-	saleRuns := base + 3 // 4 variants
-	payRuns := base      // payment is heavier (PO + receive + form + finalize)
+	// Reconciliation alternates 2 terminal variants (straight, reopen+adjust);
+	// ensure at least 2 runs so a small run exercises both.
+	reconRuns := base + 1
+	payRuns := base // payment is heavier (PO + receive + form + finalize)
 	if payRuns < 1 {
 		payRuns = 1
 	}
@@ -262,7 +261,6 @@ func mockSchedule(base int) []scheduledScenario {
 		{&scenario.PurchaseOrderScenario{}, base},
 		{&scenario.PaymentScenario{}, payRuns},
 		{&scenario.ReconciliationScenario{}, reconRuns},
-		{&scenario.SaleOrderScenario{}, saleRuns},
 	}
 }
 

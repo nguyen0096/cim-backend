@@ -244,6 +244,8 @@ func SetupServer(
 	inventories.PUT("/:id", inventoryHandler.UpdateInventory)
 	inventories.DELETE("/:id", inventoryHandler.DeleteInventory)
 	inventories.GET("/last-purchase-prices", inventoryHandler.GetLastPurchasePrices)
+
+	// Inventory Submissions
 	inventories.POST("/submissions/:id/process", inventoryHandler.ProcessSubmission)
 	inventories.PUT("/submissions/:id", inventoryHandler.UpdateSubmission)
 	inventories.GET("/:id/submissions", inventoryHandler.ListSubmissions)
@@ -255,20 +257,20 @@ func SetupServer(
 	inventories.GET("/reconciliations", inventoryHandler.ListReconciliations)
 	inventories.POST("/transfer", inventoryHandler.TransferInventory)
 	inventories.POST("/:id/dispose", inventoryHandler.DisposeInventoryItems)
+
 	inventories.POST("/:id/reconcile/initiate", inventoryHandler.InitiateReconcile)
 	inventories.POST("/:id/reconcile", inventoryHandler.ReconcileInventory)
-	// Staff reconciliation child-item lifecycle (epic #38, Part 4), nested under
-	// the parent submission. `:id` is the parent submission id, `:item_id` the child row.
 	inventories.GET("/submissions/:id/reconciliation-items", inventoryHandler.ListReconciliationItems)
 	inventories.POST("/submissions/:id/reconciliation-items", inventoryHandler.CreateReconciliationItem)
 	inventories.PUT("/submissions/:id/reconciliation-items/:item_id", inventoryHandler.UpdateReconciliationItem)
 	inventories.DELETE("/submissions/:id/reconciliation-items/:item_id", inventoryHandler.DeleteReconciliationItem)
-	// Admin/accountant reconciliation management (epic #38, Part 6 redesign). Close
-	// locks staff out; reopen re-opens; start-processing is the atomic apply. All
-	// gated by recon_manage (admin + accountant only).
+
+	// Admin/accountant reconciliation management (epic #38, Part 6 redesign).
 	inventories.POST("/submissions/:id/close", inventoryHandler.CloseReconciliation)
 	inventories.POST("/submissions/:id/reopen", inventoryHandler.ReopenReconciliation)
 	inventories.POST("/submissions/:id/start-processing", inventoryHandler.StartProcessing)
+
+	// Inventory Timeline/Export
 	inventories.GET("/:id/export/monthly-transaction", inventoryHandler.ExportMonthlyTransactionReport)
 	inventories.GET("/:id/timeline", inventoryTimelineHandler.GetInventoryTimeline)
 	inventories.GET("/:id/export/inventory-in-out", inventoryInOutExportHandler.ExportInventoryInOut)

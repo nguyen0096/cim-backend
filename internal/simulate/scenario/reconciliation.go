@@ -4,25 +4,34 @@ import (
 	"context"
 	"fmt"
 	"net/http"
-	"sync/atomic"
-	"time"
+	"sync"
 
 	"cim-backend/internal/services/dto"
 
 	"github.com/shopspring/decimal"
 )
 
-// reconNonceSeq makes each reconciliation scenario instance's nonce unique even
-// when many instances are constructed in the same nanosecond (e.g. a load-mode
-// worker pool spinning up). Combined with the wall-clock base it keeps the
-// per-iteration inventory names unique within AND across runs.
-var reconNonceSeq atomic.Int64
+// inventoryMu coordinates access to the single shared inventory between the
+// reconcile lifecycle and the stock-mutating PO receives.
+//
+//   - A reconcile takes the WRITE lock for its whole lifecycle (initiate ->
+//     start-processing). This both serializes reconciles (the service allows only
+//     one active-pending reconcile per inventory) AND, critically, blocks PO
+//     receives for the duration: start-processing applies a snapshot-aware update
+//     that optimistic-locks on each item's quantity, so a concurrent receive that
+//     changed a quantity mid-window would make the apply 409 and leave the
+//     submission stuck pending (poisoning every later reconcile). With receives
+//     excluded, quantities are stable from snapshot to apply, so the reconcile
+//     reaches a terminal state.
+//   - PO receives take the READ lock: they run concurrently with each other but
+//     never during a reconcile's apply window.
+var inventoryMu sync.RWMutex
 
 // Reconciliation lifecycle driver (epic #38, Part 6 + issue #73 labels).
 //
 // Endpoints, in order:
 //
-//	(create dedicated inventory + received PO so it holds active items)
+//	(ensure the shared inventory holds active items via a received PO)
 //	POST /inventories/:id/reconcile/initiate
 //	  -> POST /inventories/submissions/:id/reconciliation-items  (one labeled row)
 //	  -> POST /inventories/submissions/:id/close
@@ -39,24 +48,20 @@ var reconNonceSeq atomic.Int64
 // path, UPDATES the existing row in full (never adds a competing second row) so
 // the aggregate stays within the baseline.
 //
-// Each iteration runs on its OWN inventory. Otherwise a parked (open/closed but
-// still pending) reconcile would trip the one-active-pending guard the moment
-// the next iteration initiates on the same inventory. Isolating inventories lets
-// parked open/closed states coexist for broad-state coverage.
+// All traffic targets ONE shared inventory (ref.InventoryID). Because the service
+// allows only one active-pending reconcile per inventory, the reconcile lifecycle
+// is serialized (reconMu) and every iteration runs to a TERMINAL state — a parked
+// open/closed reconcile would block the next initiate on the same inventory.
+// Concurrent PO receives and the other reconcile completing make start-processing
+// frequently report drift (409, a non-failure outcome) — expected on a hot shared
+// inventory.
 //
-// Across iterations the variant cycles to spread submissions over the reachable
-// lifecycle states so a mock run leaves a broad mix in the DB:
+// The variant alternates to cover the reachable terminal paths:
 //
-//	variant 0: initiate -> count -> close -> start-processing                         (processed)
-//	variant 1: initiate -> count -> close -> reopen -> adjust(update) -> close -> start-processing (processed via reopen+update path)
-//	variant 2: initiate -> count -> close                                             (parked: closed)
-//	variant 3: initiate -> count                                                      (parked: open)
+//	variant 0: initiate -> count -> close -> start-processing                                       (processed/drift)
+//	variant 1: initiate -> count -> close -> reopen -> adjust(update) -> close -> start-processing   (processed/drift via reopen+update)
 type ReconciliationScenario struct {
 	iteration int
-	// nonce uniquely tags the per-iteration inventories created by this scenario
-	// instance so names never collide within or across runs. Captured lazily on
-	// the first Run.
-	nonce int64
 }
 
 // Name implements Scenario.
@@ -82,32 +87,22 @@ type reconItemResponse struct {
 	ID uint `json:"id"`
 }
 
-// Run drives one reconciliation lifecycle on its own dedicated inventory. The
-// variant cycles each call so a multi-volume run covers open/closed/processed
-// plus a reopen+update path.
+// Run drives one reconciliation lifecycle on the single shared inventory. The
+// variant alternates each call between the straight and the reopen+adjust path;
+// both end at a terminal state so the next reconcile can initiate.
 func (s *ReconciliationScenario) Run(ctx context.Context, env *Env) error {
-	if s.nonce == 0 {
-		// Combine wall clock with a process-global sequence so concurrently
-		// constructed instances never share a nonce (and thus never collide on
-		// inventory names / the one-active-pending guard).
-		s.nonce = time.Now().UnixNano() + reconNonceSeq.Add(1)
-	}
-	variant := s.iteration % 4
+	variant := s.iteration % 2
 	s.iteration++
 
 	ref := env.RefIDs
-	if ref == nil || len(ref.ProductIDs) == 0 || len(ref.SupplierIDs) == 0 || ref.UnitID == 0 {
+	if ref == nil || ref.InventoryID == 0 || len(ref.ProductIDs) == 0 || len(ref.SupplierIDs) == 0 || ref.UnitID == 0 {
 		return fmt.Errorf("reconciliation: reference data not initialized")
 	}
+	inventoryID := ref.InventoryID
 
-	// Each iteration owns its inventory so parked reconciles never collide on the
-	// one-active-pending guard. Seed it with a fully-received PO so it holds
-	// active items (initiate snapshots one row per active item).
-	invName := reconInventoryName(s.nonce, s.iteration)
-	inventoryID, err := createDedicatedInventory(ctx, env, invName)
-	if err != nil {
-		return fmt.Errorf("create reconcile inventory: %w", err)
-	}
+	// Ensure the shared inventory holds active items to count: add a fully-received
+	// PO. This does not need the reconcile lock (PO receive is not exclusive) and
+	// contributes to the single-inventory traffic.
 	po, err := createPO(ctx, env, s.iteration, inventoryID)
 	if err != nil {
 		return err
@@ -116,12 +111,19 @@ func (s *ReconciliationScenario) Run(ctx context.Context, env *Env) error {
 		return err
 	}
 
+	// Take the write lock for the whole lifecycle: serializes reconciles AND
+	// blocks PO receives so item quantities are stable from snapshot (initiate)
+	// through apply (start-processing) — otherwise the snapshot-aware apply would
+	// optimistic-lock-409 and leave the submission stuck pending.
+	inventoryMu.Lock()
+	defer inventoryMu.Unlock()
+
 	items, err := listInventoryItems(ctx, env, inventoryID)
 	if err != nil {
 		return fmt.Errorf("list inventory items: %w", err)
 	}
 	if len(items) == 0 {
-		return fmt.Errorf("reconciliation: inventory %d has no items to count after PO receive", inventoryID)
+		return fmt.Errorf("reconciliation: inventory %d has no items to count", inventoryID)
 	}
 
 	// 1. Initiate. Body is empty; scope comes from the path. Read the submission
@@ -143,23 +145,12 @@ func (s *ReconciliationScenario) Run(ctx context.Context, env *Env) error {
 		return fmt.Errorf("count items: %w", err)
 	}
 
-	// variant 3: leave it parked at OPEN for broad-state coverage.
-	if variant == 3 {
-		env.Report.Created("reconciliation_open")
-		return nil
-	}
-
 	// 3. Close (locks staff out).
 	closePath := fmt.Sprintf("/inventories/submissions/%d/close", sub.ID)
 	if err := env.Client.Do(ctx, "POST", closePath, nil, nil, "POST /inventories/submissions/:id/close"); err != nil {
 		return fmt.Errorf("close reconcile %d: %w", sub.ID, err)
 	}
 	env.Report.Created("reconciliation_closed")
-
-	// variant 2: leave it parked at CLOSED.
-	if variant == 2 {
-		return nil
-	}
 
 	// variant 1: reopen -> adjust -> close again. The adjust UPDATES the existing
 	// row in full (a new row label + a different count) rather than adding a
@@ -238,14 +229,6 @@ func (s *ReconciliationScenario) updateCountRow(ctx context.Context, env *Env, s
 	return env.Client.Do(ctx, "PUT", path, req, nil, "PUT /inventories/submissions/:id/reconciliation-items/:item_id")
 }
 
-// reconInventoryName builds a unique name for an iteration's dedicated
-// reconciliation inventory. The run nonce isolates this scenario instance and
-// the iteration isolates each lifecycle, so no two iterations ever target the
-// same inventory (which would trip the one-active-pending guard).
-func reconInventoryName(nonce int64, iteration int) string {
-	return fmt.Sprintf("SIM Recon Inv %d-%d", nonce, iteration)
-}
-
 // countItems builds the count lines for a row: each item counted at the given
 // fraction of its snapshot baseline (floored, clamped to the baseline), all
 // carrying countLabel.
@@ -262,14 +245,18 @@ func countItems(items []inventoryItem, countLabel string, fraction float64) []dt
 	return counts
 }
 
-// countFraction is the share of the snapshot baseline the initial simulated
-// count reports — a realistic shrinkage strictly within the baseline.
-const countFraction = 0.6
+// countFraction is the share of the snapshot baseline the simulated count
+// reports. It is 1.0 = count exactly what is on hand, so applying the reconcile
+// is NON-DESTRUCTIVE — it never shrinks stock (the sim should leave healthy,
+// growing stock rather than consume it). Counts can never exceed the baseline
+// (snapshot invariant), so 1.0 is the maximum non-destructive value. Lower it if
+// you want the sim to model count shrinkage/variance instead.
+const countFraction = 1.0
 
-// adjustFraction is the share used by the reopen+update adjust path. A different
-// value from countFraction makes the update a genuine change, and being <=
-// countFraction keeps the replaced row's counts well within the baseline.
-const adjustFraction = 0.5
+// adjustFraction is the share used by the reopen+update adjust path. Also 1.0
+// (non-destructive); the adjust is still a genuine full-replace update — it
+// re-labels the count row — without depleting stock.
+const adjustFraction = 1.0
 
 // countedQuantity computes a simulated counted quantity for a baseline: a
 // non-negative integer at fraction of the baseline, floored, and never exceeding

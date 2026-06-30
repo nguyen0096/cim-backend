@@ -26,11 +26,12 @@
 // failed.
 //
 // Concurrency safety: the report and token provider are mutex-safe; each worker
-// owns its own scenario instances (so per-scenario iteration/nonce state is never
-// shared) and its own RNG. The reconciliation scenario tags its dedicated
-// inventories with a process-unique nonce so concurrent workers never collide on
-// the one-active-pending guard; the PO/payment scenarios own their POs per
-// iteration; idempotent ref-data and selling-price seeding tolerate 409 races.
+// owns its own scenario instances (so per-scenario iteration state is never
+// shared) and its own RNG. All traffic targets one shared inventory; since only
+// one active-pending reconcile is allowed per inventory, the reconcile lifecycle
+// is serialized by a package mutex (each runs to a terminal state). The PO/payment
+// scenarios own their POs per iteration; idempotent ref-data seeding tolerates
+// 409 races.
 //
 // Docker resource probe (the point of load mode is to surface OOM/bottlenecks):
 // bring the API up under a memory cap and watch it while the sim hammers it.
@@ -127,6 +128,5 @@ func printPlan(cfg *config.Config) {
 	fmt.Println("  scenarios: refdata (idempotent), then weighted for broad state coverage:")
 	fmt.Println("    - purchase_order : create -> receive -> inventory items (order_placed/partially_delivered/fully_delivered/cancelled)")
 	fmt.Println("    - payment        : PO + receive -> form (pending->approved) -> PO completed -> revenue-expense finalize (skipped if not configured)")
-	fmt.Println("    - reconciliation : own inventory+PO -> initiate -> labeled count -> close [-> reopen -> adjust(update) -> close] -> start-processing (open/closed/processed)")
-	fmt.Println("    - sale_order     : selling-price (idempotent) -> create -> served/completed(versioned)/cancelled/ordered")
+	fmt.Println("    - reconciliation : shared inventory (serialized) -> initiate -> labeled count -> close [-> reopen -> adjust(update) -> close] -> start-processing (processed/drift)")
 }

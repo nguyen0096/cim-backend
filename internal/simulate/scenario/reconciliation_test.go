@@ -18,7 +18,9 @@ func TestCountedQuantityStaysWithinBaseline(t *testing.T) {
 		{7, 4}, // 4.2 floored
 	}
 	for _, c := range cases {
-		got := countedQuantity(decimal.NewFromInt(c.baseline), countFraction)
+		// Use an explicit 0.6 here (independent of the countFraction const) to
+		// pin the floor/clamp math regardless of the configured fraction.
+		got := countedQuantity(decimal.NewFromInt(c.baseline), 0.6)
 		if !got.Equal(decimal.NewFromInt(c.want)) {
 			t.Errorf("countedQuantity(%d) = %s, want %d", c.baseline, got, c.want)
 		}
@@ -33,27 +35,8 @@ func TestCountedQuantityStaysWithinBaseline(t *testing.T) {
 }
 
 func TestCountedQuantityNegativeBaseline(t *testing.T) {
-	if got := countedQuantity(decimal.NewFromInt(-5), countFraction); !got.IsZero() {
+	if got := countedQuantity(decimal.NewFromInt(-5), 0.6); !got.IsZero() {
 		t.Errorf("countedQuantity(-5) = %s, want 0", got)
-	}
-}
-
-// Each reconciliation iteration must target a DISTINCT inventory so a parked
-// (open/closed but still pending) reconcile never collides with the next
-// iteration's initiate on the one-active-pending guard.
-func TestReconInventoryNamesAreUniquePerIteration(t *testing.T) {
-	const nonce int64 = 1234567890
-	seen := map[string]bool{}
-	for i := 1; i <= 20; i++ {
-		name := reconInventoryName(nonce, i)
-		if seen[name] {
-			t.Errorf("iteration %d produced duplicate inventory name %q", i, name)
-		}
-		seen[name] = true
-	}
-	// A different run nonce must not collide with this run's names either.
-	if reconInventoryName(nonce, 1) == reconInventoryName(nonce+1, 1) {
-		t.Error("different run nonces must yield different inventory names")
 	}
 }
 

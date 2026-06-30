@@ -18,9 +18,6 @@ type RefData struct {
 	UnitID      uint
 	ProductIDs  []uint
 	InventoryID uint
-	// MenuItemID is a single menu item the sale-order scenario references. Built
-	// over the ref products so a sale order has something sellable.
-	MenuItemID uint
 }
 
 // Local request structs. The supplier/inventory create endpoints bind directly
@@ -51,11 +48,6 @@ type createInventoryRequest struct {
 	Location string `json:"location"`
 }
 
-type createMenuItemRequest struct {
-	Name       string `json:"name"`
-	ProductIDs []uint `json:"product_ids,omitempty"`
-}
-
 // entity is the minimal shape of a created/listed entity (id + name).
 type entity struct {
 	ID   uint   `json:"id"`
@@ -72,9 +64,8 @@ type listResponse struct {
 const (
 	simUnitName      = "SIM Unit (each)"
 	simInventoryName = "SIM Warehouse"
-	simMenuItemName  = "SIM Menu Item"
 	supplierCount    = 2
-	productCount     = 2
+	productCount     = 100
 
 	// lookupPageSize is the page size used when paging list/search endpoints.
 	lookupPageSize = 100
@@ -118,11 +109,12 @@ func EnsureRefData(ctx context.Context, env *Env) (*RefData, error) {
 	}
 	ref.InventoryID = invID
 
-	menuItemID, err := ensureMenuItem(ctx, env, simMenuItemName, ref.ProductIDs)
-	if err != nil {
-		return nil, fmt.Errorf("ensure menu item: %w", err)
+	// Seed big starting stock for ALL products in one PO+receive, so the
+	// inventory has substantial stock up front (not via any submission, and not
+	// dependent on the random lifecycle POs).
+	if err := seedInitialStock(ctx, env, invID); err != nil {
+		return nil, fmt.Errorf("seed initial stock: %w", err)
 	}
-	ref.MenuItemID = menuItemID
 
 	return ref, nil
 }
@@ -186,26 +178,6 @@ func ensureInventory(ctx context.Context, env *Env, name string) (uint, error) {
 	return createOrReuse(ctx, env, "inventory", name, "/inventories", "POST /inventories", body, findInventory)
 }
 
-// createDedicatedInventory creates a freshly-named inventory and returns its ID.
-// Unlike ensureInventory it does NOT reuse an existing row: scenarios that need
-// an isolated inventory (e.g. reconciliation, so parked active-pending reconciles
-// never collide on the one-active-pending guard) call this per iteration. The
-// caller supplies a unique name so re-runs stay additive.
-func createDedicatedInventory(ctx context.Context, env *Env, name string) (uint, error) {
-	body := createInventoryRequest{Name: name, Location: "SIM Location"}
-	var created entity
-	if err := env.Client.Do(ctx, "POST", "/inventories", body, &created, "POST /inventories"); err != nil {
-		return 0, err
-	}
-	env.Report.Created("inventory")
-	return created.ID, nil
-}
-
-func ensureMenuItem(ctx context.Context, env *Env, name string, productIDs []uint) (uint, error) {
-	body := createMenuItemRequest{Name: name, ProductIDs: productIDs}
-	return createOrReuse(ctx, env, "menu_item", name, "/menu-items", "POST /menu-items", body, findMenuItem)
-}
-
 // --- per-entity lookups (each tuned to its endpoint's response shape) ---
 
 // findUnit searches /units (which honors q and returns {data:[...]}). The unit
@@ -234,28 +206,6 @@ func findInventory(ctx context.Context, env *Env, name string) (uint, bool, erro
 		path := fmt.Sprintf("/inventories?limit=%d&page=%d", lookupPageSize, page)
 		var items []entity
 		if err := env.Client.Do(ctx, "GET", path, nil, &items, "GET /inventories"); err != nil {
-			return 0, false, err
-		}
-		for _, e := range items {
-			if nameEqual(e.Name, name, false) {
-				return e.ID, true, nil
-			}
-		}
-		if len(items) < lookupPageSize {
-			break // last page
-		}
-	}
-	return 0, false, nil
-}
-
-// findMenuItem pages GET /menu-items, which returns a RAW JSON array (not a
-// {data:[...]} envelope) and honors q. Menu-item names are not guaranteed
-// unique, but the SIM name is stable so the first exact match is reused.
-func findMenuItem(ctx context.Context, env *Env, name string) (uint, bool, error) {
-	for page := 1; page <= lookupMaxPages; page++ {
-		path := fmt.Sprintf("/menu-items?limit=%d&page=%d&q=%s", lookupPageSize, page, url.QueryEscape(name))
-		var items []entity
-		if err := env.Client.Do(ctx, "GET", path, nil, &items, "GET /menu-items"); err != nil {
 			return 0, false, err
 		}
 		for _, e := range items {

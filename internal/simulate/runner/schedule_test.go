@@ -28,13 +28,13 @@ func TestMockScheduleIgnoresVolumeFlag(t *testing.T) {
 }
 
 // mockSchedule must drive every lifecycle, in the dependency-correct order
-// (purchase_order first so reconciliation/sale-order have inventory items), and
-// give each scenario enough runs to fan out all of its variants even at the
-// smallest scale.
+// (purchase_order first so reconciliation has inventory items), and give each
+// scenario enough runs to fan out all of its variants even at the smallest
+// scale.
 func TestMockScheduleCoversAllLifecyclesInOrder(t *testing.T) {
 	plan := mockSchedule(3)
 
-	wantOrder := []string{"purchase_order", "payment", "reconciliation", "sale_order"}
+	wantOrder := []string{"purchase_order", "payment", "reconciliation"}
 	if len(plan) != len(wantOrder) {
 		t.Fatalf("plan has %d scenarios, want %d", len(plan), len(wantOrder))
 	}
@@ -48,18 +48,17 @@ func TestMockScheduleCoversAllLifecyclesInOrder(t *testing.T) {
 	}
 }
 
-// Even the smallest run must give the 4-variant scenarios at least 4 runs so
-// open/closed/processed (+ reopen) and ordered/served/completed/cancelled all
-// appear.
+// Even the smallest run must give the reconciliation scenario at least 2 runs so
+// both terminal variants (straight, reopen+adjust) appear.
 func TestMockScheduleSmallStillFansAllVariants(t *testing.T) {
 	plan := mockSchedule(1)
 	byName := map[string]int{}
 	for _, sc := range plan {
 		byName[sc.scenario.Name()] = sc.runs
 	}
-	for _, name := range []string{"reconciliation", "sale_order"} {
-		if byName[name] < 4 {
-			t.Errorf("%s runs = %d at base=1, want >= 4 (its variant count)", name, byName[name])
+	for _, name := range []string{"reconciliation"} {
+		if byName[name] < 2 {
+			t.Errorf("%s runs = %d at base=1, want >= 2 (its variant count)", name, byName[name])
 		}
 	}
 }

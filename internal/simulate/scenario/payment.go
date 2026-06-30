@@ -91,21 +91,23 @@ func (s *PaymentScenario) Run(ctx context.Context, env *Env) error {
 	env.Report.Created("purchase_order_completed")
 
 	// 5. Finalize the day's revenue/expense (empty body finalizes today).
-	// Finalize needs the `revenue_expense_excel` setting configured; on a fresh
-	// local env it is not, and the server returns 500 with the
-	// "settings not configured" domain error. That is an environment-config gap,
-	// not a lifecycle failure: the payment lifecycle (form pending -> approved ->
-	// PO completed) already completed. Classify ONLY that specific case as
-	// expected via DoClassified so it is recorded as a NON-failure (it does not
-	// inflate total_failures) and we skip it; every other finalize error is
-	// recorded as a failure and fails the iteration.
+	// Finalize depends on the `revenue_expense_excel` setting (an external Excel
+	// workbook integration). In a dev/load env that setting is missing, empty, or
+	// incomplete, so the server returns 500 with one of the revenue-expense
+	// SETTINGS domain errors. That is an environment-config gap, not a lifecycle
+	// failure: the payment lifecycle (form pending -> approved -> PO completed)
+	// already completed. Classify ONLY those specific settings errors as expected
+	// via DoClassified so finalize is recorded as a NON-failure (it does not
+	// inflate total_failures) and skipped; every other finalize error is recorded
+	// as a failure and fails the iteration.
 	status, err := env.Client.DoClassified(ctx, "POST", "/revenue-expenses/finalize", struct{}{}, nil,
-		"POST /revenue-expenses/finalize", isRevenueExpenseNotConfigured)
+		"POST /revenue-expenses/finalize", isRevenueExpenseSettingsUnavailable)
 	if err != nil {
 		return fmt.Errorf("finalize revenue expense: %w", err)
 	}
 	if status == http.StatusInternalServerError {
-		// The only non-2xx DoClassified tolerates here: not-configured -> skipped.
+		// The only non-2xx DoClassified tolerates here: revenue-expense settings
+		// unavailable -> skipped.
 		env.Report.Created("revenue_expense_skipped")
 		return nil
 	}
@@ -113,22 +115,35 @@ func (s *PaymentScenario) Run(ctx context.Context, env *Env) error {
 	return nil
 }
 
-// isRevenueExpenseNotConfigured is the DoClassified predicate that recognises the
-// "revenue expense settings not configured" domain error
-// (pkg.ErrRevenueExpenseSettingsNotConfigured) from a finalize response. That
-// error is an ErrorCodeInternal with NO `key` field, so it serializes as a
-// generic HTTP 500 whose only distinguishing signal is its message. It therefore
-// requires a 500 AND an exact match of the localized catalog message (EN or VI),
-// so a 500 from any OTHER cause is NOT tolerated.
-func isRevenueExpenseNotConfigured(status int, respBody []byte) bool {
+// revenueExpenseSettingsErrorKeys are the revenue-expense SETTINGS domain errors
+// that all mean the same thing for the simulator: the Excel-settings integration
+// is not usable in this environment (missing, empty/unparseable, or incomplete).
+// Finalize is skipped on any of them rather than treated as a failure.
+var revenueExpenseSettingsErrorKeys = []string{
+	pkg.ErrKeyRevenueExpenseSettingsNotConfigured,
+	pkg.ErrKeyFailedToGetRevenueExpenseSettings,
+	pkg.ErrKeyFailedToParseRevenueExpenseSettings,
+	pkg.ErrKeyFilePathNotFoundInSettings,
+	pkg.ErrKeySheetNameNotFoundInSettings,
+}
+
+// isRevenueExpenseSettingsUnavailable is the DoClassified predicate that
+// recognises a revenue-expense SETTINGS domain error from a finalize response.
+// These errors are ErrorCodeInternal with NO `key` field, so they serialize as a
+// generic HTTP 500 whose only distinguishing signal is the message. It therefore
+// requires a 500 AND an exact match of one of the localized catalog messages (EN
+// or VI), so a 500 from any OTHER cause is NOT tolerated.
+func isRevenueExpenseSettingsUnavailable(status int, respBody []byte) bool {
 	if status != http.StatusInternalServerError || len(respBody) == 0 {
 		return false
 	}
 	body := string(respBody)
-	msg := pkg.ErrorMessages[pkg.ErrKeyRevenueExpenseSettingsNotConfigured]
-	for _, want := range []string{msg.EN, msg.VI} {
-		if want != "" && strings.Contains(body, want) {
-			return true
+	for _, key := range revenueExpenseSettingsErrorKeys {
+		msg := pkg.ErrorMessages[key]
+		for _, want := range []string{msg.EN, msg.VI} {
+			if want != "" && strings.Contains(body, want) {
+				return true
+			}
 		}
 	}
 	return false

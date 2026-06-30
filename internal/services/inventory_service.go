@@ -318,8 +318,6 @@ func (s *inventoryService) InitiateReconcile(ctx context.Context, req dto.Initia
 		return nil, pkg.ErrInvalidRequestBody(fmt.Errorf("inventory_id is required"))
 	}
 
-	// Verify the inventory exists before the tx so a missing id is a 404, not a
-	// 500 from the FK on insert. Lightweight existence check (no preloads).
 	exists, err := s.inventoryRepo.ExistsByID(ctx, req.InventoryID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to check inventory existence: %w", err)

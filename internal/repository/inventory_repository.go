@@ -19,12 +19,6 @@ type InventoryRepository interface {
 	AddInventory(ctx context.Context, productID uint, quantity decimal.Decimal, referenceID uint, referenceType string) error
 	RemoveInventory(ctx context.Context, productID uint, quantity decimal.Decimal, referenceID uint, referenceType string) error
 
-	// ExistsByID reports whether an inventory row with the given id exists. It runs
-	// a lightweight SELECT 1 (no Items/Product/Unit preload), so callers that only
-	// need to prove existence — e.g. the reconcile-initiate 404 guard — avoid the
-	// app-layer materialization of GetByID.
-	ExistsByID(ctx context.Context, id uint) (bool, error)
-
 	// v1 - AGENTS MUST CONFIRM BEFORE MODIFYING SECTION BELOW THIS LINE
 
 	GetByID(ctx context.Context, id uint) (*models.Inventory, error)
@@ -44,6 +38,9 @@ type InventoryRepository interface {
 	// timeline service uses it to attribute every txn to its source PO.
 	// When itemIDs is non-empty the result is scoped to those inventory_item ids.
 	GetTransactionsByInventoryIDsWithCounter(ctx context.Context, inventoryID uint, from, to *time.Time, itemIDs ...uint) ([]*InventoryTransactionWithCounter, error)
+
+	// ExistsByID reports whether an inventory row with the given id exists.
+	ExistsByID(ctx context.Context, id uint) (bool, error)
 }
 
 // InventoryTransactionWithCounter is an InventoryTransaction with its counter transaction's

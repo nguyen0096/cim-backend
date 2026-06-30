@@ -2,8 +2,8 @@
 // against the API. Each scenario reads real IDs back from responses and chains
 // calls in the correct order; none assume fixed IDs.
 //
-// PR-1 ships idempotent reference-data setup plus the purchase-order lifecycle.
-// Reconciliation, sale-order, and payment scenarios slot in here in PR-2.
+// Scenarios cover idempotent reference-data setup plus the purchase-order,
+// reconciliation, and payment lifecycles.
 package scenario
 
 import (
