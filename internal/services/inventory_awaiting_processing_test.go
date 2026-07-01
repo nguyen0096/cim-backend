@@ -18,7 +18,7 @@ import (
 )
 
 // newAwaitingProcessingService wires a real inventoryService over a sqlmock-backed
-// gorm handle, so ListReconciliationsAwaitingProcessing is exercised end-to-end
+// gorm handle, so ListActiveReconciliations is exercised end-to-end
 // through the real repository query (no mocked repo) and the lightweight mapper.
 func newAwaitingProcessingService(t *testing.T) (*inventoryService, sqlmock.Sqlmock) {
 	t.Helper()
@@ -47,17 +47,17 @@ func reconViewCtxAwaiting() context.Context {
 	return context.WithValue(ctx, pkg.AuthContextKeyUserPermissions, perms)
 }
 
-// TestListReconciliationsAwaitingProcessing_RequiresReconItemView verifies the
+// TestListActiveReconciliations_RequiresReconItemView verifies the
 // service-layer auth gate: without the recon_item_view permission the call returns
 // a 403-coded forbidden error and issues NO DB query (auth is enforced in the
 // service, not via route middleware).
-func TestListReconciliationsAwaitingProcessing_RequiresReconItemView(t *testing.T) {
+func TestListActiveReconciliations_RequiresReconItemView(t *testing.T) {
 	svc, mock := newAwaitingProcessingService(t)
 
 	// A caller with NO recon_item_view permission in context.
 	ctx := pkg.WithUserEmail(context.Background(), "nobody@cim.local")
 
-	rows, total, err := svc.ListReconciliationsAwaitingProcessing(ctx, models.ListParams{Page: 1, Limit: 20, Sort: "updated_at", Order: "desc"}, nil)
+	rows, total, err := svc.ListActiveReconciliations(ctx, models.ListParams{Page: 1, Limit: 20, Sort: "updated_at", Order: "desc"}, nil)
 	require.Error(t, err)
 	assert.Nil(t, rows)
 	assert.Zero(t, total)
@@ -66,11 +66,11 @@ func TestListReconciliationsAwaitingProcessing_RequiresReconItemView(t *testing.
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 
-// TestListReconciliationsAwaitingProcessing_AllowsStaffWithReconItemView verifies
+// TestListActiveReconciliations_AllowsStaffWithReconItemView verifies
 // that a staff caller holding only recon_item_view (NOT recon_manage) passes the
 // gate and reaches the repository — staff must see the same active-reconcile queue
 // as admin/accountant.
-func TestListReconciliationsAwaitingProcessing_AllowsStaffWithReconItemView(t *testing.T) {
+func TestListActiveReconciliations_AllowsStaffWithReconItemView(t *testing.T) {
 	svc, mock := newAwaitingProcessingService(t)
 
 	mock.ExpectQuery(`SELECT count\(\*\) FROM "inventory_submissions"`).
@@ -78,7 +78,7 @@ func TestListReconciliationsAwaitingProcessing_AllowsStaffWithReconItemView(t *t
 	mock.ExpectQuery(`SELECT \* FROM "inventory_submissions"`).
 		WillReturnRows(sqlmock.NewRows([]string{"id"}))
 
-	rows, total, err := svc.ListReconciliationsAwaitingProcessing(reconViewCtxAwaiting(),
+	rows, total, err := svc.ListActiveReconciliations(reconViewCtxAwaiting(),
 		models.ListParams{Page: 1, Limit: 20, Sort: "updated_at", Order: "desc"}, nil)
 	require.NoError(t, err, "a staff caller with recon_item_view must be allowed")
 	assert.Zero(t, total)
@@ -86,13 +86,13 @@ func TestListReconciliationsAwaitingProcessing_AllowsStaffWithReconItemView(t *t
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 
-// TestListReconciliationsAwaitingProcessing_LightweightMapping verifies the
+// TestListActiveReconciliations_LightweightMapping verifies the
 // authorized path: the rows map to dto.SubmissionResponse via the LIGHTWEIGHT
 // mapper — embedded inventory + reconcile_status are present, the synthesized
 // review fields (review_label / count_breakdown) are ABSENT (zero value, omitempty),
 // and Items serializes as `[]` (not null) because it is NOT omitempty and is
 // initialized to an empty slice.
-func TestListReconciliationsAwaitingProcessing_LightweightMapping(t *testing.T) {
+func TestListActiveReconciliations_LightweightMapping(t *testing.T) {
 	svc, mock := newAwaitingProcessingService(t)
 
 	mock.ExpectQuery(`SELECT count\(\*\) FROM "inventory_submissions"`).
@@ -103,7 +103,7 @@ func TestListReconciliationsAwaitingProcessing_LightweightMapping(t *testing.T) 
 	mock.ExpectQuery(`SELECT \* FROM "inventories"`).
 		WillReturnRows(sqlmock.NewRows([]string{"id", "name"}).AddRow(10, "Main Warehouse"))
 
-	rows, total, err := svc.ListReconciliationsAwaitingProcessing(reconViewCtxAwaiting(),
+	rows, total, err := svc.ListActiveReconciliations(reconViewCtxAwaiting(),
 		models.ListParams{Page: 1, Limit: 20, Sort: "updated_at", Order: "desc"}, nil)
 	require.NoError(t, err)
 	require.Equal(t, int64(1), total)

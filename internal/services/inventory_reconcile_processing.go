@@ -200,6 +200,51 @@ func (s *inventoryService) transitionReconcileStatus(
 	return result, nil
 }
 
+// CancelReconciliation abandons an active reconcile (open/closed -> canceled) in
+// one tx under the parent FOR UPDATE lock and the per-inventory advisory lock
+// (mirroring StartProcessing's locking). It sets the terminal canceled state
+// (reconcile_status + processing_status) and does NOTHING else: no synthesize, no
+// apply, no consume, no MarkProcessed, no inventory transactions — zero stock
+// change. The child count rows are retained. The canceled processing_status frees
+// the one-active-pending guard so a fresh reconcile can be initiated. The from-gate
+// is its own {open,closed} set: processing/processed/canceled -> 409 (an
+// already-canceled row also fails loadActiveReconcileParent's in-flight check, but
+// the from-gate keeps the error uniform).
+func (s *inventoryService) CancelReconciliation(ctx context.Context, submissionID uint) (*models.InventorySubmission, error) {
+	if !pkg.HasPermission(ctx, pkg.RBACResourceInventorySubmissions, pkg.RBACActionReconManage) {
+		return nil, pkg.ErrForbidden("user does not have permission to manage reconciliations", nil)
+	}
+
+	var result *models.InventorySubmission
+	err := s.baseRepo.WithinTx(ctx, func(txCtx context.Context) error {
+		parent, err := s.loadActiveReconcileParent(txCtx, submissionID)
+		if err != nil {
+			return err
+		}
+		if parent.ReconcileStatus != models.ReconcileLifecycleStatusOpen &&
+			parent.ReconcileStatus != models.ReconcileLifecycleStatusClosed {
+			return pkg.ErrReconInvalidLifecycleTransition(txCtx, submissionID,
+				string(parent.ReconcileStatus), string(models.ReconcileLifecycleStatusCanceled))
+		}
+
+		if err := s.inventorySubmissionRepo.AcquireInventoryAdvisoryLock(txCtx, parent.InventoryID); err != nil {
+			return fmt.Errorf("failed to acquire inventory advisory lock: %w", err)
+		}
+
+		if err := s.inventorySubmissionRepo.CancelReconciliation(txCtx, submissionID); err != nil {
+			return fmt.Errorf("failed to cancel reconciliation: %w", err)
+		}
+		parent.ReconcileStatus = models.ReconcileLifecycleStatusCanceled
+		parent.ProcessingStatus = models.InventorySubmissionStatusCanceled
+		result = parent
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return result, nil
+}
+
 // StartProcessing is the ONE atomic apply transaction (locked decisions Q5–Q8).
 // It takes the per-inventory advisory lock FIRST, then performs the event-based
 // drift re-check, then (if clean) synthesizes the payload, applies it with

@@ -184,11 +184,12 @@ var customRouteMappings = []RouteMapping{
 		Action:      "",
 	},
 	// Admin/accountant reconciliation management (epic #38, Part 6 redesign). Close
-	// (open->closed), reopen (closed->open) and start-processing (the atomic apply)
-	// all carry the single recon_manage action, which only admin/accountant hold
-	// (staff never manages). Each is /inventories/submissions/*/<verb> (4 segments),
-	// distinct by trailing literal segment from one another and by segment count
-	// from the reconciliation-items patterns below.
+	// (open->closed), reopen (closed->open), start-processing (the atomic apply) and
+	// cancel (open/closed->canceled) all carry the single recon_manage action, which
+	// only admin/accountant hold (staff never manages). Each is
+	// /inventories/submissions/*/<verb> (4 segments), distinct by trailing literal
+	// segment from one another and by segment count from the reconciliation-items
+	// patterns below.
 	{
 		Method:      "POST",
 		PathPattern: "/inventories/submissions/*/close",
@@ -204,6 +205,12 @@ var customRouteMappings = []RouteMapping{
 	{
 		Method:      "POST",
 		PathPattern: "/inventories/submissions/*/start-processing",
+		Resource:    "inventory-submissions",
+		Action:      "recon_manage",
+	},
+	{
+		Method:      "POST",
+		PathPattern: "/inventories/submissions/*/cancel",
 		Resource:    "inventory-submissions",
 		Action:      "recon_manage",
 	},

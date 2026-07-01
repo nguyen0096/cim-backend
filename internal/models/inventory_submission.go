@@ -18,6 +18,8 @@ import (
 //	               apply transaction.
 //	processed   -> terminal: the reconcile has been applied (consuming
 //	               transactions created, stock mutated). Immutable to everyone.
+//	canceled    -> terminal: the reconcile was abandoned (open/closed -> canceled)
+//	               with no inventory mutation; count rows are retained.
 //
 // `open` is the only editable staff state; `close` is the only gate (the
 // per-row ready/approved/applied states were removed in this redesign).
@@ -28,6 +30,7 @@ const (
 	ReconcileLifecycleStatusClosed     ReconcileLifecycleStatus = "closed"
 	ReconcileLifecycleStatusProcessing ReconcileLifecycleStatus = "processing"
 	ReconcileLifecycleStatusProcessed  ReconcileLifecycleStatus = "processed"
+	ReconcileLifecycleStatusCanceled   ReconcileLifecycleStatus = "canceled"
 )
 
 // IsValid reports whether s is a recognized reconcile lifecycle status.
@@ -36,7 +39,8 @@ func (s ReconcileLifecycleStatus) IsValid() bool {
 	case ReconcileLifecycleStatusOpen,
 		ReconcileLifecycleStatusClosed,
 		ReconcileLifecycleStatusProcessing,
-		ReconcileLifecycleStatusProcessed:
+		ReconcileLifecycleStatusProcessed,
+		ReconcileLifecycleStatusCanceled:
 		return true
 	default:
 		return false
@@ -97,6 +101,18 @@ type InventorySubmission struct {
 	// submission with processed_at inside [snapshot_capture, now] is drift). Set
 	// when processing completes; nil while pending/failed.
 	ProcessedAt *time.Time `json:"processed_at,omitempty"`
+}
+
+// IsActiveReconcile is the canonical definition of an active reconcile: a
+// reconcile submission not yet start-processed — reconcile_status IN (open,
+// closed) AND processing_status = pending. A canceled/processing/processed
+// reconcile is non-active by construction. The awaiting/active repo query
+// expresses the same predicate in SQL over activeReconcileStatuses.
+func (s InventorySubmission) IsActiveReconcile() bool {
+	return s.SubmissionType == InventorySubmissionTypeReconcile &&
+		s.ProcessingStatus == InventorySubmissionStatusPending &&
+		(s.ReconcileStatus == ReconcileLifecycleStatusOpen ||
+			s.ReconcileStatus == ReconcileLifecycleStatusClosed)
 }
 
 // MarshalErrors marshals errors to JSON

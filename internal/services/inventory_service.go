@@ -31,14 +31,13 @@ type InventoryService interface {
 
 	GetLastPurchasePrices(ctx context.Context, supplierID uint) (dto.LastPurchasePriceMap, error)
 	ListSubmissions(ctx context.Context, params models.ListParams, approvalStatuses []string, inventoryID uint, submissionTypes []string) ([]dto.SubmissionResponse, int64, error)
-	// ListReconciliationsAwaitingProcessing returns the cross-inventory queue of
-	// reconcile submissions awaiting Start-Processing (issue #88) for the #87
-	// list/overview UI. It is gated by the recon_manage permission (403 otherwise,
-	// mirroring CloseReconciliation/StartProcessing) and uses a lightweight queue
-	// mapper that does NOT synthesize per-row payloads (so the page is a bounded,
-	// constant query count — no N+1). reconcileStatuses optionally narrows the
-	// open/closed set.
-	ListReconciliationsAwaitingProcessing(ctx context.Context, params models.ListParams, reconcileStatuses []string) ([]dto.SubmissionResponse, int64, error)
+	// ListActiveReconciliations returns the cross-inventory queue of active
+	// reconcile submissions (open/closed + pending) for the list/overview UI. It is
+	// gated by the recon_item_view permission (403 otherwise) and uses a lightweight
+	// queue mapper that does NOT synthesize per-row payloads (so the page is a
+	// bounded, constant query count — no N+1). reconcileStatuses optionally narrows
+	// the open/closed set.
+	ListActiveReconciliations(ctx context.Context, params models.ListParams, reconcileStatuses []string) ([]dto.SubmissionResponse, int64, error)
 	InitiateReconcile(ctx context.Context, req dto.InitiateReconcileRequest) (*models.InventorySubmission, error)
 	CreateReconcileSubmission(ctx context.Context, req dto.ReconcileInventoryRequest) (*models.InventorySubmission, error)
 	CreateDisposeSubmission(ctx context.Context, req dto.DisposeInventoryRequest) (*models.InventorySubmission, error)
@@ -73,6 +72,11 @@ type InventoryService interface {
 	CloseReconciliation(ctx context.Context, submissionID uint) (*dto.CloseReconciliationResult, error)
 	ReopenReconciliation(ctx context.Context, submissionID uint) (*models.InventorySubmission, error)
 	StartProcessing(ctx context.Context, submissionID uint) (*dto.StartProcessingResult, error)
+	// CancelReconciliation abandons an active reconcile (open/closed -> canceled)
+	// with ZERO inventory mutation: it sets a terminal canceled state, retains the
+	// child count rows, frees the one-active-pending guard, and creates no consuming
+	// transactions. Allowed only from open/closed; any other state is a 409.
+	CancelReconciliation(ctx context.Context, submissionID uint) (*models.InventorySubmission, error)
 
 	// SynthesizeSubmissionPayload folds the live (non-deleted) staff child rows of
 	// an initiated reconcile into the legacy ReconcileInventoryRequest-shaped
@@ -1396,30 +1400,29 @@ func (s *inventoryService) ListSubmissions(ctx context.Context, params models.Li
 	return responses, total, nil
 }
 
-// ListReconciliationsAwaitingProcessing returns the cross-inventory awaiting-
-// processing reconcile queue (issue #88). Auth is enforced here in the service
-// (recon_item_view => 403 otherwise), NOT via route middleware. recon_item_view is
-// the shared read action held by staff AND admin/accountant (recon_manage is
-// admin/accountant-only); the count Page is staff-facing, so staff must see the
-// same active-reconcile queue to reach their open reconciliations. The list is the
-// same for every caller — no per-staff scoping — so a single shared read gate is
-// all that's needed (unlike ListReconciliationItems, which scopes staff to their
-// own child rows). Every row this returns is, by predicate, an active reconcile
-// (pending + open/closed), so the per-inventory ListSubmissions path would
-// synthesize each row (3 queries/row) — a per-page N+1 on this cross-inventory
-// surface. This queue does not need the synthesized review breakdown (that is the
-// per-inventory detail/review screen's concern, served by the existing
-// GET /{id}/submissions), so it maps directly from the loaded row + the preloaded
-// Inventory with ZERO per-row DB work: the page is a bounded, constant query count
-// regardless of row count.
-func (s *inventoryService) ListReconciliationsAwaitingProcessing(ctx context.Context, params models.ListParams, reconcileStatuses []string) ([]dto.SubmissionResponse, int64, error) {
+// ListActiveReconciliations returns the cross-inventory active reconcile queue.
+// Auth is enforced here in the service (recon_item_view => 403 otherwise), NOT via
+// route middleware. recon_item_view is the shared read action held by staff AND
+// admin/accountant (recon_manage is admin/accountant-only); the count Page is
+// staff-facing, so staff must see the same active-reconcile queue to reach their
+// open reconciliations. The list is the same for every caller — no per-staff
+// scoping — so a single shared read gate is all that's needed (unlike
+// ListReconciliationItems, which scopes staff to their own child rows). Every row
+// this returns is, by predicate, an active reconcile (pending + open/closed), so
+// the per-inventory ListSubmissions path would synthesize each row (3 queries/row)
+// — a per-page N+1 on this cross-inventory surface. This queue does not need the
+// synthesized review breakdown (that is the per-inventory detail/review screen's
+// concern, served by the existing GET /{id}/submissions), so it maps directly from
+// the loaded row + the preloaded Inventory with ZERO per-row DB work: the page is a
+// bounded, constant query count regardless of row count.
+func (s *inventoryService) ListActiveReconciliations(ctx context.Context, params models.ListParams, reconcileStatuses []string) ([]dto.SubmissionResponse, int64, error) {
 	if !pkg.HasPermission(ctx, pkg.RBACResourceInventorySubmissions, pkg.RBACActionReconItemView) {
 		return nil, 0, pkg.ErrForbidden("user does not have permission to view reconciliations", nil)
 	}
 
-	submissions, total, err := s.inventorySubmissionRepo.ListReconciliationsAwaitingProcessing(ctx, params, reconcileStatuses)
+	submissions, total, err := s.inventorySubmissionRepo.ListActiveReconciliations(ctx, params, reconcileStatuses)
 	if err != nil {
-		return nil, 0, fmt.Errorf("failed to list awaiting-processing reconciliations: %w", err)
+		return nil, 0, fmt.Errorf("failed to list active reconciliations: %w", err)
 	}
 
 	responses := make([]dto.SubmissionResponse, len(submissions))
@@ -1459,40 +1462,13 @@ func mapReconcileQueueRow(submission models.InventorySubmission) dto.SubmissionR
 	}
 }
 
-// isActiveReconcile reports whether a submission is an in-flight reconciliation
-// initiated via the new flow whose parent payload is still empty (epic #38, Part
-// 5 / S4). Such submissions must render their items/label/warnings by synthesizing
-// over the staff child rows rather than reading the empty Payload. The gate is
-// intentionally cheap (no per-row query): a legacy single-payload reconcile carries
-// a non-empty Payload and so is excluded and keeps its existing behavior; an
-// applied/approved or rejected reconcile is likewise excluded (payload populated at
-// apply, or never reaching apply). Synthesis itself then reads the child rows and
-// snapshot; a reconcile with neither simply yields an empty item set.
+// isActiveReconcile is the service-layer view of the canonical active-reconcile
+// predicate (models.InventorySubmission.IsActiveReconcile): an active reconcile
+// renders its items/label/warnings by synthesizing over the staff child rows
+// rather than reading the empty Payload; a canceled/processing/processed reconcile
+// is non-active and skips synthesis.
 func isActiveReconcile(submission models.InventorySubmission) bool {
-	return submission.SubmissionType == models.InventorySubmissionTypeReconcile &&
-		submission.ApprovalStatus == models.InventorySubmissionApprovalStatusPending &&
-		len(payloadItemsRaw(submission.Payload)) == 0
-}
-
-// payloadItemsRaw returns the raw bytes of the payload only when it is non-empty
-// and parses to at least one item; an empty/`null`/`{}`/zero-item payload yields
-// nil so isActiveReconcile treats it as "no persisted payload yet".
-func payloadItemsRaw(payload json.RawMessage) json.RawMessage {
-	if len(payload) == 0 {
-		return nil
-	}
-	var parsed struct {
-		Items []json.RawMessage `json:"items"`
-	}
-	if err := json.Unmarshal(payload, &parsed); err != nil {
-		// Unparseable payload: treat as present (non-active) so we don't override a
-		// legacy/foreign payload via synthesis.
-		return payload
-	}
-	if len(parsed.Items) == 0 {
-		return nil
-	}
-	return payload
+	return submission.IsActiveReconcile()
 }
 
 func (s *inventoryService) formatProcessingErrors(jsonStr json.RawMessage) json.RawMessage {

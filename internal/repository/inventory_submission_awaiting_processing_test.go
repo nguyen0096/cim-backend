@@ -19,13 +19,13 @@ func awaitingParams() models.ListParams {
 	return models.ListParams{Page: 1, Limit: 20, Sort: "updated_at", Order: "desc"}
 }
 
-// TestListReconciliationsAwaitingProcessing_Predicate verifies the cross-inventory
+// TestListActiveReconciliations_Predicate verifies the cross-inventory
 // awaiting-processing reconcile queue query (issue #88) emits the locked predicate
 // `submission_type='reconcile' AND processing_status='pending' AND reconcile_status
 // IN (...)` — and, crucially, is NOT scoped to a single inventory_id (it is the
 // cross-inventory queue, not ListSubmissions). GORM's soft-delete scope adds
 // deleted_at IS NULL, so soft-deleted rows are excluded by construction.
-func TestListReconciliationsAwaitingProcessing_Predicate(t *testing.T) {
+func TestListActiveReconciliations_Predicate(t *testing.T) {
 	gormDB, mock := setupTestDB(t)
 	repo := NewInventorySubmissionRepository(NewBaseRepository(gormDB))
 
@@ -45,7 +45,7 @@ func TestListReconciliationsAwaitingProcessing_Predicate(t *testing.T) {
 	mock.ExpectQuery(`SELECT \* FROM "inventories"`).
 		WillReturnRows(sqlmock.NewRows([]string{"id", "name"}).AddRow(10, "Main"))
 
-	rows, total, err := repo.ListReconciliationsAwaitingProcessing(context.Background(), awaitingParams(), nil)
+	rows, total, err := repo.ListActiveReconciliations(context.Background(), awaitingParams(), nil)
 	require.NoError(t, err)
 	assert.Equal(t, int64(1), total)
 	require.Len(t, rows, 1)
@@ -56,10 +56,10 @@ func TestListReconciliationsAwaitingProcessing_Predicate(t *testing.T) {
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 
-// TestListReconciliationsAwaitingProcessing_StatusFilter verifies an explicit
+// TestListActiveReconciliations_StatusFilter verifies an explicit
 // reconcile_status filter narrows the IN(...) set to the caller-supplied subset
 // rather than the default {open,closed}.
-func TestListReconciliationsAwaitingProcessing_StatusFilter(t *testing.T) {
+func TestListActiveReconciliations_StatusFilter(t *testing.T) {
 	gormDB, mock := setupTestDB(t)
 	repo := NewInventorySubmissionRepository(NewBaseRepository(gormDB))
 
@@ -76,7 +76,7 @@ func TestListReconciliationsAwaitingProcessing_StatusFilter(t *testing.T) {
 	mock.ExpectQuery(`SELECT \* FROM "inventories"`).
 		WillReturnRows(sqlmock.NewRows([]string{"id", "name"}).AddRow(11, "Annex"))
 
-	rows, total, err := repo.ListReconciliationsAwaitingProcessing(context.Background(), awaitingParams(),
+	rows, total, err := repo.ListActiveReconciliations(context.Background(), awaitingParams(),
 		[]string{string(models.ReconcileLifecycleStatusClosed)})
 	require.NoError(t, err)
 	assert.Equal(t, int64(1), total)
@@ -85,14 +85,14 @@ func TestListReconciliationsAwaitingProcessing_StatusFilter(t *testing.T) {
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 
-// TestListReconciliationsAwaitingProcessing_MultiStateFixture drives a multi-row,
+// TestListActiveReconciliations_MultiStateFixture drives a multi-row,
 // multi-inventory page through a realistic candidate set and asserts the rejected
 // edges are EXCLUDED by the predicate. The DB applies the predicate, so this test
 // asserts intent at the boundary: only the rows the WHERE admits (the open+pending
 // and closed+pending reconciles) are returned in one page with the correct total,
 // while the rejected edges — most importantly canceled+open (reviewer-B regression
 // guard) — are not present in the result set.
-func TestListReconciliationsAwaitingProcessing_MultiStateFixture(t *testing.T) {
+func TestListActiveReconciliations_MultiStateFixture(t *testing.T) {
 	gormDB, mock := setupTestDB(t)
 	repo := NewInventorySubmissionRepository(NewBaseRepository(gormDB))
 
@@ -124,7 +124,7 @@ func TestListReconciliationsAwaitingProcessing_MultiStateFixture(t *testing.T) {
 	mock.ExpectQuery(`SELECT \* FROM "inventories"`).
 		WillReturnRows(sqlmock.NewRows([]string{"id", "name"}).AddRow(10, "Main").AddRow(11, "Annex"))
 
-	rows, total, err := repo.ListReconciliationsAwaitingProcessing(context.Background(), awaitingParams(), nil)
+	rows, total, err := repo.ListActiveReconciliations(context.Background(), awaitingParams(), nil)
 	require.NoError(t, err)
 	assert.Equal(t, int64(2), total, "page total must count only the admitted rows")
 	require.Len(t, rows, 2)
@@ -145,7 +145,7 @@ func TestListReconciliationsAwaitingProcessing_MultiStateFixture(t *testing.T) {
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 
-// TestListReconciliationsAwaitingProcessing_BoundedQueryCount is the N+1
+// TestListActiveReconciliations_BoundedQueryCount is the N+1
 // regression guard (issue #88 plan v4 blocker fix). A multi-row (>=3),
 // multi-inventory page must issue a CONSTANT, bounded number of query statements
 // independent of row count: the count query, the list query, and GORM's single
@@ -153,7 +153,7 @@ func TestListReconciliationsAwaitingProcessing_MultiStateFixture(t *testing.T) {
 // query. sqlmock's ExpectationsWereMet fails if any unexpected (e.g. per-row)
 // query is issued, so registering exactly these three and asserting it locks the
 // bound.
-func TestListReconciliationsAwaitingProcessing_BoundedQueryCount(t *testing.T) {
+func TestListActiveReconciliations_BoundedQueryCount(t *testing.T) {
 	// awaitingProcessingQueryStatements is the asserted constant: count + list +
 	// one batched inventory preload. This is the real bound (3, incl. the GORM
 	// preload), NOT 2 — the preload is a real, but bounded and row-count-
@@ -194,7 +194,7 @@ func TestListReconciliationsAwaitingProcessing_BoundedQueryCount(t *testing.T) {
 		WillReturnRows(sqlmock.NewRows([]string{"id", "name"}).
 			AddRow(10, "A").AddRow(11, "B").AddRow(12, "C"))
 
-	rows, total, err := repo.ListReconciliationsAwaitingProcessing(context.Background(), awaitingParams(), nil)
+	rows, total, err := repo.ListActiveReconciliations(context.Background(), awaitingParams(), nil)
 	require.NoError(t, err)
 	require.Equal(t, int64(3), total)
 	require.Len(t, rows, 3, "multi-inventory page returns all admitted rows")

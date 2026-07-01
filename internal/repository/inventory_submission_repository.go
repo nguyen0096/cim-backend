@@ -27,19 +27,19 @@ type InventorySubmissionRepository interface {
 	UpdateProcessingStatus(ctx context.Context, id uint, status models.SubmissionProcessingStatus) error
 	FailSubmissionProcessingWithErrors(ctx context.Context, id uint, errors []error) error
 	ListSubmissions(ctx context.Context, params models.ListParams, inventoryID uint, approvalStatuses []string, submissionTypes []string) ([]models.InventorySubmission, int64, error)
-	// ListReconciliationsAwaitingProcessing returns the CROSS-INVENTORY queue of
-	// reconcile submissions awaiting Start-Processing (issue #88): the locked
-	// predicate `submission_type='reconcile' AND processing_status='pending' AND
-	// reconcile_status IN ('open','closed')` (GORM adds the deleted_at IS NULL
-	// soft-delete scope). Unlike ListSubmissions this is NOT scoped to one
-	// inventory_id — it surfaces the not-yet-processed reconcile queue across all
-	// inventories so a list/overview UI can disable Dispose/Transfer/Start-Reconcile
-	// per row in one call (no N+1 sweep). reconcileStatuses optionally narrows the
-	// IN(...) set to a caller-supplied subset of {open,closed}; empty applies the
-	// full {open,closed} set. The Inventory association is Preload-ed so the mapper
-	// needs no per-row fetch. Returns rows + total => 2 query statements (the
-	// preload adds GORM's bounded follow-up). Paginated/ordered via params.
-	ListReconciliationsAwaitingProcessing(ctx context.Context, params models.ListParams, reconcileStatuses []string) ([]models.InventorySubmission, int64, error)
+	// ListActiveReconciliations returns the CROSS-INVENTORY queue of active
+	// reconcile submissions: the canonical predicate `submission_type='reconcile'
+	// AND processing_status='pending' AND reconcile_status IN ('open','closed')`
+	// (models.InventorySubmission.IsActiveReconcile in SQL; GORM adds the deleted_at
+	// IS NULL soft-delete scope). Unlike ListSubmissions this is NOT scoped to one
+	// inventory_id — it surfaces the active reconcile queue across all inventories
+	// so a list/overview UI can disable Dispose/Transfer/Start-Reconcile per row in
+	// one call (no N+1 sweep). reconcileStatuses optionally narrows the IN(...) set
+	// to a caller-supplied subset of {open,closed}; empty applies the full
+	// {open,closed} set. The Inventory association is Preload-ed so the mapper needs
+	// no per-row fetch. Returns rows + total => 2 query statements (the preload adds
+	// GORM's bounded follow-up). Paginated/ordered via params.
+	ListActiveReconciliations(ctx context.Context, params models.ListParams, reconcileStatuses []string) ([]models.InventorySubmission, int64, error)
 	UpdateSubmissionPayload(ctx context.Context, id uint, payload []byte) error
 	// ExistsActivePending reports whether a live pending RECONCILE submission
 	// already exists for the inventory (one-active-pending guard, #38 P3,
@@ -63,6 +63,10 @@ type InventorySubmissionRepository interface {
 	// UpdateReconcileStatus sets the reconciliation lifecycle status (epic #38,
 	// Part 6: open/closed/processing/processed). Tx-aware via DB(ctx).
 	UpdateReconcileStatus(ctx context.Context, id uint, status models.ReconcileLifecycleStatus) error
+	// CancelReconciliation atomically sets the terminal cancel state:
+	// reconcile_status='canceled' AND processing_status='canceled'. It performs no
+	// inventory mutation and retains the child count rows. Tx-aware via DB(ctx).
+	CancelReconciliation(ctx context.Context, id uint) error
 	// MarkProcessed atomically finalizes a submission's processing: sets
 	// processing_status='completed', approval_status='approved',
 	// processed_at=clock_timestamp() (the DATABASE clock, so it shares a clock with
@@ -270,23 +274,23 @@ func (r *inventorySubmissionRepository) ListSubmissions(
 	return submissions, total, nil
 }
 
-// awaitingProcessingReconcileStatuses is the full lifecycle set the awaiting-
-// processing queue surfaces: a not-yet-processed reconcile is either open (staff
-// still counting) or closed (locked, awaiting Start-Processing). processing and
-// processed are terminal/transient and never part of the queue.
-var awaitingProcessingReconcileStatuses = []models.ReconcileLifecycleStatus{
+// activeReconcileStatuses is the reconcile_status set of an active reconcile
+// (models.InventorySubmission.IsActiveReconcile): open (staff still counting) or
+// closed (locked, awaiting Start-Processing). processing/processed/canceled are
+// terminal/transient and never active. It is the single source for the
+// reconcile_status IN (...) clause of the active-reconcile query.
+var activeReconcileStatuses = []models.ReconcileLifecycleStatus{
 	models.ReconcileLifecycleStatusOpen,
 	models.ReconcileLifecycleStatusClosed,
 }
 
-// ListReconciliationsAwaitingProcessing implements the cross-inventory awaiting-
-// processing reconcile queue (issue #88). See the interface doc. The predicate is
-// served largely by the partial unique index uq_inventory_submissions_one_active_
-// pending (migration 20260622000002) — `(inventory_id) WHERE deleted_at IS NULL
-// AND processing_status='pending' AND submission_type='reconcile'` — so the
-// candidate set is the awaiting reconciles and the residual reconcile_status
-// IN(...) filter runs over a tiny set.
-func (r *inventorySubmissionRepository) ListReconciliationsAwaitingProcessing(
+// ListActiveReconciliations implements the cross-inventory active reconcile queue.
+// See the interface doc. The predicate is served largely by the partial unique
+// index uq_inventory_submissions_one_active_pending (migration 20260622000002) —
+// `(inventory_id) WHERE deleted_at IS NULL AND processing_status='pending' AND
+// submission_type='reconcile'` — so the candidate set is the active reconciles and
+// the residual reconcile_status IN(...) filter runs over a tiny set.
+func (r *inventorySubmissionRepository) ListActiveReconciliations(
 	ctx context.Context,
 	params models.ListParams,
 	reconcileStatuses []string,
@@ -296,8 +300,8 @@ func (r *inventorySubmissionRepository) ListReconciliationsAwaitingProcessing(
 
 	statuses := reconcileStatuses
 	if len(statuses) == 0 {
-		statuses = make([]string, len(awaitingProcessingReconcileStatuses))
-		for i, s := range awaitingProcessingReconcileStatuses {
+		statuses = make([]string, len(activeReconcileStatuses))
+		for i, s := range activeReconcileStatuses {
 			statuses[i] = string(s)
 		}
 	}
@@ -310,7 +314,7 @@ func (r *inventorySubmissionRepository) ListReconciliationsAwaitingProcessing(
 		Where("reconcile_status IN ?", statuses)
 
 	if err := query.Count(&total).Error; err != nil {
-		return nil, 0, fmt.Errorf("failed to count awaiting-processing reconciliations: %w", err)
+		return nil, 0, fmt.Errorf("failed to count active reconciliations: %w", err)
 	}
 
 	orderClause := fmt.Sprintf("%s %s", params.Sort, strings.ToUpper(params.Order))
@@ -320,7 +324,7 @@ func (r *inventorySubmissionRepository) ListReconciliationsAwaitingProcessing(
 		Offset(params.GetOffset()).
 		Preload("Inventory")
 	if err := query.Find(&submissions).Error; err != nil {
-		return nil, 0, fmt.Errorf("failed to list awaiting-processing reconciliations: %w", err)
+		return nil, 0, fmt.Errorf("failed to list active reconciliations: %w", err)
 	}
 
 	return submissions, total, nil
@@ -381,6 +385,24 @@ func (r *inventorySubmissionRepository) ListConsumingProcessedSince(ctx context.
 func (r *inventorySubmissionRepository) UpdateReconcileStatus(ctx context.Context, id uint, status models.ReconcileLifecycleStatus) error {
 	updates, err := pkg.WithUpdateFields(ctx, map[string]interface{}{
 		"reconcile_status": status,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to prepare update fields: %w", err)
+	}
+	return r.DB(ctx).WithContext(ctx).
+		Model(&models.InventorySubmission{}).
+		Where("id = ?", id).
+		Updates(updates).Error
+}
+
+// CancelReconciliation writes the terminal cancel state in one UPDATE:
+// reconcile_status='canceled' + processing_status='canceled'. The canceled
+// processing_status frees the one-active-pending guard; approval_status is left
+// unchanged. Tx-aware via DB(ctx).
+func (r *inventorySubmissionRepository) CancelReconciliation(ctx context.Context, id uint) error {
+	updates, err := pkg.WithUpdateFields(ctx, map[string]interface{}{
+		"reconcile_status":  models.ReconcileLifecycleStatusCanceled,
+		"processing_status": models.InventorySubmissionStatusCanceled,
 	})
 	if err != nil {
 		return fmt.Errorf("failed to prepare update fields: %w", err)

@@ -1200,12 +1200,14 @@ definitions:
     - closed
     - processing
     - processed
+    - canceled
     type: string
     x-enum-varnames:
     - ReconcileLifecycleStatusOpen
     - ReconcileLifecycleStatusClosed
     - ReconcileLifecycleStatusProcessing
     - ReconcileLifecycleStatusProcessed
+    - ReconcileLifecycleStatusCanceled
   models.SaleOrder:
     description: Sale order entity with items and status tracking
     properties:
@@ -2803,6 +2805,48 @@ paths:
       security:
       - BearerAuth: []
       summary: Update submission items
+      tags:
+      - inventories
+  /inventories/submissions/{id}/cancel:
+    post:
+      description: Admin/accountant abandons an active reconciliation (open/closed
+        -> canceled). No inventory mutation and no stock change; submitted count rows
+        are retained. The inventory is freed so a new reconciliation can be initiated.
+        Only allowed from open/closed; any other state returns 409.
+      parameters:
+      - description: Submission ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.InventorySubmission'
+        "403":
+          description: Forbidden
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "409":
+          description: Conflict
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Cancel reconciliation submission
       tags:
       - inventories
   /inventories/submissions/{id}/close:

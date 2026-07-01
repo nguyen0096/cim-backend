@@ -1038,6 +1038,67 @@ const docTemplate = `{
                 }
             }
         },
+        "/inventories/submissions/{id}/cancel": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Admin/accountant abandons an active reconciliation (open/closed -\u003e canceled). No inventory mutation and no stock change; submitted count rows are retained. The inventory is freed so a new reconciliation can be initiated. Only allowed from open/closed; any other state returns 409.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "inventories"
+                ],
+                "summary": "Cancel reconciliation submission",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Submission ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.InventorySubmission"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/inventories/submissions/{id}/close": {
             "post": {
                 "security": [
@@ -7714,13 +7775,15 @@ const docTemplate = `{
                 "open",
                 "closed",
                 "processing",
-                "processed"
+                "processed",
+                "canceled"
             ],
             "x-enum-varnames": [
                 "ReconcileLifecycleStatusOpen",
                 "ReconcileLifecycleStatusClosed",
                 "ReconcileLifecycleStatusProcessing",
-                "ReconcileLifecycleStatusProcessed"
+                "ReconcileLifecycleStatusProcessed",
+                "ReconcileLifecycleStatusCanceled"
             ]
         },
         "models.SaleOrder": {

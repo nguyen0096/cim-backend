@@ -267,10 +267,12 @@ func SetupServer(
 	// Staff per-session readiness toggle.
 	inventories.POST("/submissions/:id/reconciliation-items/:item_id/review-label", inventoryHandler.SetReconciliationItemReadiness)
 	// Admin/accountant reconciliation management. Close locks staff out; reopen
-	// re-opens; start-processing is the atomic apply. All gated by recon_manage.
+	// re-opens; start-processing is the atomic apply; cancel abandons an active
+	// reconcile with no stock change. All gated by recon_manage.
 	inventories.POST("/submissions/:id/close", inventoryHandler.CloseReconciliation)
 	inventories.POST("/submissions/:id/reopen", inventoryHandler.ReopenReconciliation)
 	inventories.POST("/submissions/:id/start-processing", inventoryHandler.StartProcessing)
+	inventories.POST("/submissions/:id/cancel", inventoryHandler.CancelReconciliation)
 
 	// Inventory Timeline/Export
 	inventories.GET("/:id/export/monthly-transaction", inventoryHandler.ExportMonthlyTransactionReport)

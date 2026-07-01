@@ -491,7 +491,7 @@ func (h *InventoryHandler) ListReconciliations(c echo.Context) error {
 	// Validate and set defaults for pagination (clamps limit to MaxLimit).
 	params.ValidateAndSetDefaults()
 
-	submissions, total, err := h.inventoryService.ListReconciliationsAwaitingProcessing(c.Request().Context(), params, reconcileStatuses)
+	submissions, total, err := h.inventoryService.ListActiveReconciliations(c.Request().Context(), params, reconcileStatuses)
 	if err != nil {
 		return err
 	}

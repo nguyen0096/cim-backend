@@ -37,7 +37,7 @@ func TestInventoryHandler_ListReconciliations_Success(t *testing.T) {
 		Items:           []dto.QuantityItem{},
 	}}
 	mockService.
-		On("ListReconciliationsAwaitingProcessing", mock.Anything, mock.Anything, []string(nil)).
+		On("ListActiveReconciliations", mock.Anything, mock.Anything, []string(nil)).
 		Return(rows, int64(1), nil).
 		Once()
 
@@ -68,7 +68,7 @@ func TestInventoryHandler_ListReconciliations_StatusFilterPassesThrough(t *testi
 	handler := NewInventoryHandler(mockService)
 
 	mockService.
-		On("ListReconciliationsAwaitingProcessing", mock.Anything, mock.Anything, []string{"closed"}).
+		On("ListActiveReconciliations", mock.Anything, mock.Anything, []string{"closed"}).
 		Return([]dto.SubmissionResponse{}, int64(0), nil).
 		Once()
 
@@ -99,7 +99,7 @@ func TestInventoryHandler_ListReconciliations_InvalidStatus(t *testing.T) {
 
 	require.NoError(t, handler.ListReconciliations(c))
 	assert.Equal(t, http.StatusBadRequest, rec.Code)
-	mockService.AssertNotCalled(t, "ListReconciliationsAwaitingProcessing", mock.Anything, mock.Anything, mock.Anything)
+	mockService.AssertNotCalled(t, "ListActiveReconciliations", mock.Anything, mock.Anything, mock.Anything)
 }
 
 // TestInventoryHandler_ListReconciliations_ForbiddenPropagates verifies a service-
@@ -112,7 +112,7 @@ func TestInventoryHandler_ListReconciliations_ForbiddenPropagates(t *testing.T) 
 	handler := NewInventoryHandler(mockService)
 
 	mockService.
-		On("ListReconciliationsAwaitingProcessing", mock.Anything, mock.Anything, mock.Anything).
+		On("ListActiveReconciliations", mock.Anything, mock.Anything, mock.Anything).
 		Return(nil, int64(0), pkg.ErrForbidden("user does not have permission to manage reconciliations", nil)).
 		Once()
 
@@ -143,7 +143,7 @@ func TestInventoryHandler_ListReconciliations_RoutePrecedence(t *testing.T) {
 	handler := NewInventoryHandler(mockService)
 
 	mockService.
-		On("ListReconciliationsAwaitingProcessing", mock.Anything, mock.Anything, mock.Anything).
+		On("ListActiveReconciliations", mock.Anything, mock.Anything, mock.Anything).
 		Return([]dto.SubmissionResponse{}, int64(0), nil).
 		Once()
 	// GetInventory (the /:id route) must NOT be hit for the static path.
@@ -159,6 +159,6 @@ func TestInventoryHandler_ListReconciliations_RoutePrecedence(t *testing.T) {
 	e.ServeHTTP(rec, req)
 
 	assert.Equal(t, http.StatusOK, rec.Code)
-	mockService.AssertCalled(t, "ListReconciliationsAwaitingProcessing", mock.Anything, mock.Anything, mock.Anything)
+	mockService.AssertCalled(t, "ListActiveReconciliations", mock.Anything, mock.Anything, mock.Anything)
 	mockService.AssertNotCalled(t, "GetInventoryByID", mock.Anything, mock.Anything)
 }

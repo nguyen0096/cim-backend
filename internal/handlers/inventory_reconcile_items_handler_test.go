@@ -255,6 +255,30 @@ func TestReopenReconciliation_PathScopedID(t *testing.T) {
 	mockService.AssertExpectations(t)
 }
 
+func TestCancelReconciliation_PathScopedID(t *testing.T) {
+	handler, mockService, e := newReconItemHandler(t)
+
+	mockService.
+		On("CancelReconciliation", mock.Anything, uint(50)).
+		Return(&models.InventorySubmission{
+			Base:             models.Base{ID: 50},
+			ReconcileStatus:  models.ReconcileLifecycleStatusCanceled,
+			ProcessingStatus: models.InventorySubmissionStatusCanceled,
+		}, nil).
+		Once()
+
+	req, _ := createRequest(http.MethodPost, "/inventories/submissions/50/cancel", nil)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetPath("/inventories/submissions/:id/cancel")
+	c.SetParamNames("id")
+	c.SetParamValues("50")
+
+	require.NoError(t, handler.CancelReconciliation(c))
+	assert.Equal(t, http.StatusOK, rec.Code)
+	mockService.AssertExpectations(t)
+}
+
 // TestStartProcessing_Success returns 200 with the finalized submission.
 func TestStartProcessing_Success(t *testing.T) {
 	handler, mockService, e := newReconItemHandler(t)

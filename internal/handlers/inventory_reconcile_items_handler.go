@@ -237,6 +237,30 @@ func (h *InventoryHandler) ReopenReconciliation(c echo.Context) error {
 	return c.JSON(http.StatusOK, submission)
 }
 
+// CancelReconciliation cancels an active reconciliation (admin/accountant).
+// @Summary Cancel reconciliation submission
+// @Description Admin/accountant abandons an active reconciliation (open/closed -> canceled). No inventory mutation and no stock change; submitted count rows are retained. The inventory is freed so a new reconciliation can be initiated. Only allowed from open/closed; any other state returns 409.
+// @Tags inventories
+// @Produce json
+// @Param id path int true "Submission ID"
+// @Success 200 {object} models.InventorySubmission
+// @Failure 403 {object} map[string]string
+// @Failure 404 {object} map[string]string
+// @Failure 409 {object} map[string]string
+// @Security BearerAuth
+// @Router /inventories/submissions/{id}/cancel [post]
+func (h *InventoryHandler) CancelReconciliation(c echo.Context) error {
+	submissionID, err := pkg.ExtractIDParam(c)
+	if err != nil {
+		return err
+	}
+	submission, err := h.inventoryService.CancelReconciliation(c.Request().Context(), submissionID)
+	if err != nil {
+		return err
+	}
+	return c.JSON(http.StatusOK, submission)
+}
+
 // StartProcessing applies a closed reconciliation (admin/accountant). One atomic,
 // advisory-locked transaction: event-based drift re-check then snapshot-aware
 // apply. On drift, returns HTTP 409 with the warning-shaped payload and applies
