@@ -1,6 +1,5 @@
 // Package config parses simulation configuration from flags and environment
-// variables. The simulate command is a developer tool that drives the CIM API
-// over HTTP to seed mock data and (in later PRs) load-test the server.
+// variables.
 package config
 
 import (
@@ -16,12 +15,10 @@ import (
 type Mode string
 
 const (
-	// ModeMock seeds a development database with realistic business data,
-	// driving entities across their lifecycle states. Low concurrency,
-	// deterministic where possible.
+	// ModeMock seeds a development database, driving entities across their
+	// lifecycle states.
 	ModeMock Mode = "mock"
-	// ModeLoad stresses the API with many concurrent scenarios via a worker
-	// pool, bounded by volume and/or duration and optionally rate-limited.
+	// ModeLoad stresses the API with concurrent scenarios via a worker pool.
 	ModeLoad Mode = "load"
 )
 
@@ -50,14 +47,9 @@ type Config struct {
 	Scale Scale
 	Seed  int64
 
-	// Load-mode knobs (ignored in mock mode).
-	//
-	// Concurrency is the number of worker goroutines driving scenarios in
-	// parallel. Volume, when > 0, caps the total number of scenario iterations
-	// the pool runs (0 = derive from --scale). Duration, when > 0, stops the run
-	// after that wall-clock time regardless of volume (0 = run until volume is
-	// reached). Rate, when > 0, caps the scenario start rate to that many
-	// iterations per second across the whole pool (0 = unthrottled).
+	// Load-mode knobs (ignored in mock mode). Concurrency is the worker count;
+	// VolumeFlag caps total iterations (0 = derive from scale); Duration stops the
+	// run after a wall-clock time (0 = none); Rate caps starts/sec (0 = none).
 	Concurrency int
 	VolumeFlag  int
 	Duration    time.Duration
@@ -67,8 +59,7 @@ type Config struct {
 	JSONOutput bool
 
 	// DryRun validates configuration and prints the plan without making any
-	// network calls. Useful for CI / `--help`-style verification when no live
-	// server or Firebase credentials are available.
+	// network calls.
 	DryRun bool
 }
 
@@ -83,9 +74,8 @@ const (
 	MaxConcurrency = 1000
 )
 
-// volumeForScale returns the number of purchase-order lifecycles a run drives
-// for the given scale. Kept here (not in the runner) so it is pure and unit
-// testable, and so PR-2/PR-3 scenarios can reuse the same scaling.
+// volumeForScale returns the number of primary lifecycles a run drives for the
+// given scale.
 func volumeForScale(s Scale) int {
 	switch s {
 	case ScaleLarge:
@@ -97,18 +87,15 @@ func volumeForScale(s Scale) int {
 	}
 }
 
-// Volume is the scale-derived number of primary lifecycle iterations. It is
-// always scale-driven and is what MOCK mode seeds; the --volume/SIM_VOLUME knob
-// is load-mode-only (see LoadVolume) and deliberately does NOT change mock
-// seeding.
+// Volume is the scale-derived number of primary lifecycle iterations, and is
+// what mock mode seeds. The --volume knob is load-mode-only (see LoadVolume).
 func (c *Config) Volume() int {
 	return volumeForScale(c.Scale)
 }
 
-// LoadVolume is the iteration budget for a LOAD run. An explicit --volume (> 0)
-// wins. --volume 0 means "no volume cap": with a duration set the clock bounds
-// the run (0 = unbounded), otherwise it falls back to the scale-derived volume
-// so a bare `--mode load` still terminates. Only consulted in load mode.
+// LoadVolume is the iteration budget for a load run: an explicit --volume (> 0)
+// wins; --volume 0 with a duration is unbounded (the clock stops it); otherwise
+// it falls back to the scale-derived volume.
 func (c *Config) LoadVolume() int {
 	if c.VolumeFlag > 0 {
 		return c.VolumeFlag
@@ -119,8 +106,8 @@ func (c *Config) LoadVolume() int {
 	return c.Volume() // scale fallback
 }
 
-// Validate checks required fields and normalizes values. It does not touch the
-// network, so it is safe to call in DryRun mode and in tests.
+// Validate checks required fields and normalizes values without touching the
+// network.
 func (c *Config) Validate() error {
 	c.BaseURL = strings.TrimRight(strings.TrimSpace(c.BaseURL), "/")
 	if c.BaseURL == "" {
@@ -142,8 +129,7 @@ func (c *Config) Validate() error {
 		return fmt.Errorf("invalid scale %q (want small, medium or large)", c.Scale)
 	}
 
-	// Load-mode bounds. These are only enforced for load mode; mock mode is
-	// always single-threaded and ignores the knobs.
+	// Load-mode bounds; mock mode ignores these knobs.
 	if c.VolumeFlag < 0 {
 		return fmt.Errorf("volume must be >= 0, got %d", c.VolumeFlag)
 	}
@@ -157,8 +143,6 @@ func (c *Config) Validate() error {
 		if c.Duration < 0 {
 			return fmt.Errorf("duration must be >= 0, got %s", c.Duration)
 		}
-		// A load run always has a stop condition: an explicit --volume, a
-		// --duration, or (failing both) the scale-derived volume fallback.
 	}
 
 	// Credentials are only required for a real run.
@@ -189,7 +173,6 @@ func Parse(args []string) (*Config, error) {
 	scale := fs.String("scale", env("SIM_SCALE", string(ScaleSmall)), "scale: small|medium|large")
 	fs.Int64Var(&c.Seed, "seed", envInt64("SIM_SEED", time.Now().UnixNano()), "RNG seed for reproducible runs")
 
-	// Load-mode knobs (ignored in mock mode).
 	fs.IntVar(&c.Concurrency, "concurrency", envInt("SIM_CONCURRENCY", DefaultConcurrency), "load mode: number of concurrent worker goroutines")
 	fs.IntVar(&c.VolumeFlag, "volume", envInt("SIM_VOLUME", 0), "total scenario iterations to run (0 = derive from --scale)")
 	fs.DurationVar(&c.Duration, "duration", envDuration("SIM_DURATION", 0), "load mode: stop after this wall-clock time (0 = run until volume reached)")

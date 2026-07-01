@@ -1,7 +1,6 @@
 // Package report aggregates the outcome of a simulation run: per-entity created
 // counts, per-endpoint call counts, failures, and request latency. It is
-// thread-safe so the runner can fan out across goroutines (PR-3) without each
-// scenario having to track its own stats.
+// thread-safe so the runner can fan out across goroutines.
 package report
 
 import (
@@ -29,9 +28,8 @@ type Report struct {
 	totalFailures int
 	latencies     []time.Duration
 	maxFailures   int
-	// duration is the wall-clock span of the driven run, set by the runner once
-	// it finishes (load mode). Zero means "not measured" (mock mode), and the
-	// throughput fields are then omitted from the summary.
+	// duration is the wall-clock span of the run (load mode). Zero (mock mode)
+	// omits the throughput fields from the summary.
 	duration time.Duration
 }
 
@@ -82,8 +80,7 @@ type Summary struct {
 	TotalFailures int            `json:"total_failures"`
 	Failures      []Failure      `json:"failures,omitempty"`
 	Latency       LatencyStats   `json:"latency"`
-	// Throughput fields are populated by the runner for load mode (zero/omitted
-	// in mock mode, where they are not meaningful).
+	// Throughput fields; populated for load mode, omitted in mock mode.
 	DurationSec    float64 `json:"duration_sec,omitempty"`
 	CallsPerSecond float64 `json:"calls_per_second,omitempty"`
 }

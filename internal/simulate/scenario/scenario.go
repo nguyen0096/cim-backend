@@ -1,8 +1,5 @@
 // Package scenario holds the business-lifecycle drivers the simulation runs
-// against the API. Each scenario reads real IDs back from responses and chains
-// calls in the correct order; none assume fixed IDs.
-//
-// Scenarios cover idempotent reference-data setup plus the purchase-order,
+// against the API: idempotent reference-data setup plus the purchase-order,
 // reconciliation, and payment lifecycles.
 package scenario
 

@@ -9,9 +9,7 @@ import (
 	"github.com/shopspring/decimal"
 )
 
-// Purchase-order create payload. The handler binds to models.PurchaseOrder but
-// only reads this JSON subset; field values mirror test/purchase_order_test.go.
-
+// createPORequest is the JSON subset the create-PO handler reads.
 type createPORequest struct {
 	InventoryID uint           `json:"inventory_id"`
 	Notes       string         `json:"notes"`
@@ -26,8 +24,7 @@ type createPOItem struct {
 	UnitPrice  float64 `json:"unit_price"`
 }
 
-// poResponse is the subset of the created/updated PO we read back. We never
-// assume item IDs — receive uses the IDs the server returns here.
+// poResponse is a created/updated PO's ID, status, and item IDs.
 type poResponse struct {
 	ID     uint   `json:"id"`
 	Status string `json:"status"`
@@ -38,15 +35,9 @@ type poResponse struct {
 	} `json:"items"`
 }
 
-// PurchaseOrderScenario drives the full PO lifecycle:
-//
-//	POST /purchase-orders  -> PUT /purchase-orders/:id/receive  [-> PUT /purchase-orders/:id/status]
-//
-// Receiving produces inventory items as a side effect; the scenario then reads
-// them back via GET /inventories/:id/inventory-items.
-//
-// Across iterations it varies the receive amount to exercise the terminal/
-// intermediate states: fully_delivered, partially_delivered, and cancelled.
+// PurchaseOrderScenario drives the PO lifecycle (create -> receive -> optional
+// status change), varying the variant across iterations to reach fully_delivered,
+// partially_delivered, and cancelled.
 type PurchaseOrderScenario struct {
 	iteration int
 }
@@ -54,8 +45,7 @@ type PurchaseOrderScenario struct {
 // Name implements Scenario.
 func (s *PurchaseOrderScenario) Name() string { return "purchase_order" }
 
-// Run drives one PO lifecycle. The variant cycles each call so a multi-volume
-// run covers a spread of states.
+// Run drives one PO lifecycle.
 func (s *PurchaseOrderScenario) Run(ctx context.Context, env *Env) error {
 	variant := s.iteration % 3
 	s.iteration++
@@ -71,7 +61,7 @@ func (s *PurchaseOrderScenario) Run(ctx context.Context, env *Env) error {
 		return err
 	}
 
-	// Variant 2: cancel without receiving (terminal: cancelled).
+	// Variant 2: cancel without receiving.
 	if variant == 2 {
 		path := fmt.Sprintf("/purchase-orders/%d/status", po.ID)
 		if err := env.Client.Do(ctx, "PUT", path, map[string]string{"status": "cancelled"}, nil, "PUT /purchase-orders/:id/status"); err != nil {
@@ -81,14 +71,13 @@ func (s *PurchaseOrderScenario) Run(ctx context.Context, env *Env) error {
 		return nil
 	}
 
-	// 2. Receive inventory. variant 0 = full (fully_delivered),
-	// variant 1 = partial (partially_delivered).
+	// 2. Receive inventory: variant 0 full, variant 1 partial.
 	full := variant != 1
 	if err := receivePO(ctx, env, po, full); err != nil {
 		return err
 	}
 
-	// 3. Read back the inventory items produced by receiving, by real ID.
+	// 3. Read back the inventory items produced by receiving.
 	if _, err := listInventoryItems(ctx, env, ref.InventoryID); err != nil {
 		return fmt.Errorf("list inventory items: %w", err)
 	}
@@ -96,30 +85,23 @@ func (s *PurchaseOrderScenario) Run(ctx context.Context, env *Env) error {
 	return nil
 }
 
-// poQty is the BASE per-item quantity a lifecycle PO orders (randomized up from
-// here per line). Receiving the full amount produces inventory items with this
-// live quantity (the reconcile baseline); a half receive leaves the PO
-// partially_delivered.
+// poQty is the base per-item quantity a lifecycle PO orders (randomized up per
+// line).
 const poQty = 1000
 
-// poMaxItems caps how many distinct products a single lifecycle PO buys (a
-// random 1..poMaxItems subset), so POs vary instead of ordering everything.
+// poMaxItems caps how many distinct products a single lifecycle PO buys.
 const poMaxItems = 5
 
-// seedQty is the per-product quantity stocked once at setup (seedInitialStock)
-// so the inventory starts with big stock for EVERY product.
+// seedQty is the per-product quantity stocked once at setup (seedInitialStock).
 const seedQty = 100000
 
 // createPO creates a purchase order against inventoryID from the reference
-// products/suppliers/unit and returns the server's response (real PO id + item
-// ids). Shared by the PO, payment, and reconciliation scenarios so all build a
-// valid PO the same way; the target inventory is explicit so a scenario can
-// seed a dedicated inventory.
+// products/suppliers/unit. Shared by the PO, payment, and reconciliation
+// scenarios.
 func createPO(ctx context.Context, env *Env, iteration int, inventoryID uint) (*poResponse, error) {
 	ref := env.RefIDs
 	n := len(ref.ProductIDs)
-	// Buy a RANDOM subset of products (1..poMaxItems, distinct) at a randomized
-	// quantity/price, so POs vary instead of always ordering the same products.
+	// Buy a random distinct subset of products at randomized quantity/price.
 	k := 1 + env.Rand.Intn(min(poMaxItems, n))
 	idxs := env.Rand.Perm(n)[:k]
 
@@ -132,7 +114,7 @@ func createPO(ctx context.Context, env *Env, iteration int, inventoryID uint) (*
 			ProductID:  ref.ProductIDs[idx],
 			SupplierID: ref.SupplierIDs[env.Rand.Intn(len(ref.SupplierIDs))],
 			UnitID:     ref.UnitID,
-			Quantity:   poQty + env.Rand.Intn(poQty), // poQty .. 2*poQty-1
+			Quantity:   poQty + env.Rand.Intn(poQty),
 			UnitPrice:  float64(50 + env.Rand.Intn(450)),
 		})
 	}
@@ -145,10 +127,9 @@ func createPO(ctx context.Context, env *Env, iteration int, inventoryID uint) (*
 	return &po, nil
 }
 
-// seedInitialStock places ONE purchase order covering EVERY reference product
-// and fully receives it, so the shared inventory starts with big stock across
-// all products — independent of the lifecycle scenarios (which buy only random
-// subsets) and of any inventory_submission. Called once during ref-data setup.
+// seedInitialStock places one PO covering every reference product and fully
+// receives it, so the inventory starts with stock across all products. Called
+// once during ref-data setup.
 func seedInitialStock(ctx context.Context, env *Env, inventoryID uint) error {
 	ref := env.RefIDs
 	create := createPORequest{InventoryID: inventoryID, Notes: "SIM initial stock (all products)"}
@@ -169,9 +150,8 @@ func seedInitialStock(ctx context.Context, env *Env, inventoryID uint) error {
 	return receivePO(ctx, env, &po, true)
 }
 
-// receivePO receives a PO's items by their real (server-returned) ids. full
-// receives the whole ordered quantity (fully_delivered); otherwise half
-// (partially_delivered).
+// receivePO receives a PO's items. full receives the whole ordered quantity,
+// otherwise half.
 func receivePO(ctx context.Context, env *Env, po *poResponse, full bool) error {
 	recv := dto.UpdatePurchaseOrderDeliveryStatusRequest{
 		PurchaseOrderID:   po.ID,
@@ -187,9 +167,8 @@ func receivePO(ctx context.Context, env *Env, po *poResponse, full bool) error {
 			ReceivedQuantity decimal.Decimal `json:"received_quantity" validate:"required"`
 		}{ID: item.ID, ReceivedQuantity: decimal.NewFromInt(int64(received))})
 	}
-	// Read lock: receiving mutates inventory-item quantities, which would break a
-	// concurrent reconcile's snapshot-aware apply (optimistic lock). Many receives
-	// run concurrently, but none during a reconcile's write-locked apply window.
+	// Read lock: receiving mutates item quantities, so it must not run during a
+	// reconcile's write-locked apply window.
 	inventoryMu.RLock()
 	recvPath := fmt.Sprintf("/purchase-orders/%d/receive", po.ID)
 	err := env.Client.Do(ctx, "PUT", recvPath, recv, nil, "PUT /purchase-orders/:id/receive")
@@ -200,4 +179,3 @@ func receivePO(ctx context.Context, env *Env, po *poResponse, full bool) error {
 	env.Report.Created("purchase_order_received")
 	return nil
 }
-

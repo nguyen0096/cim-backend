@@ -46,7 +46,7 @@ const (
 	ErrKeyNoTransactionsInReportPeriod   = "no_transactions_in_report_period"
 	ErrKeyActivePendingReconcileConflict = "active_pending_reconcile_conflict"
 
-	// Reconciliation Request Item Error Keys (epic #38, Part 4)
+	// Reconciliation Request Item Error Keys
 
 	ErrKeyReconItemNotFound                 = "recon_item_not_found"
 	ErrKeyReconParentNotFound               = "recon_parent_not_found"
@@ -64,21 +64,19 @@ const (
 	ErrKeyReconItemNegativeQuantity         = "recon_item_negative_quantity"
 	ErrKeyReconItemDuplicateLine            = "recon_item_duplicate_line"
 
-	// Per-count label keys (issue #73): distinguishing multiple counts of the same
-	// inventory item within a reconciliation submission.
+	// Per-count label keys
 
 	ErrKeyReconItemLabelRequiredForDuplicate = "recon_item_label_required_for_duplicate"
 	ErrKeyReconItemLabelConflict             = "recon_item_label_conflict"
 	ErrKeyReconItemLabelTooLong              = "recon_item_label_too_long"
 
-	// Row-level (count-session) label keys (issue #73): the label on the
-	// reconciliation_request_items row that identifies a staff user's count session.
+	// Row-level (count-session) label keys
 
 	ErrKeyReconRowLabelRequired = "recon_row_label_required"
 	ErrKeyReconRowLabelConflict = "recon_row_label_conflict"
 	ErrKeyReconRowLabelTooLong  = "recon_row_label_too_long"
 
-	// Reconciliation management Error Keys (epic #38, Part 6 redesign)
+	// Reconciliation management Error Keys
 
 	ErrKeyReconSubmissionClosed           = "recon_submission_closed"
 	ErrKeyReconInvalidLifecycleTransition = "recon_invalid_lifecycle_transition"
@@ -233,7 +231,7 @@ var ErrorMessages = map[string]ErrorMessage{
 		EN: "Inventory %d already has a pending reconcile; resolve it before creating another",
 		VI: "Kho %d đang có một phiếu kiểm kê chờ xử lý; vui lòng hoàn tất phiếu đó trước khi tạo phiếu mới",
 	},
-	// Reconciliation Request Item Errors (epic #38, Part 4)
+	// Reconciliation Request Item Errors
 	ErrKeyReconItemNotFound: {
 		EN: "Reconciliation item %d not found",
 		VI: "Không tìm thấy mục kiểm kê %d",
@@ -294,7 +292,7 @@ var ErrorMessages = map[string]ErrorMessage{
 		EN: "Inventory item %d appears more than once in the reconciliation item payload",
 		VI: "Sản phẩm %d xuất hiện nhiều lần trong mục kiểm kê",
 	},
-	// Per-count labels (issue #73)
+	// Per-count labels
 	ErrKeyReconItemLabelRequiredForDuplicate: {
 		EN: "Inventory item %d is already counted in this reconciliation; this additional count needs a non-empty label to tell it apart",
 		VI: "Sản phẩm %d đã được đếm trong phiếu kiểm kê này; lần đếm thêm này cần một nhãn không để trống để phân biệt",
@@ -307,7 +305,7 @@ var ErrorMessages = map[string]ErrorMessage{
 		EN: "Label for inventory item %d is too long (max %d characters)",
 		VI: "Nhãn cho sản phẩm %d quá dài (tối đa %d ký tự)",
 	},
-	// Row-level (count-session) labels (issue #73)
+	// Row-level (count-session) labels
 	ErrKeyReconRowLabelRequired: {
 		EN: "A label is required for this count session: you already have another count in this reconciliation, so each one needs a label to tell them apart",
 		VI: "Cần nhập nhãn cho lần kiểm đếm này: bạn đã có một lần kiểm đếm khác trong phiếu kiểm kê này, nên mỗi lần cần một nhãn để phân biệt",
@@ -320,7 +318,7 @@ var ErrorMessages = map[string]ErrorMessage{
 		EN: "Count-session label is too long (max %d characters)",
 		VI: "Nhãn lần kiểm đếm quá dài (tối đa %d ký tự)",
 	},
-	// Reconciliation management (epic #38, Part 6 redesign)
+	// Reconciliation management
 	ErrKeyReconSubmissionClosed: {
 		EN: "Reconciliation submission %d is closed (status %s); staff can no longer edit its items",
 		VI: "Phiếu kiểm kê %d đã được đóng (trạng thái %s); nhân viên không thể chỉnh sửa các mục của phiếu",
@@ -601,11 +599,7 @@ func ErrNoTransactionsInReportPeriod(ctx context.Context) *AppError {
 	return NewAppError(ErrorCodeNotFound, message, nil)
 }
 
-// ErrActivePendingReconcileConflict is the domain conflict for the
-// one-active-pending-reconcile guard (#38 P3). Both the service pre-check and the
-// repo unique-violation translator return it. It defers localization to the error
-// handler (MessageKey + inventoryID) so the language-agnostic repo layer can raise
-// it; Message is the English fallback.
+// ErrActivePendingReconcileConflict is the domain conflict for the one-active-pending-reconcile guard.
 func ErrActivePendingReconcileConflict(inventoryID uint, cause error) *AppError {
 	err := NewAppError(
 		ErrorCodeActivePendingReconcileConflict,
@@ -617,13 +611,7 @@ func ErrActivePendingReconcileConflict(inventoryID uint, cause error) *AppError 
 	return err
 }
 
-// ErrDuplicateOrderNumber is the domain error the purchase-order repository
-// returns when an INSERT violates the order_number unique constraint (#84 race).
-// It lets the repository translate the DB-specific 23505 / constraint-name detail
-// into a typed signal the service can match (via IsErrorCode /
-// ErrorCodeDuplicateOrderNumber) to decide a regenerate-and-retry, without the
-// service knowing any SQLSTATE codes or constraint names. The original DB error
-// is preserved as the cause.
+// ErrDuplicateOrderNumber is the domain error for an order_number unique-constraint violation.
 func ErrDuplicateOrderNumber(cause error) *AppError {
 	return NewAppError(ErrorCodeDuplicateOrderNumber, "duplicate purchase order number", cause)
 }
@@ -632,15 +620,9 @@ func ErrReconcileValidationFailed(message string) *AppError {
 	return NewAppError(ErrorCodeReconcileValidationFailed, message, nil)
 }
 
-// --- Reconciliation request item domain errors (epic #38, Part 4) ---
-// Each maps a child-item rejection to a localized message + the correct HTTP
-// status via its ErrorCode, mirroring the Part 3 layering (no raw errors leak).
+// --- Reconciliation request item domain errors ---
 
-// newKeyedValidationError builds a 400/validation AppError that carries its
-// catalog key so the error handler can expose a stable, language-independent
-// "key" field for frontend routing (issue #42). It also resolves Message eagerly
-// (so the static fallback and any json.Marshal path stay populated) while setting
-// MessageKey/MessageArgs so the handler re-localizes per request language.
+// newKeyedValidationError builds a validation AppError carrying its catalog key for localization.
 func newKeyedValidationError(ctx context.Context, key string, args ...interface{}) *AppError {
 	tmpl := getErrorMessage(ctx, key)
 	message := tmpl
@@ -665,23 +647,19 @@ func ErrReconParentNotFound(ctx context.Context, submissionID uint) *AppError {
 		fmt.Sprintf(getErrorMessage(ctx, ErrKeyReconParentNotFound), submissionID), nil)
 }
 
-// ErrReconParentNotInitiated is a 400/validation: the parent is not a reconcile
-// started via initiate (no snapshot baseline), so child items cannot be filed.
+// ErrReconParentNotInitiated is a 400/validation: the parent has no snapshot baseline.
 func ErrReconParentNotInitiated(ctx context.Context, submissionID uint) *AppError {
 	return NewAppError(ErrorCodeValidation,
 		fmt.Sprintf(getErrorMessage(ctx, ErrKeyReconParentNotInitiated), submissionID), nil)
 }
 
-// ErrReconParentNotInFlight is a 409/conflict: the parent reconciliation has left
-// the in-flight (approval pending) state — it was rejected/canceled or already
-// approved/applied — so its child items can no longer be created/edited/deleted.
+// ErrReconParentNotInFlight is a 409/conflict: the parent reconciliation is no longer in flight.
 func ErrReconParentNotInFlight(ctx context.Context, submissionID uint, status string) *AppError {
 	return NewAppError(ErrorCodeConflict,
 		fmt.Sprintf(getErrorMessage(ctx, ErrKeyReconParentNotInFlight), submissionID, status), nil)
 }
 
-// ErrReconItemMissingQuantity is a 400/validation: a counted line omitted the
-// quantity entirely (distinct from an explicit zero count).
+// ErrReconItemMissingQuantity is a 400/validation for a counted line with no quantity.
 func ErrReconItemMissingQuantity(ctx context.Context, itemID uint) *AppError {
 	return newKeyedValidationError(ctx, ErrKeyReconItemMissingQuantity, itemID)
 }
@@ -691,8 +669,7 @@ func ErrReconItemNotOwned(ctx context.Context) *AppError {
 	return NewAppError(ErrorCodeForbidden, getErrorMessage(ctx, ErrKeyReconItemNotOwned), nil)
 }
 
-// ErrReconItemNotInParent is a 404/validation: the item exists but under a
-// different parent submission than the path-scoped one.
+// ErrReconItemNotInParent is a 404: the item belongs to a different parent submission.
 func ErrReconItemNotInParent(ctx context.Context, itemID, submissionID uint) *AppError {
 	return NewAppError(ErrorCodeNotFound,
 		fmt.Sprintf(getErrorMessage(ctx, ErrKeyReconItemNotInParent), itemID, submissionID), nil)
@@ -704,8 +681,7 @@ func ErrReconItemImmutable(ctx context.Context, itemID uint) *AppError {
 		fmt.Sprintf(getErrorMessage(ctx, ErrKeyReconItemImmutable), itemID), nil)
 }
 
-// ErrReconItemCannotDeleteStatus is a 409/conflict: only in_progress/ready rows
-// may be soft-deleted.
+// ErrReconItemCannotDeleteStatus is a 409/conflict: only in_progress/ready rows may be deleted.
 func ErrReconItemCannotDeleteStatus(ctx context.Context, itemID uint, status string) *AppError {
 	return NewAppError(ErrorCodeConflict,
 		fmt.Sprintf(getErrorMessage(ctx, ErrKeyReconItemCannotDeleteStatus), itemID, status), nil)
@@ -717,32 +693,19 @@ func ErrReconItemInvalidTransition(ctx context.Context, from, to string) *AppErr
 		fmt.Sprintf(getErrorMessage(ctx, ErrKeyReconItemInvalidTransition), from, to), nil)
 }
 
-// ErrReconItemCountExceedsBaseline is a 400/validation for the S2 rule:
-// counted > snapshot baseline is rejected (no positive-adjustment mechanism).
-// productName is the resolved product display name (empty when it can't be
-// resolved, e.g. a soft-deleted product) — never the raw inventory item ID.
+// ErrReconItemCountExceedsBaseline is a 400/validation: counted exceeds the snapshot baseline.
 func ErrReconItemCountExceedsBaseline(ctx context.Context, productName string, counted, baseline decimal.Decimal) *AppError {
 	return NewAppError(ErrorCodeValidation,
 		fmt.Sprintf(getErrorMessage(ctx, ErrKeyReconItemCountExceedsBaseline), counted.String(), productName, baseline.String()), nil)
 }
 
-// ErrReconItemAggregateExceedsBaseline is a 400/validation for the cross-row S2
-// rule: the SUM of counted quantities for one inventory item across ALL live
-// (non-deleted) staff child rows of the same parent reconcile — which are summed
-// by item at synthesis — must not exceed the snapshot baseline. This generalizes
-// the per-row ErrReconItemCountExceedsBaseline so two rows of 80 against a
-// baseline of 100 cannot each pass per-row yet sum to 160.
-// productName is the resolved product display name (empty when it can't be
-// resolved, e.g. a soft-deleted product) — never the raw inventory item ID.
+// ErrReconItemAggregateExceedsBaseline is a 400/validation: the summed count across rows exceeds the baseline.
 func ErrReconItemAggregateExceedsBaseline(ctx context.Context, productName string, total, baseline decimal.Decimal) *AppError {
 	return NewAppError(ErrorCodeValidation,
 		fmt.Sprintf(getErrorMessage(ctx, ErrKeyReconItemAggregateExceedsBaseline), total.String(), productName, baseline.String()), nil)
 }
 
-// ErrReconItemNoSnapshotBaseline is a 400/validation: a counted item has no
-// snapshot row (e.g. an item added after initiate), so there is no baseline.
-// productName is the resolved product display name (empty when it can't be
-// resolved, e.g. a soft-deleted product) — never the raw inventory item ID.
+// ErrReconItemNoSnapshotBaseline is a 400/validation: the counted item has no snapshot baseline.
 func ErrReconItemNoSnapshotBaseline(ctx context.Context, productName string) *AppError {
 	return NewAppError(ErrorCodeValidation,
 		fmt.Sprintf(getErrorMessage(ctx, ErrKeyReconItemNoSnapshotBaseline), productName), nil)
@@ -754,89 +717,63 @@ func ErrReconItemNegativeQuantity(ctx context.Context, itemID uint) *AppError {
 		fmt.Sprintf(getErrorMessage(ctx, ErrKeyReconItemNegativeQuantity), itemID), nil)
 }
 
-// ErrReconItemDuplicateLine is a 400/validation: the same inventory item appears
-// twice in one child payload (would make the per-item baseline check ambiguous).
+// ErrReconItemDuplicateLine is a 400/validation: the same inventory item appears twice in one payload.
 func ErrReconItemDuplicateLine(ctx context.Context, itemID uint) *AppError {
 	return NewAppError(ErrorCodeValidation,
 		fmt.Sprintf(getErrorMessage(ctx, ErrKeyReconItemDuplicateLine), itemID), nil)
 }
 
-// ErrReconItemLabelRequiredForDuplicate is a 400/validation for the issue #73 rule:
-// once an inventory item already has another live count in the submission, a
-// further count must carry a non-empty label so the two contributions can be told
-// apart in review (synthesis sums them by item, erasing the distinction otherwise).
+// ErrReconItemLabelRequiredForDuplicate is a 400/validation: a duplicate count needs a distinguishing label.
 func ErrReconItemLabelRequiredForDuplicate(ctx context.Context, itemID uint) *AppError {
 	return newKeyedValidationError(ctx, ErrKeyReconItemLabelRequiredForDuplicate, itemID)
 }
 
-// ErrReconItemLabelConflict is a 400/validation for the issue #73 rule: the label
-// supplied for a count collides with a label already used by another live count of
-// the same inventory item in this submission (labels must be distinct per item).
+// ErrReconItemLabelConflict is a 400/validation: the label collides with another count of the same item.
 func ErrReconItemLabelConflict(ctx context.Context, itemID uint, label string) *AppError {
 	return newKeyedValidationError(ctx, ErrKeyReconItemLabelConflict, itemID, label)
 }
 
-// ErrReconItemLabelTooLong is a 400/validation: a count label exceeds the
-// app-validated maximum length in RUNES (issue #73; the JSONB payload has no
-// length constraint, so the cap is enforced here).
+// ErrReconItemLabelTooLong is a 400/validation: a count label exceeds the maximum length.
 func ErrReconItemLabelTooLong(ctx context.Context, itemID uint, maxLen int) *AppError {
 	return newKeyedValidationError(ctx, ErrKeyReconItemLabelTooLong, itemID, maxLen)
 }
 
-// ErrReconRowLabelRequired is a 400/validation for the issue #73 ROW-level rule: a
-// count session (reconciliation_request_items row) needs a label once its owner
-// already has another live row in the submission (the first/only row may be blank).
+// ErrReconRowLabelRequired is a 400/validation: a count session needs a label when the owner has another row.
 func ErrReconRowLabelRequired(ctx context.Context) *AppError {
 	return newKeyedValidationError(ctx, ErrKeyReconRowLabelRequired)
 }
 
-// ErrReconRowLabelConflict is a 400/validation for the issue #73 ROW-level rule:
-// the row label collides with a label already used by another of the owner's live
-// rows in this submission (row labels must be distinct per (submission, user)).
+// ErrReconRowLabelConflict is a 400/validation: the row label collides with another of the owner's rows.
 func ErrReconRowLabelConflict(ctx context.Context, label string) *AppError {
 	return newKeyedValidationError(ctx, ErrKeyReconRowLabelConflict, label)
 }
 
-// ErrReconRowLabelTooLong is a 400/validation: a row (count-session) label exceeds
-// the app-validated maximum length in RUNES (issue #73).
+// ErrReconRowLabelTooLong is a 400/validation: a row (count-session) label exceeds the maximum length.
 func ErrReconRowLabelTooLong(ctx context.Context, maxLen int) *AppError {
 	return newKeyedValidationError(ctx, ErrKeyReconRowLabelTooLong, maxLen)
 }
 
-// --- Reconciliation management domain errors (epic #38, Part 6 redesign) ---
+// --- Reconciliation management domain errors ---
 
-// ErrReconSubmissionClosed is a 409/conflict: a staff member tried to edit a
-// child row of a reconciliation that an admin/accountant has already closed (or
-// that is processing/processed). Staff are locked out once closed.
+// ErrReconSubmissionClosed is a 409/conflict: staff cannot edit a closed reconciliation.
 func ErrReconSubmissionClosed(ctx context.Context, submissionID uint, status string) *AppError {
 	return NewAppError(ErrorCodeConflict,
 		fmt.Sprintf(getErrorMessage(ctx, ErrKeyReconSubmissionClosed), submissionID, status), nil)
 }
 
-// ErrReconInvalidLifecycleTransition is a 409/conflict for an illegal
-// close/reopen/start-processing transition (e.g. close on an already-closed
-// submission, start-processing on an open one).
+// ErrReconInvalidLifecycleTransition is a 409/conflict for an illegal lifecycle transition.
 func ErrReconInvalidLifecycleTransition(ctx context.Context, submissionID uint, from, to string) *AppError {
 	return NewAppError(ErrorCodeConflict,
 		fmt.Sprintf(getErrorMessage(ctx, ErrKeyReconInvalidLifecycleTransition), submissionID, from, to), nil)
 }
 
-// ErrReconCannotRejectInLifecycle is a 409/conflict: a legacy reject was attempted
-// on an initiated reconcile that has already left the staff-editable `open` state
-// (it is closed/processing/processed). Once closed, the admin must reopen before a
-// reject is meaningful; once processing/processed the apply has consumed stock and
-// the reconcile is terminal, so a reject can no longer flip it without corrupting
-// the applied consuming inventory transactions. Evaluated under the parent FOR
-// UPDATE lock on the freshly-read status, so it cannot race StartProcessing.
+// ErrReconCannotRejectInLifecycle is a 409/conflict: the reconciliation can no longer be rejected.
 func ErrReconCannotRejectInLifecycle(ctx context.Context, submissionID uint, status string) *AppError {
 	return NewAppError(ErrorCodeConflict,
 		fmt.Sprintf(getErrorMessage(ctx, ErrKeyReconCannotRejectInLifecycle), submissionID, status), nil)
 }
 
-// ReconDriftWarning renders one warning-shaped line for a consuming submission
-// that processed during the reconcile window (locked decision Q8). It is a plain
-// localized string, not an error — Start Processing returns these in the result's
-// Warnings list after rolling back.
+// ReconDriftWarning renders a localized warning line for a consuming submission processed during the reconcile window.
 func ReconDriftWarning(ctx context.Context, submissionID uint, submissionType, processedAt string) string {
 	return fmt.Sprintf(getErrorMessage(ctx, ErrKeyReconDriftWarning), submissionID, submissionType, processedAt)
 }

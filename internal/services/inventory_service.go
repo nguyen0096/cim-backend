@@ -31,12 +31,7 @@ type InventoryService interface {
 
 	GetLastPurchasePrices(ctx context.Context, supplierID uint) (dto.LastPurchasePriceMap, error)
 	ListSubmissions(ctx context.Context, params models.ListParams, approvalStatuses []string, inventoryID uint, submissionTypes []string) ([]dto.SubmissionResponse, int64, error)
-	// ListActiveReconciliations returns the cross-inventory queue of active
-	// reconcile submissions (open/closed + pending) for the list/overview UI. It is
-	// gated by the recon_item_view permission (403 otherwise) and uses a lightweight
-	// queue mapper that does NOT synthesize per-row payloads (so the page is a
-	// bounded, constant query count — no N+1). reconcileStatuses optionally narrows
-	// the open/closed set.
+	// ListActiveReconciliations returns active reconcile submissions across all inventories.
 	ListActiveReconciliations(ctx context.Context, params models.ListParams, reconcileStatuses []string) ([]dto.SubmissionResponse, int64, error)
 	InitiateReconcile(ctx context.Context, req dto.InitiateReconcileRequest) (*models.InventorySubmission, error)
 	CreateReconcileSubmission(ctx context.Context, req dto.ReconcileInventoryRequest) (*models.InventorySubmission, error)
@@ -46,44 +41,25 @@ type InventoryService interface {
 	UpdateSubmission(ctx context.Context, req dto.UpdateSubmissionRequest) (*dto.SubmissionResponse, error)
 	GetMonthlyTransactionReport(ctx context.Context, inventoryID uint, month, year int) (*models.TxnReportInventory, error)
 
-	// Staff reconciliation child-item lifecycle (epic #38, Part 4; row + count
-	// labels issue #73). Create/Update/List return the FE row response shape
-	// (dto.ReconciliationItemResponse) — row label + flattened count lines — rather
-	// than the raw model.
+	// Staff reconciliation child-item lifecycle.
 	CreateReconciliationItem(ctx context.Context, req dto.CreateReconciliationItemRequest) (*dto.ReconciliationItemResponse, error)
 	UpdateReconciliationItem(ctx context.Context, req dto.UpdateReconciliationItemRequest) (*dto.ReconciliationItemResponse, error)
 	DeleteReconciliationItem(ctx context.Context, req dto.DeleteReconciliationItemRequest) error
-	// SetReconciliationItemReadiness toggles a staff count session in_progress <->
-	// ready_for_review. Staff-only, own-row, open-only.
+	// SetReconciliationItemReadiness toggles a staff count session in_progress <-> ready_for_review.
 	SetReconciliationItemReadiness(ctx context.Context, req dto.SetReconciliationItemReadinessRequest) (*dto.ReconciliationItemResponse, error)
-	// ListReconciliationItems returns the live count-session rows of an initiated
-	// reconcile, RBAC-scoped (staff: own rows; admin/accountant: all), id-ascending.
+	// ListReconciliationItems returns the live count-session rows of a reconcile, RBAC-scoped.
 	ListReconciliationItems(ctx context.Context, submissionID uint) ([]dto.ReconciliationItemResponse, error)
 
-	// Admin/accountant reconciliation management (epic #38, Part 6 redesign; one
-	// recon_manage action, admin+accountant only). Close locks staff out
-	// (open->closed); reopen re-opens (closed->open). StartProcessing is the ONE
-	// atomic apply transaction: advisory-locked per inventory, runs the event-based
-	// drift re-check (roll back + warning payload on drift), and otherwise applies
-	// the synthesized reconcile with snapshot-aware consume sizing and finalizes the
-	// submission to processed.
-	// CloseReconciliation always succeeds (open->closed); the result carries an
-	// advisory Warnings list naming any session still in_progress.
+	// Admin/accountant reconciliation management.
+	// CloseReconciliation moves open->closed; the result carries advisory warnings for sessions still in progress.
 	CloseReconciliation(ctx context.Context, submissionID uint) (*dto.CloseReconciliationResult, error)
 	ReopenReconciliation(ctx context.Context, submissionID uint) (*models.InventorySubmission, error)
+	// StartProcessing is the atomic apply: drift re-check then snapshot-aware consume, finalizing to processed.
 	StartProcessing(ctx context.Context, submissionID uint) (*dto.StartProcessingResult, error)
-	// CancelReconciliation abandons an active reconcile (open/closed -> canceled)
-	// with ZERO inventory mutation: it sets a terminal canceled state, retains the
-	// child count rows, frees the one-active-pending guard, and creates no consuming
-	// transactions. Allowed only from open/closed; any other state is a 409.
+	// CancelReconciliation moves an active reconcile to a terminal canceled state with no inventory mutation.
 	CancelReconciliation(ctx context.Context, submissionID uint) (*models.InventorySubmission, error)
 
-	// SynthesizeSubmissionPayload folds the live (non-deleted) staff child rows of
-	// an initiated reconcile into the legacy ReconcileInventoryRequest-shaped
-	// payload the apply path consumes, summing counted quantities by
-	// inventory_item_id and attaching the snapshot baseline as PrevQuantity. It is
-	// pure/read-only synthesis (epic #38, Part 5) and drives the list/detail view,
-	// review label and warnings for active reconciles.
+	// SynthesizeSubmissionPayload folds live staff child rows into the ReconcileInventoryRequest payload. Read-only.
 	SynthesizeSubmissionPayload(ctx context.Context, submissionID uint) (*dto.SynthesizedReconcile, error)
 }
 
@@ -98,14 +74,9 @@ type inventoryService struct {
 	casbinService           *auth.CasbinService
 
 	fileStorageService FileStorageService
-	// baseRepo is the repository-layer transaction root. The reconcile flow does
-	// not use a *gorm.DB directly; it asks the base repository to open one
-	// transaction and thread it through the context (WithinTx), then calls
-	// repository methods with that context so they enlist in the same transaction.
+	// baseRepo is the repository-layer transaction root (WithinTx).
 	baseRepo repository.BaseRepository
-	// db backs the pre-existing monthly-transaction-report query
-	// (getPurchaseOrderItemsLookup) only. New atomic flows must go through
-	// baseRepo.WithinTx + repositories rather than reaching for this handle.
+	// db backs the monthly-transaction-report query only.
 	db *gorm.DB
 }
 
@@ -318,14 +289,9 @@ func (s *inventoryService) reconcileInventory(
 	return nil
 }
 
-// InitiateReconcile starts a reconciliation (epic #38, Part 2). In one tx it
-// creates a placeholder pending reconcile submission and captures one snapshot
-// per active inventory item (prev_quantity = live quantity at initiate). The
-// snapshot is the sole baseline for later synthesize/review/apply, so it is
-// captured atomically with the parent; a failed capture rolls the placeholder back.
+// InitiateReconcile creates a pending reconcile submission and captures one baseline
+// snapshot per active inventory item, atomically.
 func (s *inventoryService) InitiateReconcile(ctx context.Context, req dto.InitiateReconcileRequest) (*models.InventorySubmission, error) {
-	// Defense-in-depth: mirror ProcessSubmission's in-service permission check in
-	// addition to the RBAC route gate.
 	if !pkg.HasPermission(ctx, pkg.RBACResourceInventorySubmissions, pkg.RBACActionInitiateReconciliation) {
 		return nil, pkg.NewAppError(pkg.ErrorCodeForbidden, "user does not have permission to initiate reconciliation", nil)
 	}
@@ -348,22 +314,14 @@ func (s *inventoryService) InitiateReconcile(ctx context.Context, req dto.Initia
 		SubmissionType:   models.InventorySubmissionTypeReconcile,
 		ProcessingStatus: models.InventorySubmissionStatusPending,
 		ApprovalStatus:   models.InventorySubmissionApprovalStatusPending,
-		// The reconcile starts `open`: staff may freely file/edit/delete count rows
-		// until an admin/accountant closes it (epic #38, Part 6).
-		ReconcileStatus: models.ReconcileLifecycleStatusOpen,
+		ReconcileStatus:  models.ReconcileLifecycleStatusOpen,
 	}
 
-	// One tx threaded via txCtx so the placeholder submission and its baseline
-	// snapshots commit or roll back atomically.
 	err = s.baseRepo.WithinTx(ctx, func(txCtx context.Context) error {
-		// One-active-pending guard (S5): in-tx pre-check; the partial unique index
-		// is the race-safe backstop and the repo Create translates its violation
-		// into the same domain conflict.
 		if err := s.guardNoActivePending(txCtx, req.InventoryID); err != nil {
 			return err
 		}
 
-		// Create the parent placeholder submission first so snapshot rows can FK to it.
 		if err := s.inventorySubmissionRepo.Create(txCtx, submission); err != nil {
 			if pkg.IsErrorCode(err, pkg.ErrorCodeActivePendingReconcileConflict) {
 				return err
@@ -371,39 +329,16 @@ func (s *inventoryService) InitiateReconcile(ctx context.Context, req dto.Initia
 			return fmt.Errorf("failed to create reconcile submission: %w", err)
 		}
 
-		// Serialize the snapshot capture with consuming applies (epic #38, Part 6 —
-		// closes the stale-baseline race the review raised). The snapshot below is a
-		// plain MVCC read of inventory_items row versions; it takes NO row locks, so
-		// without this a consuming dispose/transfer/reconcile apply could stamp its
-		// processed_at just before this parent's created_at yet COMMIT just after the
-		// snapshot reads the pre-apply versions — its stock effect would be neither in
-		// our baseline nor caught by StartProcessing's processed_at >= created_at drift
-		// re-check, leaving us to apply a stale baseline. By taking
-		// pg_advisory_xact_lock(inventory_id) here — the SAME lock every consuming
-		// apply (ProcessSubmission approve) and StartProcessing already takes BEFORE it
-		// reads/writes stock — snapshot capture and consuming applies fully serialize:
-		// a consuming apply either commits entirely before this snapshot (its effect is
-		// in the baseline) or is blocked until this initiate tx commits and then
-		// stamps a processed_at inside StartProcessing's drift window (caught by the
-		// re-check). No interleaving yields a stale baseline.
-		//
-		// Deadlock-free: initiate takes ONLY this advisory lock plus its own
-		// snapshot/submission inserts; it never grabs an inventory_items row lock
-		// while holding the advisory lock, and every other holder also acquires the
-		// advisory lock FIRST, so there is no lock-ordering cycle.
+		// Serialize snapshot capture with consuming applies via the per-inventory advisory lock.
 		if err := s.inventorySubmissionRepo.AcquireInventoryAdvisoryLock(txCtx, req.InventoryID); err != nil {
 			return fmt.Errorf("failed to acquire inventory advisory lock: %w", err)
 		}
 
-		// Capture the baseline via one set-based INSERT ... SELECT: one snapshot per
-		// active item, prev_quantity = its live quantity. count = active-item count.
 		count, err := s.snapshotRepo.BuildReconciliationSnapshots(txCtx, submission.ID, req.InventoryID)
 		if err != nil {
 			return fmt.Errorf("failed to capture reconciliation snapshots: %w", err)
 		}
 		if count == 0 {
-			// Roll back the placeholder: an inventory with no active items has no
-			// baseline to reconcile against.
 			return pkg.NewAppError(pkg.ErrorCodeNotFound,
 				fmt.Sprintf("no active inventory items found for inventory %d", req.InventoryID), nil)
 		}
@@ -416,10 +351,8 @@ func (s *inventoryService) InitiateReconcile(ctx context.Context, req dto.Initia
 	return submission, nil
 }
 
-// guardNotInitiatedReconcile blocks the legacy update/approve paths from touching
-// a reconcile started via initiate (epic #38, Part 2). Presence of snapshot rows
-// marks the new-model flow; letting the legacy path act on it would bypass the
-// snapshot baseline or approve an empty payload. Reconcile-only.
+// guardNotInitiatedReconcile blocks the legacy update/approve paths from touching a
+// reconcile started via initiate (identified by the presence of snapshot rows).
 func (s *inventoryService) guardNotInitiatedReconcile(ctx context.Context, submission *models.InventorySubmission) error {
 	if submission.SubmissionType != models.InventorySubmissionTypeReconcile {
 		return nil
@@ -436,12 +369,8 @@ func (s *inventoryService) guardNotInitiatedReconcile(ctx context.Context, submi
 	return nil
 }
 
-// guardNoActivePending is the service pre-check for the one-active-pending-
-// reconcile-per-inventory rule (#38 P3, reconcile-only): at most one reconcile
-// may be in flight (processing_status='pending') per inventory. Dispose/transfer
-// are not guarded. It returns the same ErrActivePendingReconcileConflict the repo
-// raises on a race-loser index violation, so common case and race agree. The
-// partial unique index is the race-safe backstop; this is tx-aware via DB(ctx).
+// guardNoActivePending is the service pre-check for the one-active-pending-reconcile
+// -per-inventory rule. Tx-aware via DB(ctx).
 func (s *inventoryService) guardNoActivePending(ctx context.Context, inventoryID uint) error {
 	exists, err := s.inventorySubmissionRepo.ExistsActivePending(ctx, inventoryID)
 	if err != nil {
@@ -501,8 +430,6 @@ func (s *inventoryService) CreateReconcileSubmission(ctx context.Context, req dt
 	}
 
 	if err := s.inventorySubmissionRepo.Create(ctx, submission); err != nil {
-		// The repo translates a race-loser unique-violation into the same domain
-		// conflict the pre-check returns; propagate it, wrap anything else.
 		if pkg.IsErrorCode(err, pkg.ErrorCodeActivePendingReconcileConflict) {
 			return nil, err
 		}
@@ -559,10 +486,6 @@ func (s *inventoryService) disposeInventory(
 }
 
 // CreateDisposeSubmission creates a submission for disposing inventory.
-//
-// Dispose is intentionally NOT subject to the one-active-pending guard (epic #38,
-// Part 3 is reconcile-only per the human's decision): a pending reconcile does not
-// block a dispose, and multiple pending disposes are allowed, exactly as on main.
 func (s *inventoryService) CreateDisposeSubmission(ctx context.Context, req dto.DisposeInventoryRequest) (*models.InventorySubmission, error) {
 	activeItems, err := s.getActiveInventoryItems(ctx, req.InventoryID, req.GetItemIDs())
 	if err != nil {
@@ -745,22 +668,15 @@ func (s *inventoryService) ProcessSubmission(ctx context.Context, req dto.Submis
 		}
 	}
 
-	// Step 2: Handle submission based on approval status. Note: the approval-status
-	// write is performed INSIDE each branch (under the branch's transaction/lock),
-	// not before the switch, so the reject path can re-check the reconcile lifecycle
-	// under the parent lock BEFORE committing to any write (TOCTOU fix below).
+	// The approval-status write is done inside each branch (under the branch's
+	// transaction/lock) so the reject path can re-check the reconcile lifecycle
+	// under the parent lock before committing any write.
 	switch approvalStatus {
 	case models.InventorySubmissionApprovalStatusApproved:
-		// Take the per-inventory advisory lock (epic #38, Part 6) around the
-		// consuming apply so it serializes with a concurrent reconcile Start-
-		// Processing on the same inventory: pg_advisory_xact_lock(inventory_id) is
-		// transaction-scoped, so the apply (which now enlists in this tx via the
-		// tx-aware repos) and the processed_at stamp commit together and the
-		// reconcile's drift re-check either blocks on this lock or sees this row's
-		// processed_at in its window. This is the one sanctioned touch of the
-		// consuming ProcessSubmission path. On apply failure the whole tx now rolls
-		// back (no partial stock commit) and the failed-status audit is recorded
-		// out-of-tx afterwards (epic #38, Part 6 — see processSubmission/recordFailure).
+		// Take the per-inventory advisory lock around the consuming apply so it
+		// serializes with a concurrent reconcile StartProcessing. The apply and the
+		// processed_at stamp commit together; on apply failure the whole tx rolls back
+		// and the failure audit is recorded after the tx unwinds.
 		var failedPS *processingState
 		txErr := s.baseRepo.WithinTx(ctx, func(txCtx context.Context) error {
 			if err := s.inventorySubmissionRepo.UpdateApprovalStatus(txCtx, submission.ID, approvalStatus, req.Reason); err != nil {
@@ -771,24 +687,14 @@ func (s *inventoryService) ProcessSubmission(ctx context.Context, req dto.Submis
 			}
 			applied, ps, applyErr := s.processSubmission(txCtx, submission, true /* atomic */)
 			if applyErr != nil {
-				// ATOMIC apply path (epic #38, Part 6): the apply enlists in THIS tx
-				// via the tx-aware repos, so a failed apply may already have flushed a
-				// partial stock mutation into the open tx. We MUST roll the whole tx
-				// back — returning the error aborts WithinTx so neither the partial
-				// inventory_items/transactions writes NOR the approval-status flip
-				// commit. (When the repo owned its own tx, a failed save rolled back on
-				// its own; now that it enlists, the rollback responsibility is ours.)
-				// The failed-status audit write is deferred to AFTER the tx unwinds
-				// (failedPS.recordFailure below) so it neither deadlocks against this
-				// tx's row lock nor gets erased by the rollback.
+				// Roll the whole tx back so no partial stock mutation commits with the
+				// approval flip; the failure audit is recorded after the tx unwinds.
 				failedPS = ps
 				return applyErr
 			}
 			if applied {
 				// Stamp processed_at inside the same tx as the stock change so a
-				// concurrent reconcile drift re-check sees them atomically. The repo
-				// stamps it with the DB clock (clock_timestamp()) so it shares a clock
-				// with the snapshot created_at it is compared against (no host skew).
+				// concurrent reconcile drift re-check sees them atomically.
 				if err := s.inventorySubmissionRepo.SetProcessedAt(txCtx, submission.ID); err != nil {
 					return fmt.Errorf("failed to set processed_at: %w", err)
 				}
@@ -803,50 +709,25 @@ func (s *inventoryService) ProcessSubmission(ctx context.Context, req dto.Submis
 			}
 			return nil, txErr
 		}
-		// Refresh from the COMMITTED row before returning (epic #38, Part 6 — Codex
-		// P2). `submission` was read by GetByID BEFORE the tx, so on a RETRY after an
-		// earlier failed apply it still carries processing_status=failed + the old
-		// error JSON. The committed tx cleared the error, set processing_status=
-		// completed, and DB-stamped processed_at (SetProcessedAt/clock_timestamp()).
-		// Patching only approval/reason on the stale struct would make the success
-		// response echo the prior failure; reload so the response mirrors the
-		// persisted state (status, cleared error, DB-stamped processed_at).
+		// Reload the committed row so the response mirrors the persisted state.
 		refreshed, err := s.inventorySubmissionRepo.GetByID(ctx, submission.ID)
 		if err != nil {
 			return nil, fmt.Errorf("failed to reload submission after approve: %w", err)
 		}
 		submission = refreshed
 	case models.InventorySubmissionApprovalStatusRejected:
-		// Reject under the parent FOR UPDATE lock with an AFTER-lock state re-check
-		// (epic #38, Part 6 — closes the reject-vs-StartProcessing TOCTOU). The
-		// submission was read above WITHOUT a lock; a concurrent StartProcessing on an
-		// initiated reconcile can take the parent FOR UPDATE lock, consume stock, and
-		// mark the row processed/approved/completed while this request is mid-flight.
-		// Acting on the stale pre-lock read would flip an already-applied reconcile to
-		// rejected/canceled, orphaning the consuming inventory transactions. So we
-		// re-load the row under the lock and re-evaluate on the FRESH status: once the
-		// initiated reconcile has left the staff-editable `open` state
-		// (closed/processing/processed), the legacy reject is blocked — the admin must
-		// reopen first, and a processed reconcile is terminal. Both this path and
-		// StartProcessing serialize on the same parent row lock, so a reject can never
-		// interleave between StartProcessing's lifecycle check and its apply.
+		// Reject under the parent FOR UPDATE lock, re-checking the freshly-read status
+		// so a concurrent StartProcessing cannot be flipped after it has applied.
 		txErr := s.baseRepo.WithinTx(ctx, func(txCtx context.Context) error {
 			locked, err := s.inventorySubmissionRepo.GetByIDForUpdate(txCtx, submission.ID)
 			if err != nil {
 				return fmt.Errorf("failed to re-load submission for reject: %w", err)
 			}
-			// Re-assert approval is still pending on the freshly-read, locked row: a
-			// concurrent StartProcessing (approved+completed) or another reject may
-			// have already terminalized it.
 			if locked.ApprovalStatus != models.InventorySubmissionApprovalStatusPending {
 				return pkg.NewAppError(pkg.ErrorCodeValidation,
 					fmt.Sprintf("submission approval is not pending, current approval status: %s", locked.ApprovalStatus), nil)
 			}
-			// For an INITIATED reconcile (has snapshot rows), reject is only valid
-			// while `open`. closed/processing/processed mean the admin took it out of
-			// the staff-editable window or StartProcessing has applied it; rejecting
-			// then would corrupt applied state. Legacy reconciles / dispose / transfer
-			// carry no reconcile_status and are unaffected.
+			// An initiated reconcile may only be rejected while `open`.
 			if locked.SubmissionType == models.InventorySubmissionTypeReconcile &&
 				locked.ReconcileStatus != "" &&
 				locked.ReconcileStatus != models.ReconcileLifecycleStatusOpen {
@@ -856,7 +737,6 @@ func (s *inventoryService) ProcessSubmission(ctx context.Context, req dto.Submis
 			if err := s.inventorySubmissionRepo.UpdateApprovalStatus(txCtx, submission.ID, approvalStatus, req.Reason); err != nil {
 				return fmt.Errorf("failed to update approval status: %w", err)
 			}
-			// Set processing status to canceled when rejected.
 			if err := s.inventorySubmissionRepo.UpdateProcessingStatus(txCtx, submission.ID, models.InventorySubmissionStatusCanceled); err != nil {
 				return fmt.Errorf("failed to update processing status to canceled: %w", err)
 			}
@@ -865,9 +745,6 @@ func (s *inventoryService) ProcessSubmission(ctx context.Context, req dto.Submis
 		if txErr != nil {
 			return nil, txErr
 		}
-		// Reload the committed row so the response reflects the persisted state
-		// (approval_status=rejected, processing_status=canceled) rather than a struct
-		// read before the tx — mirrors the approve path above (epic #38, Part 6).
 		refreshed, err := s.inventorySubmissionRepo.GetByID(ctx, submission.ID)
 		if err != nil {
 			return nil, fmt.Errorf("failed to reload submission after reject: %w", err)
@@ -880,23 +757,10 @@ func (s *inventoryService) ProcessSubmission(ctx context.Context, req dto.Submis
 	return submission, nil
 }
 
-// processSubmission executes the actual inventory operation based on submission
-// type. It returns (applied, ps, err):
-//   - applied is true iff the apply completed without errors (so the caller can
-//     stamp processed_at);
-//   - ps is the processing state; on the atomic path the caller calls
-//     ps.recordFailure AFTER its tx unwinds to persist the failure-audit trail;
-//   - err is the underlying apply error (the first accumulated error) when the
-//     apply failed, and nil otherwise.
-//
-// When atomic is true (the approve tx, which enlists the apply via the tx-aware
-// repos), returning the error lets the caller roll the whole transaction back on
-// failure instead of committing a partial stock mutation alongside a failed
-// status — the data-correctness fix for epic #38, Part 6. On that path ps.end
-// does NOT write the failed status (it would deadlock against the open tx's row
-// lock and be rolled back regardless); the caller records it post-tx via
-// ps.recordFailure. When atomic is false (the legacy non-atomic path, repo owns
-// its own tx), ps.end records completed/failed inline exactly as before.
+// processSubmission executes the inventory operation for a submission, returning
+// whether it applied cleanly, its processing state, and the first apply error.
+// When atomic, the caller owns the tx: it rolls back on error and records the
+// failure audit post-tx (ps.end does not write the failed status).
 func (s *inventoryService) processSubmission(ctx context.Context, submission *models.InventorySubmission, atomic bool) (bool, *processingState, error) {
 	ps := newProcessingState(s, submission)
 	ps.deferFailureToCaller = atomic
@@ -981,9 +845,6 @@ func (s *inventoryService) CreateTransferSubmission(ctx context.Context, req dto
 		return nil, pkg.NewAppError(pkg.ErrorCodeNotFound, "destination inventory not found", nil)
 	}
 
-	// Transfer is intentionally NOT subject to the one-active-pending guard (epic
-	// #38, Part 3 is reconcile-only per the human's decision): a pending reconcile
-	// on the source inventory does not block a transfer, exactly as on main.
 	srcItems, err := s.getActiveInventoryItems(ctx, req.SourceInventoryID, req.GetItemIDs())
 	if err != nil {
 		return nil, fmt.Errorf("failed to get active inventory items: %w", err)
@@ -1230,15 +1091,8 @@ type processingState struct {
 	svc        *inventoryService
 	submission *models.InventorySubmission
 	errors     []error
-	// deferFailureToCaller is set on the ATOMIC apply path (the approve tx, which
-	// enlists the apply via the tx-aware repos). On that path ps.end must NOT write
-	// the failed processing status itself: that write would run on ps.end's OWN base
-	// connection while the still-open apply tx holds a row lock on this same
-	// submission (taken by UpdateApprovalStatus), self-deadlocking; and even if it
-	// did not, the apply tx is about to roll back, so an in-tx failed write would be
-	// erased. Instead the caller records the failure AFTER the tx unwinds, on a
-	// clean connection (epic #38, Part 6 — data-correctness fix). The legacy
-	// non-atomic path leaves this false and keeps recording failures inline.
+	// deferFailureToCaller, set on the atomic apply path, makes ps.end skip the
+	// failed-status write so the caller records it after its tx unwinds.
 	deferFailureToCaller bool
 }
 
@@ -1246,9 +1100,7 @@ func (s *processingState) hasAnyErrors() bool {
 	return len(s.errors) > 0
 }
 
-// firstError returns the earliest accumulated apply error (the root cause), or
-// nil if none. The atomic approve path returns this from its tx closure to force
-// a full rollback while surfacing a meaningful error to the caller.
+// firstError returns the earliest accumulated apply error, or nil if none.
 func (s *processingState) firstError() error {
 	if len(s.errors) == 0 {
 		return nil
@@ -1307,10 +1159,8 @@ func (s *inventoryService) ListSubmissions(ctx context.Context, params models.Li
 
 	submissionItemMap := make(map[uint][]dto.QuantityItem)
 	itemIDs := make([]uint, 0)
-	// synthesized holds, for each ACTIVE reconcile (initiated via the new flow,
-	// payload still empty), the read-only synthesis over its staff child rows
-	// (epic #38, Part 5 / S4). Such a submission's parent Payload is empty until
-	// apply, so its items/label/warnings are derived from the child rows instead.
+	// synthesized holds the read-only synthesis over an active reconcile's child
+	// rows, from which its items/label/warnings are derived (its payload is empty).
 	synthesized := make(map[uint]*dto.SynthesizedReconcile)
 	for _, submission := range submissions {
 		if isActiveReconcile(submission) {
@@ -1349,24 +1199,14 @@ func (s *inventoryService) ListSubmissions(ctx context.Context, params models.Li
 			return nil, 0, fmt.Errorf("failed to format submission items: %w", err)
 		}
 
-		// Warnings reuse the shared formatWarnings reconcile branch, which compares
-		// PrevQuantity (the snapshot baseline, set by synthesis) vs the live item
-		// quantity — exactly the B2 snapshot-vs-live drift view.
 		warnings := formatWarnings(submission, items, inventoryItemMap)
 
 		var label dto.ReconcileReviewLabel
 		var countBreakdown []dto.ReconcileItemBreakdown
 		if syn, ok := synthesized[submission.ID]; ok {
 			label = syn.Label
-			// Surface synthesis anomalies (e.g. a stored aggregate exceeding its
-			// snapshot baseline) alongside the drift warnings so the admin sees the
-			// data oddity rather than it being silently corrected.
 			warnings = append(warnings, syn.Anomalies...)
-			// Per-(item, label) breakdown behind each summed line (issue #73), so the
-			// review screen can show each labeled count, not just the total. Resolve
-			// product_name the same way formatSubmissionItems does (inventory_item ->
-			// product), gracefully leaving it empty when the product can't be resolved
-			// (FE #42).
+			// Per-(item, label) breakdown behind each summed line, with product_name resolved when possible.
 			countBreakdown = make([]dto.ReconcileItemBreakdown, len(syn.Breakdown))
 			for j, b := range syn.Breakdown {
 				if inventoryItem, exists := inventoryItemMap[b.InventoryItemID]; exists && inventoryItem.Product != nil {
@@ -1400,21 +1240,8 @@ func (s *inventoryService) ListSubmissions(ctx context.Context, params models.Li
 	return responses, total, nil
 }
 
-// ListActiveReconciliations returns the cross-inventory active reconcile queue.
-// Auth is enforced here in the service (recon_item_view => 403 otherwise), NOT via
-// route middleware. recon_item_view is the shared read action held by staff AND
-// admin/accountant (recon_manage is admin/accountant-only); the count Page is
-// staff-facing, so staff must see the same active-reconcile queue to reach their
-// open reconciliations. The list is the same for every caller — no per-staff
-// scoping — so a single shared read gate is all that's needed (unlike
-// ListReconciliationItems, which scopes staff to their own child rows). Every row
-// this returns is, by predicate, an active reconcile (pending + open/closed), so
-// the per-inventory ListSubmissions path would synthesize each row (3 queries/row)
-// — a per-page N+1 on this cross-inventory surface. This queue does not need the
-// synthesized review breakdown (that is the per-inventory detail/review screen's
-// concern, served by the existing GET /{id}/submissions), so it maps directly from
-// the loaded row + the preloaded Inventory with ZERO per-row DB work: the page is a
-// bounded, constant query count regardless of row count.
+// ListActiveReconciliations returns the cross-inventory active reconcile queue,
+// gated by recon_item_view. It maps rows directly (no per-row synthesis).
 func (s *inventoryService) ListActiveReconciliations(ctx context.Context, params models.ListParams, reconcileStatuses []string) ([]dto.SubmissionResponse, int64, error) {
 	if !pkg.HasPermission(ctx, pkg.RBACResourceInventorySubmissions, pkg.RBACActionReconItemView) {
 		return nil, 0, pkg.ErrForbidden("user does not have permission to view reconciliations", nil)
@@ -1433,17 +1260,9 @@ func (s *inventoryService) ListActiveReconciliations(ctx context.Context, params
 	return responses, total, nil
 }
 
-// mapReconcileQueueRow is the LIGHTWEIGHT queue mapper for the awaiting-processing
-// reconcile queue (issue #88). Unlike the ListSubmissions mapper it does NOT call
-// SynthesizeSubmissionPayload (which is a 3-query-per-row N+1 on this cross-
-// inventory surface): it maps directly from the loaded row + preloaded Inventory,
-// doing zero per-row DB work. The synthesized review fields (review_label,
-// count_breakdown) and the synthesized items/warnings that ride the same call are
-// the per-inventory detail/review screen's concern (served by GET /{id}/submissions
-// on drill-in) and are intentionally dropped here — left as their zero values, so
-// review_label/count_breakdown/warnings (all omitempty) simply do not appear in the
-// JSON. Items is NOT omitempty, so it is initialized to an empty slice to serialize
-// as `"items":[]` rather than null.
+// mapReconcileQueueRow maps a reconcile-queue row directly from the loaded row and
+// preloaded Inventory, without synthesizing review fields. Items is an empty slice
+// so it serializes as `"items":[]` rather than null.
 func mapReconcileQueueRow(submission models.InventorySubmission) dto.SubmissionResponse {
 	return dto.SubmissionResponse{
 		ID:              submission.ID,
@@ -1462,11 +1281,8 @@ func mapReconcileQueueRow(submission models.InventorySubmission) dto.SubmissionR
 	}
 }
 
-// isActiveReconcile is the service-layer view of the canonical active-reconcile
-// predicate (models.InventorySubmission.IsActiveReconcile): an active reconcile
-// renders its items/label/warnings by synthesizing over the staff child rows
-// rather than reading the empty Payload; a canceled/processing/processed reconcile
-// is non-active and skips synthesis.
+// isActiveReconcile reports whether a submission is an active reconcile whose
+// items/label/warnings must be derived by synthesizing over its child rows.
 func isActiveReconcile(submission models.InventorySubmission) bool {
 	return submission.IsActiveReconcile()
 }

@@ -1,11 +1,6 @@
 // Package client is a thin typed HTTP client for the CIM API. It attaches a
 // Firebase Bearer token, retries once on a 401 with a fresh token, and reports
-// per-call latency/outcome centrally so scenario drivers never touch stats.
-//
-// Request bodies reuse internal/services/dto where typed DTOs exist (the
-// approved reuse strategy); for endpoints that bind directly to models or to
-// private handler structs, small local request structs live alongside the
-// scenario drivers.
+// per-call latency/outcome centrally.
 package client
 
 import (
@@ -63,9 +58,7 @@ func (e *APIError) Error() string {
 	return fmt.Sprintf("status %d: %s", e.Status, e.Body)
 }
 
-// StatusOf returns the HTTP status code carried by err if it is an *APIError,
-// else 0. Lets callers treat e.g. a 409 Conflict as an idempotent "already
-// exists" outcome rather than a hard failure.
+// StatusOf returns the HTTP status carried by err if it is an *APIError, else 0.
 func StatusOf(err error) int {
 	var apiErr *APIError
 	if errors.As(err, &apiErr) {
@@ -74,49 +67,38 @@ func StatusOf(err error) int {
 	return 0
 }
 
-// ExpectedFunc classifies a non-2xx response as an EXPECTED (tolerable) outcome
-// rather than a failure, given the HTTP status and the raw response body. It is
-// only consulted on a non-2xx; returning true records the call as a non-failure
-// and suppresses the error so the caller can branch on the status.
+// ExpectedFunc classifies a non-2xx response as an expected (tolerable) outcome
+// from its status and body. Returning true records the call as a non-failure and
+// suppresses the error.
 type ExpectedFunc func(status int, respBody []byte) bool
 
 // Do issues an authenticated request to path (under /api/v1) with an optional
-// JSON body, and decodes a 2xx response into out (if out is non-nil). label is
-// the endpoint name recorded in the report (e.g. "POST /purchase-orders"). Any
-// non-2xx response is recorded as a failure and returned as an error.
+// JSON body, decoding a 2xx response into out (if non-nil). label is the
+// endpoint name recorded in the report. Any non-2xx is a failure.
 func (c *Client) Do(ctx context.Context, method, path string, body, out any, label string) error {
 	_, err := c.DoClassified(ctx, method, path, body, out, label, nil)
 	return err
 }
 
-// DoExpectingStatus is Do for endpoints with an EXPECTED non-2xx outcome keyed on
-// the STATUS CODE alone (e.g. start-processing returning 409 on reconciliation
-// drift — the apply rolled back, nothing was mutated; drift is a routine outcome,
-// not a server error). A non-2xx whose status is in expectedStatuses is recorded
-// as a NON-failure and returned without error; any other non-2xx behaves like Do.
+// DoExpectingStatus is Do with an expected non-2xx outcome keyed on the status
+// code alone: a non-2xx whose status is in expectedStatuses is recorded as a
+// non-failure and returned without error; any other non-2xx behaves like Do.
 func (c *Client) DoExpectingStatus(ctx context.Context, method, path string, body, out any, label string, expectedStatuses ...int) (int, error) {
 	return c.DoClassified(ctx, method, path, body, out, label, func(status int, _ []byte) bool {
 		return containsStatus(expectedStatuses, status)
 	})
 }
 
-// DoClassified is the shared core. It issues the request, records exactly one
-// call in the report, and decodes a 2xx body into out (if non-nil).
-//
-// For a non-2xx, isExpected (when non-nil) is consulted with the status and raw
-// body: if it returns true the response is a tolerable, expected outcome — the
-// call is recorded with a NIL error (so it is NOT counted as a failure and does
-// not inflate total_failures) and (status, nil) is returned so the caller can
-// branch. Otherwise the non-2xx is recorded as a failure and returned as an
-// *APIError, exactly like a plain Do. This lets a caller tolerate a specific
-// outcome discriminated by status AND body (e.g. a generic 500 whose body
-// carries a known domain message) without masking any other failure.
+// DoClassified is the shared core: it issues the request, records exactly one
+// call in the report, and decodes a 2xx body into out (if non-nil). For a
+// non-2xx, if isExpected (when non-nil) returns true the call is recorded as a
+// non-failure and (status, nil) is returned; otherwise it is a failure returned
+// as an *APIError.
 func (c *Client) DoClassified(ctx context.Context, method, path string, body, out any, label string, isExpected ExpectedFunc) (int, error) {
 	start := time.Now()
 	status, respBody, err := c.do(ctx, method, path, body)
 
-	// An expected non-2xx is a normal outcome: record the call but NOT as a
-	// failure, and do not return an error for it.
+	// Expected non-2xx: record the call but not as a failure.
 	if err != nil && isExpected != nil && isExpected(status, respBody) {
 		c.report.RecordCall(label, status, time.Since(start), nil)
 		return status, nil
@@ -183,7 +165,7 @@ func (c *Client) do(ctx context.Context, method, path string, body any) (int, []
 			return resp.StatusCode, nil, readErr
 		}
 
-		// Refresh-on-401: invalidate and retry once with a new token.
+		// On a 401, invalidate and retry once with a new token.
 		if resp.StatusCode == http.StatusUnauthorized && attempt == 0 {
 			c.tokens.Invalidate()
 			continue

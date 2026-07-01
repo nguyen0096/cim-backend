@@ -10,22 +10,9 @@ import (
 	"cim-backend/pkg"
 )
 
-// Payment-receipt-form + revenue-expense lifecycle driver.
-//
-// A payment receipt form is filed against a purchase order, approved, and the
-// day is then finalized. Approving a form is also what unlocks PO `completed`
-// (UpdatePurchaseOrderStatus rejects completed unless an APPROVED form exists),
-// so this scenario also drives a PO to its completed terminal state — the state
-// PR-1 deliberately deferred.
-//
-//	POST /purchase-orders + receive                 (a fresh PO to pay for)
-//	POST /payment-receipt-forms                      -> pending
-//	PUT  /payment-receipt-forms/:id/approve          -> approved
-//	PUT  /purchase-orders/:id/status (completed)     -> PO completed
-//	POST /revenue-expenses/finalize                  (finalize the day)
-//
-// Each iteration owns a dedicated PO so completing it never interferes with the
-// PO-scenario orders. IDs are read back from responses; none are assumed.
+// PaymentScenario files a payment receipt form against a fresh PO, approves it,
+// completes the PO (which requires an approved form), and finalizes the day's
+// revenue/expense. Each iteration owns a dedicated PO.
 type PaymentScenario struct {
 	iteration int
 }
@@ -33,7 +20,7 @@ type PaymentScenario struct {
 // Name implements Scenario.
 func (s *PaymentScenario) Name() string { return "payment" }
 
-// paymentFormResponse is the subset of a created/approved form we read back.
+// paymentFormResponse is a payment form's ID and status.
 type paymentFormResponse struct {
 	ID     uint   `json:"id"`
 	Status string `json:"status"`
@@ -47,7 +34,7 @@ func (s *PaymentScenario) Run(ctx context.Context, env *Env) error {
 		return fmt.Errorf("payment: reference data not initialized")
 	}
 
-	// 1. A dedicated PO to pay for (fully received so it is fully_delivered).
+	// 1. A dedicated PO to pay for (fully received).
 	po, err := createPO(ctx, env, s.iteration, ref.InventoryID)
 	if err != nil {
 		return err
@@ -56,8 +43,7 @@ func (s *PaymentScenario) Run(ctx context.Context, env *Env) error {
 		return err
 	}
 
-	// 2. File the payment receipt form (defaults to pending). full_name, details
-	// and total_amount are required; date is set server-side.
+	// 2. File the payment receipt form (defaults to pending).
 	inv := ref.InventoryID
 	payload := dto.PaymentReceiptFormPayload{
 		InventoryID:     &inv,
@@ -83,31 +69,22 @@ func (s *PaymentScenario) Run(ctx context.Context, env *Env) error {
 	}
 	env.Report.Created("payment_receipt_form_approved")
 
-	// 4. Now that an approved form exists, the PO can be completed.
+	// 4. Complete the PO (now that an approved form exists).
 	statusPath := fmt.Sprintf("/purchase-orders/%d/status", po.ID)
 	if err := env.Client.Do(ctx, "PUT", statusPath, map[string]string{"status": "completed"}, nil, "PUT /purchase-orders/:id/status"); err != nil {
 		return fmt.Errorf("complete PO %d: %w", po.ID, err)
 	}
 	env.Report.Created("purchase_order_completed")
 
-	// 5. Finalize the day's revenue/expense (empty body finalizes today).
-	// Finalize depends on the `revenue_expense_excel` setting (an external Excel
-	// workbook integration). In a dev/load env that setting is missing, empty, or
-	// incomplete, so the server returns 500 with one of the revenue-expense
-	// SETTINGS domain errors. That is an environment-config gap, not a lifecycle
-	// failure: the payment lifecycle (form pending -> approved -> PO completed)
-	// already completed. Classify ONLY those specific settings errors as expected
-	// via DoClassified so finalize is recorded as a NON-failure (it does not
-	// inflate total_failures) and skipped; every other finalize error is recorded
-	// as a failure and fails the iteration.
+	// 5. Finalize the day's revenue/expense (empty body finalizes today). When the
+	// revenue-expense Excel settings are unavailable (common in dev), finalize
+	// returns 500; those specific errors are tolerated as skipped, not failures.
 	status, err := env.Client.DoClassified(ctx, "POST", "/revenue-expenses/finalize", struct{}{}, nil,
 		"POST /revenue-expenses/finalize", isRevenueExpenseSettingsUnavailable)
 	if err != nil {
 		return fmt.Errorf("finalize revenue expense: %w", err)
 	}
 	if status == http.StatusInternalServerError {
-		// The only non-2xx DoClassified tolerates here: revenue-expense settings
-		// unavailable -> skipped.
 		env.Report.Created("revenue_expense_skipped")
 		return nil
 	}
@@ -115,10 +92,9 @@ func (s *PaymentScenario) Run(ctx context.Context, env *Env) error {
 	return nil
 }
 
-// revenueExpenseSettingsErrorKeys are the revenue-expense SETTINGS domain errors
-// that all mean the same thing for the simulator: the Excel-settings integration
-// is not usable in this environment (missing, empty/unparseable, or incomplete).
-// Finalize is skipped on any of them rather than treated as a failure.
+// revenueExpenseSettingsErrorKeys are the revenue-expense settings errors that
+// mean the Excel-settings integration is unusable here; finalize is skipped on
+// any of them.
 var revenueExpenseSettingsErrorKeys = []string{
 	pkg.ErrKeyRevenueExpenseSettingsNotConfigured,
 	pkg.ErrKeyFailedToGetRevenueExpenseSettings,
@@ -127,12 +103,10 @@ var revenueExpenseSettingsErrorKeys = []string{
 	pkg.ErrKeySheetNameNotFoundInSettings,
 }
 
-// isRevenueExpenseSettingsUnavailable is the DoClassified predicate that
-// recognises a revenue-expense SETTINGS domain error from a finalize response.
-// These errors are ErrorCodeInternal with NO `key` field, so they serialize as a
-// generic HTTP 500 whose only distinguishing signal is the message. It therefore
-// requires a 500 AND an exact match of one of the localized catalog messages (EN
-// or VI), so a 500 from any OTHER cause is NOT tolerated.
+// isRevenueExpenseSettingsUnavailable recognises a revenue-expense settings error
+// from a finalize response. Those errors carry no key and serialize as a generic
+// 500, so it requires a 500 and an exact match of a localized (EN/VI) catalog
+// message; a 500 from any other cause is not tolerated.
 func isRevenueExpenseSettingsUnavailable(status int, respBody []byte) bool {
 	if status != http.StatusInternalServerError || len(respBody) == 0 {
 		return false

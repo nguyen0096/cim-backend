@@ -11,32 +11,9 @@ import (
 	"github.com/shopspring/decimal"
 )
 
-// This file implements SynthesizeSubmissionPayload (epic #38, Part 5): folding the
-// live staff child rows of an initiated reconcile into the legacy
-// ReconcileInventoryRequest-shaped payload the apply path (reconcileInventory /
-// consumeFIFO / SaveInventoryItemChanges) expects, plus the derived review label.
-//
-// It is PURE / READ-ONLY: it performs no writes. The parent inventory_submissions
-// row keeps an empty payload until the Part-7 apply step persists the finalized
-// synthesized payload; until then list/detail must render items by synthesizing
-// over the child rows rather than reading the empty Payload (S4).
-//
-// Locked rules honored here:
-//   - Baseline = the parent snapshot captured at initiate (sole source of truth
-//     for prev_quantity, B2). The synthesized PrevQuantity is the snapshot value,
-//     NOT live stock; live is only read by the warnings layer to show drift.
-//   - Counts are summed by inventory_item_id across ALL live (non-soft-deleted)
-//     child rows (soft-deleted rows are already excluded by ListBySubmission).
-//   - The Part-4 write-time aggregate guard already enforces sum(counted) <=
-//     snapshot per item; synthesis relies on that invariant but does NOT trust it
-//     blindly — if a stored aggregate somehow exceeds the snapshot it is surfaced
-//     as an anomaly (and the line is still emitted at the baseline-capped value so
-//     a downstream consume can never be negative) rather than silently corrupting.
-
 // SynthesizeSubmissionPayload sums the live child rows of an initiated reconcile
-// into the legacy ReconcileInventoryRequest payload, attaches the snapshot
-// baseline per item, and computes the review label. Read-only; uses DB(ctx) via
-// the repositories so it can run inside or outside a transaction.
+// into a ReconcileInventoryRequest payload with the snapshot baseline per item and
+// the review label. Read-only.
 func (s *inventoryService) SynthesizeSubmissionPayload(ctx context.Context, submissionID uint) (*dto.SynthesizedReconcile, error) {
 	submission, err := s.inventorySubmissionRepo.GetByID(ctx, submissionID)
 	if err != nil {
@@ -61,8 +38,7 @@ func (s *inventoryService) SynthesizeSubmissionPayload(ctx context.Context, subm
 	return synthesizeReconcile(submission.InventoryID, rows, baselines, managerOwned)
 }
 
-// synthesizeReconcile is the pure, repository-free core of
-// SynthesizeSubmissionPayload.
+// synthesizeReconcile is the pure core of SynthesizeSubmissionPayload.
 func synthesizeReconcile(
 	inventoryID uint,
 	rows []models.ReconciliationRequestItem,
@@ -70,10 +46,8 @@ func synthesizeReconcile(
 	managerOwned map[uint]bool,
 ) (*dto.SynthesizedReconcile, error) {
 	totals := make(map[uint]decimal.Decimal)
-	// breakdown accumulates the per-(inventory_item, label) contributions behind each
-	// summed total (issue #73), review-only. labelOrder preserves first-seen label
-	// order per item so the rendered breakdown is stable. The label is
-	// representation-only: it never affects totals (the apply math).
+	// breakdown holds review-only per-(item, label) contributions; labelOrder keeps
+	// first-seen label order. Neither affects totals.
 	breakdown := make(map[uint]map[string]decimal.Decimal)
 	labelOrder := make(map[uint][]string)
 	for _, row := range rows {
@@ -103,16 +77,13 @@ func synthesizeReconcile(
 		}
 	}
 
-	// Emit items in a deterministic order (ascending inventory_item_id) so the
-	// synthesized payload and the rendered list are stable across calls.
+	// Deterministic order (ascending inventory_item_id).
 	itemIDs := make([]uint, 0, len(totals))
 	for id := range totals {
 		itemIDs = append(itemIDs, id)
 	}
 	sort.Slice(itemIDs, func(i, j int) bool { return itemIDs[i] < itemIDs[j] })
 
-	// Emit the per-(item, label) breakdown in the same deterministic item order as
-	// the summed lines, preserving first-seen label order within each item.
 	var breakdownLines []dto.ReconcileItemBreakdown
 	for _, id := range itemIDs {
 		for _, label := range labelOrder[id] {
@@ -131,25 +102,15 @@ func synthesizeReconcile(
 		counted := totals[id]
 		baseline, hasBaseline := baselines[id]
 
-		// Anomaly: a counted item with no snapshot row. The Part-4 write guard
-		// rejects this at write time (ErrReconItemNoSnapshotBaseline), so it should
-		// be impossible; if it ever occurs we surface it and fall back to a zero
-		// baseline so the line is still visible for review rather than dropped.
+		// Anomaly: counted item with no snapshot row. Surface it and fall back to zero baseline.
 		if !hasBaseline {
 			anomalies = append(anomalies, fmt.Sprintf(
 				"sản phẩm (inventory_item_id=%d) không có số lượng nền (snapshot) — cần kiểm tra lại", id))
 			baseline = decimal.Zero
 		}
 
-		// Anomaly: counted exceeds the snapshot baseline. The Part-4 write-time
-		// aggregate guard makes this impossible under normal operation; if a stored
-		// aggregate somehow exceeds the snapshot — OR the snapshot is missing
-		// entirely (baseline falls back to zero above) and a positive count was
-		// recorded — we surface it AND cap the emitted counted at the baseline so a
-		// downstream consume (snapshot - counted) can never go negative / corrupt
-		// FIFO. The missing-baseline case must clamp too: emitting a positive count
-		// against a zero baseline would otherwise reintroduce the exact negative
-		// consume this cap exists to prevent.
+		// Anomaly: counted exceeds baseline. Surface it and cap emitted at baseline so
+		// a downstream consume (snapshot - counted) can never go negative.
 		emitted := counted
 		if counted.GreaterThan(baseline) {
 			if hasBaseline {
@@ -157,7 +118,6 @@ func synthesizeReconcile(
 					"tổng số lượng kiểm đếm của sản phẩm (inventory_item_id=%d) là %s vượt quá số lượng nền %s — cần kiểm tra lại",
 					id, counted.String(), baseline.String()))
 			}
-			// (missing-baseline already surfaced its own warning above)
 			emitted = baseline
 		}
 
@@ -180,11 +140,8 @@ func synthesizeReconcile(
 	}, nil
 }
 
-// aggregateReviewLabel derives the submission-level review label from the
-// per-session readiness of the live STAFF child rows. Manager-owned sessions
-// (managerOwned[row.ID]) are excluded: readiness is a staff concept and managers
-// cannot toggle, so a manager session must never hold the submission in_progress.
-// With no staff sessions the label stays in_progress (nothing to review).
+// aggregateReviewLabel derives the submission-level review label from staff session
+// readiness; manager-owned sessions are excluded and no staff sessions stays in_progress.
 func aggregateReviewLabel(rows []models.ReconciliationRequestItem, managerOwned map[uint]bool) dto.ReconcileReviewLabel {
 	staffSessions := 0
 	for _, row := range rows {

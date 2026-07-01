@@ -13,10 +13,9 @@ import (
 	"time"
 )
 
-// tokenProvider mints and refreshes Firebase ID tokens. The sign-in logic is
-// lifted from cmd/auth/main.go (which is package main and not importable); the
-// cobra/clipboard bits are dropped and refresh-on-expiry is added so long runs
-// survive the ~1h token lifetime.
+// tokenProvider mints and refreshes Firebase ID tokens, refreshing on expiry so
+// long runs survive the ~1h token lifetime.
+
 // Default Firebase REST endpoints. Overridable on the tokenProvider for tests.
 const (
 	defaultSignInURL  = "https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword"
@@ -29,7 +28,7 @@ type tokenProvider struct {
 	password string
 	http     *http.Client
 
-	// Firebase endpoints (defaults set in newTokenProvider; redirected in tests).
+	// Firebase endpoints; redirected in tests.
 	signInURL  string
 	refreshURL string
 
@@ -70,7 +69,7 @@ func (t *tokenProvider) Token(ctx context.Context) (string, error) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 
-	// Refresh a minute early to avoid races against the server clock.
+	// Refresh a minute early to avoid clock-skew races.
 	if t.idToken != "" && time.Now().Before(t.expiresAt.Add(-time.Minute)) {
 		return t.idToken, nil
 	}
@@ -86,8 +85,7 @@ func (t *tokenProvider) Token(ctx context.Context) (string, error) {
 	return t.idToken, nil
 }
 
-// Invalidate forces the next Token call to mint a new token. Called on a 401 so
-// the caller can retry once with a fresh token.
+// Invalidate forces the next Token call to mint a new token (called on a 401).
 func (t *tokenProvider) Invalidate() {
 	t.mu.Lock()
 	defer t.mu.Unlock()

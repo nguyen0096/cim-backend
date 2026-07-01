@@ -11,8 +11,7 @@ import (
 )
 
 // RefData holds the IDs of the shared reference entities every scenario needs.
-// Seeding is idempotent (lookup-or-create by name) so re-runs do not error on
-// duplicates; it is additive by design — there is no cleanup.
+// Seeding is idempotent (lookup-or-create by name).
 type RefData struct {
 	SupplierIDs []uint
 	UnitID      uint
@@ -20,10 +19,8 @@ type RefData struct {
 	InventoryID uint
 }
 
-// Local request structs. The supplier/inventory create endpoints bind directly
-// to models, and product/unit bind to private handler structs, so none of these
-// are importable from internal/services/dto — we re-express the minimal JSON
-// shape (field values borrowed from the Ginkgo tests / seed data).
+// Local request structs re-expressing the minimal JSON shape for endpoints whose
+// bodies are not importable from internal/services/dto.
 
 type createSupplierRequest struct {
 	Name string `json:"name"`
@@ -54,8 +51,7 @@ type entity struct {
 	Name string `json:"name"`
 }
 
-// listResponse is the paginated list/search envelope ({"data": [...]}). Used by
-// units, suppliers/search and products/search.
+// listResponse is the paginated list/search envelope ({"data": [...]}).
 type listResponse struct {
 	Data []entity `json:"data"`
 }
@@ -69,8 +65,8 @@ const (
 
 	// lookupPageSize is the page size used when paging list/search endpoints.
 	lookupPageSize = 100
-	// lookupMaxPages bounds paging so a huge dev DB can't spin forever; the
-	// 409-already-exists fallback covers any row beyond this.
+	// lookupMaxPages bounds paging; the 409-already-exists fallback covers rows
+	// beyond it.
 	lookupMaxPages = 50
 )
 
@@ -109,9 +105,7 @@ func EnsureRefData(ctx context.Context, env *Env) (*RefData, error) {
 	}
 	ref.InventoryID = invID
 
-	// Seed big starting stock for ALL products in one PO+receive, so the
-	// inventory has substantial stock up front (not via any submission, and not
-	// dependent on the random lifecycle POs).
+	// Seed starting stock for all products in one PO+receive.
 	if err := seedInitialStock(ctx, env, invID); err != nil {
 		return nil, fmt.Errorf("seed initial stock: %w", err)
 	}
@@ -122,11 +116,9 @@ func EnsureRefData(ctx context.Context, env *Env) (*RefData, error) {
 // finder looks up an entity by name, returning (id, found, err).
 type finder func(ctx context.Context, env *Env, name string) (uint, bool, error)
 
-// createOrReuse is the shared idempotent pattern: look the entity up; if found,
-// reuse it. Otherwise create it. If the create races/loses to an existing row
-// (the server replies 409 Conflict, e.g. unit name standardization or a unique
-// constraint), fall back to a second lookup and reuse instead of aborting —
-// this is what makes re-running the seed safe.
+// createOrReuse looks the entity up and reuses it if found, else creates it. A
+// 409 on create (a lost race or existing row) falls back to a second lookup, so
+// re-running the seed is safe.
 func createOrReuse(ctx context.Context, env *Env, entityType, name, createPath, createLabel string, body any, find finder) (uint, error) {
 	if id, ok, err := find(ctx, env, name); err != nil {
 		return 0, err
@@ -144,8 +136,7 @@ func createOrReuse(ctx context.Context, env *Env, entityType, name, createPath, 
 		return 0, err
 	}
 
-	// Already exists (lookup missed it, e.g. server-side name normalization or
-	// a row beyond our paging window): re-resolve and reuse.
+	// Already exists but the first lookup missed it: re-resolve and reuse.
 	if id, ok, lookErr := find(ctx, env, name); lookErr != nil {
 		return 0, lookErr
 	} else if ok {
@@ -178,22 +169,20 @@ func ensureInventory(ctx context.Context, env *Env, name string) (uint, error) {
 	return createOrReuse(ctx, env, "inventory", name, "/inventories", "POST /inventories", body, findInventory)
 }
 
-// --- per-entity lookups (each tuned to its endpoint's response shape) ---
+// --- per-entity lookups ---
 
-// findUnit searches /units (which honors q and returns {data:[...]}). The unit
-// create endpoint uppercases names (Unit.StandardizeName), so the comparison is
-// case-insensitive.
+// findUnit searches /units case-insensitively, since the create endpoint
+// uppercases names.
 func findUnit(ctx context.Context, env *Env, name string) (uint, bool, error) {
 	return pagedEnvelopeLookup(ctx, env, "/units", "GET /units", name, true)
 }
 
-// findSupplier uses /suppliers/search (the list route ignores q); envelope
-// shape, exact-name match.
+// findSupplier searches /suppliers/search by exact name.
 func findSupplier(ctx context.Context, env *Env, name string) (uint, bool, error) {
 	return pagedEnvelopeLookup(ctx, env, "/suppliers/search", "GET /suppliers/search", name, false)
 }
 
-// findProduct uses /products/search (the list route ignores q); envelope shape.
+// findProduct searches /products/search by exact name.
 func findProduct(ctx context.Context, env *Env, name string) (uint, bool, error) {
 	return pagedEnvelopeLookup(ctx, env, "/products/search", "GET /products/search", name, false)
 }
