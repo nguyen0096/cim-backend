@@ -45,18 +45,31 @@ UPDATE reconciliation_request_items
 	setPermissiveCheck := func() {
 		db := tenv.ContextfulDB()
 		Expect(db.Exec(dropCheckSQL).Error).NotTo(HaveOccurred())
+		// Superset of the Part-1 statuses plus the current ready_for_review so the
+		// constraint accepts any row other specs may have left in the shared table.
 		Expect(db.Exec(`ALTER TABLE reconciliation_request_items
     ADD CONSTRAINT chk_reconciliation_request_items_status
-        CHECK (status IN ('in_progress', 'ready', 'approved', 'applied'))`).Error).NotTo(HaveOccurred())
+        CHECK (status IN ('in_progress', 'ready', 'approved', 'applied', 'ready_for_review'))`).Error).NotTo(HaveOccurred())
 	}
 
-	// setNarrowedCheck re-applies the narrowed CHECK exactly as the up migration does.
+	// setNarrowedCheck re-applies the narrowed CHECK exactly as the collapse up
+	// migration does, so the assertions in this spec match that migration's effect.
 	setNarrowedCheck := func() {
 		db := tenv.ContextfulDB()
 		Expect(db.Exec(dropCheckSQL).Error).NotTo(HaveOccurred())
 		Expect(db.Exec(`ALTER TABLE reconciliation_request_items
     ADD CONSTRAINT chk_reconciliation_request_items_status
         CHECK (status IN ('in_progress'))`).Error).NotTo(HaveOccurred())
+	}
+
+	// restoreCurrentCheck restores the live (widened) constraint. The suite shares
+	// one DB, so cleanup must leave the current constraint in place for later specs.
+	restoreCurrentCheck := func() {
+		db := tenv.ContextfulDB()
+		Expect(db.Exec(dropCheckSQL).Error).NotTo(HaveOccurred())
+		Expect(db.Exec(`ALTER TABLE reconciliation_request_items
+    ADD CONSTRAINT chk_reconciliation_request_items_status
+        CHECK (status IN ('in_progress', 'ready_for_review'))`).Error).NotTo(HaveOccurred())
 	}
 
 	// countedPayload is the legacy reconcile payload shape carried by a child row;
@@ -111,11 +124,10 @@ UPDATE reconciliation_request_items
 		Expect(db.Create(submission).Error).NotTo(HaveOccurred())
 		DeferCleanup(func() { db.Unscoped().Delete(submission) })
 
-		// Drop to the permissive Part-1 CHECK so the old statuses can be inserted,
-		// reproducing the pre-collapse table state. Restore the narrowed CHECK after
-		// each spec so the suite's other specs see the migrated constraint.
+		// Drop to the permissive CHECK so the old statuses can be inserted; restore
+		// the live constraint afterward.
 		setPermissiveCheck()
-		DeferCleanup(setNarrowedCheck)
+		DeferCleanup(restoreCurrentCheck)
 	})
 
 	It("relabels leftover ready/approved/applied rows to in_progress with counts unchanged", func() {

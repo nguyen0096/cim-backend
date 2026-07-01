@@ -601,6 +601,59 @@ func (s *inventoryService) UpdateReconciliationItem(ctx context.Context, req dto
 	return &resp, nil
 }
 
+// SetReconciliationItemReadiness toggles a staff count session in_progress <->
+// ready_for_review. Staff-only and self-scoped: recon_manage holders are rejected
+// outright, and a staff caller may toggle only their own row while the parent is
+// open. Runs in one tx under the parent FOR UPDATE lock so it serializes against close.
+func (s *inventoryService) SetReconciliationItemReadiness(ctx context.Context, req dto.SetReconciliationItemReadinessRequest) (*dto.ReconciliationItemResponse, error) {
+	status := models.ReconciliationRequestItemStatus(req.Status)
+	if !status.IsValid() {
+		return nil, pkg.ErrValidation("invalid reconciliation item status", nil)
+	}
+
+	var updated *models.ReconciliationRequestItem
+	err := s.baseRepo.WithinTx(ctx, func(txCtx context.Context) error {
+		parent, err := s.loadActiveReconcileParent(txCtx, req.SubmissionID)
+		if err != nil {
+			return err
+		}
+		if parent.ReconcileStatus != models.ReconcileLifecycleStatusOpen {
+			return pkg.ErrReconSubmissionClosed(txCtx, parent.ID, string(parent.ReconcileStatus))
+		}
+		item, err := s.loadItemInParent(txCtx, req.SubmissionID, req.ItemID)
+		if err != nil {
+			return err
+		}
+		// Staff-only: recon_manage holders (admin/accountant) are rejected even
+		// for a row they own, so manager-owned sessions never drive review_label.
+		if pkg.HasPermission(txCtx, pkg.RBACResourceInventorySubmissions, pkg.RBACActionReconManage) {
+			return pkg.ErrForbidden("readiness toggle is restricted to staff", nil)
+		}
+		callerEmail, err := pkg.GetUserEmailFromContext(txCtx)
+		if err != nil {
+			return pkg.ErrUnauthorized("user not authenticated", err)
+		}
+		if item.CreatedBy != callerEmail {
+			return pkg.ErrReconItemNotOwned(txCtx)
+		}
+
+		if err := s.reconItemRepo.UpdateStatus(txCtx, item.ID, status); err != nil {
+			return fmt.Errorf("failed to update reconciliation item readiness: %w", err)
+		}
+		item.Status = status
+		updated = item
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	resp, err := toReconciliationItemResponse(updated)
+	if err != nil {
+		return nil, err
+	}
+	return &resp, nil
+}
+
 // DeleteReconciliationItem soft-deletes a child item. Staff may delete only their
 // own rows while the parent is `open`; admin/accountant may delete any row while
 // the parent is `closed`. The whole op is one tx under the parent FOR UPDATE lock.

@@ -53,19 +53,21 @@ func (s *inventoryService) SynthesizeSubmissionPayload(ctx context.Context, subm
 		return nil, fmt.Errorf("failed to load snapshot baselines for submission %d: %w", submissionID, err)
 	}
 
-	return synthesizeReconcile(submission.InventoryID, submission.ReconcileStatus, rows, baselines)
+	managerOwned, err := s.managerOwnedSessions(ctx, rows)
+	if err != nil {
+		return nil, err
+	}
+
+	return synthesizeReconcile(submission.InventoryID, rows, baselines, managerOwned)
 }
 
-// synthesizeReconcile is the pure core of SynthesizeSubmissionPayload, split out
-// so it is directly unit-testable without repositories. It sums counted
-// quantities by inventory_item_id across the live child rows, attaches the
-// snapshot baseline as PrevQuantity, computes the label from the row statuses,
-// and surfaces (rather than hides) any aggregate that exceeds its baseline.
+// synthesizeReconcile is the pure, repository-free core of
+// SynthesizeSubmissionPayload.
 func synthesizeReconcile(
 	inventoryID uint,
-	reconcileStatus models.ReconcileLifecycleStatus,
 	rows []models.ReconciliationRequestItem,
 	baselines map[uint]decimal.Decimal,
+	managerOwned map[uint]bool,
 ) (*dto.SynthesizedReconcile, error) {
 	totals := make(map[uint]decimal.Decimal)
 	// breakdown accumulates the per-(inventory_item, label) contributions behind each
@@ -172,21 +174,29 @@ func synthesizeReconcile(
 			InventoryID: inventoryID,
 			Items:       items,
 		},
-		Label:     computeReviewLabel(reconcileStatus),
+		Label:     aggregateReviewLabel(rows, managerOwned),
 		Anomalies: anomalies,
 		Breakdown: breakdownLines,
 	}, nil
 }
 
-// computeReviewLabel derives the admin-facing progress label from the SUBMISSION
-// lifecycle status (epic #38, Part 6 redesign — Q1 collapse). The per-row
-// ready/approved states were removed, so the label now mirrors open vs closed:
-//
-//	In-progress       while the submission is `open` (staff are still editing);
-//	Ready-for-review  once it is `closed` (or beyond) — the admin has frozen staff
-//	                  entry and is reviewing before Start Processing.
-func computeReviewLabel(status models.ReconcileLifecycleStatus) dto.ReconcileReviewLabel {
-	if status == models.ReconcileLifecycleStatusOpen || status == "" {
+// aggregateReviewLabel derives the submission-level review label from the
+// per-session readiness of the live STAFF child rows. Manager-owned sessions
+// (managerOwned[row.ID]) are excluded: readiness is a staff concept and managers
+// cannot toggle, so a manager session must never hold the submission in_progress.
+// With no staff sessions the label stays in_progress (nothing to review).
+func aggregateReviewLabel(rows []models.ReconciliationRequestItem, managerOwned map[uint]bool) dto.ReconcileReviewLabel {
+	staffSessions := 0
+	for _, row := range rows {
+		if managerOwned[row.ID] {
+			continue
+		}
+		staffSessions++
+		if row.Status != models.ReconciliationRequestItemStatusReadyForReview {
+			return dto.ReconcileReviewLabelInProgress
+		}
+	}
+	if staffSessions == 0 {
 		return dto.ReconcileReviewLabelInProgress
 	}
 	return dto.ReconcileReviewLabelReadyForReview

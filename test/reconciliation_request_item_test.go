@@ -42,17 +42,7 @@ var _ = Describe("Reconciliation request item lifecycle", func() {
 	// internal/server/server.go's construction so the spec drives production code.
 	buildService := func() services.InventoryService {
 		base := repository.NewBaseRepository(tenv.DB)
-		return services.NewInventoryService(
-			repository.NewInventoryRepository(base),
-			repository.NewInventoryItemRepository(base),
-			repository.NewInventorySubmissionRepository(base),
-			repository.NewReconciliationSnapshotRepository(base),
-			repository.NewReconciliationRequestItemRepository(base),
-			repository.NewProductRepository(base),
-			nil, // fileStorageService: unused by the child-item paths
-			base,
-			tenv.DB,
-		)
+		return buildReconInventoryService(base)
 	}
 
 	staffPerms := func(email string) context.Context {
@@ -249,7 +239,7 @@ var _ = Describe("Reconciliation request item lifecycle", func() {
 		// Admin closes the submission (open -> closed).
 		closed, err := svc.CloseReconciliation(adminCtx, submission.ID)
 		Expect(err).NotTo(HaveOccurred())
-		Expect(closed.ReconcileStatus).To(Equal(models.ReconcileLifecycleStatusClosed))
+		Expect(closed.Submission.ReconcileStatus).To(Equal(models.ReconcileLifecycleStatusClosed))
 
 		// Staff edit is now rejected (conflict).
 		_, err = svc.UpdateReconciliationItem(staffCtx, dto.UpdateReconciliationItemRequest{
@@ -348,5 +338,224 @@ var _ = Describe("Reconciliation request item lifecycle", func() {
 		Expect(tenv.ContextfulDB().Unscoped().Model(&models.ReconciliationRequestItem{}).
 			Where("id = ?", item.ID).Count(&any).Error).NotTo(HaveOccurred())
 		Expect(any).To(Equal(int64(1)))
+	})
+
+	// --- Per-session readiness ---
+
+	It("lets a staff member toggle their OWN session ready_for_review and back on an open reconcile", func() {
+		item, err := svc.CreateReconciliationItem(staffCtx, dto.CreateReconciliationItemRequest{
+			SubmissionID: submission.ID, Items: countItems(80),
+		})
+		Expect(err).NotTo(HaveOccurred())
+		DeferCleanup(func() { tenv.ContextfulDB().Unscoped().Delete(item) })
+		Expect(item.Status).To(Equal(string(models.ReconciliationRequestItemStatusInProgress)))
+
+		ready, err := svc.SetReconciliationItemReadiness(staffCtx, dto.SetReconciliationItemReadinessRequest{
+			SubmissionID: submission.ID, ItemID: item.ID, Status: string(models.ReconciliationRequestItemStatusReadyForReview),
+		})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(ready.Status).To(Equal(string(models.ReconciliationRequestItemStatusReadyForReview)))
+
+		syn, err := svc.SynthesizeSubmissionPayload(staffCtx, submission.ID)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(syn.Label).To(Equal(dto.ReconcileReviewLabelReadyForReview))
+
+		back, err := svc.SetReconciliationItemReadiness(staffCtx, dto.SetReconciliationItemReadinessRequest{
+			SubmissionID: submission.ID, ItemID: item.ID, Status: string(models.ReconciliationRequestItemStatusInProgress),
+		})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(back.Status).To(Equal(string(models.ReconciliationRequestItemStatusInProgress)))
+	})
+
+	It("aggregates the submission review_label to ready only when EVERY live session is ready", func() {
+		a, err := svc.CreateReconciliationItem(staffCtx, dto.CreateReconciliationItemRequest{
+			SubmissionID: submission.ID, Items: countItems(40),
+		})
+		Expect(err).NotTo(HaveOccurred())
+		DeferCleanup(func() { tenv.ContextfulDB().Unscoped().Delete(a) })
+		b, err := svc.CreateReconciliationItem(otherCtx, dto.CreateReconciliationItemRequest{
+			SubmissionID: submission.ID, Items: countItems(40),
+		})
+		Expect(err).NotTo(HaveOccurred())
+		DeferCleanup(func() { tenv.ContextfulDB().Unscoped().Delete(b) })
+
+		// Only the first session ready.
+		_, err = svc.SetReconciliationItemReadiness(staffCtx, dto.SetReconciliationItemReadinessRequest{
+			SubmissionID: submission.ID, ItemID: a.ID, Status: string(models.ReconciliationRequestItemStatusReadyForReview),
+		})
+		Expect(err).NotTo(HaveOccurred())
+		syn, err := svc.SynthesizeSubmissionPayload(adminCtx, submission.ID)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(syn.Label).To(Equal(dto.ReconcileReviewLabelInProgress))
+
+		// Both ready.
+		_, err = svc.SetReconciliationItemReadiness(otherCtx, dto.SetReconciliationItemReadinessRequest{
+			SubmissionID: submission.ID, ItemID: b.ID, Status: string(models.ReconciliationRequestItemStatusReadyForReview),
+		})
+		Expect(err).NotTo(HaveOccurred())
+		syn, err = svc.SynthesizeSubmissionPayload(adminCtx, submission.ID)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(syn.Label).To(Equal(dto.ReconcileReviewLabelReadyForReview))
+	})
+
+	It("un-readies a ready_for_review session when its counts are edited", func() {
+		item, err := svc.CreateReconciliationItem(staffCtx, dto.CreateReconciliationItemRequest{
+			SubmissionID: submission.ID, Items: countItems(80),
+		})
+		Expect(err).NotTo(HaveOccurred())
+		DeferCleanup(func() { tenv.ContextfulDB().Unscoped().Delete(item) })
+
+		_, err = svc.SetReconciliationItemReadiness(staffCtx, dto.SetReconciliationItemReadinessRequest{
+			SubmissionID: submission.ID, ItemID: item.ID, Status: string(models.ReconciliationRequestItemStatusReadyForReview),
+		})
+		Expect(err).NotTo(HaveOccurred())
+
+		// Editing the counts resets readiness.
+		edited, err := svc.UpdateReconciliationItem(staffCtx, dto.UpdateReconciliationItemRequest{
+			SubmissionID: submission.ID, ItemID: item.ID, Items: countItems(70),
+		})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(edited.Status).To(Equal(string(models.ReconciliationRequestItemStatusInProgress)),
+			"editing a ready_for_review session must reset it to in_progress")
+	})
+
+	It("forbids a staff member from toggling another staff member's session (403, no admin bypass)", func() {
+		item, err := svc.CreateReconciliationItem(staffCtx, dto.CreateReconciliationItemRequest{
+			SubmissionID: submission.ID, Items: countItems(80),
+		})
+		Expect(err).NotTo(HaveOccurred())
+		DeferCleanup(func() { tenv.ContextfulDB().Unscoped().Delete(item) })
+
+		// Another staff member.
+		_, err = svc.SetReconciliationItemReadiness(otherCtx, dto.SetReconciliationItemReadinessRequest{
+			SubmissionID: submission.ID, ItemID: item.ID, Status: string(models.ReconciliationRequestItemStatusReadyForReview),
+		})
+		Expect(err).To(HaveOccurred())
+		Expect(pkg.IsErrorCode(err, pkg.ErrorCodeForbidden)).To(BeTrue())
+
+		// An admin (recon_manage) — no bypass either.
+		_, err = svc.SetReconciliationItemReadiness(adminCtx, dto.SetReconciliationItemReadinessRequest{
+			SubmissionID: submission.ID, ItemID: item.ID, Status: string(models.ReconciliationRequestItemStatusReadyForReview),
+		})
+		Expect(err).To(HaveOccurred())
+		Expect(pkg.IsErrorCode(err, pkg.ErrorCodeForbidden)).To(BeTrue())
+	})
+
+	It("forbids a recon_manage holder from toggling readiness on a session they own (403, staff-only)", func() {
+		// Admin/accountant may create a session, so they own the row; the toggle
+		// must still reject them by role, not let ownership grant a bypass.
+		item, err := svc.CreateReconciliationItem(adminCtx, dto.CreateReconciliationItemRequest{
+			SubmissionID: submission.ID, Items: countItems(80),
+		})
+		Expect(err).NotTo(HaveOccurred())
+		DeferCleanup(func() { tenv.ContextfulDB().Unscoped().Delete(item) })
+		Expect(item.CreatedBy).To(Equal("p6-admin@cim.local"))
+
+		_, err = svc.SetReconciliationItemReadiness(adminCtx, dto.SetReconciliationItemReadinessRequest{
+			SubmissionID: submission.ID, ItemID: item.ID, Status: string(models.ReconciliationRequestItemStatusReadyForReview),
+		})
+		Expect(err).To(HaveOccurred())
+		Expect(pkg.IsErrorCode(err, pkg.ErrorCodeForbidden)).To(BeTrue())
+	})
+
+	It("rejects a readiness toggle once the reconcile is closed (open-only, 409)", func() {
+		item, err := svc.CreateReconciliationItem(staffCtx, dto.CreateReconciliationItemRequest{
+			SubmissionID: submission.ID, Items: countItems(80),
+		})
+		Expect(err).NotTo(HaveOccurred())
+		DeferCleanup(func() { tenv.ContextfulDB().Unscoped().Delete(item) })
+
+		_, err = svc.CloseReconciliation(adminCtx, submission.ID)
+		Expect(err).NotTo(HaveOccurred())
+
+		_, err = svc.SetReconciliationItemReadiness(staffCtx, dto.SetReconciliationItemReadinessRequest{
+			SubmissionID: submission.ID, ItemID: item.ID, Status: string(models.ReconciliationRequestItemStatusReadyForReview),
+		})
+		Expect(err).To(HaveOccurred())
+		Expect(pkg.IsErrorCode(err, pkg.ErrorCodeConflict)).To(BeTrue())
+	})
+
+	It("close succeeds AND returns a not-ready warning when a session is still in_progress", func() {
+		// One ready session and one still-in_progress session.
+		ready, err := svc.CreateReconciliationItem(staffCtx, dto.CreateReconciliationItemRequest{
+			SubmissionID: submission.ID, Label: "ready-one", Items: countItems(40),
+		})
+		Expect(err).NotTo(HaveOccurred())
+		DeferCleanup(func() { tenv.ContextfulDB().Unscoped().Delete(ready) })
+		notReady, err := svc.CreateReconciliationItem(otherCtx, dto.CreateReconciliationItemRequest{
+			SubmissionID: submission.ID, Label: "pending-one", Items: countItems(40),
+		})
+		Expect(err).NotTo(HaveOccurred())
+		DeferCleanup(func() { tenv.ContextfulDB().Unscoped().Delete(notReady) })
+
+		_, err = svc.SetReconciliationItemReadiness(staffCtx, dto.SetReconciliationItemReadinessRequest{
+			SubmissionID: submission.ID, ItemID: ready.ID, Status: string(models.ReconciliationRequestItemStatusReadyForReview),
+		})
+		Expect(err).NotTo(HaveOccurred())
+
+		result, err := svc.CloseReconciliation(adminCtx, submission.ID)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(result.Submission.ReconcileStatus).To(Equal(models.ReconcileLifecycleStatusClosed))
+		Expect(result.Warnings).To(HaveLen(1))
+		Expect(result.Warnings[0]).To(ContainSubstring(fmt.Sprintf("#%d", notReady.ID)))
+		Expect(result.Warnings[0]).To(ContainSubstring(otherEmail))
+	})
+
+	It("close emits NO warning when every live session is ready_for_review", func() {
+		item, err := svc.CreateReconciliationItem(staffCtx, dto.CreateReconciliationItemRequest{
+			SubmissionID: submission.ID, Items: countItems(80),
+		})
+		Expect(err).NotTo(HaveOccurred())
+		DeferCleanup(func() { tenv.ContextfulDB().Unscoped().Delete(item) })
+		_, err = svc.SetReconciliationItemReadiness(staffCtx, dto.SetReconciliationItemReadinessRequest{
+			SubmissionID: submission.ID, ItemID: item.ID, Status: string(models.ReconciliationRequestItemStatusReadyForReview),
+		})
+		Expect(err).NotTo(HaveOccurred())
+
+		result, err := svc.CloseReconciliation(adminCtx, submission.ID)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(result.Submission.ReconcileStatus).To(Equal(models.ReconcileLifecycleStatusClosed))
+		Expect(result.Warnings).To(BeEmpty())
+	})
+
+	// option (a): a manager-owned (recon_manage) session is excluded from the
+	// readiness signal — it never holds the submission in_progress nor triggers the
+	// close not-ready warning. Seeding a User row with an admin role lets the
+	// service resolve the session creator's role and evaluate recon_manage against
+	// the real policy, the same way production does.
+	It("excludes a manager-owned in_progress session from review_label and the close warning", func() {
+		db := tenv.ContextfulDB()
+		manager := &models.User{Email: "p6-admin@cim.local", Role: models.RoleAdmin, Status: "active"}
+		Expect(db.Create(manager).Error).NotTo(HaveOccurred())
+		DeferCleanup(func() { db.Unscoped().Delete(manager) })
+
+		// A staff session (ready) and a manager session (left in_progress, untoggleable).
+		staffItem, err := svc.CreateReconciliationItem(staffCtx, dto.CreateReconciliationItemRequest{
+			SubmissionID: submission.ID, Label: "staff-one", Items: countItems(40),
+		})
+		Expect(err).NotTo(HaveOccurred())
+		DeferCleanup(func() { tenv.ContextfulDB().Unscoped().Delete(staffItem) })
+
+		managerItem, err := svc.CreateReconciliationItem(adminCtx, dto.CreateReconciliationItemRequest{
+			SubmissionID: submission.ID, Label: "manager-one", Items: countItems(40),
+		})
+		Expect(err).NotTo(HaveOccurred())
+		DeferCleanup(func() { tenv.ContextfulDB().Unscoped().Delete(managerItem) })
+		Expect(managerItem.CreatedBy).To(Equal("p6-admin@cim.local"))
+
+		_, err = svc.SetReconciliationItemReadiness(staffCtx, dto.SetReconciliationItemReadinessRequest{
+			SubmissionID: submission.ID, ItemID: staffItem.ID, Status: string(models.ReconciliationRequestItemStatusReadyForReview),
+		})
+		Expect(err).NotTo(HaveOccurred())
+
+		// All STAFF sessions ready -> ready_for_review despite the in_progress manager session.
+		syn, err := svc.SynthesizeSubmissionPayload(adminCtx, submission.ID)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(syn.Label).To(Equal(dto.ReconcileReviewLabelReadyForReview))
+
+		// Close warns about nothing: the only not-ready session is manager-owned.
+		result, err := svc.CloseReconciliation(adminCtx, submission.ID)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(result.Warnings).To(BeEmpty())
 	})
 })

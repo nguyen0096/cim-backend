@@ -129,6 +129,52 @@ func TestUpdateReconciliationItem_PathScopedIDs(t *testing.T) {
 	mockService.AssertExpectations(t)
 }
 
+// TestSetReconciliationItemReadiness_PathScopedIDsAndBody asserts the parent and
+// child ids come from the path (never the body) and the status comes from the body.
+func TestSetReconciliationItemReadiness_PathScopedIDsAndBody(t *testing.T) {
+	handler, mockService, e := newReconItemHandler(t)
+
+	const pathSubmissionID uint = 50
+	const pathItemID uint = 777
+
+	mockService.
+		On("SetReconciliationItemReadiness", mock.Anything, mock.MatchedBy(func(req dto.SetReconciliationItemReadinessRequest) bool {
+			return req.SubmissionID == pathSubmissionID && req.ItemID == pathItemID && req.Status == "ready_for_review"
+		})).
+		Return(&dto.ReconciliationItemResponse{ID: pathItemID, Status: "ready_for_review"}, nil).
+		Once()
+
+	// Body tries to retarget ids; only the path ids must be honored.
+	body := `{"submission_id":1,"item_id":2,"status":"ready_for_review"}`
+	req, _ := createRequest(http.MethodPost, "/inventories/submissions/50/reconciliation-items/777/review-label", body)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetPath("/inventories/submissions/:id/reconciliation-items/:item_id/review-label")
+	c.SetParamNames("id", "item_id")
+	c.SetParamValues("50", "777")
+
+	require.NoError(t, handler.SetReconciliationItemReadiness(c))
+	assert.Equal(t, http.StatusOK, rec.Code)
+	mockService.AssertExpectations(t)
+}
+
+// TestSetReconciliationItemReadiness_RejectsInvalidStatus asserts an out-of-enum
+// status is a validation error before the service is ever called.
+func TestSetReconciliationItemReadiness_RejectsInvalidStatus(t *testing.T) {
+	handler, mockService, e := newReconItemHandler(t)
+
+	body := `{"status":"approved"}`
+	req, _ := createRequest(http.MethodPost, "/inventories/submissions/50/reconciliation-items/777/review-label", body)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetPath("/inventories/submissions/:id/reconciliation-items/:item_id/review-label")
+	c.SetParamNames("id", "item_id")
+	c.SetParamValues("50", "777")
+
+	require.Error(t, handler.SetReconciliationItemReadiness(c))
+	mockService.AssertNotCalled(t, "SetReconciliationItemReadiness", mock.Anything, mock.Anything)
+}
+
 func TestDeleteReconciliationItem_NoContent(t *testing.T) {
 	handler, mockService, e := newReconItemHandler(t)
 
@@ -172,7 +218,9 @@ func TestCloseReconciliation_PathScopedID(t *testing.T) {
 
 	mockService.
 		On("CloseReconciliation", mock.Anything, uint(50)).
-		Return(&models.InventorySubmission{Base: models.Base{ID: 50}, ReconcileStatus: models.ReconcileLifecycleStatusClosed}, nil).
+		Return(&dto.CloseReconciliationResult{
+			Submission: &models.InventorySubmission{Base: models.Base{ID: 50}, ReconcileStatus: models.ReconcileLifecycleStatusClosed},
+		}, nil).
 		Once()
 
 	req, _ := createRequest(http.MethodPost, "/inventories/submissions/50/close", nil)

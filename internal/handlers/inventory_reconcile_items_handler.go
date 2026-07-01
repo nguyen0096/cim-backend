@@ -116,6 +116,46 @@ func (h *InventoryHandler) UpdateReconciliationItem(c echo.Context) error {
 	return c.JSON(http.StatusOK, item)
 }
 
+// SetReconciliationItemReadiness toggles a staff count session's readiness.
+// @Summary Set reconciliation item readiness
+// @Description Staff toggles their OWN count session between in_progress and ready_for_review to signal they've finished entering counts. Staff-only and self-scoped (no admin bypass); allowed only while the parent reconciliation is open. The submission-level review_label aggregates from these per-session statuses.
+// @Tags inventories
+// @Accept json
+// @Produce json
+// @Param id path int true "Parent submission ID"
+// @Param item_id path int true "Child item ID"
+// @Param request body dto.SetReconciliationItemReadinessRequest true "Target session readiness"
+// @Success 200 {object} dto.ReconciliationItemResponse
+// @Failure 400 {object} map[string]string
+// @Failure 403 {object} map[string]string
+// @Failure 404 {object} map[string]string
+// @Failure 409 {object} map[string]string
+// @Security BearerAuth
+// @Router /inventories/submissions/{id}/reconciliation-items/{item_id}/review-label [post]
+func (h *InventoryHandler) SetReconciliationItemReadiness(c echo.Context) error {
+	submissionID, itemID, err := extractSubmissionAndItemID(c)
+	if err != nil {
+		return err
+	}
+
+	var req dto.SetReconciliationItemReadinessRequest
+	if err := c.Bind(&req); err != nil {
+		return pkg.ErrInvalidRequestBody(err)
+	}
+	req.SubmissionID = submissionID
+	req.ItemID = itemID
+
+	if err := pkg.Validator.Struct(req); err != nil {
+		return pkg.ErrValidation(err.Error(), err)
+	}
+
+	item, err := h.inventoryService.SetReconciliationItemReadiness(c.Request().Context(), req)
+	if err != nil {
+		return err
+	}
+	return c.JSON(http.StatusOK, item)
+}
+
 // DeleteReconciliationItem soft-deletes a child item.
 // @Summary Delete reconciliation item
 // @Description Staff soft-deletes their own in_progress or ready child item. Approved/applied items cannot be deleted.
@@ -151,11 +191,11 @@ func (h *InventoryHandler) DeleteReconciliationItem(c echo.Context) error {
 
 // CloseReconciliation locks staff out of a reconciliation (admin/accountant).
 // @Summary Close reconciliation submission
-// @Description Admin/accountant closes an open reconciliation (open -> closed). Staff can no longer edit child items; admin/accountant may still edit, then start processing or reopen.
+// @Description Admin/accountant closes an open reconciliation (open -> closed). Staff can no longer edit child items; admin/accountant may still edit, then start processing or reopen. The close always succeeds; if any count session was still in_progress (not marked ready for review), the response carries an advisory, non-blocking warnings list (HTTP 200).
 // @Tags inventories
 // @Produce json
 // @Param id path int true "Submission ID"
-// @Success 200 {object} models.InventorySubmission
+// @Success 200 {object} dto.CloseReconciliationResult
 // @Failure 403 {object} map[string]string
 // @Failure 404 {object} map[string]string
 // @Failure 409 {object} map[string]string
@@ -166,11 +206,11 @@ func (h *InventoryHandler) CloseReconciliation(c echo.Context) error {
 	if err != nil {
 		return err
 	}
-	submission, err := h.inventoryService.CloseReconciliation(c.Request().Context(), submissionID)
+	result, err := h.inventoryService.CloseReconciliation(c.Request().Context(), submissionID)
 	if err != nil {
 		return err
 	}
-	return c.JSON(http.StatusOK, submission)
+	return c.JSON(http.StatusOK, result)
 }
 
 // ReopenReconciliation re-opens a closed reconciliation (admin/accountant).

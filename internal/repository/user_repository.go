@@ -120,6 +120,27 @@ func (r *UserRepository) Delete(ctx context.Context, id string) error {
 	return nil
 }
 
+// GetRolesByEmails returns role keyed by email for the given emails in one query.
+// Emails with no matching (non-deleted) user are absent from the map.
+func (r *UserRepository) GetRolesByEmails(ctx context.Context, emails []string) (map[string]models.UserRole, error) {
+	roles := make(map[string]models.UserRole, len(emails))
+	if len(emails) == 0 {
+		return roles, nil
+	}
+	var rows []models.User
+	if err := r.DB(ctx).WithContext(ctx).
+		Model(&models.User{}).
+		Select("email", "role").
+		Where("email IN ? AND deleted_at IS NULL", emails).
+		Find(&rows).Error; err != nil {
+		return nil, fmt.Errorf("failed to get roles by emails: %w", err)
+	}
+	for _, u := range rows {
+		roles[u.Email] = u.Role
+	}
+	return roles, nil
+}
+
 // GetByRole retrieves users by role
 func (r *UserRepository) GetByRole(ctx context.Context, role string) ([]*models.User, error) {
 	var users []*models.User

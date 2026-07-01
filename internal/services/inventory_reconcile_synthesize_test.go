@@ -1,6 +1,7 @@
 package services
 
 import (
+	"context"
 	"encoding/json"
 	"testing"
 
@@ -64,7 +65,7 @@ func TestSynthesizeReconcile_SumsByItemAcrossRowsAndItems(t *testing.T) {
 	}
 	baselines := baselineMap(map[uint]string{1: "100", 2: "100", 3: "100"})
 
-	syn, err := synthesizeReconcile(7, models.ReconcileLifecycleStatusOpen, rows, baselines)
+	syn, err := synthesizeReconcile(7, rows, baselines, nil)
 	require.NoError(t, err)
 	assert.Equal(t, uint(7), syn.Request.InventoryID)
 	assert.Empty(t, syn.Anomalies)
@@ -95,7 +96,7 @@ func TestSynthesizeReconcile_LabelBreakdownPerItemLabel(t *testing.T) {
 	}
 	baselines := baselineMap(map[uint]string{1: "100", 2: "100"})
 
-	syn, err := synthesizeReconcile(7, models.ReconcileLifecycleStatusOpen, rows, baselines)
+	syn, err := synthesizeReconcile(7, rows, baselines, nil)
 	require.NoError(t, err)
 	assert.Empty(t, syn.Anomalies)
 
@@ -123,7 +124,7 @@ func TestSynthesizeReconcile_SameLabelAcrossRowsSummedInBreakdown(t *testing.T) 
 	}
 	baselines := baselineMap(map[uint]string{1: "100"})
 
-	syn, err := synthesizeReconcile(7, models.ReconcileLifecycleStatusOpen, rows, baselines)
+	syn, err := synthesizeReconcile(7, rows, baselines, nil)
 	require.NoError(t, err)
 	require.Len(t, syn.Breakdown, 1)
 	assert.Equal(t, dto.ReconcileItemBreakdown{InventoryItemID: 1, Label: "shelf", Quantity: decimal.NewFromInt(50)}, syn.Breakdown[0])
@@ -136,7 +137,7 @@ func TestSynthesizeReconcile_DecimalMath(t *testing.T) {
 	}
 	baselines := baselineMap(map[uint]string{1: "100"})
 
-	syn, err := synthesizeReconcile(1, models.ReconcileLifecycleStatusOpen, rows, baselines)
+	syn, err := synthesizeReconcile(1, rows, baselines, nil)
 	require.NoError(t, err)
 	require.Len(t, syn.Request.Items, 1)
 	assert.True(t, syn.Request.Items[0].Quantity.Equal(decimal.RequireFromString("15.75")),
@@ -148,12 +149,12 @@ func TestSynthesizeReconcile_EmptyPayloadRowsAndNoRows(t *testing.T) {
 	// A row with an empty payload contributes nothing.
 	empty := models.ReconciliationRequestItem{Status: models.ReconciliationRequestItemStatusInProgress}
 	empty.ID = 1
-	syn, err := synthesizeReconcile(1, models.ReconcileLifecycleStatusOpen, []models.ReconciliationRequestItem{empty}, map[uint]decimal.Decimal{})
+	syn, err := synthesizeReconcile(1, []models.ReconciliationRequestItem{empty}, map[uint]decimal.Decimal{}, nil)
 	require.NoError(t, err)
 	assert.Empty(t, syn.Request.Items)
 
 	// No rows at all -> empty items, in_progress label.
-	syn, err = synthesizeReconcile(1, models.ReconcileLifecycleStatusOpen, nil, map[uint]decimal.Decimal{})
+	syn, err = synthesizeReconcile(1, nil, map[uint]decimal.Decimal{}, nil)
 	require.NoError(t, err)
 	assert.Empty(t, syn.Request.Items)
 	assert.Equal(t, dto.ReconcileReviewLabelInProgress, syn.Label)
@@ -170,7 +171,7 @@ func TestSynthesizeReconcile_AggregateExceedsBaselineIsSurfacedAndCapped(t *test
 	}
 	baselines := baselineMap(map[uint]string{1: "100"})
 
-	syn, err := synthesizeReconcile(1, models.ReconcileLifecycleStatusOpen, rows, baselines)
+	syn, err := synthesizeReconcile(1, rows, baselines, nil)
 	require.NoError(t, err)
 	require.Len(t, syn.Request.Items, 1)
 	require.Len(t, syn.Anomalies, 1)
@@ -182,7 +183,7 @@ func TestSynthesizeReconcile_MissingBaselineIsSurfaced(t *testing.T) {
 	rows := []models.ReconciliationRequestItem{
 		childRow(1, models.ReconciliationRequestItemStatusInProgress, line(9, "5")),
 	}
-	syn, err := synthesizeReconcile(1, models.ReconcileLifecycleStatusOpen, rows, map[uint]decimal.Decimal{}) // no baseline for item 9
+	syn, err := synthesizeReconcile(1, rows, map[uint]decimal.Decimal{}, nil) // no baseline for item 9
 	require.NoError(t, err)
 	require.Len(t, syn.Request.Items, 1)
 	require.Len(t, syn.Anomalies, 1)
@@ -194,23 +195,83 @@ func TestSynthesizeReconcile_MissingBaselineIsSurfaced(t *testing.T) {
 		"missing-baseline counted must be clamped to zero, got %s", syn.Request.Items[0].Quantity)
 }
 
-func TestComputeReviewLabel(t *testing.T) {
-	// The label now mirrors the SUBMISSION lifecycle (Q1 collapse): open =>
-	// in-progress; closed/processing/processed => ready-for-review.
-	cases := []struct {
-		name   string
-		status models.ReconcileLifecycleStatus
-		want   dto.ReconcileReviewLabel
-	}{
-		{"empty (legacy)", "", dto.ReconcileReviewLabelInProgress},
-		{"open", models.ReconcileLifecycleStatusOpen, dto.ReconcileReviewLabelInProgress},
-		{"closed", models.ReconcileLifecycleStatusClosed, dto.ReconcileReviewLabelReadyForReview},
-		{"processing", models.ReconcileLifecycleStatusProcessing, dto.ReconcileReviewLabelReadyForReview},
-		{"processed", models.ReconcileLifecycleStatusProcessed, dto.ReconcileReviewLabelReadyForReview},
+func TestSynthesizeReconcile_LabelAggregatesSessionReadiness(t *testing.T) {
+	baselines := baselineMap(map[uint]string{1: "100"})
+
+	t.Run("all live sessions ready => ready_for_review", func(t *testing.T) {
+		rows := []models.ReconciliationRequestItem{
+			childRow(1, models.ReconciliationRequestItemStatusReadyForReview, line(1, "10")),
+			childRow(2, models.ReconciliationRequestItemStatusReadyForReview, line(1, "20")),
+		}
+		syn, err := synthesizeReconcile(1, rows, baselines, nil)
+		require.NoError(t, err)
+		assert.Equal(t, dto.ReconcileReviewLabelReadyForReview, syn.Label)
+	})
+
+	t.Run("one session still in_progress => in_progress", func(t *testing.T) {
+		rows := []models.ReconciliationRequestItem{
+			childRow(1, models.ReconciliationRequestItemStatusReadyForReview, line(1, "10")),
+			childRow(2, models.ReconciliationRequestItemStatusInProgress, line(1, "20")),
+		}
+		syn, err := synthesizeReconcile(1, rows, baselines, nil)
+		require.NoError(t, err)
+		assert.Equal(t, dto.ReconcileReviewLabelInProgress, syn.Label)
+	})
+
+	t.Run("zero live rows => in_progress (nothing to review)", func(t *testing.T) {
+		syn, err := synthesizeReconcile(1, nil, map[uint]decimal.Decimal{}, nil)
+		require.NoError(t, err)
+		assert.Equal(t, dto.ReconcileReviewLabelInProgress, syn.Label)
+	})
+
+	t.Run("a ready session with an empty payload still counts toward readiness", func(t *testing.T) {
+		// A live ready_for_review row contributes no counts but must still be honored
+		// by the aggregate (it is a live session marked done).
+		empty := models.ReconciliationRequestItem{Status: models.ReconciliationRequestItemStatusReadyForReview}
+		empty.ID = 1
+		syn, err := synthesizeReconcile(1, []models.ReconciliationRequestItem{empty}, map[uint]decimal.Decimal{}, nil)
+		require.NoError(t, err)
+		assert.Empty(t, syn.Request.Items)
+		assert.Equal(t, dto.ReconcileReviewLabelReadyForReview, syn.Label)
+	})
+}
+
+func TestAggregateReviewLabel_ExcludesManagerOwnedSessions(t *testing.T) {
+	t.Run("manager in_progress session does not hold the submission in_progress", func(t *testing.T) {
+		rows := []models.ReconciliationRequestItem{
+			childRow(1, models.ReconciliationRequestItemStatusInProgress, line(1, "10")),    // manager
+			childRow(2, models.ReconciliationRequestItemStatusReadyForReview, line(1, "20")), // staff, ready
+		}
+		assert.Equal(t, dto.ReconcileReviewLabelReadyForReview, aggregateReviewLabel(rows, map[uint]bool{1: true}))
+	})
+
+	t.Run("a staff session still in_progress drives in_progress", func(t *testing.T) {
+		rows := []models.ReconciliationRequestItem{
+			childRow(1, models.ReconciliationRequestItemStatusReadyForReview, line(1, "10")), // manager
+			childRow(2, models.ReconciliationRequestItemStatusInProgress, line(1, "20")),     // staff, not ready
+		}
+		assert.Equal(t, dto.ReconcileReviewLabelInProgress, aggregateReviewLabel(rows, map[uint]bool{1: true}))
+	})
+
+	t.Run("only a manager session => in_progress (no staff session to review)", func(t *testing.T) {
+		rows := []models.ReconciliationRequestItem{
+			childRow(1, models.ReconciliationRequestItemStatusReadyForReview, line(1, "10")),
+		}
+		assert.Equal(t, dto.ReconcileReviewLabelInProgress, aggregateReviewLabel(rows, map[uint]bool{1: true}))
+	})
+}
+
+func TestBuildNotReadySessionWarnings_ExcludesManagerOwnedSessions(t *testing.T) {
+	rows := []models.ReconciliationRequestItem{
+		childRow(1, models.ReconciliationRequestItemStatusInProgress, line(1, "10")),    // manager, not ready
+		childRow(2, models.ReconciliationRequestItemStatusInProgress, line(1, "20")),    // staff, not ready
+		childRow(3, models.ReconciliationRequestItemStatusReadyForReview, line(1, "5")), // staff, ready
 	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			assert.Equal(t, tc.want, computeReviewLabel(tc.status))
-		})
+	warnings := buildNotReadySessionWarnings(context.Background(), rows, map[uint]bool{1: true})
+	require.Len(t, warnings, 1, "only the staff in_progress session warns; manager session excluded")
+
+	onlyManager := []models.ReconciliationRequestItem{
+		childRow(1, models.ReconciliationRequestItemStatusInProgress, line(1, "10")),
 	}
+	assert.Nil(t, buildNotReadySessionWarnings(context.Background(), onlyManager, map[uint]bool{1: true}))
 }

@@ -50,6 +50,8 @@ func TestExtractResourceAndAction_ReconciliationChildItems(t *testing.T) {
 		{"list", http.MethodGet, "/api/v1/inventories/submissions/50/reconciliation-items", "recon_item_view"},
 		{"update", http.MethodPut, "/api/v1/inventories/submissions/50/reconciliation-items/777", "recon_item_update"},
 		{"delete", http.MethodDelete, "/api/v1/inventories/submissions/50/reconciliation-items/777", "recon_item_delete"},
+		// Readiness toggle sub-verb: staff-held recon_item_update (not recon_manage).
+		{"review-label", http.MethodPost, "/api/v1/inventories/submissions/50/reconciliation-items/777/review-label", "recon_item_update"},
 		{"close", http.MethodPost, "/api/v1/inventories/submissions/50/close", "recon_manage"},
 		{"reopen", http.MethodPost, "/api/v1/inventories/submissions/50/reopen", "recon_manage"},
 		{"start-processing", http.MethodPost, "/api/v1/inventories/submissions/50/start-processing", "recon_manage"},

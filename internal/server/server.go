@@ -78,7 +78,7 @@ func SetupServer(
 	settingsService := services.NewSettingsService(settingsRepo)
 	unitService := services.NewUnitService(unitRepo, productRepo)
 	productService := services.NewProductService(productRepo, supplierRepo, unitRepo, unitService, settingsService)
-	inventoryService := services.NewInventoryService(inventoryRepo, inventoryItemRepo, inventorySubmissionRepo, reconciliationSnapshotRepo, reconciliationRequestItemRepo, productRepo, fileStorageService, baseRepo, db)
+	inventoryService := services.NewInventoryService(inventoryRepo, inventoryItemRepo, inventorySubmissionRepo, reconciliationSnapshotRepo, reconciliationRequestItemRepo, productRepo, userRepo, casbinService, fileStorageService, baseRepo, db)
 	inventoryItemService := services.NewInventoryItemService(inventoryItemRepo, inventoryRepo, productRepo)
 	revenueExpenseExcelRepo := excel.NewRevenueExpenseExcelRepository()
 	revenueExpenseGoogleSheetsRepo := googlesheets.NewRevenueExpenseGoogleSheetsRepository()
@@ -264,8 +264,10 @@ func SetupServer(
 	inventories.POST("/submissions/:id/reconciliation-items", inventoryHandler.CreateReconciliationItem)
 	inventories.PUT("/submissions/:id/reconciliation-items/:item_id", inventoryHandler.UpdateReconciliationItem)
 	inventories.DELETE("/submissions/:id/reconciliation-items/:item_id", inventoryHandler.DeleteReconciliationItem)
-
-	// Admin/accountant reconciliation management (epic #38, Part 6 redesign).
+	// Staff per-session readiness toggle.
+	inventories.POST("/submissions/:id/reconciliation-items/:item_id/review-label", inventoryHandler.SetReconciliationItemReadiness)
+	// Admin/accountant reconciliation management. Close locks staff out; reopen
+	// re-opens; start-processing is the atomic apply. All gated by recon_manage.
 	inventories.POST("/submissions/:id/close", inventoryHandler.CloseReconciliation)
 	inventories.POST("/submissions/:id/reopen", inventoryHandler.ReopenReconciliation)
 	inventories.POST("/submissions/:id/start-processing", inventoryHandler.StartProcessing)

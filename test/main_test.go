@@ -7,6 +7,9 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
+	"cim-backend/internal/auth"
+	"cim-backend/internal/repository"
+	"cim-backend/internal/services"
 	"cim-backend/pkg"
 	"cim-backend/pkg/testutil"
 )
@@ -46,4 +49,26 @@ var _ = AfterSuite(func(ctx SpecContext) {
 func TestApplication(t *testing.T) {
 	RegisterFailHandler(Fail)
 	RunSpecs(t, "CIM Backend Test Suite")
+}
+
+// buildReconInventoryService wires the real inventoryService from the suite DB,
+// mirroring internal/server/server.go so reconciliation specs drive production
+// code (incl. the user-role + casbin lookup that excludes manager-owned sessions
+// from the readiness signal).
+func buildReconInventoryService(base repository.BaseRepository) services.InventoryService {
+	casbinService, err := auth.NewCasbinService(tenv.DB, tenv.Config.Casbin)
+	Expect(err).NotTo(HaveOccurred(), "Failed to build casbin service")
+	return services.NewInventoryService(
+		repository.NewInventoryRepository(base),
+		repository.NewInventoryItemRepository(base),
+		repository.NewInventorySubmissionRepository(base),
+		repository.NewReconciliationSnapshotRepository(base),
+		repository.NewReconciliationRequestItemRepository(base),
+		repository.NewProductRepository(base),
+		repository.NewUserRepository(base, tenv.Config.Environment),
+		casbinService,
+		nil, // fileStorageService: unused by the reconciliation paths
+		base,
+		tenv.DB,
+	)
 }

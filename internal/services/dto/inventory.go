@@ -149,6 +149,14 @@ type DeleteReconciliationItemRequest struct {
 	ItemID       uint `json:"-" validate:"required"`
 }
 
+// SetReconciliationItemReadinessRequest toggles a staff count session's
+// readiness. SubmissionID and ItemID are path-scoped (not JSON-bindable).
+type SetReconciliationItemReadinessRequest struct {
+	SubmissionID uint   `json:"-" validate:"required"`
+	ItemID       uint   `json:"-" validate:"required"`
+	Status       string `json:"status" validate:"required,oneof=in_progress ready_for_review"`
+}
+
 // StartProcessingResult is the outcome of POST .../start-processing (epic #38,
 // Part 6 redesign). On a clean apply, Submission is the finalized (processed)
 // submission. On drift, DriftDetected is true and Warnings carries the
@@ -159,4 +167,12 @@ type StartProcessingResult struct {
 	Submission    *models.InventorySubmission `json:"submission,omitempty"`
 	DriftDetected bool                        `json:"drift_detected"`
 	Warnings      []string                    `json:"warnings,omitempty"`
+}
+
+// CloseReconciliationResult is the outcome of POST .../close. The close always
+// succeeds; Warnings is an advisory, non-blocking list naming any session still
+// in_progress at close time.
+type CloseReconciliationResult struct {
+	Submission *models.InventorySubmission `json:"submission,omitempty"`
+	Warnings   []string                    `json:"warnings,omitempty"`
 }

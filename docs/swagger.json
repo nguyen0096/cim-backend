@@ -1039,7 +1039,7 @@
                         "BearerAuth": []
                     }
                 ],
-                "description": "Admin/accountant closes an open reconciliation (open -\u003e closed). Staff can no longer edit child items; admin/accountant may still edit, then start processing or reopen.",
+                "description": "Admin/accountant closes an open reconciliation (open -\u003e closed). Staff can no longer edit child items; admin/accountant may still edit, then start processing or reopen. The close always succeeds; if any count session was still in_progress (not marked ready for review), the response carries an advisory, non-blocking warnings list (HTTP 200).",
                 "produces": [
                     "application/json"
                 ],
@@ -1060,7 +1060,7 @@
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/models.InventorySubmission"
+                            "$ref": "#/definitions/dto.CloseReconciliationResult"
                         }
                     },
                     "403": {
@@ -1422,6 +1422,95 @@
                 "responses": {
                     "204": {
                         "description": "No Content"
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/inventories/submissions/{id}/reconciliation-items/{item_id}/review-label": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Staff toggles their OWN count session between in_progress and ready_for_review to signal they've finished entering counts. Staff-only and self-scoped (no admin bypass); allowed only while the parent reconciliation is open. The submission-level review_label aggregates from these per-session statuses.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "inventories"
+                ],
+                "summary": "Set reconciliation item readiness",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Parent submission ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Child item ID",
+                        "name": "item_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Target session readiness",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/dto.SetReconciliationItemReadinessRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ReconciliationItemResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
                     },
                     "403": {
                         "description": "Forbidden",
@@ -5927,6 +6016,20 @@
                 }
             }
         },
+        "dto.CloseReconciliationResult": {
+            "type": "object",
+            "properties": {
+                "submission": {
+                    "$ref": "#/definitions/models.InventorySubmission"
+                },
+                "warnings": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                }
+            }
+        },
         "dto.CreateReconciliationItemRequest": {
             "type": "object",
             "required": [
@@ -6268,6 +6371,21 @@
                 }
             }
         },
+        "dto.SetReconciliationItemReadinessRequest": {
+            "type": "object",
+            "required": [
+                "status"
+            ],
+            "properties": {
+                "status": {
+                    "type": "string",
+                    "enum": [
+                        "in_progress",
+                        "ready_for_review"
+                    ]
+                }
+            }
+        },
         "dto.SheetPreview": {
             "type": "object",
             "properties": {
@@ -6397,7 +6515,7 @@
                     ]
                 },
                 "review_label": {
-                    "description": "ReviewLabel is populated only for ACTIVE reconcile submissions (initiated via\nthe new flow, not yet applied); it is empty for every other submission. It is\nderived from the live child rows and is presentation-only (not persisted).",
+                    "description": "ReviewLabel is set only for active reconcile submissions; aggregated on read\nfrom per-session readiness. Empty for every other submission.",
                     "allOf": [
                         {
                             "$ref": "#/definitions/dto.ReconcileReviewLabel"

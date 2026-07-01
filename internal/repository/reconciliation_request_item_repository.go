@@ -34,6 +34,9 @@ type ReconciliationRequestItemRepository interface {
 	// update is a full replace, so the label is overwritten too — issue #73).
 	// Tx-aware via DB(ctx).
 	UpdateLabelPayloadAndStatus(ctx context.Context, id uint, label string, payload json.RawMessage, status models.ReconciliationRequestItemStatus) error
+	// UpdateStatus writes only the per-session readiness status of a child row.
+	// Tx-aware via DB(ctx).
+	UpdateStatus(ctx context.Context, id uint, status models.ReconciliationRequestItemStatus) error
 	// SoftDelete soft-deletes a child row (sets deleted_at). Tx-aware via DB(ctx).
 	SoftDelete(ctx context.Context, id uint) error
 }
@@ -89,6 +92,19 @@ func (r *reconciliationRequestItemRepository) UpdateLabelPayloadAndStatus(ctx co
 		"label":   label,
 		"payload": payload,
 		"status":  status,
+	})
+	if err != nil {
+		return err
+	}
+	return r.DB(ctx).WithContext(ctx).
+		Model(&models.ReconciliationRequestItem{}).
+		Where("id = ?", id).
+		Updates(updates).Error
+}
+
+func (r *reconciliationRequestItemRepository) UpdateStatus(ctx context.Context, id uint, status models.ReconciliationRequestItemStatus) error {
+	updates, err := pkg.WithUpdateFields(ctx, map[string]interface{}{
+		"status": status,
 	})
 	if err != nil {
 		return err

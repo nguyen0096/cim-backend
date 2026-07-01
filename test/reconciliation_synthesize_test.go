@@ -43,17 +43,7 @@ var _ = Describe("Reconciliation synthesize + list/detail/label/warnings", func(
 
 	buildService := func() services.InventoryService {
 		base := repository.NewBaseRepository(tenv.DB)
-		return services.NewInventoryService(
-			repository.NewInventoryRepository(base),
-			repository.NewInventoryItemRepository(base),
-			repository.NewInventorySubmissionRepository(base),
-			repository.NewReconciliationSnapshotRepository(base),
-			repository.NewReconciliationRequestItemRepository(base),
-			repository.NewProductRepository(base),
-			nil,
-			base,
-			tenv.DB,
-		)
+		return buildReconInventoryService(base)
 	}
 
 	staffPerms := func(email string) context.Context {
@@ -223,22 +213,30 @@ var _ = Describe("Reconciliation synthesize + list/detail/label/warnings", func(
 		Expect(resp.CountBreakdown[0].ProductName).To(Equal(productName))
 	})
 
-	It("labels In-progress while open, Ready-for-review once closed (Q1 collapse)", func() {
+	It("aggregates review_label from per-session readiness, decoupled from the close lifecycle", func() {
 		a, err := svc.CreateReconciliationItem(staffCtx, dto.CreateReconciliationItemRequest{
 			SubmissionID: submission.ID, Items: countItems(40),
 		})
 		Expect(err).NotTo(HaveOccurred())
 		DeferCleanup(func() { tenv.ContextfulDB().Unscoped().Delete(a) })
 
-		// While open -> In-progress.
 		resp := findResp(list(), submission.ID)
 		Expect(resp).NotTo(BeNil())
 		Expect(resp.ReviewLabel).To(Equal(dto.ReconcileReviewLabelInProgress))
 
-		// Close -> Ready-for-review.
+		// Mark the session ready without any admin close (readiness is decoupled from
+		// the lifecycle).
+		_, err = svc.SetReconciliationItemReadiness(staffCtx, dto.SetReconciliationItemReadinessRequest{
+			SubmissionID: submission.ID, ItemID: a.ID, Status: string(models.ReconciliationRequestItemStatusReadyForReview),
+		})
+		Expect(err).NotTo(HaveOccurred())
+		resp = findResp(list(), submission.ID)
+		Expect(resp).NotTo(BeNil())
+		Expect(resp.ReviewLabel).To(Equal(dto.ReconcileReviewLabelReadyForReview))
+
+		// Closing leaves the label unchanged.
 		_, err = svc.CloseReconciliation(adminCtx(), submission.ID)
 		Expect(err).NotTo(HaveOccurred())
-
 		resp = findResp(list(), submission.ID)
 		Expect(resp).NotTo(BeNil())
 		Expect(resp.ReviewLabel).To(Equal(dto.ReconcileReviewLabelReadyForReview))

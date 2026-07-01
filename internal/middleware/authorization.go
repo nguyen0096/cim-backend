@@ -212,6 +212,13 @@ var customRouteMappings = []RouteMapping{
 	// it is gated independently of the generic create/update/delete actions; the
 	// service additionally enforces ownership + the closed-status guard. Admin/
 	// accountant also hold these (they edit child rows while a submission is closed).
+	// Per-session readiness toggle; the service enforces staff-own-row + open-only.
+	{
+		Method:      "POST",
+		PathPattern: "/inventories/submissions/*/reconciliation-items/*/review-label",
+		Resource:    "inventory-submissions",
+		Action:      "recon_item_update",
+	},
 	{
 		Method:      "PUT",
 		PathPattern: "/inventories/submissions/*/reconciliation-items/*",

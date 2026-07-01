@@ -41,17 +41,7 @@ var _ = Describe("Reconciliation item labels (issue #73)", func() {
 
 	buildService := func() services.InventoryService {
 		base := repository.NewBaseRepository(tenv.DB)
-		return services.NewInventoryService(
-			repository.NewInventoryRepository(base),
-			repository.NewInventoryItemRepository(base),
-			repository.NewInventorySubmissionRepository(base),
-			repository.NewReconciliationSnapshotRepository(base),
-			repository.NewReconciliationRequestItemRepository(base),
-			repository.NewProductRepository(base),
-			nil,
-			base,
-			tenv.DB,
-		)
+		return buildReconInventoryService(base)
 	}
 
 	staffPerms := func(email string) context.Context {

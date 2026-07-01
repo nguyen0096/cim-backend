@@ -6,6 +6,15 @@ definitions:
         description: '"YYYY-MM-DD"'
         type: string
     type: object
+  dto.CloseReconciliationResult:
+    properties:
+      submission:
+        $ref: '#/definitions/models.InventorySubmission'
+      warnings:
+        items:
+          type: string
+        type: array
+    type: object
   dto.CreateReconciliationItemRequest:
     properties:
       items:
@@ -269,6 +278,16 @@ definitions:
       updated_by:
         type: string
     type: object
+  dto.SetReconciliationItemReadinessRequest:
+    properties:
+      status:
+        enum:
+        - in_progress
+        - ready_for_review
+        type: string
+    required:
+    - status
+    type: object
   dto.SheetPreview:
     properties:
       inventory_name:
@@ -365,9 +384,8 @@ definitions:
         allOf:
         - $ref: '#/definitions/dto.ReconcileReviewLabel'
         description: |-
-          ReviewLabel is populated only for ACTIVE reconcile submissions (initiated via
-          the new flow, not yet applied); it is empty for every other submission. It is
-          derived from the live child rows and is presentation-only (not persisted).
+          ReviewLabel is set only for active reconcile submissions; aggregated on read
+          from per-session readiness. Empty for every other submission.
       submission_type:
         $ref: '#/definitions/models.SubmissionType'
       updated_at:
@@ -2791,7 +2809,9 @@ paths:
     post:
       description: Admin/accountant closes an open reconciliation (open -> closed).
         Staff can no longer edit child items; admin/accountant may still edit, then
-        start processing or reopen.
+        start processing or reopen. The close always succeeds; if any count session
+        was still in_progress (not marked ready for review), the response carries
+        an advisory, non-blocking warnings list (HTTP 200).
       parameters:
       - description: Submission ID
         in: path
@@ -2804,7 +2824,7 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/models.InventorySubmission'
+            $ref: '#/definitions/dto.CloseReconciliationResult'
         "403":
           description: Forbidden
           schema:
@@ -3067,6 +3087,67 @@ paths:
       security:
       - BearerAuth: []
       summary: Update reconciliation item
+      tags:
+      - inventories
+  /inventories/submissions/{id}/reconciliation-items/{item_id}/review-label:
+    post:
+      consumes:
+      - application/json
+      description: Staff toggles their OWN count session between in_progress and ready_for_review
+        to signal they've finished entering counts. Staff-only and self-scoped (no
+        admin bypass); allowed only while the parent reconciliation is open. The submission-level
+        review_label aggregates from these per-session statuses.
+      parameters:
+      - description: Parent submission ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: Child item ID
+        in: path
+        name: item_id
+        required: true
+        type: integer
+      - description: Target session readiness
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.SetReconciliationItemReadinessRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.ReconciliationItemResponse'
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "403":
+          description: Forbidden
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "409":
+          description: Conflict
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Set reconciliation item readiness
       tags:
       - inventories
   /inventories/submissions/{id}/reopen:

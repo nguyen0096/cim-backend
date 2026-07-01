@@ -1,6 +1,7 @@
 package services
 
 import (
+	"cim-backend/internal/auth"
 	"cim-backend/internal/models"
 	"cim-backend/internal/repository"
 	"cim-backend/internal/services/dto"
@@ -53,6 +54,9 @@ type InventoryService interface {
 	CreateReconciliationItem(ctx context.Context, req dto.CreateReconciliationItemRequest) (*dto.ReconciliationItemResponse, error)
 	UpdateReconciliationItem(ctx context.Context, req dto.UpdateReconciliationItemRequest) (*dto.ReconciliationItemResponse, error)
 	DeleteReconciliationItem(ctx context.Context, req dto.DeleteReconciliationItemRequest) error
+	// SetReconciliationItemReadiness toggles a staff count session in_progress <->
+	// ready_for_review. Staff-only, own-row, open-only.
+	SetReconciliationItemReadiness(ctx context.Context, req dto.SetReconciliationItemReadinessRequest) (*dto.ReconciliationItemResponse, error)
 	// ListReconciliationItems returns the live count-session rows of an initiated
 	// reconcile, RBAC-scoped (staff: own rows; admin/accountant: all), id-ascending.
 	ListReconciliationItems(ctx context.Context, submissionID uint) ([]dto.ReconciliationItemResponse, error)
@@ -64,7 +68,9 @@ type InventoryService interface {
 	// drift re-check (roll back + warning payload on drift), and otherwise applies
 	// the synthesized reconcile with snapshot-aware consume sizing and finalizes the
 	// submission to processed.
-	CloseReconciliation(ctx context.Context, submissionID uint) (*models.InventorySubmission, error)
+	// CloseReconciliation always succeeds (open->closed); the result carries an
+	// advisory Warnings list naming any session still in_progress.
+	CloseReconciliation(ctx context.Context, submissionID uint) (*dto.CloseReconciliationResult, error)
 	ReopenReconciliation(ctx context.Context, submissionID uint) (*models.InventorySubmission, error)
 	StartProcessing(ctx context.Context, submissionID uint) (*dto.StartProcessingResult, error)
 
@@ -84,6 +90,8 @@ type inventoryService struct {
 	snapshotRepo            repository.ReconciliationSnapshotRepository
 	reconItemRepo           repository.ReconciliationRequestItemRepository
 	productRepo             repository.ProductRepository
+	userRepo                *repository.UserRepository
+	casbinService           *auth.CasbinService
 
 	fileStorageService FileStorageService
 	// baseRepo is the repository-layer transaction root. The reconcile flow does
@@ -104,6 +112,8 @@ func NewInventoryService(
 	snapshotRepo repository.ReconciliationSnapshotRepository,
 	reconItemRepo repository.ReconciliationRequestItemRepository,
 	productRepo repository.ProductRepository,
+	userRepo *repository.UserRepository,
+	casbinService *auth.CasbinService,
 	fileStorageService FileStorageService,
 	baseRepo repository.BaseRepository,
 	db *gorm.DB,
@@ -115,6 +125,8 @@ func NewInventoryService(
 		inventorySubmissionRepo: inventorySubmissionRepo,
 		snapshotRepo:            snapshotRepo,
 		reconItemRepo:           reconItemRepo,
+		userRepo:                userRepo,
+		casbinService:           casbinService,
 		fileStorageService:      fileStorageService,
 		baseRepo:                baseRepo,
 		db:                      db,

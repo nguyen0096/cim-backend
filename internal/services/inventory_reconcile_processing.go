@@ -35,13 +35,125 @@ var errReconDriftRollback = errors.New("reconciliation drift detected; rolling b
 // ProcessSubmission.
 
 // CloseReconciliation moves an initiated reconcile open -> closed (admin/
-// accountant). After this, staff can no longer edit child rows (enforced at the
-// loadActiveReconcileParent chokepoint via guardParentEditable); admin/accountant
-// may still edit while closed, then Start Processing or reopen. Runs in one tx
-// under the parent FOR UPDATE lock so a concurrent staff edit is serialized.
-func (s *inventoryService) CloseReconciliation(ctx context.Context, submissionID uint) (*models.InventorySubmission, error) {
-	return s.transitionReconcileStatus(ctx, submissionID,
-		models.ReconcileLifecycleStatusOpen, models.ReconcileLifecycleStatusClosed)
+// accountant), in one tx under the parent FOR UPDATE lock. The close always
+// succeeds; the result carries an advisory Warnings list naming any live session
+// still in_progress at close time (warn, not block).
+func (s *inventoryService) CloseReconciliation(ctx context.Context, submissionID uint) (*dto.CloseReconciliationResult, error) {
+	if !pkg.HasPermission(ctx, pkg.RBACResourceInventorySubmissions, pkg.RBACActionReconManage) {
+		return nil, pkg.ErrForbidden("user does not have permission to manage reconciliations", nil)
+	}
+
+	var result *dto.CloseReconciliationResult
+	err := s.baseRepo.WithinTx(ctx, func(txCtx context.Context) error {
+		parent, err := s.loadActiveReconcileParent(txCtx, submissionID)
+		if err != nil {
+			return err
+		}
+		if parent.ReconcileStatus != models.ReconcileLifecycleStatusOpen {
+			return pkg.ErrReconInvalidLifecycleTransition(txCtx, submissionID,
+				string(parent.ReconcileStatus), string(models.ReconcileLifecycleStatusClosed))
+		}
+
+		// Read sessions under the lock so the warning is consistent with the close.
+		rows, err := s.reconItemRepo.ListBySubmission(txCtx, submissionID)
+		if err != nil {
+			return fmt.Errorf("failed to load reconciliation sessions: %w", err)
+		}
+
+		if err := s.inventorySubmissionRepo.UpdateReconcileStatus(txCtx, submissionID, models.ReconcileLifecycleStatusClosed); err != nil {
+			return fmt.Errorf("failed to update reconcile status: %w", err)
+		}
+		parent.ReconcileStatus = models.ReconcileLifecycleStatusClosed
+		managerOwned, err := s.managerOwnedSessions(txCtx, rows)
+		if err != nil {
+			return err
+		}
+		result = &dto.CloseReconciliationResult{
+			Submission: parent,
+			Warnings:   buildNotReadySessionWarnings(txCtx, rows, managerOwned),
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return result, nil
+}
+
+// buildNotReadySessionWarnings returns one advisory line per live STAFF session
+// that is not yet ready for review, or nil when all are ready. Manager-owned
+// sessions (managerOwned[row.ID]) are excluded: readiness is a staff concept and
+// managers cannot toggle, so a manager session must never trigger the warning.
+func buildNotReadySessionWarnings(ctx context.Context, rows []models.ReconciliationRequestItem, managerOwned map[uint]bool) []string {
+	warnings := make([]string, 0)
+	for i := range rows {
+		row := rows[i]
+		if managerOwned[row.ID] {
+			continue
+		}
+		if row.Status != models.ReconciliationRequestItemStatusReadyForReview {
+			warnings = append(warnings, pkg.ReconNotReadySessionsWarning(ctx, row.ID, row.Label, row.CreatedBy))
+		}
+	}
+	if len(warnings) == 0 {
+		return nil
+	}
+	return warnings
+}
+
+// managerOwnedSessions returns the set of row IDs whose creator holds recon_manage
+// (admin/accountant). It batches the distinct creator emails into one role lookup
+// and evaluates each distinct role against the policy once, so it adds at most one
+// query plus a handful of enforce checks regardless of row count.
+func (s *inventoryService) managerOwnedSessions(ctx context.Context, rows []models.ReconciliationRequestItem) (map[uint]bool, error) {
+	managerOwned := make(map[uint]bool, len(rows))
+	if len(rows) == 0 {
+		return managerOwned, nil
+	}
+
+	emailSet := make(map[string]struct{}, len(rows))
+	for i := range rows {
+		if e := rows[i].CreatedBy; e != "" {
+			emailSet[e] = struct{}{}
+		}
+	}
+	emails := make([]string, 0, len(emailSet))
+	for e := range emailSet {
+		emails = append(emails, e)
+	}
+
+	roleByEmail, err := s.userRepo.GetRolesByEmails(ctx, emails)
+	if err != nil {
+		return nil, fmt.Errorf("failed to resolve session creator roles: %w", err)
+	}
+
+	manageByRole := make(map[models.UserRole]bool, len(roleByEmail))
+	roleManages := func(role models.UserRole) (bool, error) {
+		if v, ok := manageByRole[role]; ok {
+			return v, nil
+		}
+		ok, err := s.casbinService.Enforce(string(role), pkg.RBACResourceInventorySubmissions, pkg.RBACActionReconManage)
+		if err != nil {
+			return false, fmt.Errorf("failed to evaluate recon_manage for role %q: %w", role, err)
+		}
+		manageByRole[role] = ok
+		return ok, nil
+	}
+
+	for i := range rows {
+		role, ok := roleByEmail[rows[i].CreatedBy]
+		if !ok {
+			continue
+		}
+		manages, err := roleManages(role)
+		if err != nil {
+			return nil, err
+		}
+		if manages {
+			managerOwned[rows[i].ID] = true
+		}
+	}
+	return managerOwned, nil
 }
 
 // ReopenReconciliation moves an initiated reconcile closed -> open (admin/
@@ -52,11 +164,11 @@ func (s *inventoryService) ReopenReconciliation(ctx context.Context, submissionI
 		models.ReconcileLifecycleStatusClosed, models.ReconcileLifecycleStatusOpen)
 }
 
-// transitionReconcileStatus is the shared close/reopen body: permission check,
-// then one tx (parent FOR UPDATE) asserting the expected source lifecycle status
-// and writing the target. The parent must still be approval-pending (in-flight) —
+// transitionReconcileStatus backs Reopen: permission check, then one tx (parent
+// FOR UPDATE) asserting the expected source lifecycle status and writing the
+// target. The parent must still be approval-pending (in-flight) —
 // loadActiveReconcileParent enforces that. processing/processed are terminal and
-// never a valid close/reopen source.
+// never a valid source.
 func (s *inventoryService) transitionReconcileStatus(
 	ctx context.Context,
 	submissionID uint,

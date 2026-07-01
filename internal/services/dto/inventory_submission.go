@@ -7,21 +7,12 @@ import (
 	"github.com/shopspring/decimal"
 )
 
-// ReconcileReviewLabel is the admin-facing progress label for an ACTIVE
-// (initiated, not-yet-applied) reconciliation, derived from the child rows
-// (epic #38, Part 5 / S4). It is presentation-only and computed on read; it is
-// not persisted.
+// ReconcileReviewLabel is the admin-facing progress label for an active
+// reconciliation, aggregated on read from per-session readiness.
 type ReconcileReviewLabel string
 
 const (
-	// ReconcileReviewLabelInProgress means at least one live child row is not yet
-	// past review (some row is still in_progress / ready), so staff entry is still
-	// settling.
-	ReconcileReviewLabelInProgress ReconcileReviewLabel = "in_progress"
-	// ReconcileReviewLabelReadyForReview means every live child row has reached
-	// `ready` or beyond (ready/approved/applied) — the whole reconcile is ready for
-	// the admin to review. An active reconcile with NO live child rows is treated
-	// as in_progress (nothing to review yet), never ready.
+	ReconcileReviewLabelInProgress     ReconcileReviewLabel = "in_progress"
 	ReconcileReviewLabelReadyForReview ReconcileReviewLabel = "ready_for_review"
 )
 
@@ -100,9 +91,8 @@ type SubmissionResponse struct {
 	Reason                 string                            `json:"reason,omitempty"`
 	Errors                 json.RawMessage                   `json:"error,omitempty" swaggertype:"object"`
 	Warnings               []string                          `json:"warnings,omitempty"`
-	// ReviewLabel is populated only for ACTIVE reconcile submissions (initiated via
-	// the new flow, not yet applied); it is empty for every other submission. It is
-	// derived from the live child rows and is presentation-only (not persisted).
+	// ReviewLabel is set only for active reconcile submissions; aggregated on read
+	// from per-session readiness. Empty for every other submission.
 	ReviewLabel ReconcileReviewLabel `json:"review_label,omitempty"`
 	// CountBreakdown is populated only for ACTIVE reconcile submissions: the
 	// per-(inventory_item, label) contributions behind each summed item line (issue

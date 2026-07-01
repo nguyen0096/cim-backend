@@ -84,6 +84,7 @@ const (
 	ErrKeyReconInvalidLifecycleTransition = "recon_invalid_lifecycle_transition"
 	ErrKeyReconDriftWarning               = "recon_drift_warning"
 	ErrKeyReconCannotRejectInLifecycle    = "recon_cannot_reject_in_lifecycle"
+	ErrKeyReconNotReadySessionWarning     = "recon_not_ready_session_warning"
 
 	// Unit Error Keys
 
@@ -335,6 +336,10 @@ var ErrorMessages = map[string]ErrorMessage{
 	ErrKeyReconCannotRejectInLifecycle: {
 		EN: "Reconciliation submission %d can no longer be rejected (lifecycle status %s); it must be reopened first, and a processed reconciliation is final",
 		VI: "Phiếu kiểm kê %d không thể bị từ chối nữa (trạng thái %s); cần mở lại trước, và phiếu kiểm kê đã xử lý là kết quả cuối cùng",
+	},
+	ErrKeyReconNotReadySessionWarning: {
+		EN: "Count session #%d (label %q, by %s) was still in progress, not yet marked ready for review, when this reconciliation was closed",
+		VI: "Phiên kiểm đếm #%d (nhãn %q, bởi %s) vẫn đang thực hiện, chưa được đánh dấu sẵn sàng để duyệt, khi phiếu kiểm kê này được đóng",
 	},
 	// Unit Errors
 	ErrKeyUnitAlreadyExists: {
@@ -834,6 +839,12 @@ func ErrReconCannotRejectInLifecycle(ctx context.Context, submissionID uint, sta
 // Warnings list after rolling back.
 func ReconDriftWarning(ctx context.Context, submissionID uint, submissionType, processedAt string) string {
 	return fmt.Sprintf(getErrorMessage(ctx, ErrKeyReconDriftWarning), submissionID, submissionType, processedAt)
+}
+
+// ReconNotReadySessionsWarning renders one advisory line for a count session
+// still in_progress at close time.
+func ReconNotReadySessionsWarning(ctx context.Context, sessionID uint, label, createdBy string) string {
+	return fmt.Sprintf(getErrorMessage(ctx, ErrKeyReconNotReadySessionWarning), sessionID, label, createdBy)
 }
 
 func ErrDisposeValidationFailed(message string) *AppError {
