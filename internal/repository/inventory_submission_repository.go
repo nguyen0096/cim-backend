@@ -304,6 +304,7 @@ func (r *inventorySubmissionRepository) CancelReconciliation(ctx context.Context
 	updates, err := pkg.WithUpdateFields(ctx, map[string]interface{}{
 		"reconcile_status":  models.ReconcileLifecycleStatusCanceled,
 		"processing_status": models.InventorySubmissionStatusCanceled,
+		"approval_status":   models.InventorySubmissionApprovalStatusRejected,
 	})
 	if err != nil {
 		return fmt.Errorf("failed to prepare update fields: %w", err)

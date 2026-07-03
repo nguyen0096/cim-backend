@@ -14,8 +14,8 @@ import (
 
 // expectCancelParentLoadStatus queues loadActiveReconcileParent's locking load for
 // a cancel: the parent FOR UPDATE read (with the given reconcile_status) + the
-// snapshot existence count. approval_status stays 'pending' so the in-flight gate
-// passes and the from-state gate is the one that decides.
+// snapshot existence count. processing_status stays 'pending' so the in-flight gate
+// (IsActiveReconcile) is decided by reconcile_status alone.
 func expectCancelParentLoadStatus(mock sqlmock.Sqlmock, submissionID uint, reconcileStatus string) {
 	mock.ExpectQuery(regexp.QuoteMeta(`SELECT * FROM "inventory_submissions"`)+`.*FOR UPDATE`).
 		WithArgs(submissionID, sqlmock.AnyArg()).
@@ -27,9 +27,9 @@ func expectCancelParentLoadStatus(mock sqlmock.Sqlmock, submissionID uint, recon
 
 // TestCancelReconciliation_AllowedFromStates drives the from-state matrix: cancel
 // succeeds from open and closed, writing the terminal reconcile_status='canceled' +
-// processing_status='canceled' in one UPDATE under the advisory lock, with NO stock
-// mutation (any consume/apply query would be an unexpected statement sqlmock fails
-// on).
+// processing_status='canceled' + approval_status='rejected' in one UPDATE under the
+// advisory lock, with NO stock mutation (any consume/apply query would be an
+// unexpected statement sqlmock fails on).
 func TestCancelReconciliation_AllowedFromStates(t *testing.T) {
 	for _, from := range []string{
 		string(models.ReconcileLifecycleStatusOpen),
@@ -45,7 +45,8 @@ func TestCancelReconciliation_AllowedFromStates(t *testing.T) {
 			mock.ExpectExec(regexp.QuoteMeta(`SELECT pg_advisory_xact_lock(`)).
 				WillReturnResult(sqlmock.NewResult(0, 0))
 			mock.ExpectExec(regexp.QuoteMeta(`UPDATE "inventory_submissions" SET`)).
-				WithArgs(string(models.InventorySubmissionStatusCanceled),
+				WithArgs(string(models.InventorySubmissionApprovalStatusRejected),
+					string(models.InventorySubmissionStatusCanceled),
 					string(models.ReconcileLifecycleStatusCanceled),
 					sqlmock.AnyArg(), sqlmock.AnyArg(), submissionID).
 				WillReturnResult(sqlmock.NewResult(0, 1))
@@ -56,16 +57,19 @@ func TestCancelReconciliation_AllowedFromStates(t *testing.T) {
 			require.NotNil(t, got)
 			assert.Equal(t, models.ReconcileLifecycleStatusCanceled, got.ReconcileStatus)
 			assert.Equal(t, models.InventorySubmissionStatusCanceled, got.ProcessingStatus)
+			assert.Equal(t, models.InventorySubmissionApprovalStatusRejected, got.ApprovalStatus,
+				"cancel must terminalize approval_status so it leaves the pending list")
 			assert.False(t, got.IsActiveReconcile(), "a canceled reconcile must be non-active")
 			assert.NoError(t, mock.ExpectationsWereMet())
 		})
 	}
 }
 
-// TestCancelReconciliation_InvalidFromStates asserts the from-gate rejects any
-// non-open/closed source (processing/processed/canceled) with a clean 409 and NO
-// write: the tx rolls back after the load, no UPDATE is issued. The already-canceled
-// case is the idempotency-409 / re-cancel guard.
+// TestCancelReconciliation_InvalidFromStates asserts a non-open/closed source
+// (processing/processed/canceled) is rejected with a clean 409 and NO write: the tx
+// rolls back after the load, no UPDATE is issued. loadActiveReconcileParent's
+// IsActiveReconcile in-flight gate rejects these before the from-state check. The
+// already-canceled case is the idempotency-409 / re-cancel guard.
 func TestCancelReconciliation_InvalidFromStates(t *testing.T) {
 	for _, from := range []string{
 		string(models.ReconcileLifecycleStatusProcessing),

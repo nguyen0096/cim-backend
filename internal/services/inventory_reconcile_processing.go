@@ -195,6 +195,7 @@ func (s *inventoryService) CancelReconciliation(ctx context.Context, submissionI
 		}
 		parent.ReconcileStatus = models.ReconcileLifecycleStatusCanceled
 		parent.ProcessingStatus = models.InventorySubmissionStatusCanceled
+		parent.ApprovalStatus = models.InventorySubmissionApprovalStatusRejected
 		result = parent
 		return nil
 	})

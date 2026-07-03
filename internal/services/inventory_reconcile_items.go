@@ -42,9 +42,10 @@ func (s *inventoryService) loadActiveReconcileParent(ctx context.Context, submis
 		return nil, pkg.ErrReconParentNotInitiated(ctx, submissionID)
 	}
 
-	// The parent must still be in-flight (approval pending).
-	if submission.ApprovalStatus != models.InventorySubmissionApprovalStatusPending {
-		return nil, pkg.ErrReconParentNotInFlight(ctx, submissionID, string(submission.ApprovalStatus))
+	// The parent must still be in flight (active reconcile: pending processing,
+	// reconcile_status open/closed) — not a terminal canceled/processed reconcile.
+	if !submission.IsActiveReconcile() {
+		return nil, pkg.ErrReconParentNotInFlight(ctx, submissionID, string(submission.ReconcileStatus))
 	}
 	return submission, nil
 }

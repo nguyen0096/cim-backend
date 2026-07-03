@@ -1159,11 +1159,12 @@ func (s *inventoryService) ListSubmissions(ctx context.Context, params models.Li
 
 	submissionItemMap := make(map[uint][]dto.QuantityItem)
 	itemIDs := make([]uint, 0)
-	// synthesized holds the read-only synthesis over an active reconcile's child
-	// rows, from which its items/label/warnings are derived (its payload is empty).
+	// synthesized holds the read-only synthesis over a reconcile's child rows, from
+	// which its items/label/warnings are derived while its payload is empty (active
+	// or canceled; a processed reconcile persists its payload and is read from it).
 	synthesized := make(map[uint]*dto.SynthesizedReconcile)
 	for _, submission := range submissions {
-		if isActiveReconcile(submission) {
+		if isReconcilePayloadSynthesized(submission) {
 			syn, err := s.SynthesizeSubmissionPayload(ctx, submission.ID)
 			if err != nil {
 				return nil, 0, fmt.Errorf("failed to synthesize reconcile submission %d: %w", submission.ID, err)
@@ -1285,6 +1286,14 @@ func mapReconcileQueueRow(submission models.InventorySubmission) dto.SubmissionR
 // items/label/warnings must be derived by synthesizing over its child rows.
 func isActiveReconcile(submission models.InventorySubmission) bool {
 	return submission.IsActiveReconcile()
+}
+
+// isReconcilePayloadSynthesized reports whether a reconcile submission's items must
+// be synthesized from its child rows on read: true while its payload is empty
+// (active or canceled), false once start-processing persists the applied payload.
+func isReconcilePayloadSynthesized(submission models.InventorySubmission) bool {
+	return submission.SubmissionType == models.InventorySubmissionTypeReconcile &&
+		len(submission.Payload) == 0
 }
 
 func (s *inventoryService) formatProcessingErrors(jsonStr json.RawMessage) json.RawMessage {
