@@ -34,16 +34,14 @@ type InventoryItemFilters struct {
 	Sort        string
 	Order       string
 	// SearchTokens, when non-empty, matches products whose name contains ANY
-	// token (case-insensitive). Separate from Search (whole-string contains)
-	// so existing callers keep their behaviour.
+	// token (case-insensitive).
 	SearchTokens []string
 	// ProductIDs, when non-empty, restricts results to these product ids.
 	ProductIDs []uint
 }
 
-// applyInventoryItemFilters applies the shared WHERE/JOIN clauses used by both
-// the list and the count queries, so the two can never diverge on filtering.
-// Ordering, preloads, and limit/offset are applied by the callers.
+// applyInventoryItemFilters applies the shared WHERE/JOIN clauses for the list
+// and count queries.
 func applyInventoryItemFilters(query *gorm.DB, inventoryID uint, filters InventoryItemFilters) *gorm.DB {
 	query = query.Where("inventory_items.inventory_id = ?", inventoryID)
 
@@ -94,9 +92,8 @@ type InventoryItemRepository interface {
 
 	GetByInventoryIDWithFilters(ctx context.Context, inventoryID uint, filters InventoryItemFilters, limit, offset int) ([]models.InventoryItem, error)
 	CountByInventoryIDWithFilters(ctx context.Context, inventoryID uint, filters InventoryItemFilters) (int64, error)
-	// GetActiveInventoryItems returns a list of InventoryItem that have active status.
-	// This method also populates a list of consumable purchase transactions, sorted by
-	// created_at ascending.
+	// GetActiveInventoryItems returns active inventory items with their consumable
+	// transactions populated (oldest first).
 	GetActiveInventoryItems(ctx context.Context, inventoryID uint, ids []uint) ([]*models.InventoryItem, error)
 	GetActiveInventoryItemsByProductIDs(ctx context.Context, inventoryID uint, productIDs []uint) ([]*models.InventoryItem, error)
 	GetByIDs(ctx context.Context, ids []uint) ([]*models.InventoryItem, error)
@@ -223,15 +220,8 @@ func (r *inventoryItemRepository) CountLowStockItems(ctx context.Context) (int64
 	return count, err
 }
 
-// inventoryItemMetadataColumns is the explicit whitelist of columns the
-// metadata-update path (UpdateInventoryItem CRUD) is allowed to write. Movement-owned
-// columns (quantity, consuming_transaction_id) are deliberately excluded: stock changes
-// flow only through movement/submission flows (PO receive, dispose/transfer, reconcile
-// apply) via SaveInventoryItemChanges, each recording an inventory_submission/transaction
-// the reconcile drift check can observe. Scoping the UPDATE to these columns keeps
-// quantity immutable here AND guarantees a concurrent movement's quantity write is never
-// clobbered (the metadata UPDATE simply does not touch that column), so this is not a
-// read-modify-write of quantity.
+// inventoryItemMetadataColumns are the columns the metadata-update path may
+// write; movement-owned columns (quantity, consuming_transaction_id) are excluded.
 var inventoryItemMetadataColumns = []string{
 	"inventory_id",
 	"product_id",
@@ -264,11 +254,6 @@ func (r *inventoryItemRepository) GetActiveInventoryItems(
 	ids []uint,
 ) ([]*models.InventoryItem, error) {
 	var items []*models.InventoryItem
-	// runInTx enlists in the caller's transaction when there is one (e.g. the
-	// reconcile Start-Processing apply tx, which must read the items under the same
-	// advisory lock as the subsequent write) WITHOUT opening a nested gorm
-	// SAVEPOINT, and opens its own one-shot tx otherwise — preserving the legacy
-	// standalone behavior.
 	return items, runInTx(ctx, r.db, func(tx *gorm.DB) error {
 		err := tx.
 			Preload("Inventory").
@@ -328,7 +313,6 @@ func (r *inventoryItemRepository) populateConsumableTransactions(
 	tx *gorm.DB,
 	items []*models.InventoryItem,
 ) error {
-	// Fetch consumable transactions for the active inventory items.
 	var transactions []*models.InventoryTransaction
 	err := tx.
 		Table("inventory_transactions").
@@ -440,12 +424,6 @@ func (r *inventoryItemRepository) SaveInventoryItemChanges(
 	changes []*models.InventoryItemChange,
 	txns []*models.InventoryTransaction,
 ) error {
-	// runInTx enlists in the caller's transaction when present (the reconcile
-	// Start-Processing apply runs the FIFO consume + save inside its one
-	// advisory-locked tx so the drift re-check is authoritative) WITHOUT opening a
-	// nested gorm SAVEPOINT; otherwise it opens its own one-shot tx exactly as the
-	// legacy ProcessSubmission path did. The FOR UPDATE in updateInventoryItems is
-	// then held on the ambient tx's connection.
 	return runInTx(ctx, r.db, func(tx *gorm.DB) error {
 		err := r.updateInventoryItems(ctx, tx, changes)
 		if err != nil {

@@ -29,8 +29,7 @@ func (u *Unit) IsLeafUnit() bool {
 	return u.Level == 4
 }
 
-// GetRootBaseUnitID returns the ID of the root base unit in the hierarchy
-// If this unit is a root base unit (Level 1), it returns its own ID
+// GetRootBaseUnitID returns the ID of the root base unit in the hierarchy.
 func (u *Unit) GetRootBaseUnitID() uint {
 	if u.IsRootBaseUnit() {
 		return u.ID
@@ -38,13 +37,11 @@ func (u *Unit) GetRootBaseUnitID() uint {
 	if u.BaseUnit != nil {
 		return u.BaseUnit.GetRootBaseUnitID()
 	}
-	// If BaseUnit is not loaded, we can't traverse, return current ID
-	// This should not happen if the unit hierarchy is properly loaded
 	return u.ID
 }
 
-// GetTotalConversionFactorToRoot calculates the total conversion factor from this unit to the root base unit
-// This multiplies all conversion factors along the hierarchy chain
+// GetTotalConversionFactorToRoot returns the product of conversion factors from
+// this unit up to the root base unit.
 func (u *Unit) GetTotalConversionFactorToRoot() float64 {
 	if u.IsRootBaseUnit() {
 		return 1.0
@@ -52,13 +49,11 @@ func (u *Unit) GetTotalConversionFactorToRoot() float64 {
 	if u.BaseUnit != nil {
 		return u.ConversionFactor * u.BaseUnit.GetTotalConversionFactorToRoot()
 	}
-	// If BaseUnit is not loaded, return current conversion factor
-	// This should not happen if the unit hierarchy is properly loaded
 	return u.ConversionFactor
 }
 
-// GetExpectedLevel calculates the expected level based on the base unit's level
-// Returns 1 if BaseUnitID is nil, otherwise returns base unit's level + 1
+// GetExpectedLevel returns the expected level: 1 when BaseUnitID is nil, else
+// base unit's level + 1.
 func (u *Unit) GetExpectedLevel() int {
 	if u.BaseUnitID == nil {
 		return 1
@@ -66,42 +61,32 @@ func (u *Unit) GetExpectedLevel() int {
 	if u.BaseUnit != nil {
 		return u.BaseUnit.Level + 1
 	}
-	// If BaseUnit is not loaded, we can't determine expected level
-	// This should not happen if the unit hierarchy is properly loaded
 	return u.Level
 }
 
-// CalculateConversionFactorToCurrent calculates the conversion factor from this unit to the target unit
-// Returns the factor needed to convert from this unit to the target unit
-// For example, if this unit is 102 and target is 101, it returns 3 (3 of 102 = 1 of 101)
-// This traverses up the BaseUnit chain from this unit to the target unit
+// CalculateConversionFactorToCurrent returns the factor to convert from this unit
+// to the target unit (e.g. this=102, target=101 -> 3), or 0 when no path exists.
 func (u *Unit) CalculateConversionFactorToCurrent(targetUnitID uint) float64 {
 	if u.ID == targetUnitID {
 		return 1.0
 	}
 
-	// Traverse up the hierarchy from this unit to the target unit
-	// Multiply conversion factors along the path
 	currentUnit := u
 	visited := make(map[uint]bool)
 	factor := 1.0
 
 	for currentUnit != nil && currentUnit.ID != targetUnitID {
-		// Prevent infinite loops
 		if visited[currentUnit.ID] {
 			return 0 // Circular reference
 		}
 		visited[currentUnit.ID] = true
 
-		// If this unit has no base unit, we can't reach the target
 		if currentUnit.BaseUnitID == nil {
 			return 0
 		}
 
-		// Multiply by the conversion factor to get to the base unit
 		factor *= currentUnit.ConversionFactor
 
-		// Move to the base unit
 		if currentUnit.BaseUnit == nil {
 			return 0 // Base unit not loaded
 		}
@@ -112,7 +97,6 @@ func (u *Unit) CalculateConversionFactorToCurrent(targetUnitID uint) float64 {
 		return factor
 	}
 
-	// If we couldn't find a path, return 0 to indicate error
 	return 0
 }
 
@@ -121,8 +105,7 @@ func (u *Unit) StandardizeName() {
 	u.Name = strings.ToUpper(strings.TrimSpace(u.Name))
 }
 
-// DeduceDefaultsFromBaseUnit deduces the default values from the base unit.
-// If the unit is a base unit, it sets the level to 1 and the conversion factor to 1.
+// DeduceDefaultsFromBaseUnit sets level and conversion factor to 1 for a base unit.
 func (u *Unit) DeduceDefaultsFromBaseUnit() {
 	if u.BaseUnitID == nil {
 		u.Level = 1

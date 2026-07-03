@@ -26,17 +26,14 @@ type InventoryRepository interface {
 	GetLastPurchasePrices(ctx context.Context, supplierID uint, limit uint) ([]*dto.LastPurchasePriceResponse, error)
 
 	GetTransactionsByInventoryItemIDs(ctx context.Context, inventoryItemIDs []uint) ([]models.InventoryTransaction, error)
-	// GetTransactionsByInventoryIDs returns transactions for an inventory in [from, to).
-	// When itemIDs is non-empty the result is further scoped to those inventory_item ids
-	// (used to fetch only a page's worth of items); empty itemIDs means the whole inventory.
+	// GetTransactionsByInventoryIDs returns transactions for an inventory in
+	// [from, to), optionally scoped to itemIDs.
 	GetTransactionsByInventoryIDs(ctx context.Context, inventoryID uint, from, to *time.Time, itemIDs ...uint) ([]*models.InventoryTransaction, error)
 	GetTransactionsByIDs(ctx context.Context, txnIDs []uint) ([]*models.InventoryTransaction, error)
 
-	// GetTransactionsByInventoryIDsWithCounter returns transactions for an inventory in [from, to)
-	// along with the counter transaction's purchase_order_item_id (if any). For sells, disposals,
-	// and transfers, this exposes the originating purchase POI without a follow-up query — the
-	// timeline service uses it to attribute every txn to its source PO.
-	// When itemIDs is non-empty the result is scoped to those inventory_item ids.
+	// GetTransactionsByInventoryIDsWithCounter returns transactions for an inventory
+	// in [from, to) with each counter transaction's purchase_order_item_id resolved,
+	// optionally scoped to itemIDs.
 	GetTransactionsByInventoryIDsWithCounter(ctx context.Context, inventoryID uint, from, to *time.Time, itemIDs ...uint) ([]*InventoryTransactionWithCounter, error)
 
 	// ExistsByID reports whether an inventory row with the given id exists.
@@ -64,9 +61,6 @@ func (r *inventoryRepository) Create(ctx context.Context, inventory *models.Inve
 
 func (r *inventoryRepository) ExistsByID(ctx context.Context, id uint) (bool, error) {
 	var exists bool
-	// SELECT 1 FROM inventories WHERE id = ? AND deleted_at IS NULL LIMIT 1.
-	// Model(&Inventory{}) keeps GORM's soft-delete scope; DB(ctx) enlists in the
-	// caller's transaction when there is one.
 	err := r.DB(ctx).WithContext(ctx).
 		Model(&models.Inventory{}).
 		Select("1").
@@ -115,33 +109,28 @@ func (r *inventoryRepository) List(ctx context.Context, limit, offset int) ([]mo
 }
 
 func (r *inventoryRepository) AddInventory(ctx context.Context, productID uint, quantity decimal.Decimal, referenceID uint, referenceType string) error {
-	// Find the inventory item for this product
 	var inventoryItem models.InventoryItem
 	err := r.db.WithContext(ctx).Where("product_id = ?", productID).First(&inventoryItem).Error
 	if err != nil {
 		return err
 	}
 
-	// Update the quantity
 	inventoryItem.Quantity = inventoryItem.Quantity.Add(quantity)
 
 	return r.db.WithContext(ctx).Save(&inventoryItem).Error
 }
 
 func (r *inventoryRepository) RemoveInventory(ctx context.Context, productID uint, quantity decimal.Decimal, referenceID uint, referenceType string) error {
-	// Find the inventory item for this product
 	var inventoryItem models.InventoryItem
 	err := r.db.WithContext(ctx).Where("product_id = ?", productID).First(&inventoryItem).Error
 	if err != nil {
 		return err
 	}
 
-	// Check if there's enough inventory
 	if inventoryItem.Quantity.LessThan(quantity) {
 		return fmt.Errorf("insufficient inventory: available %s, requested %s", inventoryItem.Quantity.String(), quantity.String())
 	}
 
-	// Update the quantity
 	inventoryItem.Quantity = inventoryItem.Quantity.Sub(quantity)
 
 	return r.db.WithContext(ctx).Save(&inventoryItem).Error
@@ -157,7 +146,6 @@ func (r *inventoryRepository) GetTransactionsByInventoryItemIDs(ctx context.Cont
 func (r *inventoryRepository) GetLastPurchasePrices(ctx context.Context, supplierID uint, limit uint) ([]*dto.LastPurchasePriceResponse, error) {
 	var results []*dto.LastPurchasePriceResponse
 
-	// First subquery: get the latest created_at for each distinct price per product-supplier pair
 	distinctPricesSubquery := r.db.WithContext(ctx).
 		Table("inventory_transactions AS it").
 		Select(`
@@ -173,14 +161,12 @@ func (r *inventoryRepository) GetLastPurchasePrices(ctx context.Context, supplie
 		Where("p.status = ?", "active").
 		Where("s.status = ?", "active")
 
-	// Filter by supplier_id if provided
 	if supplierID > 0 {
 		distinctPricesSubquery = distinctPricesSubquery.Where("it.supplier_id = ?", supplierID)
 	}
 
 	distinctPricesSubquery = distinctPricesSubquery.Group("ii.product_id, it.supplier_id, it.price")
 
-	// Second subquery: rank distinct prices by their latest occurrence
 	rankedSubquery := r.db.WithContext(ctx).
 		Table("(?) AS distinct_prices", distinctPricesSubquery).
 		Select(`
@@ -191,7 +177,6 @@ func (r *inventoryRepository) GetLastPurchasePrices(ctx context.Context, supplie
 			ROW_NUMBER() OVER (PARTITION BY product_id, supplier_id ORDER BY latest_created_at DESC) AS rn
 		`)
 
-	// Main query: select only top N distinct prices per product-supplier pair
 	query := r.db.WithContext(ctx).
 		Table("(?) AS ranked", rankedSubquery).
 		Select(`
@@ -242,9 +227,7 @@ func (r *inventoryRepository) GetTransactionsByInventoryIDsWithCounter(ctx conte
 		CounterPOIID *uint `gorm:"column:counter_poi_id"`
 	}
 
-	// Soft-delete filters: it/ii in WHERE (INNER JOIN-equivalent), counter in JOIN
-	// ON clause to preserve LEFT JOIN semantics (soft-deleted counter → main txn
-	// still returned, CounterPOIID is nil).
+	// Counter soft-delete filter goes in the JOIN ON (not WHERE) to preserve LEFT JOIN semantics.
 	q := r.db.WithContext(ctx).
 		Table("inventory_transactions it").
 		Select("it.*, counter.purchase_order_item_id AS counter_poi_id").

@@ -129,13 +129,10 @@ func (h *SellingPriceHandler) DeleteSellingPrice(c echo.Context) error {
 	})
 }
 
-// BackfillPOItems re-points PO items to the START selling price (:id) across its
-// effective range, resolved SERVER-SIDE from the current ledger. The body's
-// end_effective_from is the exclusive end DATE the client previewed
-// ("YYYY-MM-DD"; null/omitted = previewed open-ended) and acts as an
-// optimistic-concurrency assertion: a mismatch with the resolved boundary date
-// returns 409 and the client must re-fetch the preview. The whole apply runs in
-// a single transaction.
+// BackfillPOItems re-points PO items to the start selling price (:id) across its
+// server-resolved effective range. The body's end_effective_from asserts the
+// previewed exclusive end date (null = open-ended); a mismatch returns 409. Runs
+// in a single transaction.
 // @Summary Apply a selling price to PO items in its effective range
 // @Description Re-point PO items to the start selling price (:id) across its server-resolved effective range. end_effective_from ("YYYY-MM-DD") must match the previewed boundary date (null = open-ended) or a 409 is returned.
 // @Tags selling-prices

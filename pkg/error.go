@@ -37,10 +37,8 @@ const (
 	ErrorCodePurchaseOrderNoItems ErrorCode = 7 // purchase-order-no-items
 	// ErrorCodePurchaseOrderNoApprovedPaymentReceipt is used when completing a purchase order without approved payment receipt
 	ErrorCodePurchaseOrderNoApprovedPaymentReceipt ErrorCode = 14 // purchase-order-no-approved-payment-receipt
-	// ErrorCodeDuplicateOrderNumber is returned by the repository when a purchase
-	// order INSERT violates the order_number unique constraint (#84 race). It is the
-	// only signal the create path uses to decide a regenerate-and-retry; the service
-	// stays unaware of the SQLSTATE / constraint name behind it.
+	// ErrorCodeDuplicateOrderNumber is returned when a purchase order INSERT
+	// violates the order_number unique constraint; the create path retries on it.
 	ErrorCodeDuplicateOrderNumber ErrorCode = 18 // duplicate-order-number
 
 	// Inventory Error Codes
@@ -51,7 +49,7 @@ const (
 	// ErrorCodeReconcileValidationFailed is used when reconcile validation fails
 	ErrorCodeReconcileValidationFailed ErrorCode = 10 // reconcile-validation-failed
 	// ErrorCodeActivePendingReconcileConflict is returned when an inventory already
-	// has a pending reconcile in flight (one-active-pending-reconcile guard, #38 P3).
+	// has a pending reconcile in flight.
 	ErrorCodeActivePendingReconcileConflict ErrorCode = 17 // active-pending-reconcile-conflict
 	// ErrorCodeDisposeValidationFailed is used when dispose validation fails
 	ErrorCodeDisposeValidationFailed ErrorCode = 11 // dispose-validation-failed
@@ -73,10 +71,8 @@ type AppError struct {
 	Code    ErrorCode
 	Cause   error
 	Message string
-	// MessageKey, when set, is an ErrorMessages catalog key the error handler
-	// resolves to a request-localized message at response time (formatted with
-	// MessageArgs). Lets lower layers (e.g. repositories) return a domain error
-	// without knowing the caller's language. Message is the fallback if unset.
+	// MessageKey, when set, is an ErrorMessages catalog key resolved to a localized
+	// message at response time (formatted with MessageArgs); Message is the fallback.
 	MessageKey  string
 	MessageArgs []interface{}
 	// Stack holds a stack trace captured at error creation time. It is used for
@@ -110,12 +106,9 @@ func (e *AppError) Error() string {
 	return e.Message
 }
 
-// MarshalJSON implements json.Marshaler interface.
-//
-// When MessageKey is set it is emitted as a stable, language-independent "key"
-// field so clients can route an error to the offending field/control without
-// parsing the localized "message" (issue #42). The field is omitted entirely for
-// errors that carry no key, so this is additive and harmless for existing errors.
+// MarshalJSON emits MessageKey as a stable, language-independent "key" field when
+// set (omitted otherwise) so clients can route an error without parsing the
+// localized message.
 func (e *AppError) MarshalJSON() ([]byte, error) {
 	obj := map[string]interface{}{
 		"code":    e.Code.String(),
@@ -198,15 +191,12 @@ func (e *AppError) capturedStack() string { return e.Stack }
 // creation time (*AppError, and *BatchError via promotion).
 type stackCapturer interface{ capturedStack() string }
 
-// StackTrace returns a stack trace associated with err for server-side logging.
-// If err (or anything it wraps) carries a captured creation stack (*AppError or
-// *BatchError), that stack is returned. Otherwise it falls back to the current
-// goroutine stack via debug.Stack so raw errors still get a usable trace.
+// StackTrace returns a stack trace associated with err for server-side logging:
+// the captured creation stack when err (or anything it wraps) carries one
+// (*AppError or *BatchError), else the current goroutine stack via debug.Stack.
 //
-// Note: errors.As(&appErr) does NOT reach the AppError embedded in *BatchError
-// (Go does not traverse embedded fields without Unwrap/As), so we walk the
-// Unwrap chain and check the stackCapturer interface, which *BatchError
-// satisfies through method promotion.
+// errors.As does not reach the AppError embedded in *BatchError, so we walk the
+// Unwrap chain and check stackCapturer (satisfied via method promotion).
 func StackTrace(err error) string {
 	for e := err; e != nil; e = errors.Unwrap(e) {
 		if sc, ok := e.(stackCapturer); ok {
@@ -275,8 +265,8 @@ func (e *BatchError) Error() string {
 	return result
 }
 
-// MarshalJSON implements json.Marshaler interface. Like AppError it emits the
-// stable "key" field when MessageKey is set (omitted otherwise); see #42.
+// MarshalJSON emits the stable "key" field when MessageKey is set (omitted
+// otherwise), like AppError.
 func (e *BatchError) MarshalJSON() ([]byte, error) {
 	obj := map[string]interface{}{
 		"code":    e.Code.String(),

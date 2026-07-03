@@ -21,8 +21,7 @@ func (s SheetNamePattern) Parse(params map[string]string) string {
 	return result
 }
 
-// NameParamResolver is a function that returns the current parameter map
-// This allows parameters to be resolved dynamically (e.g., for time-based parameters)
+// NameParamResolver returns the current parameter map, resolved dynamically.
 type NameParamResolver func() map[string]string
 
 // SheetConfig contains the configuration for a sheet, used as anchor to let
@@ -62,8 +61,7 @@ func (sc *SheetConfig) GetResolvedParams() map[string]string {
 	return sc.NameParams
 }
 
-// WithSheetNameTimeParams returns a NameParamResolver that provides time-based parameters
-// This resolver is dynamic and will use the current time when called
+// WithSheetNameTimeParams returns a NameParamResolver providing time-based parameters.
 func WithSheetNameTimeParams(t time.Time) NameParamResolver {
 	return func() map[string]string {
 		return map[string]string{
@@ -134,7 +132,7 @@ type Sheet struct {
 	ColumnIndices map[int]map[string]int
 }
 
-// AppendRow appends a new row to the sheet.
+// PrependRowData inserts a row at rowNumber and writes rowData.
 func (s *Sheet) PrependRowData(
 	ctx context.Context,
 	rowNumber int,
@@ -172,14 +170,12 @@ func (s *Sheet) UpdateRow(
 func (s *Sheet) GetColByExactHeaders(sheetInternalID SheetInternalID, headers []string) (int, error) {
 	headerNode := s.HeaderRoot
 
-	// Validate that the search path depth doesn't exceed header height
 	if len(headers) > s.HeaderHeight {
 		return -1, fmt.Errorf("search path depth (%d) exceeds header height (%d). Header path: %v", len(headers), s.HeaderHeight, headers)
 	}
 
 	for i, header := range headers {
 		if headerNode.Lookup == nil {
-			// If the node has no children (leaf node), the search path is too deep
 			if len(headerNode.SubHeaders) == 0 {
 				return -1, fmt.Errorf("cannot traverse deeper: node '%s' at cell %s is a leaf node (merged cell spanning full header height) but search path has %d more levels. Header path provided: %v",
 					headerNode.Value, headerNode.TopLeftCell.String(), len(headers)-i, headers)
@@ -189,7 +185,6 @@ func (s *Sheet) GetColByExactHeaders(sheetInternalID SheetInternalID, headers []
 		}
 		node, ok := headerNode.Lookup[header]
 		if !ok {
-			// List available headers in the lookup for debugging
 			availableHeaders := make([]string, 0, len(headerNode.Lookup))
 			for k := range headerNode.Lookup {
 				availableHeaders = append(availableHeaders, k)
@@ -199,7 +194,6 @@ func (s *Sheet) GetColByExactHeaders(sheetInternalID SheetInternalID, headers []
 		headerNode = node
 	}
 
-	// After traversing the path, verify we're at a leaf node (column header)
 	if headerNode.TopLeftCell.Col != headerNode.BottomRightCell.Col {
 		return -1, fmt.Errorf("header node is not a single column (spans columns %d-%d)", headerNode.TopLeftCell.Col, headerNode.BottomRightCell.Col)
 	}
@@ -237,7 +231,6 @@ func (s *Sheet) recursivelyParseNode(ctx context.Context, currentDepth int, topL
 		return nil, fmt.Errorf("header of column %d is out of bounds", topLeftCell.Col)
 	}
 
-	// get header text from cell value and trim space
 	cellValue, err := s.File.Provider.GetCellValue(ctx, s.SheetName, cellName)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get cell value: %w", err)
@@ -245,7 +238,6 @@ func (s *Sheet) recursivelyParseNode(ctx context.Context, currentDepth int, topL
 	cellValue = strings.TrimSpace(cellValue)
 
 	if currentDepth == s.HeaderHeight {
-		// header is the lowest level, return the node
 		return &HeaderNode{
 			Value:           cellValue,
 			TopLeftCell:     topLeftCell,
@@ -272,7 +264,6 @@ func (s *Sheet) recursivelyParseNode(ctx context.Context, currentDepth int, topL
 		if err != nil {
 			return nil, fmt.Errorf("failed to parse child node: %w", err)
 		}
-		// update parent node
 		node.IsEmpty = node.IsEmpty && child.IsEmpty
 		node.SubHeaders = append(node.SubHeaders, child)
 		if err := node.SetLookup(child.Value, child); err != nil {
@@ -280,7 +271,6 @@ func (s *Sheet) recursivelyParseNode(ctx context.Context, currentDepth int, topL
 				child.Value, node.TopLeftCell.String(), node.BottomRightCell.String())
 		}
 
-		// move to next column
 		currentCol += child.BottomRightCell.Col - child.TopLeftCell.Col + 1
 	}
 
@@ -302,7 +292,6 @@ func (s *Sheet) buildColumnIndices(ctx context.Context) error {
 		bottomRow := len(rows)
 
 		indexMap := make(map[string]int)
-		// read cell value from DataStartRow to either divider cell or end of sheet
 		for row := s.DataStartRow; row <= bottomRow; row++ {
 			cellName, err := excelize.CoordinatesToCellName(col, row)
 			if err != nil {
@@ -359,11 +348,9 @@ func (s *Sheet) parseHeaderRow(ctx context.Context) (*HeaderNode, error) {
 		currentCol += node.BottomRightCell.Col - node.TopLeftCell.Col + 1
 
 		if node.IsEmpty {
-			// stop the loop when we found an empty header tree
 			break
 		}
 
-		// capture new node and set lookup
 		rootNode.SubHeaders = append(rootNode.SubHeaders, node)
 		if err := rootNode.SetLookup(node.Value, node); err != nil {
 			return nil, fmt.Errorf("failed to set lookup value [%s] cell [%s] - [%s]",

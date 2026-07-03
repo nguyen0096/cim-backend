@@ -30,10 +30,8 @@ type InventoryItem struct {
 	ConsumableTransactions []*InventoryTransaction `json:"active_purchase_transactions,omitempty"`
 }
 
-// ValidateActivePurchaseTransactions validates if transaction quantities are reflected
-// in the inventory item quantity correctly. Since inventory items are consumed in FIFO order,
-// it's expected that ConsumingTransactionID points to the oldest transaction ID that
-// is currently being consumed (still has un-consumed quantity).
+// ValidateActivePurchaseTransactions checks the consumable transaction quantities
+// sum to the inventory item quantity.
 func (ii *InventoryItem) ValidateActivePurchaseTransactions() error {
 	if ii.Quantity.IsZero() && len(ii.ConsumableTransactions) == 0 {
 		return nil

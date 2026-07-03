@@ -7,37 +7,25 @@ import (
 	"encoding/json"
 )
 
-// ReconciliationRequestItemRepository persists the per-staff/batch child rows of
-// an in-flight reconciliation (epic #38, Part 4). Each row carries COUNTED
-// quantities only (legacy reconcile payload shape) and a status in the
-// in_progress -> ready -> approved -> applied state machine. The contributing
-// staff member is recorded via models.Base.CreatedBy (user email).
+// ReconciliationRequestItemRepository persists the per-staff child rows of an
+// in-flight reconciliation.
 //
 //go:generate mockery --name=ReconciliationRequestItemRepository --structname=ReconciliationRequestItemRepository --output=../mocks/repositorymocks --outpkg=repositorymocks
 type ReconciliationRequestItemRepository interface {
-	// Create inserts a new child row. Status/CreatedBy are stamped by the caller /
-	// the models.Base BeforeCreate hook. Tx-aware via DB(ctx).
+	// Create inserts a new child row.
 	Create(ctx context.Context, item *models.ReconciliationRequestItem) error
-	// GetByID loads a single child row by id (excludes soft-deleted rows via the
-	// gorm.DeletedAt scope). Returns gorm.ErrRecordNotFound when absent. Tx-aware.
+	// GetByID loads a single child row by id.
 	GetByID(ctx context.Context, id uint) (*models.ReconciliationRequestItem, error)
-	// ListBySubmission returns all live (non-soft-deleted) child rows for a parent
-	// submission, oldest first. Tx-aware via DB(ctx).
+	// ListBySubmission returns the submission's child rows, oldest first.
 	ListBySubmission(ctx context.Context, submissionID uint) ([]models.ReconciliationRequestItem, error)
-	// ListBySubmissionAndCreator returns the live (non-soft-deleted) child rows for a
-	// parent submission created by a specific user (created_by == createdBy), ordered
-	// by id ascending. Used by the List-rows endpoint to scope staff to their own
-	// rows (issue #73). Tx-aware via DB(ctx).
+	// ListBySubmissionAndCreator returns the submission's child rows created by
+	// createdBy, oldest first.
 	ListBySubmissionAndCreator(ctx context.Context, submissionID uint, createdBy string) ([]models.ReconciliationRequestItem, error)
-	// UpdateLabelPayloadAndStatus writes the row-level label, the counted-quantity
-	// payload, and the new status of a child row in one update (the staff edit path;
-	// update is a full replace, so the label is overwritten too — issue #73).
-	// Tx-aware via DB(ctx).
+	// UpdateLabelPayloadAndStatus writes the row's label, payload, and status.
 	UpdateLabelPayloadAndStatus(ctx context.Context, id uint, label string, payload json.RawMessage, status models.ReconciliationRequestItemStatus) error
-	// UpdateStatus writes only the per-session readiness status of a child row.
-	// Tx-aware via DB(ctx).
+	// UpdateStatus writes only the row's status.
 	UpdateStatus(ctx context.Context, id uint, status models.ReconciliationRequestItemStatus) error
-	// SoftDelete soft-deletes a child row (sets deleted_at). Tx-aware via DB(ctx).
+	// SoftDelete soft-deletes a child row.
 	SoftDelete(ctx context.Context, id uint) error
 }
 
@@ -45,8 +33,7 @@ type reconciliationRequestItemRepository struct {
 	*baseRepository
 }
 
-// NewReconciliationRequestItemRepository creates a new reconciliation request
-// item repository sharing the process-wide BaseRepository.
+// NewReconciliationRequestItemRepository creates a new reconciliation request item repository.
 func NewReconciliationRequestItemRepository(base BaseRepository) ReconciliationRequestItemRepository {
 	return &reconciliationRequestItemRepository{baseRepository: asBase(base)}
 }
@@ -116,10 +103,7 @@ func (r *reconciliationRequestItemRepository) UpdateStatus(ctx context.Context, 
 }
 
 func (r *reconciliationRequestItemRepository) SoftDelete(ctx context.Context, id uint) error {
-	// Stamp updated_by/updated_at alongside the soft-delete so the deleting actor
-	// is auditable; gorm's Delete on a soft-delete model only sets deleted_at. Both
-	// statements run on DB(ctx), so they enlist in the caller's transaction when one
-	// is in flight (WithinTx) and are otherwise applied directly.
+	// Stamp updated_by/updated_at for audit; gorm's Delete only sets deleted_at.
 	updates, err := pkg.WithUpdateFields(ctx, map[string]interface{}{})
 	if err != nil {
 		return err

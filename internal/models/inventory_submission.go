@@ -5,24 +5,14 @@ import (
 	"time"
 )
 
-// ReconcileLifecycleStatus is the SUBMISSION-level reconciliation lifecycle
-// (epic #38, Part 6 redesign, locked decision Q3). It is a status OF
-// inventory_submissions (not a separate boolean and not an approval status):
-// only initiated reconciles carry it; every other submission leaves it empty.
+// ReconcileLifecycleStatus is the submission-level reconciliation lifecycle.
+// Only initiated reconciles carry it; every other submission leaves it empty.
 //
-//	open       -> staff may freely create/edit/delete their child count rows.
-//	closed      -> staff are LOCKED out (immutable to staff); admin/accountant
-//	               may still edit child rows. The admin reviews, then starts
-//	               processing (or reopens to let staff edit again).
-//	processing  -> transient: set at the start of the atomic Start-Processing
-//	               apply transaction.
-//	processed   -> terminal: the reconcile has been applied (consuming
-//	               transactions created, stock mutated). Immutable to everyone.
-//	canceled    -> terminal: the reconcile was abandoned (open/closed -> canceled)
-//	               with no inventory mutation; count rows are retained.
-//
-// `open` is the only editable staff state; `close` is the only gate (the
-// per-row ready/approved/applied states were removed in this redesign).
+//	open       -> staff may create/edit/delete their child count rows.
+//	closed     -> staff locked out; admin/accountant may still edit child rows.
+//	processing -> transient, during the Start-Processing apply.
+//	processed  -> terminal: applied (stock mutated), immutable.
+//	canceled   -> terminal: abandoned with no inventory mutation.
 type ReconcileLifecycleStatus string
 
 const (
@@ -90,24 +80,15 @@ type InventorySubmission struct {
 	Payload          json.RawMessage            `json:"payload" gorm:"serializer:json;type:jsonb" swaggertype:"object"`
 	Reason           string                     `json:"reason,omitempty"`
 	Error            json.RawMessage            `json:"error,omitempty" gorm:"serializer:json" swaggertype:"object"`
-	// ReconcileStatus is the reconciliation lifecycle status (epic #38, Part 6).
-	// Set only for initiated reconciles (open at initiate); empty for every other
-	// submission type/flow. Drives the staff-immutability guard and the
-	// close/reopen/start-processing transitions.
+	// ReconcileStatus is the reconciliation lifecycle status; set only for
+	// initiated reconciles, empty otherwise.
 	ReconcileStatus ReconcileLifecycleStatus `json:"reconcile_status,omitempty" gorm:"type:varchar(20)"`
-	// ProcessedAt is the precise instant a CONSUMING submission's processing
-	// completed (epic #38, Part 6, locked decision Q6). It is the authoritative
-	// window bound for the Start-Processing drift re-check (a sibling consuming
-	// submission with processed_at inside [snapshot_capture, now] is drift). Set
-	// when processing completes; nil while pending/failed.
+	// ProcessedAt is the instant a consuming submission's processing completed;
+	// nil while pending/failed.
 	ProcessedAt *time.Time `json:"processed_at,omitempty"`
 }
 
-// IsActiveReconcile is the canonical definition of an active reconcile: a
-// reconcile submission not yet start-processed — reconcile_status IN (open,
-// closed) AND processing_status = pending. A canceled/processing/processed
-// reconcile is non-active by construction. The awaiting/active repo query
-// expresses the same predicate in SQL over activeReconcileStatuses.
+// IsActiveReconcile reports whether s is a reconcile not yet start-processed.
 func (s InventorySubmission) IsActiveReconcile() bool {
 	return s.SubmissionType == InventorySubmissionTypeReconcile &&
 		s.ProcessingStatus == InventorySubmissionStatusPending &&
@@ -127,11 +108,9 @@ func MarshalErrors(errors []error) (json.RawMessage, error) {
 			continue
 		}
 
-		// Check if the error implements json.Marshaler
 		if marshaler, ok := err.(json.Marshaler); ok {
 			errorObjects = append(errorObjects, marshaler)
 		} else {
-			// Otherwise, marshal it to {"message": error.Error()}
 			errorObjects = append(errorObjects, map[string]string{
 				"message": err.Error(),
 			})

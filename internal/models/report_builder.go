@@ -113,19 +113,16 @@ func (rb *txnReportBuilder) Build() (*txnReportBuilder, error) {
 		return nil, fmt.Errorf("report builder not ready: %w", err)
 	}
 
-	// If source transactions are provided, use new source transaction view
 	if len(rb.sourceTxns) > 0 {
 		return rb.buildSourceView()
 	}
 
-	// Otherwise, use legacy PO-grouped view
 	return rb.buildLegacyView()
 }
 
 func (rb *txnReportBuilder) buildSourceView() (*txnReportBuilder, error) {
 	startQuantities := AggTxnQuantities(rb.historicalTxns)
 
-	// Group consume transactions by (inventory_item_id, counter_transaction_id)
 	consumesBySource := make(map[uint]map[uint][]*InventoryTransaction)
 	for _, consume := range rb.consumeTxns {
 		if consume.CounterTransactionID == nil {
@@ -141,7 +138,6 @@ func (rb *txnReportBuilder) buildSourceView() (*txnReportBuilder, error) {
 		consumesBySource[itemID][sourceID] = append(consumesBySource[itemID][sourceID], consume)
 	}
 
-	// Create one row per source transaction
 	items := make([]*TxnReportInventoryItem, 0)
 	for _, sourceTxn := range rb.sourceTxns {
 		item, exists := rb.iiLookup[sourceTxn.InventoryItemID]
@@ -164,7 +160,6 @@ func (rb *txnReportBuilder) buildSourceView() (*txnReportBuilder, error) {
 			EndQuantity:           decimal.Zero,
 		}
 
-		// Set consume details for this source
 		if consumesByItem, exists := consumesBySource[sourceTxn.InventoryItemID]; exists {
 			if consumes, exists := consumesByItem[sourceTxn.ID]; exists {
 				reportItem.ConsumeDetails = consumes
@@ -174,7 +169,6 @@ func (rb *txnReportBuilder) buildSourceView() (*txnReportBuilder, error) {
 		items = append(items, reportItem)
 	}
 
-	// Sort items by product name (ascending), then by receive date (ascending)
 	rb.sortSourceViewItems(items)
 
 	rb.report.Items = items
@@ -184,10 +178,8 @@ func (rb *txnReportBuilder) buildSourceView() (*txnReportBuilder, error) {
 
 // sortSourceViewItems sorts report items by product name, then by source transaction date
 func (rb *txnReportBuilder) sortSourceViewItems(items []*TxnReportInventoryItem) {
-	// Use a custom sort function
 	for i := 0; i < len(items); i++ {
 		for j := i + 1; j < len(items); j++ {
-			// Compare product names
 			nameI := ""
 			nameJ := ""
 			if items[i].Product != nil {
@@ -197,7 +189,6 @@ func (rb *txnReportBuilder) sortSourceViewItems(items []*TxnReportInventoryItem)
 				nameJ = items[j].Product.Name
 			}
 
-			// If names are different, sort by name
 			if nameI != nameJ {
 				if nameI > nameJ {
 					items[i], items[j] = items[j], items[i]
@@ -205,7 +196,6 @@ func (rb *txnReportBuilder) sortSourceViewItems(items []*TxnReportInventoryItem)
 				continue
 			}
 
-			// If names are same, sort by receive date
 			if items[i].SourceTransaction != nil && items[j].SourceTransaction != nil {
 				if items[i].SourceTransaction.CreatedAt.After(items[j].SourceTransaction.CreatedAt) {
 					items[i], items[j] = items[j], items[i]
@@ -316,7 +306,6 @@ func (rb *txnReportBuilder) updatePOSummary(
 		return
 	}
 
-	// Check if PurchaseOrder is loaded
 	if poItem.PurchaseOrder == nil {
 		return
 	}

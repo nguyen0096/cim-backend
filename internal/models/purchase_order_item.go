@@ -36,14 +36,13 @@ type PurchaseOrderItem struct {
 	TotalAmount decimal.Decimal `json:"total_amount" gorm:"-"`
 }
 
-// CalculateItemTotalPrice calculates the total price for a purchase order item
+// CalculateTotalAmount computes and stores the item's total amount.
 func (poi *PurchaseOrderItem) CalculateTotalAmount() decimal.Decimal {
 	poi.TotalAmount = poi.Quantity.Mul(decimal.NewFromFloat(poi.UnitPrice))
 	return poi.TotalAmount
 }
 
 func (poi *PurchaseOrderItem) UpdateStatus() {
-	// If received quantity is 0, status should be awaiting_delivery
 	if poi.ReceivedQuantity.Equal(decimal.Zero) {
 		if poi.Status == PurchaseOrderItemStatusPartiallyDelivered || poi.Status == PurchaseOrderItemStatusDelivered || poi.Status == PurchaseOrderItemStatusOverDelivered {
 			poi.Status = PurchaseOrderItemStatusAwaitingDelivery
@@ -51,13 +50,11 @@ func (poi *PurchaseOrderItem) UpdateStatus() {
 		return
 	}
 
-	// If received quantity > ordered quantity, status should be over_delivered
 	if poi.ReceivedQuantity.GreaterThan(poi.Quantity) {
 		poi.Status = PurchaseOrderItemStatusOverDelivered
 		return
 	}
 
-	// If received quantity == ordered quantity, status should be delivered
 	if poi.ReceivedQuantity.Equal(poi.Quantity) {
 		if poi.Status == PurchaseOrderItemStatusAwaitingDelivery || poi.Status == PurchaseOrderItemStatusPartiallyDelivered || poi.Status == PurchaseOrderItemStatusOverDelivered {
 			poi.Status = PurchaseOrderItemStatusDelivered
@@ -65,7 +62,6 @@ func (poi *PurchaseOrderItem) UpdateStatus() {
 		return
 	}
 
-	// If received quantity < ordered quantity but > 0, status should be partially_delivered
 	if poi.ReceivedQuantity.GreaterThan(decimal.Zero) && poi.ReceivedQuantity.LessThan(poi.Quantity) {
 		if poi.Status == PurchaseOrderItemStatusAwaitingDelivery || poi.Status == PurchaseOrderItemStatusDelivered || poi.Status == PurchaseOrderItemStatusOverDelivered {
 			poi.Status = PurchaseOrderItemStatusPartiallyDelivered
@@ -74,10 +70,7 @@ func (poi *PurchaseOrderItem) UpdateStatus() {
 	}
 }
 
-// CompatifyUnit is used to apply backward compatible update for POI unit field.
-// Previously, POI doesn't have unit field. For any place we set the unit field to make it backward compatible,
-// we should use this function.
-// The purpose is keep track of places that we're doing patching and remove it when we're done.
+// CompatifyUnit backfills the unit field on POIs that predate it.
 func (poi *PurchaseOrderItem) CompatifyUnit(compatibleUnitID uint) {
 	if poi.Unit == nil {
 		poi.UnitID = &compatibleUnitID

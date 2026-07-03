@@ -132,20 +132,10 @@ func (h *PaymentReceiptFormHandler) runNotificationHub() {
 func (h *PaymentReceiptFormHandler) CreatePaymentReceiptForm(c echo.Context) error {
 	var payload dto.PaymentReceiptFormPayload
 
-	// Do not validate the request body here, it will be validated later
+	// Do not validate the request body here; it is validated later.
 	if err := c.Bind(&payload); err != nil {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid request body", "details": err.Error()})
 	}
-
-	// Check if there's already a pending form
-	// pendingForm, err := h.paymentReceiptFormService.LatestPendingPaymentReceiptFormStream(c.Request().Context(), payload.PurchaseOrderID)
-	// if err != nil {
-	// 	return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to check for pending forms"})
-	// }
-
-	// if pendingForm != nil {
-	// 	return c.JSON(http.StatusConflict, map[string]string{"error": "There is already a pending payment receipt form. Please complete or cancel the existing form before creating a new one."})
-	// }
 
 	form, err := payload.ToPaymentReceiptForm()
 	if err != nil {
@@ -162,7 +152,6 @@ func (h *PaymentReceiptFormHandler) CreatePaymentReceiptForm(c echo.Context) err
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to create payment receipt form"})
 	}
 
-	// Get the purchase order (to retrieve its order number)
 	po, err := h.purchaseOrderService.GetPurchaseOrderByID(form.PurchaseOrderID)
 	if err != nil {
 		if appErr, ok := err.(*pkg.AppError); ok {
@@ -174,14 +163,12 @@ func (h *PaymentReceiptFormHandler) CreatePaymentReceiptForm(c echo.Context) err
 		form.PurchaseOrder = po
 	}
 
-	// Send notification to all connected clients
 	notification := NotificationMessage{
 		Type:      "pending_form_update",
 		Data:      form,
 		Timestamp: time.Now().UTC(),
 	}
 
-	// Broadcast to all connected clients
 	select {
 	case h.broadcast <- notification:
 		log.WithFields(logrus.Fields{
@@ -252,23 +239,19 @@ func (h *PaymentReceiptFormHandler) GetPaymentReceiptForm(c echo.Context) error 
 // @Security BearerAuth
 // @Router /payment-receipt-forms [get]
 func (h *PaymentReceiptFormHandler) ListPaymentReceiptForms(c echo.Context) error {
-	// Parse pagination parameters
 	var req dto.PaymentReceiptFormListRequest
 	if err := c.Bind(&req); err != nil {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid query parameters", "details": err.Error()})
 	}
 
-	// Validate and set defaults
 	req.ValidateAndSetDefaults()
 
-	// List payment receipt forms (search is handled via req.Search from ListParams)
 	forms, total, err := h.paymentReceiptFormService.ListPaymentReceiptForms(c.Request().Context(), &req)
 
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to retrieve payment receipt forms"})
 	}
 
-	// Create paginated response
 	response := models.NewPaginationResult(forms, total, req.Page, req.Limit)
 
 	return c.JSON(http.StatusOK, response)
@@ -465,7 +448,6 @@ func (h *PaymentReceiptFormHandler) DeletePaymentReceiptForm(c echo.Context) err
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to delete payment receipt form"})
 	}
 
-	// Send notification to SSE clients if the deleted form was pending
 	notification := NotificationMessage{
 		Type:      "form_deleted",
 		Data:      models.Base{ID: uint(id)},
@@ -514,13 +496,11 @@ func (h *PaymentReceiptFormHandler) DeletePaymentReceiptForm(c echo.Context) err
 //	event: error
 //	data: {"error":"Error messzage","status":"error","timestamp":"2024-01-15T10:30:00Z"}
 func (h *PaymentReceiptFormHandler) LatestPendingPaymentReceiptFormStream(c echo.Context) error {
-	// Set SSE headers
 	c.Response().Header().Set("Content-Type", "text/event-stream")
 	c.Response().Header().Set("Cache-Control", "no-cache")
 	c.Response().Header().Set("Connection", "keep-alive")
 	c.Response().Header().Set("Access-Control-Allow-Headers", "Cache-Control")
 
-	// Create a unique client ID
 	clientID, err := pkg.GetUserIDFromContext(c.Request().Context())
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to get user ID"})
@@ -532,7 +512,6 @@ func (h *PaymentReceiptFormHandler) LatestPendingPaymentReceiptFormStream(c echo
 		h.unregisterClient(clientID)
 	}
 
-	// Create client connection
 	client = &ClientConnection{
 		ID:       clientID,
 		Context:  c,
@@ -542,11 +521,9 @@ func (h *PaymentReceiptFormHandler) LatestPendingPaymentReceiptFormStream(c echo
 	h.registerClient(client)
 	defer h.unregisterClient(clientID)
 
-	// Create tickers for different purposes
 	keepAliveTicker := time.NewTicker(30 * time.Second)
 	defer keepAliveTicker.Stop()
 
-	// Send initial pending form if exists
 	if err := h.sendInitialPendingForm(c); err != nil {
 		log.WithFields(logrus.Fields{
 			"client_id": clientID,
@@ -555,20 +532,16 @@ func (h *PaymentReceiptFormHandler) LatestPendingPaymentReceiptFormStream(c echo
 		return fmt.Errorf("failed to send initial pending form: %w", err)
 	}
 
-	// Keep connection alive and send updates
 	for {
 		select {
 		case <-c.Request().Context().Done():
-			// Client disconnected
 			log.WithField("client_id", clientID).Info("SSE client disconnected")
 			return nil
 		case notification := <-client.SendChan:
-			// Send notification to client
 			if err := h.sendSSEEvent(c, notification.Type, notification.Data); err != nil {
 				return fmt.Errorf("failed to send notification: %w", err)
 			}
 		case <-keepAliveTicker.C:
-			// Send keep-alive to maintain connection
 			if err := h.SendKeepAlive(c); err != nil {
 				return fmt.Errorf("failed to send keep-alive: %w", err)
 			}
@@ -578,21 +551,17 @@ func (h *PaymentReceiptFormHandler) LatestPendingPaymentReceiptFormStream(c echo
 
 // sendSSEEvent sends a Server-Sent Event
 func (h *PaymentReceiptFormHandler) sendSSEEvent(c echo.Context, eventType string, data interface{}) error {
-	// Convert data to JSON
 	jsonData, err := json.Marshal(data)
 	if err != nil {
 		return fmt.Errorf("failed to marshal SSE data: %w", err)
 	}
 
-	// Format as SSE event
 	event := fmt.Sprintf("event: %s\ndata: %s\n\n", eventType, string(jsonData))
 
-	// Send the event
 	if _, err := c.Response().Write([]byte(event)); err != nil {
 		return fmt.Errorf("failed to write SSE event: %w", err)
 	}
 
-	// Flush the response to ensure immediate delivery
 	c.Response().Flush()
 
 	return nil
@@ -610,7 +579,6 @@ func (h *PaymentReceiptFormHandler) SendKeepAlive(c echo.Context) error {
 func (h *PaymentReceiptFormHandler) sendInitialPendingForm(c echo.Context) error {
 	forms, err := h.paymentReceiptFormService.GetLatestPaymentReceiptForms(c.Request().Context(), 0, models.PaymentReceiptFormStatusPending, 0)
 	if err != nil {
-		// Send error event
 		errorData := map[string]interface{}{
 			"message": "Failed to get latest pending form",
 			"error":   err.Error(),
@@ -651,7 +619,6 @@ func (h *PaymentReceiptFormHandler) NotifyPaymentReceiptForm(c echo.Context) err
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid ID format"})
 	}
 
-	// Get all pending forms
 	form, err := h.paymentReceiptFormService.GetPaymentReceiptForm(c.Request().Context(), uint(id))
 	if err != nil {
 		if appErr, ok := err.(*pkg.AppError); ok {

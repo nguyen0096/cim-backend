@@ -16,7 +16,6 @@ import (
 func AuthorizationMiddleware(casbinService *auth.CasbinService, userService *services.UserService) echo.MiddlewareFunc {
 	return func(next echo.HandlerFunc) echo.HandlerFunc {
 		return func(c echo.Context) error {
-			// Get user ID from context (set by AuthMiddleware)
 			userUID, _ := c.Get(pkg.AuthContextKeyUserID.String()).(string)
 			if userUID == "" {
 				return c.JSON(http.StatusUnauthorized, map[string]string{
@@ -24,10 +23,9 @@ func AuthorizationMiddleware(casbinService *auth.CasbinService, userService *ser
 				})
 			}
 
-			// Check if user role already exists in context (skip database query if available)
+			// Skip the DB lookup when the role is already in context.
 			userRole, exists := c.Get(pkg.AuthContextKeyUserRole.String()).(string)
 			if !exists || userRole == "" {
-				// Get user email from context
 				userEmail, exists := c.Get(pkg.AuthContextKeyUserEmail.String()).(string)
 				if !exists || userEmail == "" {
 					return c.JSON(http.StatusUnauthorized, map[string]string{
@@ -35,7 +33,6 @@ func AuthorizationMiddleware(casbinService *auth.CasbinService, userService *ser
 					})
 				}
 
-				// Fetch user role from database using email
 				user, err := userService.GetUserByEmail(c.Request().Context(), userEmail)
 				if err != nil {
 					fmt.Printf("Error fetching user from database: %v\n", err)
@@ -78,7 +75,6 @@ func AuthorizationMiddleware(casbinService *auth.CasbinService, userService *ser
 				}
 			}
 
-			// Extract resource and action from the request
 			resource, action := extractResourceAndAction(c)
 			if resource == "" || action == "" {
 				return c.JSON(http.StatusBadRequest, map[string]string{
@@ -86,7 +82,6 @@ func AuthorizationMiddleware(casbinService *auth.CasbinService, userService *ser
 				})
 			}
 
-			// Check authorization using Casbin
 			allowed, err := casbinService.Enforce(userRole, resource, action)
 			if err != nil {
 				fmt.Printf("Authorization error for user %s: %v\n", userUID, err)
@@ -105,7 +100,6 @@ func AuthorizationMiddleware(casbinService *auth.CasbinService, userService *ser
 			reqCtx := c.Request().Context()
 			reqCtx = context.WithValue(reqCtx, pkg.AuthContextKeyUserRole, userRole)
 
-			// Get and set user permissions in context
 			permissions, err := getUserPermissions(casbinService, userRole)
 			if err != nil {
 				fmt.Printf("Error getting user permissions: %v\n", err)
@@ -116,7 +110,6 @@ func AuthorizationMiddleware(casbinService *auth.CasbinService, userService *ser
 
 			c.SetRequest(c.Request().WithContext(reqCtx))
 
-			// Authorization successful, continue to handler
 			return next(c)
 		}
 	}
@@ -168,9 +161,8 @@ var customRouteMappings = []RouteMapping{
 		Resource:    "payment-receipt-forms",
 		Action:      "view-pending",
 	},
-	// Reconcile-initiate (epic #38, Part 2): admin/accountant-only. Must precede
-	// the broader /inventories/*/reconcile mapping and carry its own action so it
-	// is gated by initiate_reconciliation, not the generic create action.
+	// Reconcile-initiate: admin/accountant-only. Must precede the broader
+	// /inventories/*/reconcile mapping and carry its own initiate_reconciliation action.
 	{
 		Method:      "POST",
 		PathPattern: "/inventories/*/reconcile/initiate",
@@ -183,13 +175,8 @@ var customRouteMappings = []RouteMapping{
 		Resource:    "inventory-submissions",
 		Action:      "",
 	},
-	// Admin/accountant reconciliation management (epic #38, Part 6 redesign). Close
-	// (open->closed), reopen (closed->open), start-processing (the atomic apply) and
-	// cancel (open/closed->canceled) all carry the single recon_manage action, which
-	// only admin/accountant hold (staff never manages). Each is
-	// /inventories/submissions/*/<verb> (4 segments), distinct by trailing literal
-	// segment from one another and by segment count from the reconciliation-items
-	// patterns below.
+	// Admin/accountant reconciliation management: close/reopen/start-processing/cancel
+	// all carry the single recon_manage action (admin/accountant only).
 	{
 		Method:      "POST",
 		PathPattern: "/inventories/submissions/*/close",
@@ -214,11 +201,9 @@ var customRouteMappings = []RouteMapping{
 		Resource:    "inventory-submissions",
 		Action:      "recon_manage",
 	},
-	// Staff reconciliation child-item lifecycle (epic #38, Part 4). Nested under
-	// the parent submission. Each (method, path) carries its own explicit action so
-	// it is gated independently of the generic create/update/delete actions; the
-	// service additionally enforces ownership + the closed-status guard. Admin/
-	// accountant also hold these (they edit child rows while a submission is closed).
+	// Staff reconciliation child-item lifecycle, nested under the parent submission.
+	// Each carries its own action; the service enforces ownership + the closed-status
+	// guard. Admin/accountant also hold these.
 	// Per-session readiness toggle; the service enforces staff-own-row + open-only.
 	{
 		Method:      "POST",
@@ -244,9 +229,8 @@ var customRouteMappings = []RouteMapping{
 		Resource:    "inventory-submissions",
 		Action:      "recon_item_create",
 	},
-	// List rows (issue #73). Same collection path as create but GET; gated by its own
-	// recon_item_view action (held by staff + admin/accountant). The in-service RBAC
-	// scoping narrows staff to their own rows while recon_manage holders see all.
+	// List rows: GET on the collection path, gated by recon_item_view (staff +
+	// admin/accountant). In-service scoping narrows staff to their own rows.
 	{
 		Method:      "GET",
 		PathPattern: "/inventories/submissions/*/reconciliation-items",
@@ -265,8 +249,8 @@ var customRouteMappings = []RouteMapping{
 		Resource:    "inventory-submissions",
 		Action:      "",
 	},
-	// Inventory in/out Excel export — admin-only resource so it is NOT
-	// collapsed into inventory-items:view (which accountant/staff also have).
+	// Inventory in/out Excel export: admin-only resource, not collapsed into
+	// inventory-items:view.
 	{
 		Method:      "GET",
 		PathPattern: "/inventories/*/export/inventory-in-out",

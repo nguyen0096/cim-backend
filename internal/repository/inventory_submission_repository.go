@@ -17,7 +17,7 @@ type InventorySubmissionRepository interface {
 	Create(ctx context.Context, submission *models.InventorySubmission) error
 	GetPendingSubmissions(ctx context.Context, inventoryID uint) ([]models.InventorySubmission, error)
 	GetByID(ctx context.Context, id uint) (*models.InventorySubmission, error)
-	// GetByIDForUpdate loads a submission holding a row-level write lock. Tx-aware via DB(ctx).
+	// GetByIDForUpdate loads a submission holding a row-level write lock.
 	GetByIDForUpdate(ctx context.Context, id uint) (*models.InventorySubmission, error)
 	UpdateApprovalStatus(ctx context.Context, id uint, status models.SubmissionApprovalStatus, reason string) error
 	UpdateProcessingStatus(ctx context.Context, id uint, status models.SubmissionProcessingStatus) error
@@ -26,19 +26,19 @@ type InventorySubmissionRepository interface {
 	// ListActiveReconciliations returns active reconcile submissions across all inventories.
 	ListActiveReconciliations(ctx context.Context, params models.ListParams, reconcileStatuses []string) ([]models.InventorySubmission, int64, error)
 	UpdateSubmissionPayload(ctx context.Context, id uint, payload []byte) error
-	// ExistsActivePending reports whether a live pending reconcile submission exists for the inventory. Tx-aware via DB(ctx).
+	// ExistsActivePending reports whether a live pending reconcile submission exists for the inventory.
 	ExistsActivePending(ctx context.Context, inventoryID uint) (bool, error)
-	// ListConsumingProcessedSince returns other consuming submissions for the inventory that were approved and processed since the given time. Tx-aware via DB(ctx).
+	// ListConsumingProcessedSince returns other consuming submissions for the inventory approved and processed since the given time.
 	ListConsumingProcessedSince(ctx context.Context, inventoryID, excludeSubmissionID uint, since time.Time) ([]models.InventorySubmission, error)
-	// UpdateReconcileStatus sets the reconciliation lifecycle status. Tx-aware via DB(ctx).
+	// UpdateReconcileStatus sets the reconciliation lifecycle status.
 	UpdateReconcileStatus(ctx context.Context, id uint, status models.ReconcileLifecycleStatus) error
-	// CancelReconciliation sets the terminal cancel state without mutating inventory. Tx-aware via DB(ctx).
+	// CancelReconciliation sets the terminal cancel state without mutating inventory.
 	CancelReconciliation(ctx context.Context, id uint) error
-	// MarkProcessed finalizes a submission's processing and returns the DB-stamped processed_at. reconcileStatus is empty for non-reconcile callers. Tx-aware via DB(ctx).
+	// MarkProcessed finalizes a submission's processing and returns the DB-stamped processed_at. reconcileStatus is empty for non-reconcile callers.
 	MarkProcessed(ctx context.Context, id uint, reconcileStatus models.ReconcileLifecycleStatus) (time.Time, error)
 	// AcquireInventoryAdvisoryLock takes pg_advisory_xact_lock(inventory_id). Must be called inside a transaction.
 	AcquireInventoryAdvisoryLock(ctx context.Context, inventoryID uint) error
-	// SetProcessedAt stamps processed_at and processing_status='completed' for a consuming submission processed via the legacy path. Tx-aware.
+	// SetProcessedAt stamps processed_at and processing_status='completed' for a consuming submission processed via the legacy path.
 	SetProcessedAt(ctx context.Context, id uint) error
 }
 
@@ -54,7 +54,7 @@ func NewInventorySubmissionRepository(base BaseRepository) InventorySubmissionRe
 // uqOneActivePendingReconcile is the partial unique index enforcing one active pending reconcile per inventory.
 const uqOneActivePendingReconcile = "uq_inventory_submissions_one_active_pending"
 
-// Create creates a new inventory submission. Tx-aware via DB(ctx). A one-active-pending-reconcile index violation is translated to ErrActivePendingReconcileConflict.
+// Create creates a new inventory submission. A one-active-pending-reconcile index violation is translated to ErrActivePendingReconcileConflict.
 func (r *inventorySubmissionRepository) Create(ctx context.Context, submission *models.InventorySubmission) error {
 	err := r.DB(ctx).WithContext(ctx).Create(submission).Error
 	constraint := uqOneActivePendingReconcile
@@ -89,7 +89,7 @@ func (r *inventorySubmissionRepository) GetByID(ctx context.Context, id uint) (*
 	return &submission, nil
 }
 
-// GetByIDForUpdate retrieves a submission by ID holding a row-level write lock. Tx-aware via DB(ctx).
+// GetByIDForUpdate retrieves a submission by ID holding a row-level write lock.
 func (r *inventorySubmissionRepository) GetByIDForUpdate(ctx context.Context, id uint) (*models.InventorySubmission, error) {
 	var submission models.InventorySubmission
 	err := r.DB(ctx).WithContext(ctx).
@@ -171,7 +171,6 @@ func (r *inventorySubmissionRepository) ListSubmissions(
 	query := r.db.WithContext(ctx).Model(&models.InventorySubmission{}).
 		Where("inventory_id = ?", inventoryID)
 
-	// Apply filters
 	if len(approvalStatuses) > 0 {
 		query = query.Where("approval_status IN ?", approvalStatuses)
 	}
@@ -184,7 +183,6 @@ func (r *inventorySubmissionRepository) ListSubmissions(
 		return nil, 0, fmt.Errorf("failed to count submissions: %w", err)
 	}
 
-	// Build order clause using params Sort and Order
 	orderClause := fmt.Sprintf("%s %s",
 		params.Sort, strings.ToUpper(params.Order))
 	query = query.
@@ -244,7 +242,7 @@ func (r *inventorySubmissionRepository) ListActiveReconciliations(
 	return submissions, total, nil
 }
 
-// ExistsActivePending reports whether a live pending reconcile submission exists for the inventory. Tx-aware via DB(ctx).
+// ExistsActivePending reports whether a live pending reconcile submission exists for the inventory.
 func (r *inventorySubmissionRepository) ExistsActivePending(ctx context.Context, inventoryID uint) (bool, error) {
 	var count int64
 	err := r.DB(ctx).WithContext(ctx).
@@ -267,7 +265,7 @@ var consumingSubmissionTypes = []models.SubmissionType{
 	models.InventorySubmissionTypeReconcile,
 }
 
-// ListConsumingProcessedSince returns other consuming submissions for the inventory that were approved and processed since the given time. Tx-aware via DB(ctx).
+// ListConsumingProcessedSince returns other consuming submissions for the inventory approved and processed since the given time.
 func (r *inventorySubmissionRepository) ListConsumingProcessedSince(ctx context.Context, inventoryID, excludeSubmissionID uint, since time.Time) ([]models.InventorySubmission, error) {
 	var rows []models.InventorySubmission
 	err := r.DB(ctx).WithContext(ctx).
@@ -287,7 +285,7 @@ func (r *inventorySubmissionRepository) ListConsumingProcessedSince(ctx context.
 	return rows, nil
 }
 
-// UpdateReconcileStatus sets the reconciliation lifecycle status. Tx-aware.
+// UpdateReconcileStatus sets the reconciliation lifecycle status.
 func (r *inventorySubmissionRepository) UpdateReconcileStatus(ctx context.Context, id uint, status models.ReconcileLifecycleStatus) error {
 	updates, err := pkg.WithUpdateFields(ctx, map[string]interface{}{
 		"reconcile_status": status,
@@ -301,7 +299,7 @@ func (r *inventorySubmissionRepository) UpdateReconcileStatus(ctx context.Contex
 		Updates(updates).Error
 }
 
-// CancelReconciliation sets the terminal cancel state without mutating inventory. Tx-aware via DB(ctx).
+// CancelReconciliation sets the terminal cancel state without mutating inventory.
 func (r *inventorySubmissionRepository) CancelReconciliation(ctx context.Context, id uint) error {
 	updates, err := pkg.WithUpdateFields(ctx, map[string]interface{}{
 		"reconcile_status":  models.ReconcileLifecycleStatusCanceled,
@@ -316,14 +314,14 @@ func (r *inventorySubmissionRepository) CancelReconciliation(ctx context.Context
 		Updates(updates).Error
 }
 
-// MarkProcessed finalizes a submission's processing and returns the DB-stamped processed_at. Tx-aware via DB(ctx).
+// MarkProcessed finalizes a submission's processing and returns the DB-stamped processed_at.
 func (r *inventorySubmissionRepository) MarkProcessed(ctx context.Context, id uint, reconcileStatus models.ReconcileLifecycleStatus) (time.Time, error) {
-	// processed_at uses the DB clock (clock_timestamp()) so it shares a clock with snapshot created_at.
+	// clock_timestamp() shares a clock with snapshot created_at.
 	fields := map[string]interface{}{
 		"processing_status": models.InventorySubmissionStatusCompleted,
 		"approval_status":   models.InventorySubmissionApprovalStatusApproved,
 		"processed_at":      gorm.Expr("clock_timestamp()"),
-		// Clear any stale failure audit from an earlier failed apply.
+		// Clear stale failure audit from an earlier failed apply.
 		"error": gorm.Expr("NULL"),
 	}
 	if reconcileStatus != "" {
@@ -350,9 +348,9 @@ func (r *inventorySubmissionRepository) MarkProcessed(ctx context.Context, id ui
 	return processedAt, nil
 }
 
-// SetProcessedAt stamps processed_at and processing_status='completed' for a consuming submission processed via the legacy path. Tx-aware.
+// SetProcessedAt stamps processed_at and processing_status='completed' for a consuming submission processed via the legacy path.
 func (r *inventorySubmissionRepository) SetProcessedAt(ctx context.Context, id uint) error {
-	// processed_at uses the DB clock (clock_timestamp()) so it shares a clock with snapshot created_at.
+	// clock_timestamp() shares a clock with snapshot created_at.
 	updates, err := pkg.WithUpdateFields(ctx, map[string]interface{}{
 		"processing_status": models.InventorySubmissionStatusCompleted,
 		"processed_at":      gorm.Expr("clock_timestamp()"),

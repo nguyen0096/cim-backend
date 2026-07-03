@@ -208,7 +208,7 @@ func (h *InventoryHandler) DisposeInventoryItems(c echo.Context) error {
 	return c.JSON(http.StatusOK, submission)
 }
 
-// InitiateReconcile starts a reconciliation for an inventory (epic #38, Part 2)
+// InitiateReconcile starts a reconciliation for an inventory.
 // @Summary Initiate reconciliation
 // @Description Creates a placeholder reconcile submission and captures a per-item baseline snapshot (prev_quantity = live quantity at initiate time) for every active item in the inventory. Admin/accountant only.
 // @Tags inventories
@@ -447,7 +447,7 @@ func (h *InventoryHandler) ListSubmissions(c echo.Context) error {
 }
 
 // ListReconciliations retrieves the cross-inventory queue of reconcile
-// submissions awaiting Start-Processing (issue #88) for the #87 list/overview UI.
+// submissions awaiting Start-Processing.
 // @Summary List reconciliations awaiting processing
 // @Description Get the cross-inventory queue of not-yet-processed reconcile submissions (submission_type=reconcile, processing_status=pending, reconcile_status in open/closed), so a list/overview UI can flag inventories with an in-progress reconcile in one call. Optionally filter by reconcile_status (open|closed). Requires the recon_item_view permission (held by staff and admin/accountant).
 // @Tags inventories

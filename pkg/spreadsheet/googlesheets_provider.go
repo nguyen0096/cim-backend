@@ -77,7 +77,6 @@ func LogAPIRequestSummary() {
 // NewGoogleSheetsFileProvider creates a new Google Sheets file provider
 // spreadsheetIDOrURL can be either the full Google Sheets URL or just the spreadsheet ID
 func NewGoogleSheetsFileProvider(spreadsheetIDOrURL, serviceAccountPath string) *GoogleSheetsFileProvider {
-	// Extract spreadsheet ID from URL if it's a full URL
 	spreadsheetID := extractSpreadsheetID(spreadsheetIDOrURL)
 
 	return &GoogleSheetsFileProvider{
@@ -91,12 +90,10 @@ func NewGoogleSheetsFileProvider(spreadsheetIDOrURL, serviceAccountPath string) 
 func (g *GoogleSheetsFileProvider) Connect(ctx context.Context) error {
 	g.ctx = ctx
 
-	// Validate spreadsheet ID
 	if g.spreadsheetID == "" {
 		return fmt.Errorf("google sheets provider: spreadsheet ID is not set")
 	}
 
-	// Create Google Sheets service with service account credentials
 	srv, err := sheets.NewService(ctx, option.WithCredentialsFile(g.serviceAccountPath))
 	if err != nil {
 		return fmt.Errorf("google sheets provider: failed to create sheets service: %w", err)
@@ -108,7 +105,6 @@ func (g *GoogleSheetsFileProvider) Connect(ctx context.Context) error {
 
 // Close does nothing for Google Sheets as there's no persistent connection
 func (g *GoogleSheetsFileProvider) Close(ctx context.Context) error {
-	// Clear cache
 	g.cacheMutex.Lock()
 	g.cache = make(map[string]cachedData)
 	g.cacheMutex.Unlock()
@@ -134,13 +130,11 @@ func (g *GoogleSheetsFileProvider) GetSheetIndex(ctx context.Context, name strin
 
 // InsertRows inserts n rows at the specified position
 func (g *GoogleSheetsFileProvider) InsertRows(ctx context.Context, sheet string, row, n int) error {
-	// Get the sheet ID
 	sheetID, err := g.getSheetID(ctx, sheet)
 	if err != nil {
 		return fmt.Errorf("google sheets provider: failed to get sheet ID: %w", err)
 	}
 
-	// Create insert dimension request
 	req := &sheets.BatchUpdateSpreadsheetRequest{
 		Requests: []*sheets.Request{
 			{
@@ -161,7 +155,6 @@ func (g *GoogleSheetsFileProvider) InsertRows(ctx context.Context, sheet string,
 		return fmt.Errorf("google sheets provider: failed to insert rows: %w", err)
 	}
 
-	// Invalidate cache for this sheet
 	g.invalidateCache(sheet)
 
 	return nil
@@ -185,7 +178,6 @@ func (g *GoogleSheetsFileProvider) SetCellValue(ctx context.Context, sheet, cell
 		return fmt.Errorf("google sheets provider: failed to set cell value: %w", err)
 	}
 
-	// Invalidate cache for this sheet
 	g.invalidateCache(sheet)
 
 	return nil
@@ -205,7 +197,6 @@ func (g *GoogleSheetsFileProvider) GetCellValue(ctx context.Context, sheet, cell
 		return "", nil
 	}
 
-	// Convert interface{} to string
 	if val, ok := resp.Values[0][0].(string); ok {
 		return val, nil
 	}
@@ -214,7 +205,6 @@ func (g *GoogleSheetsFileProvider) GetCellValue(ctx context.Context, sheet, cell
 
 // GetRows gets all rows in a sheet with caching
 func (g *GoogleSheetsFileProvider) GetRows(ctx context.Context, sheet string) ([][]string, error) {
-	// Check cache first
 	g.cacheMutex.RLock()
 	if cached, ok := g.cache[sheet]; ok {
 		if time.Since(cached.timestamp) < cacheTTL {
@@ -224,7 +214,6 @@ func (g *GoogleSheetsFileProvider) GetRows(ctx context.Context, sheet string) ([
 	}
 	g.cacheMutex.RUnlock()
 
-	// Fetch from API
 	rangeStr := fmt.Sprintf("%s!A1:ZZ", sheet) // Adjust range as needed
 	logAPIRequest("values.get", rangeStr)
 
@@ -233,7 +222,6 @@ func (g *GoogleSheetsFileProvider) GetRows(ctx context.Context, sheet string) ([
 		return nil, fmt.Errorf("google sheets provider: failed to get rows: %w", err)
 	}
 
-	// Convert [][]interface{} to [][]string
 	rows := make([][]string, len(resp.Values))
 	for i, row := range resp.Values {
 		rows[i] = make([]string, len(row))
@@ -248,7 +236,6 @@ func (g *GoogleSheetsFileProvider) GetRows(ctx context.Context, sheet string) ([
 		}
 	}
 
-	// Update cache
 	g.cacheMutex.Lock()
 	g.cache[sheet] = cachedData{
 		rows:      rows,
@@ -267,7 +254,6 @@ func (g *GoogleSheetsFileProvider) GetMergeCells(ctx context.Context, sheet stri
 		return nil, fmt.Errorf("google sheets provider: failed to get spreadsheet: %w", err)
 	}
 
-	// Find the sheet
 	var targetSheet *sheets.Sheet
 	for _, s := range spreadsheetData.Sheets {
 		if s.Properties.Title == sheet {
@@ -280,7 +266,6 @@ func (g *GoogleSheetsFileProvider) GetMergeCells(ctx context.Context, sheet stri
 		return nil, fmt.Errorf("google sheets provider: sheet %s not found", sheet)
 	}
 
-	// Extract merge cells
 	var mergeCells []MergeCell
 	if targetSheet.Merges != nil {
 		for _, merge := range targetSheet.Merges {
@@ -321,8 +306,7 @@ func (g *GoogleSheetsFileProvider) invalidateCache(sheet string) {
 
 // extractSpreadsheetID extracts the spreadsheet ID from a URL or returns the input if it's already an ID
 func extractSpreadsheetID(input string) string {
-	// If it's a URL, extract the ID
-	// Format: https://docs.google.com/spreadsheets/d/{SPREADSHEET_ID}/edit...
+	// URL format: https://docs.google.com/spreadsheets/d/{SPREADSHEET_ID}/edit...
 	const prefix = "docs.google.com/spreadsheets/d/"
 
 	if idx := indexOf(input, prefix); idx != -1 {

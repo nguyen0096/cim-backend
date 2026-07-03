@@ -23,30 +23,22 @@ const (
 
 	// RBAC actions
 	RBACActionApprove = "approve"
-	// RBACActionInitiateReconciliation gates the reconcile-initiate endpoint
-	// (epic #38, Part 2): only admin/accountant may start a reconciliation and
-	// capture the per-item snapshot baseline.
+	// RBACActionInitiateReconciliation gates the reconcile-initiate endpoint;
+	// admin/accountant only.
 	RBACActionInitiateReconciliation = "initiate_reconciliation"
 
-	// Staff reconciliation child-item actions (epic #38, Part 4). Granted to
-	// staff (own rows, while the submission is open) and to admin/accountant. They
-	// gate the child-item CRUD endpoints; the in-service ownership + closed-status
-	// guards are the data-correctness backstop behind these route gates.
+	// Staff reconciliation child-item actions; granted to staff (own rows, while
+	// the submission is open) and admin/accountant.
 	RBACActionReconItemCreate = "recon_item_create"
 	RBACActionReconItemUpdate = "recon_item_update"
 	RBACActionReconItemDelete = "recon_item_delete"
-	// RBACActionReconItemView gates the GET list-rows endpoint (issue #73). Granted
-	// to staff and admin/accountant alike; the in-service RBAC scoping then narrows
-	// staff to their OWN rows while admin/accountant (recon_manage holders) see all.
+	// RBACActionReconItemView gates the list-rows endpoint; staff see their own
+	// rows, admin/accountant see all.
 	RBACActionReconItemView = "recon_item_view"
 
 	// RBACActionReconManage gates the admin/accountant reconciliation management
-	// endpoints (epic #38, Part 6 redesign — locked decision Q5, one combined
-	// action): close (open->closed), reopen (closed->open), and start-processing
-	// (closed -> processing -> processed, the atomic apply). Granted to admin and
-	// accountant only (accountant = admin-equivalent for reconciliation); staff
-	// never holds it. It also flags "this caller may edit a CLOSED submission's
-	// child rows" in the in-service guards (guardParentEditable / guardOwnership).
+	// endpoints (close/reopen/start-processing) and flags a caller allowed to edit
+	// a closed submission's rows. Admin/accountant only.
 	RBACActionReconManage = "recon_manage"
 )
 
@@ -118,13 +110,11 @@ func WithUpdateFields(ctx context.Context, updates map[string]interface{}) (map[
 		updates = make(map[string]interface{})
 	}
 
-	// Get user email from context
 	userEmail, err := GetUserEmailFromContext(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get user email from context: %w", err)
 	}
 
-	// Add update fields
 	updates["updated_at"] = time.Now()
 	updates["updated_by"] = userEmail
 

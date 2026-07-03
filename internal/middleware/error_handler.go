@@ -12,10 +12,8 @@ import (
 )
 
 // RecoverMiddleware returns the panic-recovery middleware. Recovered panics are
-// logged exactly once through logrus (pkg/log) with a "stack_trace" field in
-// every environment. The LogErrorFunc returns nil so Echo does NOT also invoke
-// the centralized HTTPErrorHandler, avoiding a duplicate log line, and writes
-// the 500 response itself.
+// logged once via pkg/log with a "stack_trace" field; it writes the 500 itself and
+// returns nil so Echo does not also log through HTTPErrorHandler.
 func RecoverMiddleware() echo.MiddlewareFunc {
 	return echoMiddleware.RecoverWithConfig(echoMiddleware.RecoverConfig{
 		LogErrorFunc: func(c echo.Context, err error, stack []byte) error {
@@ -37,14 +35,11 @@ func RecoverMiddleware() echo.MiddlewareFunc {
 
 // CustomErrorHandler is Echo's custom error handler function
 func CustomErrorHandler(err error, c echo.Context) {
-	// Check if response has already been sent
 	if c.Response().Committed {
 		return
 	}
 
-	// Use our existing HandleError function
 	if handlerErr := HandleError(c, err); handlerErr != nil {
-		// If HandleError itself returns an error, fall back to basic error handling
 		log.WithFields(logrus.Fields{
 			"stack_trace": pkg.StackTrace(handlerErr),
 		}).WithError(handlerErr).Error("error in error handler")
@@ -56,7 +51,6 @@ func CustomErrorHandler(err error, c echo.Context) {
 
 // HandleError handles different types of errors and returns appropriate responses
 func HandleError(c echo.Context, err error) error {
-	// Check if it's already an HTTP error (already handled)
 	if httpErr, ok := err.(*echo.HTTPError); ok {
 		return httpErr
 	}
@@ -64,22 +58,12 @@ func HandleError(c echo.Context, err error) error {
 	method := c.Request().Method
 	path := c.Request().URL.Path
 
-	// Check if it's a BatchError first (before AppError, since BatchError embeds AppError)
+	// BatchError before AppError (BatchError embeds AppError).
 	var batchErr *pkg.BatchError
 	if errors.As(err, &batchErr) {
-		// Log the batch error with context and stack at Error level. Stacks are
-		// emitted in every mode (not dev-gated). We log at Error (rather than
-		// tiering 4xx down to Warn) so the stack is never suppressed by the
-		// default LOG_LEVEL=error threshold -- handled errors must ALWAYS emit a
-		// stack per the logging contract; only the output FORMAT is env-gated.
-		//
-		// We deliberately do NOT attach the error via .WithError(batchErr):
-		// BatchError.Error() expands every Locations entry, so a batch with many
-		// invalid rows would produce an unbounded error-level log line that leaks
-		// per-row validation details and pressures log ingestion. The structured
-		// fields below already carry the bounded summary (code, message, status,
-		// locations COUNT, stack), so the record stays bounded regardless of
-		// len(Locations).
+		// Log at Error so the stack is never suppressed by LOG_LEVEL=error. Do not
+		// attach batchErr via WithError: BatchError.Error() expands every Locations
+		// entry, so log only the bounded fields (locations count).
 		log.WithFields(logrus.Fields{
 			"error_code":  batchErr.Code.String(),
 			"error":       batchErr.Message,
@@ -90,15 +74,12 @@ func HandleError(c echo.Context, err error) error {
 			"stack_trace": pkg.StackTrace(batchErr),
 		}).Error("batch error")
 
-		// Return structured JSON response with locations
 		return c.JSON(batchErr.HTTPStatus(), batchErr)
 	}
 
-	// Check if it's our custom AppError
 	var appErr *pkg.AppError
 	if errors.As(err, &appErr) {
-		// Log the actual error with context and stack at Error level (see the
-		// BatchError branch above for why we do not tier 4xx down to Warn).
+		// Log at Error (see BatchError branch for why 4xx is not tiered to Warn).
 		log.WithFields(logrus.Fields{
 			"error_code":  appErr.Code.String(),
 			"method":      method,
@@ -107,25 +88,20 @@ func HandleError(c echo.Context, err error) error {
 			"stack_trace": pkg.StackTrace(appErr),
 		}).WithError(appErr).Error("app error")
 
-		// Localize the message per request language (falls back to appErr.Message
-		// when the error carries no MessageKey) so domain errors raised by
-		// language-agnostic layers (e.g. repositories) are translated here.
+		// Localize per request language; falls back to appErr.Message when no MessageKey.
 		body := map[string]interface{}{
 			"message": appErr.LocalizedMessage(c.Request().Context()),
 			"code":    appErr.Code.String(),
 		}
-		// Expose the stable, language-independent catalog key so the frontend can
-		// route the error to the offending field/control without parsing the
-		// localized message (issue #42). Omitted for errors without a key, so this
-		// is additive and does not affect existing error responses.
+		// Expose the stable catalog key so the frontend can route the error without
+		// parsing the localized message.
 		if appErr.MessageKey != "" {
 			body["key"] = appErr.MessageKey
 		}
 		return c.JSON(appErr.HTTPStatus(), body)
 	}
 
-	// Handle other (unknown) errors as internal server errors. Always logged at
-	// Error with a stack, in every mode.
+	// Unknown errors -> 500, logged at Error with a stack.
 	log.WithFields(logrus.Fields{
 		"method":      method,
 		"path":        path,

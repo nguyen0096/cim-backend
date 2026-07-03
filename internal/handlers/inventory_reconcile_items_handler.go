@@ -8,12 +8,8 @@ import (
 	"github.com/labstack/echo/v4"
 )
 
-// Staff reconciliation child-item endpoints (epic #38, Part 4). All routes are
-// nested under the parent submission (/inventories/submissions/:id/...), so the
-// parent id is taken from the `:id` path param and the child id from `:item_id`;
-// a request body can never retarget either (the ids are not JSON-bindable on the
-// DTOs). Errors are returned to the central CustomErrorHandler, which localizes
-// the domain errors (EN/VI) and maps them to the right HTTP status.
+// Staff reconciliation child-item endpoints, nested under the parent submission
+// (/inventories/submissions/:id/...); ids come from the path, not the body.
 
 // CreateReconciliationItem files a new staff count-session row under a reconcile.
 // @Summary Create reconciliation item
@@ -261,10 +257,8 @@ func (h *InventoryHandler) CancelReconciliation(c echo.Context) error {
 	return c.JSON(http.StatusOK, submission)
 }
 
-// StartProcessing applies a closed reconciliation (admin/accountant). One atomic,
-// advisory-locked transaction: event-based drift re-check then snapshot-aware
-// apply. On drift, returns HTTP 409 with the warning-shaped payload and applies
-// nothing.
+// StartProcessing applies a closed reconciliation (admin/accountant). On drift it
+// applies nothing and returns HTTP 409 with a warning-shaped payload.
 // @Summary Start processing a reconciliation
 // @Description Admin/accountant applies a closed reconciliation in one atomic transaction. Re-checks for a consuming submission processed during the reconciliation window; on drift it rolls back and returns a warning payload (HTTP 409). Otherwise it creates the consuming transactions (snapshot - counted) and finalizes the submission.
 // @Tags inventories
@@ -285,17 +279,15 @@ func (h *InventoryHandler) StartProcessing(c echo.Context) error {
 	if err != nil {
 		return err
 	}
-	// Drift: nothing was applied (rolled back). Surface the warning-shaped payload
-	// with a 409 so the client distinguishes it from a successful apply.
+	// Drift: nothing applied; 409 distinguishes it from a successful apply.
 	if result.DriftDetected {
 		return c.JSON(http.StatusConflict, result)
 	}
 	return c.JSON(http.StatusOK, result)
 }
 
-// extractSubmissionAndItemID reads the path-scoped parent submission id (`:id`)
-// and child item id (`:item_id`). Both must be valid uints; a bad value is a
-// validation error before the service is ever called.
+// extractSubmissionAndItemID reads the path-scoped parent (:id) and child
+// (:item_id) ids.
 func extractSubmissionAndItemID(c echo.Context) (uint, uint, error) {
 	submissionID, err := pkg.ExtractIDParam(c)
 	if err != nil {

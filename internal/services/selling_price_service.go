@@ -22,12 +22,10 @@ type SellingPriceService interface {
 	ListByProductID(ctx context.Context, productID uint) ([]*models.SellingPrice, error)
 	UpsertPOItemSellingPrice(ctx context.Context, poID uint, poItemID uint, sellingPrice decimal.Decimal) (*models.POItemSellingPrice, error)
 	CountUnlinkedPOItems(ctx context.Context, sellingPriceID uint) (int64, error)
-	// ApplyMassiveLinks re-points PO items to startID across the price's effective
-	// range, resolved SERVER-SIDE from the current ledger. endEffectiveFrom is the
-	// client's optimistic-concurrency assertion of the exclusive end DATE it
-	// previewed ("YYYY-MM-DD", nil = previewed open-ended); a mismatch with the
-	// resolved boundary date returns a conflict error ("re-preview"). Runs in a
-	// single transaction.
+	// ApplyMassiveLinks re-points PO items to startID across the price's
+	// server-resolved effective range. endEffectiveFrom is the client's
+	// optimistic-concurrency assertion of the previewed exclusive end date (nil =
+	// open-ended); a mismatch returns a conflict error. Runs in a single transaction.
 	ApplyMassiveLinks(ctx context.Context, startID uint, endEffectiveFrom *string) (int64, error)
 
 	// CreateSellingPriceWithApplying creates a price and returns the massive-apply preview.
@@ -62,15 +60,12 @@ func (s *sellingPriceService) CreateSellingPrice(ctx context.Context, req dto.Cr
 		return nil, fmt.Errorf("price must be 0 or greater")
 	}
 
-	// DECISION: inventory-scoped selling prices are deliberately blocked for now
-	// to keep the initial feature simple — every price is global (inventory_id
-	// NULL). The schema and apply-scope SQL already handle inventory-specific vs
-	// global precedence, so this validation is the only gate to lift later.
+	// Inventory-scoped selling prices are blocked for now; only global prices
+	// (inventory_id NULL) are allowed.
 	if req.InventoryID != nil {
 		return nil, pkg.ErrSellingPriceInventorySpecificUnsupported(ctx)
 	}
 
-	// Validate product exists
 	_, err := s.productRepo.GetByID(ctx, req.ProductID)
 	if err != nil {
 		if err == gorm.ErrRecordNotFound {
@@ -117,10 +112,8 @@ func (s *sellingPriceService) UpdateSellingPrice(ctx context.Context, id uint, r
 		return nil, fmt.Errorf("invalid effective_from date format, expected YYYY-MM-DD: %w", err)
 	}
 
-	// Inventory-scoped prices are temporarily blocked (see the DECISION note in
-	// CreateSellingPrice). The update DTO carries no InventoryID and we never
-	// mutate sp.InventoryID here, so an update cannot change the scope — the
-	// create guard is sufficient.
+	// Update cannot change scope: the DTO carries no InventoryID and sp.InventoryID
+	// is never mutated here.
 	sp.Price = req.Price
 	sp.EffectiveFrom = effectiveFrom
 	sp.Notes = req.Notes
@@ -152,7 +145,6 @@ func (s *sellingPriceService) ListByProductID(ctx context.Context, productID uin
 }
 
 func (s *sellingPriceService) UpsertPOItemSellingPrice(ctx context.Context, poID uint, poItemID uint, sellingPrice decimal.Decimal) (*models.POItemSellingPrice, error) {
-	// Validate that the item belongs to the specified PO
 	var count int64
 	if err := s.db.WithContext(ctx).
 		Raw(`SELECT COUNT(*) FROM purchase_order_items WHERE id = ? AND purchase_order_id = ? AND deleted_at IS NULL`, poItemID, poID).
@@ -169,7 +161,6 @@ func (s *sellingPriceService) UpsertPOItemSellingPrice(ctx context.Context, poID
 		First(&existing).Error
 
 	if err == gorm.ErrRecordNotFound {
-		// Create new record
 		record := &models.POItemSellingPrice{
 			PurchaseOrderItemID: poItemID,
 			SellingPrice:        &sellingPrice,
@@ -183,7 +174,6 @@ func (s *sellingPriceService) UpsertPOItemSellingPrice(ctx context.Context, poID
 		return nil, fmt.Errorf("failed to look up PO item selling price: %w", err)
 	}
 
-	// Update existing record — only the override value
 	existing.SellingPrice = &sellingPrice
 	if err := s.db.WithContext(ctx).Save(&existing).Error; err != nil {
 		return nil, fmt.Errorf("failed to update PO item selling price: %w", err)
@@ -191,24 +181,18 @@ func (s *sellingPriceService) UpsertPOItemSellingPrice(ctx context.Context, poID
 	return &existing, nil
 }
 
-// SellingPriceRange is a selling price translated from its single user-supplied
-// effective date into an effective RANGE [Price.EffectiveFrom, EffectiveEndAt):
-// the user only provides the start date, the app decides the end.
-// EffectiveEndAt is the EXCLUSIVE upper bound — the next price's effective_from
-// in the same product+inventory scope — and nil when the range is open-ended.
-// Next is that boundary price itself (nil iff EffectiveEndAt is nil). Both are
-// derived from ONE lookup in resolveEffectiveRange, so the count boundary and
-// the displayed end ref can never disagree under a concurrent write.
+// SellingPriceRange translates a price's single effective date into an effective
+// range [EffectiveFrom, EffectiveEndAt). EffectiveEndAt is the exclusive upper
+// bound (the next price's effective_from in scope, nil when open-ended); Next is
+// that boundary price. Both come from one lookup in resolveEffectiveRange.
 type SellingPriceRange struct {
 	Price          *models.SellingPrice
 	EffectiveEndAt *time.Time
 	Next           *models.SellingPrice
 }
 
-// resolveEffectiveRange is the single date→range translator: every
-// effective-range calculation (create/update/delete previews, unlinked counts,
-// backfill) goes through here. It takes a price carrying only effective_from
-// and resolves the exclusive end boundary from the next price in scope.
+// resolveEffectiveRange is the single date->range translator; it resolves the
+// exclusive end boundary from the next price in scope.
 func (s *sellingPriceService) resolveEffectiveRange(ctx context.Context, sp *models.SellingPrice) (SellingPriceRange, error) {
 	next, err := s.sellingPriceRepo.GetNextInScope(ctx, sp)
 	if err != nil {
@@ -235,12 +219,9 @@ func (s *sellingPriceService) resolveEffectiveRangeByID(ctx context.Context, sel
 	return s.resolveEffectiveRange(ctx, sp)
 }
 
-// resolvePreviousPrice is resolveEffectiveRange's symmetric twin for the
-// VACATED-window logic: the previous price in scope is the one that takes over
-// a window vacated by an update/delete. nil when none exists — and, fail-closed,
-// on lookup failure (callers either block the mutation or skip a best-effort
-// preview entry). It may return the probed price itself when probing from a
-// stale (pre-update) date — the caller dedupes (see UpdateSellingPriceWithApplying).
+// resolvePreviousPrice returns the previous price in scope (the one that takes
+// over a vacated window), or nil when none exists or on lookup failure
+// (fail-closed). May return the probed price itself; callers dedupe.
 func (s *sellingPriceService) resolvePreviousPrice(ctx context.Context, sp *models.SellingPrice) *models.SellingPrice {
 	prev, err := s.sellingPriceRepo.GetPrevInScope(ctx, sp)
 	if err != nil {
@@ -249,21 +230,10 @@ func (s *sellingPriceService) resolvePreviousPrice(ctx context.Context, sp *mode
 	return prev
 }
 
-// affectedPOItemsFromSQL is the shared FROM+WHERE that selects the PO items in a
-// price's range and inventory scope. Placeholder order (per SellingPriceRange.scopeArgs):
-//
-//	$1 product_id        (range/scope)
-//	$2 effective_from    (lower bound, inclusive)
-//	$3 next_date         (NULL check for open-ended)
-//	$4 next_date         (exclusive upper bound)
-//	$5 inventory_id      (inventory-specific match; NULL => global branch)
-//	$6 inventory_id      (global branch: IS NULL test)
-//	$7 product_id        (global branch: no inventory-specific price covering po.created_at)
-//
-// Inventory scope (issue #40 decision B) mirrors PO-creation precedence:
-//   - inventory-specific price (inventory_id set): po.inventory_id = price.inventory_id
-//   - global price (inventory_id NULL): POIs in inventories that have NO
-//     inventory-specific selling price for the product covering po.created_at.
+// affectedPOItemsFromSQL is the shared FROM+WHERE selecting the PO items in a
+// price's range and inventory scope. Placeholder order matches
+// SellingPriceRange.scopeArgs; global vs inventory-specific scope mirrors
+// PO-creation precedence.
 const affectedPOItemsFromSQL = `
 	FROM purchase_order_items poi
 	JOIN purchase_orders po ON po.id = poi.purchase_order_id
@@ -303,9 +273,8 @@ func (rng SellingPriceRange) scopeArgs() []interface{} {
 }
 
 // countAffected returns the number of PO items whose displayed price would change
-// if the range's price were applied. It EXCLUDES override rows (their displayed
-// price won't change) and uses IS DISTINCT FROM so rows already linked to the
-// target are not counted.
+// if the range's price were applied, excluding override rows and rows already
+// linked to the target.
 func (s *sellingPriceService) countAffected(ctx context.Context, rng SellingPriceRange) (int64, error) {
 	args := append(rng.scopeArgs(), rng.Price.ID)
 	var count int64
@@ -328,23 +297,9 @@ func (s *sellingPriceService) countAffected(ctx context.Context, rng SellingPric
 }
 
 // applyRangeLinks re-points pisp.selling_price_id to the range's price for every
-// PO item in range+scope whose link differs AND has no manual override. Manual
-// per-item overrides (selling_price NOT NULL) are LEFT COMPLETELY UNTOUCHED — the
-// DO UPDATE WHERE clause skips them — so the write set exactly equals what
-// countAffected reports: RowsAffected (applied) == affected_po_item_count. It
-// never writes the override column. Items with no LIVE pisp row get one inserted.
-//
-// The conflict target is the PARTIAL unique index uq_pisp_po_item_id_active
-// (purchase_order_item_id WHERE deleted_at IS NULL), so the predicate is repeated
-// in the ON CONFLICT clause as Postgres requires for arbiter-index inference.
-// Because the index ignores soft-deleted rows, a PO item whose ONLY pisp row is
-// soft-deleted has NO live conflict: the statement INSERTs a fresh live row. That
-// fresh row is part of the counted set (no override) AND is written, so
-// RowsAffected (applied) == affected_po_item_count holds UNCONDITIONALLY — the
-// soft-deleted-only case is no longer an exception the guards have to absorb.
-//
-// The executor tx is the *gorm.DB to run against; pass the transaction handle so
-// the whole apply is atomic.
+// PO item in range+scope whose link differs and has no manual override; overrides
+// are left untouched and items with no live pisp row get one inserted. So
+// RowsAffected == affected_po_item_count. Runs against tx for atomicity.
 func (s *sellingPriceService) applyRangeLinks(ctx context.Context, tx *gorm.DB, rng SellingPriceRange) (int64, error) {
 	args := append([]interface{}{rng.Price.ID}, rng.scopeArgs()...)
 	args = append(args, rng.Price.ID)
@@ -374,15 +329,10 @@ func (s *sellingPriceService) CountUnlinkedPOItems(ctx context.Context, sellingP
 	return s.countAffected(ctx, rng)
 }
 
-// ApplyMassiveLinks re-points PO items to the START price (startID) across its
-// CURRENT effective range, resolved server-side via resolveEffectiveRange — the
-// app decides the boundary, never the client. The client's endEffectiveFrom is
-// an optimistic-concurrency ASSERTION of the exclusive end DATE it previewed
-// (end_selling_price.effective_from in the massive_applying entry, nil =
-// open-ended): when it no longer matches the resolved boundary date the ledger
-// changed since the preview, so the apply is rejected with a conflict error and
-// the client must re-preview. When the assertion holds, the applied set equals
-// the previewed set. The whole apply runs in a single transaction.
+// ApplyMassiveLinks re-points PO items to the start price across its current
+// server-resolved range. endEffectiveFrom asserts the previewed exclusive end
+// date (nil = open-ended); a mismatch is a conflict (re-preview). Runs in a single
+// transaction.
 func (s *sellingPriceService) ApplyMassiveLinks(ctx context.Context, startID uint, endEffectiveFrom *string) (int64, error) {
 	rng, err := s.resolveEffectiveRangeByID(ctx, startID)
 	if err != nil {
@@ -407,19 +357,9 @@ func (s *sellingPriceService) ApplyMassiveLinks(ctx context.Context, startID uin
 	return applied, nil
 }
 
-// assertRangeBoundary checks the client's previewed end-boundary claim against
-// the server-resolved range. A nil claim asserts "I previewed an open-ended
-// range"; a non-nil claim carries the exclusive end DATE the client SAW in the
-// preview ("YYYY-MM-DD", end_selling_price.effective_from). The previewed date
-// is pinned VERBATIM — never re-derived from live rows — so editing the
-// boundary price's date between preview and apply cannot move both sides of
-// the comparison together (the failure mode of asserting by boundary id). The
-// resolved end is compared in the same "YYYY-MM-DD" rendering the preview
-// serialized (refFor), making the assertion exactly "the window still ends
-// where the user saw it end". Any disagreement — a claimed date differing from
-// the resolved boundary, a date when the range is now open-ended, or no date
-// when a next price now exists — means the ledger changed between preview and
-// apply: conflict, re-preview.
+// assertRangeBoundary checks the client's previewed end-boundary claim (nil =
+// open-ended) against the server-resolved range. The claimed date is compared
+// verbatim; any disagreement means the ledger changed since preview -> conflict.
 func assertRangeBoundary(ctx context.Context, rng SellingPriceRange, claimedEndDate *string) error {
 	boundaryConflict := func() error {
 		return pkg.NewAppError(pkg.ErrorCodeConflict,
@@ -453,10 +393,8 @@ func refFor(sp *models.SellingPrice) dto.SellingPriceRef {
 	}
 }
 
-// entryForPrice builds one preview entry for a price acting as the window START.
-// EndSellingPrice is the next price in scope (nil if open-ended). The count
-// boundary and the end ref both come from ONE resolved range, so they cannot
-// disagree under a concurrent write.
+// entryForPrice builds one preview entry for a price acting as the window start.
+// EndSellingPrice is the next price in scope (nil if open-ended).
 func (s *sellingPriceService) entryForPrice(ctx context.Context, start *models.SellingPrice) (dto.SellingPriceMassiveApplyingEntry, error) {
 	rng, err := s.resolveEffectiveRange(ctx, start)
 	if err != nil {
@@ -482,9 +420,8 @@ func (s *sellingPriceService) CreateSellingPriceWithApplying(ctx context.Context
 	if err != nil {
 		return nil, nil, err
 	}
-	// create → 1 entry: start = the input price. The preview is informational, so a
-	// failure to compute it must not fail the already-committed create — degrade to
-	// an empty preview instead of returning an error (which the handler would 500).
+	// Preview is informational; a compute failure degrades to an empty preview
+	// rather than failing the committed create.
 	entry, err := s.entryForPrice(ctx, sp)
 	if err != nil {
 		return sp, dto.SellingPriceMassiveApplying{}, nil
@@ -493,7 +430,6 @@ func (s *sellingPriceService) CreateSellingPriceWithApplying(ctx context.Context
 }
 
 func (s *sellingPriceService) UpdateSellingPriceWithApplying(ctx context.Context, id uint, req dto.UpdateSellingPriceRequest) (*models.SellingPrice, dto.SellingPriceMassiveApplying, error) {
-	// Capture the pre-update effective_from to detect a date change.
 	before, err := s.sellingPriceRepo.GetByID(ctx, id)
 	if err != nil {
 		if err == gorm.ErrRecordNotFound {
@@ -503,14 +439,9 @@ func (s *sellingPriceService) UpdateSellingPriceWithApplying(ctx context.Context
 	}
 	oldEffectiveFrom := before.EffectiveFrom
 
-	// Reject the no-takeover move-later case BEFORE committing: if the earliest
-	// price in scope is moved to a later effective_from, the vacated leading window
-	// [oldEffectiveFrom, newEffectiveFrom) has no previous price to take over, so
-	// PO items there would keep a stale link the client can't re-point or clear.
-	// This mirrors the DELETE block. Probe with the OLD effective_from (the
-	// pre-mutation row) to detect "this is the earliest price". Move-earlier and
-	// price-only updates are unaffected. A bad date format is surfaced by
-	// UpdateSellingPrice below, so ignore the parse error here.
+	// Reject moving the earliest price to a later date: the vacated leading window
+	// would have no previous price to take over. Probe with the old effective_from.
+	// Parse errors are surfaced by UpdateSellingPrice below.
 	if newEffectiveFrom, perr := time.Parse("2006-01-02", req.EffectiveFrom); perr == nil &&
 		newEffectiveFrom.After(oldEffectiveFrom) &&
 		s.resolvePreviousPrice(ctx, before) == nil {
@@ -524,10 +455,8 @@ func (s *sellingPriceService) UpdateSellingPriceWithApplying(ctx context.Context
 
 	dateChanged := !sp.EffectiveFrom.Equal(oldEffectiveFrom)
 
-	// The update is committed past this point, so preview-query failures degrade to
-	// an empty/partial preview rather than failing the operation.
+	// Update is committed; preview-query failures degrade to an empty/partial preview.
 	if !dateChanged {
-		// price-only update → 1 entry: start = this price.
 		entry, err := s.entryForPrice(ctx, sp)
 		if err != nil {
 			return sp, dto.SellingPriceMassiveApplying{}, nil
@@ -535,16 +464,11 @@ func (s *sellingPriceService) UpdateSellingPriceWithApplying(ctx context.Context
 		return sp, dto.SellingPriceMassiveApplying{entry}, nil
 	}
 
-	// effective_from changed → delete+insert semantics:
-	//   1) the vacated old window — now covered by the previous price in scope
-	//   2) the new window — covered by this price
+	// effective_from changed: preview the vacated old window and the new window.
 	entries := dto.SellingPriceMassiveApplying{}
 
-	// Entry for the vacated old window: start = the previous price in scope now
-	// covering the old date. The move-earlier dedupe (prev.ID != sp.ID) skips the
-	// vacated entry when this price itself moved earlier and now covers the old
-	// window (the new-window entry below already covers it). Best-effort: a
-	// preview-query failure degrades to skipping the entry.
+	// Vacated old window: start = the previous price now covering the old date.
+	// Dedupe (prev.ID != sp.ID) when this price itself moved earlier. Best-effort.
 	vacated := &models.SellingPrice{
 		Base:          models.Base{ID: sp.ID},
 		ProductID:     sp.ProductID,
@@ -557,7 +481,7 @@ func (s *sellingPriceService) UpdateSellingPriceWithApplying(ctx context.Context
 		}
 	}
 
-	// Entry for the new window: start = this price.
+	// New window: start = this price.
 	if newEntry, perr := s.entryForPrice(ctx, sp); perr == nil {
 		entries = append(entries, newEntry)
 	}
@@ -574,9 +498,8 @@ func (s *sellingPriceService) DeleteSellingPriceWithApplying(ctx context.Context
 		return nil, fmt.Errorf("failed to get selling price: %w", err)
 	}
 
-	// For delete, the start price is the previous price in scope that now covers
-	// the vacated window. Block when there is none (e.g. the first/only price) —
-	// no price would take over the vacated window.
+	// Start price is the previous price in scope covering the vacated window; block
+	// when there is none (e.g. the first/only price).
 	start := s.resolvePreviousPrice(ctx, sp)
 	if start == nil {
 		return nil, pkg.ErrSellingPriceDeleteNoTakeover(ctx)
@@ -586,9 +509,8 @@ func (s *sellingPriceService) DeleteSellingPriceWithApplying(ctx context.Context
 		return nil, fmt.Errorf("failed to delete selling price: %w", err)
 	}
 
-	// After deletion, start's next is the deleted price's former next; entryForPrice
-	// recomputes range/scope/count from the post-delete state. The delete is already
-	// committed, so a preview-query failure degrades to an empty preview.
+	// entryForPrice recomputes range/count from the post-delete state. Delete is
+	// committed, so a failure degrades to an empty preview.
 	entry, err := s.entryForPrice(ctx, start)
 	if err != nil {
 		return dto.SellingPriceMassiveApplying{}, nil
