@@ -688,13 +688,26 @@ func (s *inventoryService) ProcessSubmission(ctx context.Context, req dto.Submis
 		// and the failure audit is recorded after the tx unwinds.
 		var failedPS *processingState
 		txErr := s.baseRepo.WithinTx(ctx, func(txCtx context.Context) error {
-			if err := s.inventorySubmissionRepo.UpdateApprovalStatus(txCtx, submission.ID, approvalStatus, req.Reason); err != nil {
-				return fmt.Errorf("failed to update approval status: %w", err)
-			}
+			// Advisory-then-row lock order here is deadlock-free against the reject
+			// path's row-only lock: they never row-lock the same submission before one
+			// commits.
 			if err := s.inventorySubmissionRepo.AcquireInventoryAdvisoryLock(txCtx, submission.InventoryID); err != nil {
 				return fmt.Errorf("failed to acquire inventory advisory lock: %w", err)
 			}
-			applied, ps, applyErr := s.processSubmission(txCtx, submission, true /* atomic */)
+			// Re-read under the row lock and assert still pending so simultaneous
+			// approves cannot both apply the op (mirror of the reject branch).
+			locked, err := s.inventorySubmissionRepo.GetByIDForUpdate(txCtx, submission.ID)
+			if err != nil {
+				return fmt.Errorf("failed to re-load submission for approve: %w", err)
+			}
+			if locked.ApprovalStatus != models.InventorySubmissionApprovalStatusPending {
+				return pkg.NewAppError(pkg.ErrorCodeValidation,
+					fmt.Sprintf("submission approval is not pending, current approval status: %s", locked.ApprovalStatus), nil)
+			}
+			if err := s.inventorySubmissionRepo.UpdateApprovalStatus(txCtx, submission.ID, approvalStatus, req.Reason); err != nil {
+				return fmt.Errorf("failed to update approval status: %w", err)
+			}
+			applied, ps, applyErr := s.processSubmission(txCtx, locked, true /* atomic */)
 			if applyErr != nil {
 				// Roll the whole tx back so no partial stock mutation commits with the
 				// approval flip; the failure audit is recorded after the tx unwinds.

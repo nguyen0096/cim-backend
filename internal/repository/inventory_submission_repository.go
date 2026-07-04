@@ -4,6 +4,7 @@ import (
 	"cim-backend/internal/models"
 	"cim-backend/pkg"
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -11,6 +12,11 @@ import (
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
+
+// ErrApprovalNotPending is returned when an approval-status transition targets a
+// submission that is no longer pending (e.g. a concurrent approve already
+// processed it). Guards against double-applying the inventory op.
+var ErrApprovalNotPending = errors.New("submission approval is not pending")
 
 // InventorySubmissionRepository handles inventory submission persistence
 type InventorySubmissionRepository interface {
@@ -111,10 +117,18 @@ func (r *inventorySubmissionRepository) UpdateApprovalStatus(ctx context.Context
 		return fmt.Errorf("failed to prepare update fields: %w", err)
 	}
 
-	return r.DB(ctx).WithContext(ctx).
+	res := r.DB(ctx).WithContext(ctx).
 		Model(&models.InventorySubmission{}).
 		Where("id = ?", id).
-		Updates(updates).Error
+		Where("approval_status = ?", models.InventorySubmissionApprovalStatusPending).
+		Updates(updates)
+	if res.Error != nil {
+		return res.Error
+	}
+	if res.RowsAffected == 0 {
+		return ErrApprovalNotPending
+	}
+	return nil
 }
 
 // UpdateProcessingStatus updates the processing status of a submission
