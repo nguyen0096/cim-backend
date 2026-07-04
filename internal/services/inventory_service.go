@@ -168,6 +168,15 @@ func (s *inventoryService) consumeFIFO(
 			continue
 		}
 
+		// Guard against a negative consume quantity: item.Quantity.Sub(negative)
+		// would inflate on-hand while the FIFO loop is skipped, bricking the item.
+		if consumeQty.IsNegative() {
+			_ = ps.addError(pkg.ErrConsumeFIFOFailed(
+				fmt.Sprintf("quantity to consume %s must not be negative for inventory item %d",
+					consumeQty.String(), itemID)))
+			continue
+		}
+
 		if consumeQty.GreaterThan(item.Quantity) {
 			_ = ps.addError(pkg.ErrConsumeFIFOFailed(
 				fmt.Sprintf("quantity to consume %s exceeds available quantity %s for inventory item %d",
@@ -494,8 +503,8 @@ func (s *inventoryService) CreateDisposeSubmission(ctx context.Context, req dto.
 	activeItemMap := s.buildItemMap(activeItems)
 
 	for _, reqItem := range req.Items {
-		if reqItem.Quantity == nil {
-			return nil, pkg.ErrInvalidRequestBody(fmt.Errorf("quantity is required for inventory item %d", reqItem.InventoryItemID))
+		if err := requireConsumeQuantity(reqItem.Quantity, reqItem.InventoryItemID, "dispose"); err != nil {
+			return nil, err
 		}
 
 		// Validate that inventory item exists
@@ -852,8 +861,8 @@ func (s *inventoryService) CreateTransferSubmission(ctx context.Context, req dto
 	srcItemMap := s.buildItemMap(srcItems)
 
 	for _, reqItem := range req.Items {
-		if reqItem.Quantity == nil {
-			return nil, pkg.ErrInvalidRequestBody(fmt.Errorf("quantity is required for inventory item %d", reqItem.InventoryItemID))
+		if err := requireConsumeQuantity(reqItem.Quantity, reqItem.InventoryItemID, "transfer"); err != nil {
+			return nil, err
 		}
 
 		item, exists := srcItemMap[reqItem.InventoryItemID]
@@ -1483,6 +1492,19 @@ func (s *inventoryService) UpdateSubmission(ctx context.Context, req dto.UpdateS
 	return response, nil
 }
 
+// requireConsumeQuantity rejects a nil or non-positive quantity for a
+// dispose/transfer item; op ("dispose"/"transfer") tailors the message.
+func requireConsumeQuantity(qty *decimal.Decimal, itemID uint, op string) error {
+	if qty == nil {
+		return pkg.ErrInvalidRequestBody(fmt.Errorf("quantity is required for inventory item %d", itemID))
+	}
+	if !qty.IsPositive() {
+		return pkg.NewAppError(pkg.ErrorCodeValidation,
+			fmt.Sprintf("%s quantity must be greater than zero for inventory item %d", op, itemID), nil)
+	}
+	return nil
+}
+
 // validateReconcileUpdate validates items for reconcile submission update
 func (s *inventoryService) validateReconcileUpdate(ctx context.Context, inventoryID uint, items []dto.QuantityItem) error {
 	activeItems, err := s.getActiveInventoryItems(ctx, inventoryID, models.GetIDs(items))
@@ -1526,8 +1548,8 @@ func (s *inventoryService) validateDisposeUpdate(ctx context.Context, inventoryI
 	activeItemMap := s.buildItemMap(activeItems)
 
 	for _, reqItem := range items {
-		if reqItem.Quantity == nil {
-			return pkg.ErrInvalidRequestBody(fmt.Errorf("quantity is required for inventory item %d", reqItem.InventoryItemID))
+		if err := requireConsumeQuantity(reqItem.Quantity, reqItem.InventoryItemID, "dispose"); err != nil {
+			return err
 		}
 
 		item, exists := activeItemMap[reqItem.InventoryItemID]
@@ -1562,8 +1584,8 @@ func (s *inventoryService) validateTransferUpdate(ctx context.Context, submissio
 	activeItemMap := s.buildItemMap(activeItems)
 
 	for _, reqItem := range items {
-		if reqItem.Quantity == nil {
-			return pkg.ErrInvalidRequestBody(fmt.Errorf("quantity is required for inventory item %d", reqItem.InventoryItemID))
+		if err := requireConsumeQuantity(reqItem.Quantity, reqItem.InventoryItemID, "transfer"); err != nil {
+			return err
 		}
 
 		item, exists := activeItemMap[reqItem.InventoryItemID]

@@ -323,6 +323,14 @@ func (r *purchaseOrderRepository) ReceiveInventory(ctx context.Context, req dto.
 				return pkg.NewAppError(pkg.ErrorCodeInternal, fmt.Sprintf("unit not found for product %d", *poi.ProductID), nil)
 			}
 
+			// Reject a negative received quantity (zero is allowed: it re-updates
+			// PO status without adding stock). A negative value would drive on-hand
+			// negative and poison FIFO with a negative-qty purchase transaction.
+			if reqItem.ReceivedQuantity.IsNegative() {
+				return pkg.NewAppError(pkg.ErrorCodeValidation,
+					fmt.Sprintf("received quantity must not be negative for purchase order item %d", reqItem.ID), nil)
+			}
+
 			receivedQuantityDecimalPlaces := getDecimalPlaces(reqItem.ReceivedQuantity)
 			if receivedQuantityDecimalPlaces > poi.ProductUnit.DecimalPlaces {
 				return pkg.ErrQuantityHavingMoreDecimalPlacesThanProductUnit(ctx,
@@ -441,7 +449,7 @@ func (r *purchaseOrderRepository) increaseQuantityInventoryItems(db *gorm.DB, de
 	return db.Exec(fmt.Sprintf(`
 		WITH payload (id, delta) AS ( VALUES %s )
 		UPDATE inventory_items ii
-			SET quantity = ii.quantity + payload.delta::decimal(10,2)
+			SET quantity = GREATEST(0, ii.quantity + payload.delta::decimal(10,2))
 		FROM payload WHERE ii.id = payload.id;
 	`, valuesStr)).Error
 }
