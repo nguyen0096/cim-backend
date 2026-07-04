@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"testing"
+	"time"
 
 	"github.com/shopspring/decimal"
 	"github.com/stretchr/testify/assert"
@@ -11,6 +12,7 @@ import (
 
 	"cim-backend/internal/models"
 	"cim-backend/internal/services/dto"
+	"cim-backend/pkg"
 )
 
 // These are pure unit tests of the synthesis core (epic #38, Part 5): summing
@@ -25,6 +27,15 @@ func childRow(id uint, status models.ReconciliationRequestItemStatus, lines ...r
 	payload, _ := json.Marshal(reconItemPayload{Items: lines})
 	row := models.ReconciliationRequestItem{Status: status, Payload: payload}
 	row.ID = id
+	return row
+}
+
+// sessionRow builds a live child row with session provenance (label/creator/timestamp).
+func sessionRow(id uint, label, createdBy string, createdAt time.Time, status models.ReconciliationRequestItemStatus, lines ...reconItemPayloadLine) models.ReconciliationRequestItem {
+	row := childRow(id, status, lines...)
+	row.Label = label
+	row.CreatedBy = createdBy
+	row.CreatedAt = createdAt
 	return row
 }
 
@@ -85,14 +96,17 @@ func TestSynthesizeReconcile_SumsByItemAcrossRowsAndItems(t *testing.T) {
 	assert.True(t, it2.Quantity.Equal(decimal.NewFromInt(40)))
 }
 
-func TestSynthesizeReconcile_LabelBreakdownPerItemLabel(t *testing.T) {
-	// Issue #73: synthesis sums by inventory_item_id (label is representation-only),
-	// AND surfaces a per-(item, label) breakdown so review can show each labeled
-	// count behind a total. Item 1 is counted under "shelf" (30) + "dock" (25) across
-	// two rows -> total 55, two breakdown lines. Item 2 has a single blank-label count.
+func TestSynthesizeReconcile_SessionGrainedBreakdown(t *testing.T) {
+	// Synthesis sums by inventory_item_id for the apply math (count-label + session are
+	// representation-only), AND surfaces a session-grained breakdown: one entry per
+	// (item, creator, session-label, count-label). Item 1 is counted under "shelf" (30,
+	// alice/morning) and "dock" (25, bob/evening) -> total 55, two distinct entries.
+	// Item 2 has a single blank count-label in alice/morning.
+	at1 := time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)
+	at2 := time.Date(2026, 1, 3, 6, 7, 8, 0, time.UTC)
 	rows := []models.ReconciliationRequestItem{
-		childRow(1, models.ReconciliationRequestItemStatusInProgress, labeledLine(1, "30", "shelf"), labeledLine(2, "40", "")),
-		childRow(2, models.ReconciliationRequestItemStatusInProgress, labeledLine(1, "25", "dock")),
+		sessionRow(1, "morning", "alice@cim.local", at1, models.ReconciliationRequestItemStatusInProgress, labeledLine(1, "30", "shelf"), labeledLine(2, "40", "")),
+		sessionRow(2, "evening", "bob@cim.local", at2, models.ReconciliationRequestItemStatusInProgress, labeledLine(1, "25", "dock")),
 	}
 	baselines := baselineMap(map[uint]string{1: "100", 2: "100"})
 
@@ -100,34 +114,103 @@ func TestSynthesizeReconcile_LabelBreakdownPerItemLabel(t *testing.T) {
 	require.NoError(t, err)
 	assert.Empty(t, syn.Anomalies)
 
-	// Totals are summed by item regardless of label (apply math ignores the label).
+	// Totals are summed by item regardless of label/session (apply math ignores them).
 	it1, _ := findItem(syn.Request.Items, 1)
 	require.NotNil(t, it1.Quantity)
 	assert.True(t, it1.Quantity.Equal(decimal.NewFromInt(55)), "item 1 total = shelf 30 + dock 25")
 
-	// Breakdown: item 1 -> shelf 30, dock 25 (first-seen label order); item 2 -> blank 40.
+	// Ordered by item id, then first-seen: item1 alice/shelf, item1 bob/dock, item2 alice/blank.
 	require.Len(t, syn.Breakdown, 3)
-	assert.Equal(t, dto.ReconcileItemBreakdown{InventoryItemID: 1, Label: "shelf", Quantity: decimal.NewFromInt(30)}, syn.Breakdown[0])
-	assert.Equal(t, dto.ReconcileItemBreakdown{InventoryItemID: 1, Label: "dock", Quantity: decimal.NewFromInt(25)}, syn.Breakdown[1])
-	assert.Equal(t, uint(2), syn.Breakdown[2].InventoryItemID)
-	assert.Equal(t, "", syn.Breakdown[2].Label)
-	assert.True(t, syn.Breakdown[2].Quantity.Equal(decimal.NewFromInt(40)))
+	assert.Equal(t, dto.ReconcileItemBreakdown{
+		InventoryItemID: 1, Label: "shelf", Quantity: decimal.NewFromInt(30),
+		SessionLabel: "morning", CreatedBy: "alice@cim.local", CreatedAt: at1.Format(pkg.DateTimeFormat),
+	}, syn.Breakdown[0])
+	assert.Equal(t, dto.ReconcileItemBreakdown{
+		InventoryItemID: 1, Label: "dock", Quantity: decimal.NewFromInt(25),
+		SessionLabel: "evening", CreatedBy: "bob@cim.local", CreatedAt: at2.Format(pkg.DateTimeFormat),
+	}, syn.Breakdown[1])
+	assert.Equal(t, dto.ReconcileItemBreakdown{
+		InventoryItemID: 2, Label: "", Quantity: decimal.NewFromInt(40),
+		SessionLabel: "morning", CreatedBy: "alice@cim.local", CreatedAt: at1.Format(pkg.DateTimeFormat),
+	}, syn.Breakdown[2])
 }
 
-func TestSynthesizeReconcile_SameLabelAcrossRowsSummedInBreakdown(t *testing.T) {
-	// Two rows contribute to item 1 under the SAME label "shelf" (e.g. an admin
-	// review edit + a staff row): the breakdown collapses them into one line summing
-	// the quantity (issue #73 breakdown is keyed per (item, label)).
+func TestSynthesizeReconcile_DistinctSessionsSameCountLabelStayDistinct(t *testing.T) {
+	// Two sessions count item 1 under the SAME count-label "shelf". They differ only
+	// by session (distinct session-labels for the same creator; a blank vs a named
+	// session for another). Each (creator + session-label) is a distinct session, so
+	// the entries must NOT merge.
+	at := time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)
 	rows := []models.ReconciliationRequestItem{
-		childRow(1, models.ReconciliationRequestItemStatusInProgress, labeledLine(1, "30", "shelf")),
-		childRow(2, models.ReconciliationRequestItemStatusInProgress, labeledLine(1, "20", "shelf")),
+		sessionRow(1, "aisle-1", "alice@cim.local", at, models.ReconciliationRequestItemStatusInProgress, labeledLine(1, "30", "shelf")),
+		sessionRow(2, "aisle-2", "alice@cim.local", at, models.ReconciliationRequestItemStatusInProgress, labeledLine(1, "20", "shelf")),
+		// same session-label "aisle-2" but a DIFFERENT creator -> still distinct.
+		sessionRow(3, "aisle-2", "bob@cim.local", at, models.ReconciliationRequestItemStatusInProgress, labeledLine(1, "10", "shelf")),
+	}
+	baselines := baselineMap(map[uint]string{1: "100"})
+
+	syn, err := synthesizeReconcile(7, rows, baselines, nil)
+	require.NoError(t, err)
+	require.Len(t, syn.Breakdown, 3, "distinct sessions with the same count-label stay distinct")
+	assert.Equal(t, "aisle-1", syn.Breakdown[0].SessionLabel)
+	assert.Equal(t, "alice@cim.local", syn.Breakdown[0].CreatedBy)
+	assert.True(t, syn.Breakdown[0].Quantity.Equal(decimal.NewFromInt(30)))
+	assert.Equal(t, "aisle-2", syn.Breakdown[1].SessionLabel)
+	assert.Equal(t, "alice@cim.local", syn.Breakdown[1].CreatedBy)
+	assert.True(t, syn.Breakdown[1].Quantity.Equal(decimal.NewFromInt(20)))
+	assert.Equal(t, "aisle-2", syn.Breakdown[2].SessionLabel)
+	assert.Equal(t, "bob@cim.local", syn.Breakdown[2].CreatedBy)
+	assert.True(t, syn.Breakdown[2].Quantity.Equal(decimal.NewFromInt(10)))
+}
+
+func TestSynthesizeReconcile_SingleSessionBreakdown(t *testing.T) {
+	// One session counting one item under one count-label -> a single provenance-bearing entry.
+	at := time.Date(2026, 5, 6, 7, 8, 9, 0, time.UTC)
+	rows := []models.ReconciliationRequestItem{
+		sessionRow(1, "morning", "alice@cim.local", at, models.ReconciliationRequestItemStatusInProgress, labeledLine(1, "12", "shelf")),
 	}
 	baselines := baselineMap(map[uint]string{1: "100"})
 
 	syn, err := synthesizeReconcile(7, rows, baselines, nil)
 	require.NoError(t, err)
 	require.Len(t, syn.Breakdown, 1)
-	assert.Equal(t, dto.ReconcileItemBreakdown{InventoryItemID: 1, Label: "shelf", Quantity: decimal.NewFromInt(50)}, syn.Breakdown[0])
+	assert.Equal(t, dto.ReconcileItemBreakdown{
+		InventoryItemID: 1, Label: "shelf", Quantity: decimal.NewFromInt(12),
+		SessionLabel: "morning", CreatedBy: "alice@cim.local", CreatedAt: at.Format(pkg.DateTimeFormat),
+	}, syn.Breakdown[0])
+}
+
+func TestSynthesizeReconcile_BlankSessionAndCountLabel(t *testing.T) {
+	// A blank session-label + blank count-label session yields one entry with both empty.
+	at := time.Date(2026, 5, 6, 7, 8, 9, 0, time.UTC)
+	rows := []models.ReconciliationRequestItem{
+		sessionRow(1, "", "alice@cim.local", at, models.ReconciliationRequestItemStatusInProgress, labeledLine(1, "7", "")),
+	}
+	baselines := baselineMap(map[uint]string{1: "100"})
+
+	syn, err := synthesizeReconcile(7, rows, baselines, nil)
+	require.NoError(t, err)
+	require.Len(t, syn.Breakdown, 1)
+	assert.Equal(t, dto.ReconcileItemBreakdown{
+		InventoryItemID: 1, Label: "", Quantity: decimal.NewFromInt(7),
+		SessionLabel: "", CreatedBy: "alice@cim.local", CreatedAt: at.Format(pkg.DateTimeFormat),
+	}, syn.Breakdown[0])
+}
+
+func TestSynthesizeReconcile_SameCountLabelSameSessionSummed(t *testing.T) {
+	// A repeated (item, count-label) within one session is summed into one entry
+	// (defensive: payload validation normally forbids duplicate count-labels).
+	at := time.Date(2026, 5, 6, 7, 8, 9, 0, time.UTC)
+	rows := []models.ReconciliationRequestItem{
+		sessionRow(1, "morning", "alice@cim.local", at, models.ReconciliationRequestItemStatusInProgress, labeledLine(1, "10", "shelf"), labeledLine(1, "5", "shelf")),
+	}
+	baselines := baselineMap(map[uint]string{1: "100"})
+
+	syn, err := synthesizeReconcile(7, rows, baselines, nil)
+	require.NoError(t, err)
+	require.Len(t, syn.Breakdown, 1)
+	assert.True(t, syn.Breakdown[0].Quantity.Equal(decimal.NewFromInt(15)))
+	assert.Equal(t, "morning", syn.Breakdown[0].SessionLabel)
 }
 
 func TestSynthesizeReconcile_DecimalMath(t *testing.T) {

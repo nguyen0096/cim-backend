@@ -3,6 +3,7 @@ package services
 import (
 	"cim-backend/internal/models"
 	"cim-backend/internal/services/dto"
+	"cim-backend/pkg"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -46,10 +47,6 @@ func synthesizeReconcile(
 	managerOwned map[uint]bool,
 ) (*dto.SynthesizedReconcile, error) {
 	totals := make(map[uint]decimal.Decimal)
-	// breakdown holds review-only per-(item, label) contributions; labelOrder keeps
-	// first-seen label order. Neither affects totals.
-	breakdown := make(map[uint]map[string]decimal.Decimal)
-	labelOrder := make(map[uint][]string)
 	for _, row := range rows {
 		if len(row.Payload) == 0 {
 			continue
@@ -64,16 +61,6 @@ func synthesizeReconcile(
 				cur = decimal.Zero
 			}
 			totals[line.InventoryItemID] = cur.Add(line.Quantity)
-
-			byLabel, ok := breakdown[line.InventoryItemID]
-			if !ok {
-				byLabel = make(map[string]decimal.Decimal)
-				breakdown[line.InventoryItemID] = byLabel
-			}
-			if _, seen := byLabel[line.Label]; !seen {
-				labelOrder[line.InventoryItemID] = append(labelOrder[line.InventoryItemID], line.Label)
-			}
-			byLabel[line.Label] = byLabel[line.Label].Add(line.Quantity)
 		}
 	}
 
@@ -84,16 +71,9 @@ func synthesizeReconcile(
 	}
 	sort.Slice(itemIDs, func(i, j int) bool { return itemIDs[i] < itemIDs[j] })
 
-	var breakdownLines []dto.ReconcileItemBreakdown
-	for _, id := range itemIDs {
-		for _, label := range labelOrder[id] {
-			qty := breakdown[id][label]
-			breakdownLines = append(breakdownLines, dto.ReconcileItemBreakdown{
-				InventoryItemID: id,
-				Label:           label,
-				Quantity:        qty,
-			})
-		}
+	breakdownLines, err := sessionBreakdown(rows)
+	if err != nil {
+		return nil, err
 	}
 
 	var anomalies []string
@@ -138,6 +118,79 @@ func synthesizeReconcile(
 		Anomalies: anomalies,
 		Breakdown: breakdownLines,
 	}, nil
+}
+
+// sessionBreakdown emits one review-only entry per (inventory_item, creator,
+// session-label, count-label) contribution, each carrying the session's
+// label/creator/timestamp so the UI can group contributions by session.
+// (creator + session-label) uniquely identifies a session, so sessions sharing a
+// count-label stay distinct. Entries are ordered by inventory_item_id, then
+// first-seen; quantities for a repeated key are summed.
+func sessionBreakdown(rows []models.ReconciliationRequestItem) ([]dto.ReconcileItemBreakdown, error) {
+	type key struct {
+		itemID       uint
+		createdBy    string
+		sessionLabel string
+		countLabel   string
+	}
+	type entry struct {
+		breakdown *dto.ReconcileItemBreakdown
+		seq       int
+	}
+	agg := make(map[key]*entry)
+	order := make([]key, 0)
+
+	sorted := make([]models.ReconciliationRequestItem, len(rows))
+	copy(sorted, rows)
+	sort.SliceStable(sorted, func(i, j int) bool { return sorted[i].ID < sorted[j].ID })
+
+	for _, row := range sorted {
+		if len(row.Payload) == 0 {
+			continue
+		}
+		var parsed reconItemPayload
+		if err := json.Unmarshal(row.Payload, &parsed); err != nil {
+			return nil, fmt.Errorf("failed to parse reconciliation item %d payload: %w", row.ID, err)
+		}
+		createdAt := ""
+		if !row.CreatedAt.IsZero() {
+			createdAt = row.CreatedAt.Format(pkg.DateTimeFormat)
+		}
+		for _, line := range parsed.Items {
+			k := key{itemID: line.InventoryItemID, createdBy: row.CreatedBy, sessionLabel: row.Label, countLabel: line.Label}
+			e, ok := agg[k]
+			if !ok {
+				e = &entry{
+					breakdown: &dto.ReconcileItemBreakdown{
+						InventoryItemID: line.InventoryItemID,
+						Label:           line.Label,
+						Quantity:        decimal.Zero,
+						SessionLabel:    row.Label,
+						CreatedBy:       row.CreatedBy,
+						CreatedAt:       createdAt,
+					},
+					seq: len(order),
+				}
+				agg[k] = e
+				order = append(order, k)
+			}
+			e.breakdown.Quantity = e.breakdown.Quantity.Add(line.Quantity)
+		}
+	}
+
+	sort.SliceStable(order, func(i, j int) bool {
+		a, b := agg[order[i]], agg[order[j]]
+		if a.breakdown.InventoryItemID != b.breakdown.InventoryItemID {
+			return a.breakdown.InventoryItemID < b.breakdown.InventoryItemID
+		}
+		return a.seq < b.seq
+	})
+
+	var lines []dto.ReconcileItemBreakdown
+	for _, k := range order {
+		lines = append(lines, *agg[k].breakdown)
+	}
+	return lines, nil
 }
 
 // aggregateReviewLabel derives the submission-level review label from staff session

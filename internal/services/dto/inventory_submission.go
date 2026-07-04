@@ -24,13 +24,17 @@ type SynthesizedReconcile struct {
 	Request   ReconcileInventoryRequest
 	Label     ReconcileReviewLabel
 	Anomalies []string
-	// Breakdown carries the per-(item, label) contributions summed into Request;
-	// review/audit-only, not used by the apply math.
+	// Breakdown carries the session-grained contributions behind Request: one
+	// entry per (count session, inventory_item, count-label). Review/audit-only,
+	// not used by the apply math.
 	Breakdown []ReconcileItemBreakdown
 }
 
-// ReconcileItemBreakdown is the review-only, per-(inventory_item, label) view of
-// the counts summed into one synthesized line. Presentation-only.
+// ReconcileItemBreakdown is the review-only, session-grained view of one count
+// contribution behind a synthesized line: a single (inventory_item, creator,
+// session-label, count-label) quantity plus the session's provenance.
+// (creator + session-label) uniquely identifies a session (per-owner session
+// labels are distinct). Presentation-only.
 type ReconcileItemBreakdown struct {
 	InventoryItemID uint            `json:"inventory_item_id"`
 	Label           string          `json:"label"`
@@ -38,6 +42,11 @@ type ReconcileItemBreakdown struct {
 	// ProductName is the resolved product name for InventoryItemID;
 	// presentation-only, omitted when unresolved.
 	ProductName string `json:"product_name,omitempty"`
+	// SessionLabel is the row-level count-session label.
+	SessionLabel string `json:"session_label,omitempty"`
+	// CreatedBy / CreatedAt are the session creator and creation timestamp.
+	CreatedBy string `json:"created_by,omitempty"`
+	CreatedAt string `json:"created_at,omitempty"`
 }
 
 // ReconciliationItemLine is one count line inside a reconciliation row response

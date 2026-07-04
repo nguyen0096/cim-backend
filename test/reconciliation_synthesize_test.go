@@ -175,13 +175,19 @@ var _ = Describe("Reconciliation synthesize + list/detail/label/warnings", func(
 		Expect(syn.Request.Items[0].PrevQuantity.Equal(baseline)).To(BeTrue())
 		Expect(syn.Anomalies).To(BeEmpty())
 
-		// Breakdown surfaces each labeled count behind the summed total (issue #73).
+		// Session-grained breakdown: one entry per (item, creator, session-label,
+		// count-label), each carrying the creator/timestamp so review can group by session.
 		Expect(syn.Breakdown).To(HaveLen(2))
 		labels := map[string]string{}
+		creators := map[string]struct{}{}
 		for _, b := range syn.Breakdown {
 			Expect(b.InventoryItemID).To(Equal(itm.ID))
+			Expect(b.CreatedBy).NotTo(BeEmpty())
+			Expect(b.CreatedAt).NotTo(BeEmpty())
+			creators[b.CreatedBy] = struct{}{}
 			labels[b.Label] = b.Quantity.String()
 		}
+		Expect(creators).To(HaveLen(2), "the two sessions (distinct creators) surface as distinct breakdown entries")
 		Expect(labels[""]).To(Equal("30"))
 		Expect(labels["dock"]).To(Equal("25"))
 	})

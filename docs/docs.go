@@ -6344,6 +6344,13 @@ const docTemplate = `{
         "dto.ReconcileItemBreakdown": {
             "type": "object",
             "properties": {
+                "created_at": {
+                    "type": "string"
+                },
+                "created_by": {
+                    "description": "CreatedBy / CreatedAt are the session creator and creation timestamp.",
+                    "type": "string"
+                },
                 "inventory_item_id": {
                     "type": "integer"
                 },
@@ -6356,6 +6363,10 @@ const docTemplate = `{
                 },
                 "quantity": {
                     "type": "number"
+                },
+                "session_label": {
+                    "description": "SessionLabel is the row-level count-session label.",
+                    "type": "string"
                 }
             }
         },
