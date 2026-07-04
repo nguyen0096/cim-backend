@@ -173,6 +173,37 @@ var _ = Describe("Reconciliation start-processing apply", func() {
 		Expect(sold.Equal(decimal.NewFromInt(40))).To(BeTrue(), "Sell total should be snapshot-counted = 40, got %s", sold)
 	})
 
+	// Audit-only reconcile: counts EQUAL the snapshot, so there is no delta.
+	// It must still close and finalize as `processed` with ZERO stock mutation and
+	// no phantom Sell — not be rejected/no-op'd as "nothing to do".
+	It("finalizes a no-change (counted == snapshot) reconcile with zero mutation", func() {
+		item, err := svc.CreateReconciliationItem(staffCtx, dto.CreateReconciliationItemRequest{
+			SubmissionID: sub.ID, Items: countItems(100),
+		})
+		Expect(err).NotTo(HaveOccurred())
+		DeferCleanup(func() { tenv.ContextfulDB().Unscoped().Delete(item) })
+
+		_, err = svc.CloseReconciliation(adminCtx, sub.ID)
+		Expect(err).NotTo(HaveOccurred())
+
+		res, err := svc.StartProcessing(adminCtx, sub.ID)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(res.DriftDetected).To(BeFalse())
+		Expect(res.Submission).NotTo(BeNil())
+		Expect(res.Submission.ReconcileStatus).To(Equal(models.ReconcileLifecycleStatusProcessed))
+		Expect(res.Submission.ProcessingStatus).To(Equal(models.InventorySubmissionStatusCompleted))
+		Expect(res.Submission.ApprovalStatus).To(Equal(models.InventorySubmissionApprovalStatusApproved))
+		Expect(res.Submission.ProcessedAt).NotTo(BeNil())
+
+		// Stock unchanged and NO Sell booked.
+		Expect(itemQty().Equal(decimal.NewFromInt(100))).To(BeTrue(), "no-change apply must not consume; live stays 100, got %s", itemQty())
+		var sells int64
+		Expect(tenv.ContextfulDB().Model(&models.InventoryTransaction{}).
+			Where("inventory_item_id = ? AND transaction_type = ?", itm.ID, models.InventoryTransactionTypeSell).
+			Count(&sells).Error).NotTo(HaveOccurred())
+		Expect(sells).To(BeZero(), "no phantom Sell for a no-change reconcile")
+	})
+
 	// AUDIT GAP 3 (PARTIAL -> explicit): double-apply must be blocked. After a
 	// successful StartProcessing the submission is `processed` (approval_status flips
 	// to approved by MarkProcessed), so a SECOND StartProcessing is rejected at the
