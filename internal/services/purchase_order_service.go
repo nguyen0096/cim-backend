@@ -149,9 +149,17 @@ func (s *purchaseOrderService) convertQuantityToBaseUnit(
 		return quantity, unitPrice, unitID, nil
 	}
 
-	// If unit is a derived unit, convert to its base unit and recursively drill down
-	baseQuantity := quantity.Mul(decimal.NewFromFloat(unit.ConversionFactor))
-	baseUnitPrice := unitPrice / unit.ConversionFactor
+	// Reject corrupt data that would divide by zero.
+	if unit.ConversionFactor == 0 {
+		return decimal.Zero, 0, 0, fmt.Errorf("unit %d has a zero conversion factor", unitID)
+	}
+
+	// Convert to the base unit entirely in decimal to avoid float rounding.
+	// Base quantity/price persist at 2dp, so a non-terminating factor (e.g. 1/3)
+	// leaves a bounded, non-compounding sub-cent residual.
+	factor := decimal.NewFromFloat(unit.ConversionFactor)
+	baseQuantity := quantity.Mul(factor)
+	baseUnitPrice := decimal.NewFromFloat(unitPrice).Div(factor).InexactFloat64()
 	return s.convertQuantityToBaseUnit(ctx, baseQuantity, baseUnitPrice, *unit.BaseUnitID)
 }
 

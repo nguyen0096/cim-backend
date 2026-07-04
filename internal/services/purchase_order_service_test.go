@@ -55,6 +55,52 @@ func Test_generatePurchaseOrderNumber(t *testing.T) {
 	})
 }
 
+func Test_convertQuantityToBaseUnit(t *testing.T) {
+	baseUnit := models.Unit{Base: models.Base{ID: 1}, UnitType: "general", ConversionFactor: 1, Level: 1}
+	derivedID := uint(2)
+
+	t.Run("converts price in decimal without float rounding", func(t *testing.T) {
+		mockUnitRepo := repositorymocks.NewUnitRepository(t)
+		service := NewPurchaseOrderService(nil, nil, mockUnitRepo, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil).(*purchaseOrderService)
+
+		derived := baseUnit
+		derived.Base = models.Base{ID: derivedID}
+		derived.Level = 2
+		derived.ConversionFactor = 3
+		derived.BaseUnitID = &baseUnit.Base.ID
+
+		mockUnitRepo.On("GetByID", mock.Anything, derivedID).Return(&derived, nil)
+		mockUnitRepo.On("GetByID", mock.Anything, baseUnit.ID).Return(&baseUnit, nil)
+
+		baseQty, basePrice, baseUnitID, err := service.convertQuantityToBaseUnit(
+			context.Background(), decimal.NewFromInt(10), 0.3, derivedID)
+
+		require.NoError(t, err)
+		assert.Equal(t, baseUnit.ID, baseUnitID)
+		assert.True(t, baseQty.Equal(decimal.NewFromInt(30)), "10 * 3 = 30, got %s", baseQty)
+		// Float division 0.3/3 yields 0.09999999999999999; decimal yields exactly 0.1.
+		assert.Equal(t, 0.1, basePrice)
+	})
+
+	t.Run("rejects a zero conversion factor", func(t *testing.T) {
+		mockUnitRepo := repositorymocks.NewUnitRepository(t)
+		service := NewPurchaseOrderService(nil, nil, mockUnitRepo, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil).(*purchaseOrderService)
+
+		derived := baseUnit
+		derived.Base = models.Base{ID: derivedID}
+		derived.Level = 2
+		derived.ConversionFactor = 0
+		derived.BaseUnitID = &baseUnit.Base.ID
+
+		mockUnitRepo.On("GetByID", mock.Anything, derivedID).Return(&derived, nil)
+
+		_, _, _, err := service.convertQuantityToBaseUnit(
+			context.Background(), decimal.NewFromInt(10), 100, derivedID)
+
+		require.Error(t, err)
+	})
+}
+
 func TestCreatePurchaseOrder(t *testing.T) {
 	t.Run("should create purchase order with auto-generated order number when empty", func(t *testing.T) {
 		// Setup
