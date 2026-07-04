@@ -309,8 +309,8 @@ var ErrorMessages = map[string]ErrorMessage{
 	},
 	// Row-level (count-session) labels
 	ErrKeyReconRowLabelRequired: {
-		EN: "A label is required for this count session: you already have another count in this reconciliation, so each one needs a label to tell them apart",
-		VI: "Cần nhập nhãn cho lần kiểm đếm này: bạn đã có một lần kiểm đếm khác trong phiếu kiểm kê này, nên mỗi lần cần một nhãn để phân biệt",
+		EN: "A label is required for this count session: you already have an unlabelled count in this reconciliation, so this one needs a label to tell them apart",
+		VI: "Cần nhập nhãn cho lần kiểm đếm này: bạn đã có một lần kiểm đếm chưa đặt nhãn trong phiếu kiểm kê này, nên lần này cần một nhãn để phân biệt",
 	},
 	ErrKeyReconRowLabelConflict: {
 		EN: "Label \"%s\" is already used by another of your count sessions in this reconciliation; use a distinct label",
@@ -744,7 +744,7 @@ func ErrReconItemLabelTooLong(ctx context.Context, itemID uint, maxLen int) *App
 	return newKeyedValidationError(ctx, ErrKeyReconItemLabelTooLong, itemID, maxLen)
 }
 
-// ErrReconRowLabelRequired is a 400/validation: a count session needs a label when the owner has another row.
+// ErrReconRowLabelRequired is a 400/validation: a count session needs a label when the owner already has an unlabelled one.
 func ErrReconRowLabelRequired(ctx context.Context) *AppError {
 	return newKeyedValidationError(ctx, ErrKeyReconRowLabelRequired)
 }

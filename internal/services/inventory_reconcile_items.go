@@ -193,8 +193,9 @@ func validateCountLabelDistinctness(ctx context.Context, items []dto.Reconciliat
 }
 
 // validateRowLabel validates a count-session row label for ownerEmail: trimmed,
-// within the rune cap, required once the owner has another live row, and distinct
-// among the owner's live rows. Returns the trimmed label to persist.
+// within the rune cap, and distinct among the owner's OTHER live rows. A blank label
+// is allowed as the owner's single unlabelled session; the current row (excludeItemID)
+// is excluded. Returns the trimmed label to persist.
 func validateRowLabel(ctx context.Context, ownerEmail, rawLabel string, excludeItemID uint, rows []models.ReconciliationRequestItem) (string, error) {
 	label := strings.TrimSpace(rawLabel)
 	if utf8.RuneCountInString(label) > maxReconItemLabelLength {
@@ -202,25 +203,18 @@ func validateRowLabel(ctx context.Context, ownerEmail, rawLabel string, excludeI
 	}
 
 	otherLabels := make(map[string]struct{})
-	ownerOtherRows := 0
 	for _, row := range rows {
-		if row.ID == excludeItemID {
+		if row.ID == excludeItemID || row.CreatedBy != ownerEmail {
 			continue
 		}
-		if row.CreatedBy != ownerEmail {
-			continue
-		}
-		ownerOtherRows++
 		otherLabels[strings.TrimSpace(row.Label)] = struct{}{}
 	}
 
-	if ownerOtherRows > 0 && label == "" {
-		return "", pkg.ErrReconRowLabelRequired(ctx)
-	}
-	if label != "" {
-		if _, clash := otherLabels[label]; clash {
-			return "", pkg.ErrReconRowLabelConflict(ctx, label)
+	if _, clash := otherLabels[label]; clash {
+		if label == "" {
+			return "", pkg.ErrReconRowLabelRequired(ctx)
 		}
+		return "", pkg.ErrReconRowLabelConflict(ctx, label)
 	}
 	return label, nil
 }

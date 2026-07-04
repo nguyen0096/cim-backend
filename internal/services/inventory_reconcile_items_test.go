@@ -959,8 +959,9 @@ func TestCreateReconciliationItem_RowLabel_FirstRowMayBeBlank(t *testing.T) {
 	assert.NoError(t, mock.ExpectationsWereMet())
 }
 
-func TestCreateReconciliationItem_RowLabel_RequiredOnSecondRow(t *testing.T) {
-	// The caller already has a live row; a 2nd row with a blank row label is rejected.
+func TestCreateReconciliationItem_RowLabel_RequiredOnSecondBlankRow(t *testing.T) {
+	// The caller already has a blank live row; a 2nd blank row would break
+	// one-unlabelled-per-user, so it's rejected.
 	gormDB, mock := newInventoryServiceTestDB(t)
 	svc := newReconItemServiceReal(gormDB)
 	ctx := reconCtx(reconStaffEmail)
@@ -969,7 +970,7 @@ func TestCreateReconciliationItem_RowLabel_RequiredOnSecondRow(t *testing.T) {
 	mock.ExpectBegin()
 	expectParentReconcileLoad(mock, submissionID)
 	expectOwnedSiblingRows(mock, submissionID, []ownedRow{
-		{id: 700, owner: reconStaffEmail, label: "Morning", payload: reconLine(10, 20)},
+		{id: 700, owner: reconStaffEmail, label: "", payload: reconLine(10, 20)},
 	})
 	mock.ExpectRollback()
 
@@ -981,6 +982,33 @@ func TestCreateReconciliationItem_RowLabel_RequiredOnSecondRow(t *testing.T) {
 	var appErr *pkg.AppError
 	require.ErrorAs(t, err, &appErr)
 	assert.Equal(t, pkg.ErrReconRowLabelRequired(ctx).Error(), appErr.Error())
+	assert.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestCreateReconciliationItem_RowLabel_BlankRowWithLabelledSibling_Allowed(t *testing.T) {
+	// The caller's only other row is labelled; a blank row is the owner's single
+	// unlabelled session and is allowed.
+	gormDB, mock := newInventoryServiceTestDB(t)
+	svc := newReconItemServiceReal(gormDB)
+	ctx := reconCtx(reconStaffEmail)
+	const submissionID = uint(50)
+
+	mock.ExpectBegin()
+	expectParentReconcileLoad(mock, submissionID)
+	expectOwnedSiblingRows(mock, submissionID, []ownedRow{
+		{id: 700, owner: reconStaffEmail, label: "Morning", payload: reconLine(10, 20)},
+	})
+	expectSnapshotBaselines(mock, map[uint]string{10: "100"})
+	mock.ExpectQuery(regexp.QuoteMeta(`INSERT INTO "reconciliation_request_items"`)).
+		WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(701))
+	mock.ExpectCommit()
+
+	created, err := svc.CreateReconciliationItem(ctx, dto.CreateReconciliationItemRequest{
+		SubmissionID: submissionID,
+		Items:        []dto.ReconciliationCountItem{{InventoryItemID: 10, Quantity: decPtr(30)}},
+	})
+	require.NoError(t, err)
+	assert.Equal(t, "", created.Label)
 	assert.NoError(t, mock.ExpectationsWereMet())
 }
 
@@ -1156,6 +1184,128 @@ func TestUpdateReconciliationItem_FullReplaceWithLabels_Persisted(t *testing.T) 
 	require.Len(t, updated.Items, 2)
 	assert.Equal(t, "shelf", updated.Items[0].Label)
 	assert.Equal(t, "dock", updated.Items[1].Label)
+	assert.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestUpdateReconciliationItem_UnlabelledStaysBlankWithLabelledSibling_Allowed(t *testing.T) {
+	// The owner's unlabelled session (777) is updated while staying blank; a labelled
+	// sibling ("Morning") exists. One-unlabelled-per-user is satisfied, so it's allowed.
+	gormDB, mock := newInventoryServiceTestDB(t)
+	svc := newReconItemServiceReal(gormDB)
+	ctx := reconCtx(reconStaffEmail)
+	const submissionID = uint(50)
+	const itemID = uint(777)
+
+	mock.ExpectBegin()
+	expectParentReconcileLoad(mock, submissionID)
+	expectItemLoad(mock, itemID, submissionID, reconStaffEmail, string(models.ReconciliationRequestItemStatusInProgress))
+	expectOwnedSiblingRows(mock, submissionID, []ownedRow{
+		{id: 700, owner: reconStaffEmail, label: "Morning", payload: reconLine(10, 20)},
+		{id: itemID, owner: reconStaffEmail, label: "", payload: reconLine(10, 5)},
+	})
+	expectSnapshotBaselines(mock, map[uint]string{10: "100"})
+	mock.ExpectExec(regexp.QuoteMeta(`UPDATE "reconciliation_request_items" SET`)).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectCommit()
+
+	updated, err := svc.UpdateReconciliationItem(ctx, dto.UpdateReconciliationItemRequest{
+		SubmissionID: submissionID,
+		ItemID:       itemID,
+		Items:        []dto.ReconciliationCountItem{{InventoryItemID: 10, Quantity: decPtr(30)}},
+	})
+	require.NoError(t, err)
+	assert.Equal(t, "", updated.Label)
+	assert.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestUpdateReconciliationItem_SecondBlankSession_Rejected(t *testing.T) {
+	// The owner already has a blank sibling; keeping THIS session blank too would break
+	// one-unlabelled-per-user, so it's rejected.
+	gormDB, mock := newInventoryServiceTestDB(t)
+	svc := newReconItemServiceReal(gormDB)
+	ctx := reconCtx(reconStaffEmail)
+	const submissionID = uint(50)
+	const itemID = uint(777)
+
+	mock.ExpectBegin()
+	expectParentReconcileLoad(mock, submissionID)
+	expectItemLoad(mock, itemID, submissionID, reconStaffEmail, string(models.ReconciliationRequestItemStatusInProgress))
+	expectOwnedSiblingRows(mock, submissionID, []ownedRow{
+		{id: 700, owner: reconStaffEmail, label: "", payload: reconLine(10, 20)},
+		{id: itemID, owner: reconStaffEmail, label: "Morning", payload: reconLine(10, 5)},
+	})
+	mock.ExpectRollback()
+
+	_, err := svc.UpdateReconciliationItem(ctx, dto.UpdateReconciliationItemRequest{
+		SubmissionID: submissionID,
+		ItemID:       itemID,
+		Items:        []dto.ReconciliationCountItem{{InventoryItemID: 10, Quantity: decPtr(30)}},
+	})
+	require.Error(t, err)
+	var appErr *pkg.AppError
+	require.ErrorAs(t, err, &appErr)
+	assert.Equal(t, pkg.ErrReconRowLabelRequired(ctx).Error(), appErr.Error())
+	assert.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestUpdateReconciliationItem_LabelCollidesWithSibling_Rejected(t *testing.T) {
+	// Renaming this session to a label another of the owner's sessions holds is rejected.
+	gormDB, mock := newInventoryServiceTestDB(t)
+	svc := newReconItemServiceReal(gormDB)
+	ctx := reconCtx(reconStaffEmail)
+	const submissionID = uint(50)
+	const itemID = uint(777)
+
+	mock.ExpectBegin()
+	expectParentReconcileLoad(mock, submissionID)
+	expectItemLoad(mock, itemID, submissionID, reconStaffEmail, string(models.ReconciliationRequestItemStatusInProgress))
+	expectOwnedSiblingRows(mock, submissionID, []ownedRow{
+		{id: 700, owner: reconStaffEmail, label: "Morning", payload: reconLine(10, 20)},
+		{id: itemID, owner: reconStaffEmail, label: "Afternoon", payload: reconLine(10, 5)},
+	})
+	mock.ExpectRollback()
+
+	_, err := svc.UpdateReconciliationItem(ctx, dto.UpdateReconciliationItemRequest{
+		SubmissionID: submissionID,
+		ItemID:       itemID,
+		Label:        "Morning",
+		Items:        []dto.ReconciliationCountItem{{InventoryItemID: 10, Quantity: decPtr(30)}},
+	})
+	require.Error(t, err)
+	var appErr *pkg.AppError
+	require.ErrorAs(t, err, &appErr)
+	assert.Equal(t, pkg.ErrReconRowLabelConflict(ctx, "Morning").Error(), appErr.Error())
+	assert.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestUpdateReconciliationItem_KeepsOwnLabel_ExcludedFromUniqueness_Allowed(t *testing.T) {
+	// A labelled session keeps its own label; it must not conflict with itself (the
+	// current session is excluded from the uniqueness check).
+	gormDB, mock := newInventoryServiceTestDB(t)
+	svc := newReconItemServiceReal(gormDB)
+	ctx := reconCtx(reconStaffEmail)
+	const submissionID = uint(50)
+	const itemID = uint(777)
+
+	mock.ExpectBegin()
+	expectParentReconcileLoad(mock, submissionID)
+	expectItemLoad(mock, itemID, submissionID, reconStaffEmail, string(models.ReconciliationRequestItemStatusInProgress))
+	expectOwnedSiblingRows(mock, submissionID, []ownedRow{
+		{id: itemID, owner: reconStaffEmail, label: "Morning", payload: reconLine(10, 5)},
+	})
+	expectSnapshotBaselines(mock, map[uint]string{10: "100"})
+	mock.ExpectExec(regexp.QuoteMeta(`UPDATE "reconciliation_request_items" SET`)).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectCommit()
+
+	updated, err := svc.UpdateReconciliationItem(ctx, dto.UpdateReconciliationItemRequest{
+		SubmissionID: submissionID,
+		ItemID:       itemID,
+		Label:        "Morning",
+		Items:        []dto.ReconciliationCountItem{{InventoryItemID: 10, Quantity: decPtr(30)}},
+	})
+	require.NoError(t, err)
+	assert.Equal(t, "Morning", updated.Label)
 	assert.NoError(t, mock.ExpectationsWereMet())
 }
 

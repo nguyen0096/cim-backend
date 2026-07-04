@@ -137,25 +137,19 @@ var _ = Describe("Reconciliation item labels (issue #73)", func() {
 			Expect(dbLabel).To(Equal("Morning — Zone A"))
 		})
 
-		It("requires a row label once the user already has another row, and enforces distinctness", func() {
+		It("allows one unlabelled row per user and enforces label distinctness", func() {
+			// The single unlabelled session is allowed.
 			first, err := svc.CreateReconciliationItem(staffCtx, dto.CreateReconciliationItemRequest{
-				SubmissionID: submission.ID, Label: "Morning", Items: countItems(40, ""),
+				SubmissionID: submission.ID, Label: "", Items: countItems(40, ""),
 			})
 			Expect(err).NotTo(HaveOccurred())
 			DeferCleanup(func() {
 				tenv.ContextfulDB().Unscoped().Delete(&models.ReconciliationRequestItem{Base: models.Base{ID: first.ID}})
 			})
 
-			// 2nd row, blank label -> required.
+			// 2nd blank row -> would be a second unlabelled session, rejected.
 			_, err = svc.CreateReconciliationItem(staffCtx, dto.CreateReconciliationItemRequest{
 				SubmissionID: submission.ID, Label: "", Items: countItems(10, ""),
-			})
-			Expect(err).To(HaveOccurred())
-			Expect(pkg.IsErrorCode(err, pkg.ErrorCodeValidation)).To(BeTrue())
-
-			// 2nd row, duplicate label -> conflict.
-			_, err = svc.CreateReconciliationItem(staffCtx, dto.CreateReconciliationItemRequest{
-				SubmissionID: submission.ID, Label: "Morning", Items: countItems(10, ""),
 			})
 			Expect(err).To(HaveOccurred())
 			Expect(pkg.IsErrorCode(err, pkg.ErrorCodeValidation)).To(BeTrue())
@@ -168,6 +162,13 @@ var _ = Describe("Reconciliation item labels (issue #73)", func() {
 			DeferCleanup(func() {
 				tenv.ContextfulDB().Unscoped().Delete(&models.ReconciliationRequestItem{Base: models.Base{ID: second.ID}})
 			})
+
+			// 3rd row, duplicate label -> conflict.
+			_, err = svc.CreateReconciliationItem(staffCtx, dto.CreateReconciliationItemRequest{
+				SubmissionID: submission.ID, Label: "Afternoon", Items: countItems(10, ""),
+			})
+			Expect(err).To(HaveOccurred())
+			Expect(pkg.IsErrorCode(err, pkg.ErrorCodeValidation)).To(BeTrue())
 		})
 
 		It("scopes row-label distinctness per user: another user may reuse a label", func() {

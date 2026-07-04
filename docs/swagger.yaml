@@ -24,11 +24,10 @@ definitions:
         type: array
       label:
         description: |-
-          Label is the optional ROW-level count-session identifier (issue #73). It
-          carries no validate:"required" tag: the row-label rule (required once the user
-          already has a 2nd live row; ≤255 runes; distinct per (submission,user)) is
-          enforced in the service so the localized domain errors surface instead of a
-          generic binding error.
+          Label is the optional row-level session identifier (no required tag; validated
+          in the service so localized errors surface). A blank label is allowed as the
+          owner's single unlabelled session; non-empty labels must be distinct among the
+          owner's sessions in this reconciliation (max 255 runes).
         type: string
     required:
     - items
@@ -199,10 +198,8 @@ definitions:
         type: string
       product_name:
         description: |-
-          ProductName is the resolved product name for InventoryItemID, populated the
-          same way QuantityItem.ProductName is (inventory_item -> product join), so the
-          review screen can label each breakdown row without a second lookup (FE #42).
-          Presentation-only; omitted when the product can't be resolved.
+          ProductName is the resolved product name for InventoryItemID;
+          presentation-only, omitted when unresolved.
         type: string
       quantity:
         type: number
@@ -221,27 +218,15 @@ definitions:
         type: integer
       label:
         description: |-
-          Label is an OPTIONAL free-text identifier for this count (e.g. "shelf",
-          "loading dock") so multiple counts of the SAME inventory_item_id across staff
-          child rows can be told apart in review/audit (issue #73). It is
-          representation-only: synthesis still sums by inventory_item_id and ignores the
-          label for the apply math. Max length 255 RUNES (app-validated;
-          utf8.RuneCountInString — Vietnamese is multibyte so a byte cap would reject
-          valid labels). The distinct-labels-at-most-one-blank rule is enforced at write
-          time across the live sibling rows of the same parent plus this payload — see
-          validateCountsAgainstSnapshot.
+          Label is an optional free-text identifier so multiple counts of the same item
+          can be told apart. Max 255 runes; presentation-only (synthesis sums by
+          inventory_item_id).
         type: string
       quantity:
         description: |-
-          Quantity is a pointer so an omitted `quantity` (nil) is distinguishable from
-          an explicit zero count. It deliberately carries NO validate:"required" tag:
-          the binding-layer validator would otherwise short-circuit a missing/null
-          quantity into a generic validation error before the service runs, hiding the
-          localized recon_item_missing_quantity domain error. Letting nil through to
-          the service's nil-check (validateCountsAgainstSnapshot) yields that localized
-          error instead. An explicit 0 still binds as a non-nil pointer and is a valid
-          count; the service validates the dereferenced value (non-negative, <=
-          snapshot baseline).
+          Quantity is a pointer so an omitted quantity (nil) is distinguishable from an
+          explicit zero. It has no validate:"required" tag so nil reaches the service
+          and surfaces the localized domain error instead of a generic binding error.
         type: number
     required:
     - inventory_item_id
@@ -343,10 +328,9 @@ definitions:
         $ref: '#/definitions/models.SubmissionApprovalStatus'
       count_breakdown:
         description: |-
-          CountBreakdown is populated only for ACTIVE reconcile submissions: the
-          per-(inventory_item, label) contributions behind each summed item line (issue
-          #73), so the review screen can show each labeled count, not just the total. It
-          is presentation-only and derived from the live child rows.
+          CountBreakdown is populated only for active reconcile submissions: the
+          per-(inventory_item, label) contributions behind each summed item line.
+          Presentation-only, derived from the live child rows.
         items:
           $ref: '#/definitions/dto.ReconcileItemBreakdown'
         type: array
@@ -376,10 +360,8 @@ definitions:
         allOf:
         - $ref: '#/definitions/models.ReconcileLifecycleStatus'
         description: |-
-          ReconcileStatus is the submission-level reconciliation lifecycle status
-          (open/closed/processing/processed). It is set only for initiated reconciles
-          and empty for every other submission type/flow; the FE uses it to detect an
-          OPEN reconciliation and drive the role x status editability matrix (FE #42).
+          ReconcileStatus is the submission-level reconciliation lifecycle status; set
+          only for initiated reconciles, empty otherwise.
       review_label:
         allOf:
         - $ref: '#/definitions/dto.ReconcileReviewLabel'
@@ -490,8 +472,9 @@ definitions:
         type: array
       label:
         description: |-
-          Label fully replaces the row's existing label on update (issue #73); see the
-          CreateReconciliationItemRequest.Label note on why it has no required tag.
+          Label fully replaces the row's existing label on update. Blank is allowed as the
+          owner's single unlabelled session; non-empty labels must be distinct among the
+          owner's other sessions in this reconciliation (max 255 runes).
         type: string
     required:
     - items
@@ -771,11 +754,8 @@ definitions:
         type: object
       processed_at:
         description: |-
-          ProcessedAt is the precise instant a CONSUMING submission's processing
-          completed (epic #38, Part 6, locked decision Q6). It is the authoritative
-          window bound for the Start-Processing drift re-check (a sibling consuming
-          submission with processed_at inside [snapshot_capture, now] is drift). Set
-          when processing completes; nil while pending/failed.
+          ProcessedAt is the instant a consuming submission's processing completed;
+          nil while pending/failed.
         type: string
       processing_status:
         $ref: '#/definitions/models.SubmissionProcessingStatus'
@@ -785,10 +765,8 @@ definitions:
         allOf:
         - $ref: '#/definitions/models.ReconcileLifecycleStatus'
         description: |-
-          ReconcileStatus is the reconciliation lifecycle status (epic #38, Part 6).
-          Set only for initiated reconciles (open at initiate); empty for every other
-          submission type/flow. Drives the staff-immutability guard and the
-          close/reopen/start-processing transitions.
+          ReconcileStatus is the reconciliation lifecycle status; set only for
+          initiated reconciles, empty otherwise.
       submission_type:
         $ref: '#/definitions/models.SubmissionType'
       updated_at:
@@ -1458,10 +1436,8 @@ definitions:
         type: array
       messageKey:
         description: |-
-          MessageKey, when set, is an ErrorMessages catalog key the error handler
-          resolves to a request-localized message at response time (formatted with
-          MessageArgs). Lets lower layers (e.g. repositories) return a domain error
-          without knowing the caller's language. Message is the fallback if unset.
+          MessageKey, when set, is an ErrorMessages catalog key resolved to a localized
+          message at response time (formatted with MessageArgs); Message is the fallback.
         type: string
       stack:
         description: |-
@@ -1486,10 +1462,8 @@ definitions:
         type: array
       messageKey:
         description: |-
-          MessageKey, when set, is an ErrorMessages catalog key the error handler
-          resolves to a request-localized message at response time (formatted with
-          MessageArgs). Lets lower layers (e.g. repositories) return a domain error
-          without knowing the caller's language. Message is the fallback if unset.
+          MessageKey, when set, is an ErrorMessages catalog key resolved to a localized
+          message at response time (formatted with MessageArgs); Message is the fallback.
         type: string
       stack:
         description: |-

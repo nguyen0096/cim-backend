@@ -99,8 +99,10 @@ type ReconciliationCountItem struct {
 // reconcile submission. SubmissionID is path-scoped (not JSON-bindable).
 type CreateReconciliationItemRequest struct {
 	SubmissionID uint `json:"-" validate:"required"`
-	// Label is the optional row-level session identifier; validated in the service
-	// (no required tag) so localized errors surface.
+	// Label is the optional row-level session identifier (no required tag; validated
+	// in the service so localized errors surface). A blank label is allowed as the
+	// owner's single unlabelled session; non-empty labels must be distinct among the
+	// owner's sessions in this reconciliation (max 255 runes).
 	Label string                    `json:"label"`
 	Items []ReconciliationCountItem `json:"items" validate:"required,min=1,dive"`
 }
@@ -110,7 +112,9 @@ type CreateReconciliationItemRequest struct {
 type UpdateReconciliationItemRequest struct {
 	SubmissionID uint `json:"-" validate:"required"`
 	ItemID       uint `json:"-" validate:"required"`
-	// Label fully replaces the row's existing label on update.
+	// Label fully replaces the row's existing label on update. Blank is allowed as the
+	// owner's single unlabelled session; non-empty labels must be distinct among the
+	// owner's other sessions in this reconciliation (max 255 runes).
 	Label string                    `json:"label"`
 	Items []ReconciliationCountItem `json:"items" validate:"required,min=1,dive"`
 }
