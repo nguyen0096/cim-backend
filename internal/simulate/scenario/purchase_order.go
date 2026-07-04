@@ -130,8 +130,7 @@ func createPO(ctx context.Context, env *Env, iteration int, inventoryID uint) (*
 // seedInitialStock places one PO covering every reference product and fully
 // receives it, so the inventory starts with stock across all products. Called
 // once during ref-data setup.
-func seedInitialStock(ctx context.Context, env *Env, inventoryID uint) error {
-	ref := env.RefIDs
+func seedInitialStock(ctx context.Context, env *Env, ref *RefData, inventoryID uint) error {
 	create := createPORequest{InventoryID: inventoryID, Notes: "SIM initial stock (all products)"}
 	for i, pid := range ref.ProductIDs {
 		create.Items = append(create.Items, createPOItem{

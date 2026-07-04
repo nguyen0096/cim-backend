@@ -106,7 +106,7 @@ func EnsureRefData(ctx context.Context, env *Env) (*RefData, error) {
 	ref.InventoryID = invID
 
 	// Seed starting stock for all products in one PO+receive.
-	if err := seedInitialStock(ctx, env, invID); err != nil {
+	if err := seedInitialStock(ctx, env, ref, invID); err != nil {
 		return nil, fmt.Errorf("seed initial stock: %w", err)
 	}
 
