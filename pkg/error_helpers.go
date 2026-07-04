@@ -3,6 +3,7 @@ package pkg
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/shopspring/decimal"
 )
@@ -78,11 +79,12 @@ const (
 
 	// Reconciliation management Error Keys
 
-	ErrKeyReconSubmissionClosed           = "recon_submission_closed"
-	ErrKeyReconInvalidLifecycleTransition = "recon_invalid_lifecycle_transition"
-	ErrKeyReconDriftWarning               = "recon_drift_warning"
-	ErrKeyReconCannotRejectInLifecycle    = "recon_cannot_reject_in_lifecycle"
-	ErrKeyReconNotReadySessionWarning     = "recon_not_ready_session_warning"
+	ErrKeyReconSubmissionClosed              = "recon_submission_closed"
+	ErrKeyReconInvalidLifecycleTransition    = "recon_invalid_lifecycle_transition"
+	ErrKeyReconDriftWarning                  = "recon_drift_warning"
+	ErrKeyReconCannotRejectInLifecycle       = "recon_cannot_reject_in_lifecycle"
+	ErrKeyReconNotReadySessionWarning        = "recon_not_ready_session_warning"
+	ErrKeyReconNotReadySessionWarningNoLabel = "recon_not_ready_session_warning_no_label"
 
 	// Unit Error Keys
 
@@ -338,6 +340,10 @@ var ErrorMessages = map[string]ErrorMessage{
 	ErrKeyReconNotReadySessionWarning: {
 		EN: "Count session #%d (label %q, by %s) was still in progress, not yet marked ready for review, when this reconciliation was closed",
 		VI: "Phiên kiểm đếm #%d (nhãn %q, bởi %s) vẫn đang thực hiện, chưa được đánh dấu sẵn sàng để duyệt, khi phiếu kiểm kê này được đóng",
+	},
+	ErrKeyReconNotReadySessionWarningNoLabel: {
+		EN: "Count session #%d (by %s) was still in progress, not yet marked ready for review, when this reconciliation was closed",
+		VI: "Phiên kiểm đếm #%d (bởi %s) vẫn đang thực hiện, chưa được đánh dấu sẵn sàng để duyệt, khi phiếu kiểm kê này được đóng",
 	},
 	// Unit Errors
 	ErrKeyUnitAlreadyExists: {
@@ -781,6 +787,9 @@ func ReconDriftWarning(ctx context.Context, submissionID uint, submissionType, p
 // ReconNotReadySessionsWarning renders one advisory line for a count session
 // still in_progress at close time.
 func ReconNotReadySessionsWarning(ctx context.Context, sessionID uint, label, createdBy string) string {
+	if strings.TrimSpace(label) == "" {
+		return fmt.Sprintf(getErrorMessage(ctx, ErrKeyReconNotReadySessionWarningNoLabel), sessionID, createdBy)
+	}
 	return fmt.Sprintf(getErrorMessage(ctx, ErrKeyReconNotReadySessionWarning), sessionID, label, createdBy)
 }
 
