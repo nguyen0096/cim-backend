@@ -702,6 +702,144 @@ var _ = Describe("Purchase Order API", func() {
 			Expect(purchaseOrder.Status).To(Equal(models.PurchaseOrderStatusFullyDelivered))
 		})
 
+		It("should reject re-receiving a fully delivered purchase order without doubling on-hand", func(ctx SpecContext) {
+			client := testutil.NewClient(tenv, models.RoleAdmin)
+
+			testPurchaseOrder := fixture.WithPurchaseOrder(tenv.ContextfulDB(), models.PurchaseOrder{
+				OrderNumber: uuid.New().String(),
+				Status:      models.PurchaseOrderStatusOrderPlaced,
+				InventoryID: &testInventory.ID,
+				Items: []*models.PurchaseOrderItem{
+					{
+						ProductID:        &testProducts[0].ID,
+						SupplierID:       &testSupplier.ID,
+						UnitID:           &testBaseUnit.ID,
+						Quantity:         decimal.NewFromInt(100),
+						ReceivedQuantity: decimal.Zero,
+						Status:           models.PurchaseOrderItemStatusAwaitingDelivery,
+					},
+				},
+			})
+
+			itemID := testPurchaseOrder.Items[0].ID
+			payload := map[string]interface{}{
+				"items": []map[string]interface{}{
+					{"id": itemID, "received_quantity": 100},
+				},
+			}
+			urlPath := fmt.Sprintf("/api/v1/purchase-orders/%d/receive", testPurchaseOrder.ID)
+
+			// First receive fully delivers the order.
+			resp, err := client.MakeRequest("PUT", urlPath, payload, testutil.WithAuth())
+			Expect(err).NotTo(HaveOccurred())
+			Expect(resp.StatusCode).To(Equal(200))
+
+			assertState := func(expectedQty int64, expectedTxns int64) {
+				var item models.InventoryItem
+				err := tenv.DB.WithContext(ctx).
+					Where("inventory_id = ? AND product_id = ? AND status = ?",
+						testInventory.ID, testProducts[0].ID, models.InventoryItemStatusActive).
+					First(&item).Error
+				Expect(err).NotTo(HaveOccurred())
+				Expect(item.Quantity.Equal(decimal.NewFromInt(expectedQty))).To(BeTrue(),
+					"expected on-hand %d but got %s", expectedQty, item.Quantity.String())
+
+				var txnCount int64
+				err = tenv.DB.WithContext(ctx).Model(&models.InventoryTransaction{}).
+					Where("purchase_order_item_id = ? AND transaction_type = ?",
+						itemID, models.InventoryTransactionTypePurchase).
+					Count(&txnCount).Error
+				Expect(err).NotTo(HaveOccurred())
+				Expect(txnCount).To(Equal(expectedTxns))
+
+				var po models.PurchaseOrder
+				err = tenv.DB.WithContext(ctx).First(&po, "id = ?", testPurchaseOrder.ID).Error
+				Expect(err).NotTo(HaveOccurred())
+				Expect(po.Status).To(Equal(models.PurchaseOrderStatusFullyDelivered))
+			}
+
+			assertState(100, 1)
+
+			// Re-receiving (double-click/refresh) must be rejected as a conflict
+			// and leave on-hand, the transaction ledger and status unchanged.
+			resp, err = client.MakeRequest("PUT", urlPath, payload, testutil.WithAuth())
+			Expect(err).NotTo(HaveOccurred())
+			Expect(resp.StatusCode).To(Equal(409))
+
+			assertState(100, 1)
+		})
+
+		It("should apply a partial receive once when the same idempotency key is submitted twice", func(ctx SpecContext) {
+			client := testutil.NewClient(tenv, models.RoleAdmin)
+
+			testPurchaseOrder := fixture.WithPurchaseOrder(tenv.ContextfulDB(), models.PurchaseOrder{
+				OrderNumber: uuid.New().String(),
+				Status:      models.PurchaseOrderStatusOrderPlaced,
+				InventoryID: &testInventory.ID,
+				Items: []*models.PurchaseOrderItem{
+					{
+						ProductID:        &testProducts[0].ID,
+						SupplierID:       &testSupplier.ID,
+						UnitID:           &testBaseUnit.ID,
+						Quantity:         decimal.NewFromInt(100),
+						ReceivedQuantity: decimal.Zero,
+						Status:           models.PurchaseOrderItemStatusAwaitingDelivery,
+					},
+				},
+			})
+
+			itemID := testPurchaseOrder.Items[0].ID
+			payload := map[string]interface{}{
+				"items": []map[string]interface{}{
+					{"id": itemID, "received_quantity": 40},
+				},
+			}
+			urlPath := fmt.Sprintf("/api/v1/purchase-orders/%d/receive", testPurchaseOrder.ID)
+			key := uuid.New().String()
+
+			assertState := func(expectedQty int64, expectedTxns int64) {
+				var item models.InventoryItem
+				err := tenv.DB.WithContext(ctx).
+					Where("inventory_id = ? AND product_id = ? AND status = ?",
+						testInventory.ID, testProducts[0].ID, models.InventoryItemStatusActive).
+					First(&item).Error
+				Expect(err).NotTo(HaveOccurred())
+				Expect(item.Quantity.Equal(decimal.NewFromInt(expectedQty))).To(BeTrue(),
+					"expected on-hand %d but got %s", expectedQty, item.Quantity.String())
+
+				var txnCount int64
+				err = tenv.DB.WithContext(ctx).Model(&models.InventoryTransaction{}).
+					Where("purchase_order_item_id = ? AND transaction_type = ?",
+						itemID, models.InventoryTransactionTypePurchase).
+					Count(&txnCount).Error
+				Expect(err).NotTo(HaveOccurred())
+				Expect(txnCount).To(Equal(expectedTxns))
+			}
+
+			// First submit applies the partial delivery.
+			resp, err := client.MakeRequest("PUT", urlPath, payload, testutil.WithAuth(), testutil.WithHeader("Idempotency-Key", key))
+			Expect(err).NotTo(HaveOccurred())
+			Expect(resp.StatusCode).To(Equal(200))
+			assertState(40, 1)
+
+			// Re-submit with the SAME key (double-click) is a no-op: on-hand and ledger unchanged.
+			resp, err = client.MakeRequest("PUT", urlPath, payload, testutil.WithAuth(), testutil.WithHeader("Idempotency-Key", key))
+			Expect(err).NotTo(HaveOccurred())
+			Expect(resp.StatusCode).To(Equal(200))
+			assertState(40, 1)
+
+			// A legitimate second delivery with a NEW key applies normally.
+			resp, err = client.MakeRequest("PUT", urlPath, payload, testutil.WithAuth(), testutil.WithHeader("Idempotency-Key", uuid.New().String()))
+			Expect(err).NotTo(HaveOccurred())
+			Expect(resp.StatusCode).To(Equal(200))
+			assertState(80, 2)
+
+			var po models.PurchaseOrder
+			err = tenv.DB.WithContext(ctx).First(&po, "id = ?", testPurchaseOrder.ID).Error
+			Expect(err).NotTo(HaveOccurred())
+			Expect(po.Status).To(Equal(models.PurchaseOrderStatusPartiallyDelivered))
+		})
+
 		It("should not receive purchase order if decimal places is larger than unit decimal places", func(ctx SpecContext) {
 			client := testutil.NewClient(tenv, models.RoleAdmin)
 

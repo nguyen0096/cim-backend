@@ -19,6 +19,9 @@ type UpdatePurchaseOrderDeliveryStatusRequest struct {
 		ReceivedQuantity decimal.Decimal `json:"received_quantity" validate:"required"`
 	} `json:"items" validate:"required,min=1,dive"`
 	ConfirmationNotes string `json:"confirmation_notes"`
+	// IdempotencyKey deduplicates repeated submits of the same receive action
+	// (double-click, refresh, retry). Sourced from the Idempotency-Key header or body.
+	IdempotencyKey string `json:"idempotency_key"`
 }
 
 // PriceHistory represents a single price entry with date

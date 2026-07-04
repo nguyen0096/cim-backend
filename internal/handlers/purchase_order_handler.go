@@ -347,6 +347,11 @@ func (h *PurchaseOrderHandler) ReceiveInventory(c echo.Context) error {
 		return pkg.ErrInvalidRequestBody(err)
 	}
 
+	// Header takes precedence so a client can dedupe retries without touching the body.
+	if key := c.Request().Header.Get("Idempotency-Key"); key != "" {
+		req.IdempotencyKey = key
+	}
+
 	validate := validator.New()
 	if err := validate.Struct(req); err != nil {
 		return pkg.ErrValidation("validation failed", err)

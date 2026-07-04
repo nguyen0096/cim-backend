@@ -27,6 +27,7 @@ const (
 	ErrKeyPurchaseOrderNotFound                     = "purchase_order_not_found"
 	ErrKeyFailedToFetchPurchaseOrder                = "failed_to_fetch_purchase_order"
 	ErrKeyCannotEditPurchaseOrderWithStatus         = "cannot_edit_purchase_order_with_status"
+	ErrKeyCannotReceivePurchaseOrderWithStatus      = "cannot_receive_purchase_order_with_status"
 	ErrKeyCannotDeleteItemWithReceivedQuantity      = "cannot_delete_item_with_received_quantity"
 	ErrKeyReceivedQuantityGreaterThanUpdated        = "received_quantity_greater_than_updated"
 	ErrKeyFailedToSavePurchaseOrderItem             = "failed_to_save_purchase_order_item"
@@ -167,6 +168,10 @@ var ErrorMessages = map[string]ErrorMessage{
 	ErrKeyCannotEditPurchaseOrderWithStatus: {
 		EN: "Cannot edit purchase order with status %s",
 		VI: "Không thể chỉnh sửa đơn hàng với trạng thái %s",
+	},
+	ErrKeyCannotReceivePurchaseOrderWithStatus: {
+		EN: "Cannot receive purchase order with status %s",
+		VI: "Không thể nhận hàng cho đơn hàng với trạng thái %s",
 	},
 	ErrKeyCannotDeleteItemWithReceivedQuantity: {
 		EN: "Cannot delete item with received quantity %s",
@@ -830,6 +835,13 @@ func ErrCannotEditPurchaseOrderWithStatus(ctx context.Context, status string) *A
 	template := getErrorMessage(ctx, ErrKeyCannotEditPurchaseOrderWithStatus)
 	message := fmt.Sprintf(template, status)
 	return NewAppError(ErrorCodeValidation, message, nil)
+}
+
+// ErrCannotReceivePurchaseOrderWithStatus creates an error when receiving a purchase order in a terminal status
+func ErrCannotReceivePurchaseOrderWithStatus(ctx context.Context, status string) *AppError {
+	template := getErrorMessage(ctx, ErrKeyCannotReceivePurchaseOrderWithStatus)
+	message := fmt.Sprintf(template, status)
+	return NewAppError(ErrorCodeConflict, message, nil)
 }
 
 // ErrCannotDeleteItemWithReceivedQuantity creates an error when trying to delete item with received quantity

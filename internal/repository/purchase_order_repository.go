@@ -253,6 +253,34 @@ func (r *purchaseOrderRepository) ReceiveInventory(ctx context.Context, req dto.
 			return pkg.NewAppError(pkg.ErrorCodeInternal, "unexpectedly found purchase order without inventory", nil)
 		}
 
+		// Idempotency: if this receive was already applied under the same key
+		// (double-click, refresh, retry), return the current order unchanged
+		// instead of re-applying it. The PO row is locked above, so all receives
+		// for this order serialize here.
+		if req.IdempotencyKey != "" {
+			var applied int64
+			if err := tx.Model(&models.PurchaseOrderReceipt{}).
+				Where("idempotency_key = ?", req.IdempotencyKey).
+				Count(&applied).Error; err != nil {
+				return fmt.Errorf("failed to check receive idempotency key: %w", err)
+			}
+			if applied > 0 {
+				var current models.PurchaseOrder
+				if err := tx.Preload("Items").First(&current, req.PurchaseOrderID).Error; err != nil {
+					return pkg.ErrFailedToFetchPurchaseOrder(ctx, err)
+				}
+				po = &current
+				return nil
+			}
+		}
+
+		// Reject receive on a terminal PO. Re-receiving a completed or
+		// fully_delivered order (double-click, refresh) would double on-hand
+		// and write a duplicate purchase transaction.
+		if po.Status == models.PurchaseOrderStatusCompleted || po.Status == models.PurchaseOrderStatusFullyDelivered {
+			return pkg.ErrCannotReceivePurchaseOrderWithStatus(ctx, string(po.Status))
+		}
+
 		// Step 2: Query PO items and validate data.
 
 		// POIData represents a purchase order item with product data and
@@ -433,6 +461,18 @@ func (r *purchaseOrderRepository) ReceiveInventory(ctx context.Context, req dto.
 
 		if err := tx.Save(po).Error; err != nil {
 			return fmt.Errorf("failed to update purchase order status: %w", err)
+		}
+
+		// Record the applied key so a later duplicate submit is a no-op. The
+		// unique index is the hard backstop against a concurrent double-submit.
+		if req.IdempotencyKey != "" {
+			receipt := &models.PurchaseOrderReceipt{
+				IdempotencyKey:  req.IdempotencyKey,
+				PurchaseOrderID: po.ID,
+			}
+			if err := tx.Create(receipt).Error; err != nil {
+				return fmt.Errorf("failed to record receive idempotency key: %w", err)
+			}
 		}
 
 		return nil

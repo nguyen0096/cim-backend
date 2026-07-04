@@ -89,6 +89,13 @@ func WithAuth() RequestOptions {
 	}
 }
 
+// WithHeader sets a single request header.
+func WithHeader(key, value string) RequestOptions {
+	return func(client *Client, req *http.Request) {
+		req.Header.Set(key, value)
+	}
+}
+
 // WithParams adds query parameters to the request.
 func WithParams(params map[string]string) RequestOptions {
 	return func(client *Client, req *http.Request) {
