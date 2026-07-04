@@ -5,6 +5,7 @@ import (
 	"cim-backend/internal/services/dto"
 	"cim-backend/pkg"
 	"context"
+	"errors"
 	"fmt"
 	"slices"
 	"strings"
@@ -233,10 +234,15 @@ func (r *purchaseOrderRepository) AnyDeliveringItem(ctx context.Context, purchas
 	return err == nil
 }
 
+// errReceiveIdempotentReplay signals that a concurrent submit with the same key
+// already applied this receive; the transaction is rolled back and the caller
+// replays the already-applied order instead of double-applying.
+var errReceiveIdempotentReplay = errors.New("receive already applied under this idempotency key")
+
 // ReceiveInventory updates purchase order delivery status, creating inventory items and transactions
 func (r *purchaseOrderRepository) ReceiveInventory(ctx context.Context, req dto.UpdatePurchaseOrderDeliveryStatusRequest) (*models.PurchaseOrder, error) {
 	var po *models.PurchaseOrder
-	return po, r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+	txErr := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		// Step 1:Query PO and validate existence.
 		// We use UPDATE locking to prevent concurrent updates to the same purchase order.
 		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
@@ -253,20 +259,25 @@ func (r *purchaseOrderRepository) ReceiveInventory(ctx context.Context, req dto.
 			return pkg.NewAppError(pkg.ErrorCodeInternal, "unexpectedly found purchase order without inventory", nil)
 		}
 
-		// Idempotency: if this receive was already applied under the same key
-		// (double-click, refresh, retry), return the current order unchanged
-		// instead of re-applying it. The PO row is locked above, so all receives
-		// for this order serialize here.
+		// Idempotency: if this receive was already applied under the same key for
+		// THIS order (double-click, refresh, retry), return the current order
+		// unchanged instead of re-applying it. The key is scoped per PO so the
+		// same key on a different order receives independently. The PO row is
+		// locked above, so all receives for this order serialize here.
 		if req.IdempotencyKey != "" {
 			var applied int64
 			if err := tx.Model(&models.PurchaseOrderReceipt{}).
-				Where("idempotency_key = ?", req.IdempotencyKey).
+				Where("purchase_order_id = ? AND idempotency_key = ?", req.PurchaseOrderID, req.IdempotencyKey).
 				Count(&applied).Error; err != nil {
 				return fmt.Errorf("failed to check receive idempotency key: %w", err)
 			}
 			if applied > 0 {
 				var current models.PurchaseOrder
-				if err := tx.Preload("Items").First(&current, req.PurchaseOrderID).Error; err != nil {
+				if err := tx.
+					Preload("Items").
+					Preload("Items.Product").
+					Preload("Items.Unit").
+					First(&current, req.PurchaseOrderID).Error; err != nil {
 					return pkg.ErrFailedToFetchPurchaseOrder(ctx, err)
 				}
 				po = &current
@@ -463,20 +474,53 @@ func (r *purchaseOrderRepository) ReceiveInventory(ctx context.Context, req dto.
 			return fmt.Errorf("failed to update purchase order status: %w", err)
 		}
 
-		// Record the applied key so a later duplicate submit is a no-op. The
-		// unique index is the hard backstop against a concurrent double-submit.
+		// Record the applied key so a later duplicate submit is a no-op. If a
+		// concurrent submit under the same (po, key) already recorded it, the
+		// insert affects no rows: our work here is a duplicate, so roll back and
+		// replay the already-applied order (see errReceiveIdempotentReplay).
 		if req.IdempotencyKey != "" {
 			receipt := &models.PurchaseOrderReceipt{
 				IdempotencyKey:  req.IdempotencyKey,
 				PurchaseOrderID: po.ID,
 			}
-			if err := tx.Create(receipt).Error; err != nil {
-				return fmt.Errorf("failed to record receive idempotency key: %w", err)
+			res := tx.Clauses(clause.OnConflict{
+				Columns:   []clause.Column{{Name: "purchase_order_id"}, {Name: "idempotency_key"}},
+				DoNothing: true,
+			}).Create(receipt)
+			if res.Error != nil {
+				return fmt.Errorf("failed to record receive idempotency key: %w", res.Error)
+			}
+			if res.RowsAffected == 0 {
+				return errReceiveIdempotentReplay
 			}
 		}
 
 		return nil
 	})
+
+	// A concurrent submit under the same (po, key) beat us to it: our applied
+	// work was rolled back; return the already-applied order as an idempotent no-op.
+	if errors.Is(txErr, errReceiveIdempotentReplay) {
+		return r.loadReceivedPurchaseOrder(ctx, req.PurchaseOrderID)
+	}
+	if txErr != nil {
+		return nil, txErr
+	}
+	return po, nil
+}
+
+// loadReceivedPurchaseOrder loads a purchase order with the item associations
+// the receive response includes (product + unit), for idempotent replays.
+func (r *purchaseOrderRepository) loadReceivedPurchaseOrder(ctx context.Context, id uint) (*models.PurchaseOrder, error) {
+	var po models.PurchaseOrder
+	if err := r.db.WithContext(ctx).
+		Preload("Items").
+		Preload("Items.Product").
+		Preload("Items.Unit").
+		First(&po, id).Error; err != nil {
+		return nil, pkg.ErrFailedToFetchPurchaseOrder(ctx, err)
+	}
+	return &po, nil
 }
 
 func (r *purchaseOrderRepository) increaseQuantityInventoryItems(db *gorm.DB, deltaMap map[uint]decimal.Decimal) error {

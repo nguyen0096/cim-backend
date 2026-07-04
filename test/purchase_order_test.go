@@ -8,6 +8,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/http"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -826,6 +828,16 @@ var _ = Describe("Purchase Order API", func() {
 			resp, err = client.MakeRequest("PUT", urlPath, payload, testutil.WithAuth(), testutil.WithHeader("Idempotency-Key", key))
 			Expect(err).NotTo(HaveOccurred())
 			Expect(resp.StatusCode).To(Equal(200))
+			// The idempotent-replay response matches the normal receive shape
+			// (items carry their nested product/unit).
+			noopBody := testutil.ParseResponse(resp)
+			noopItems, _ := noopBody["items"].([]interface{})
+			Expect(noopItems).To(HaveLen(1))
+			firstItem, _ := noopItems[0].(map[string]interface{})
+			Expect(firstItem).To(HaveKey("product"))
+			Expect(firstItem["product"]).NotTo(BeNil())
+			Expect(firstItem).To(HaveKey("unit"))
+			Expect(firstItem["unit"]).NotTo(BeNil())
 			assertState(40, 1)
 
 			// A legitimate second delivery with a NEW key applies normally.
@@ -838,6 +850,144 @@ var _ = Describe("Purchase Order API", func() {
 			err = tenv.DB.WithContext(ctx).First(&po, "id = ?", testPurchaseOrder.ID).Error
 			Expect(err).NotTo(HaveOccurred())
 			Expect(po.Status).To(Equal(models.PurchaseOrderStatusPartiallyDelivered))
+		})
+
+		// onHand returns the active inventory-item quantity for a product in the test inventory.
+		onHand := func(ctx context.Context, productID uint) decimal.Decimal {
+			var item models.InventoryItem
+			err := tenv.DB.WithContext(ctx).
+				Where("inventory_id = ? AND product_id = ? AND status = ?",
+					testInventory.ID, productID, models.InventoryItemStatusActive).
+				First(&item).Error
+			if err != nil {
+				return decimal.Zero
+			}
+			return item.Quantity
+		}
+
+		poWithItem := func(productID uint) *models.PurchaseOrder {
+			return fixture.WithPurchaseOrder(tenv.ContextfulDB(), models.PurchaseOrder{
+				OrderNumber: uuid.New().String(),
+				Status:      models.PurchaseOrderStatusOrderPlaced,
+				InventoryID: &testInventory.ID,
+				Items: []*models.PurchaseOrderItem{
+					{
+						ProductID:        &productID,
+						SupplierID:       &testSupplier.ID,
+						UnitID:           &testBaseUnit.ID,
+						Quantity:         decimal.NewFromInt(100),
+						ReceivedQuantity: decimal.Zero,
+						Status:           models.PurchaseOrderItemStatusAwaitingDelivery,
+					},
+				},
+			})
+		}
+
+		receive := func(po *models.PurchaseOrder, qty int, key string) (*http.Response, error) {
+			client := testutil.NewClient(tenv, models.RoleAdmin)
+			payload := map[string]interface{}{
+				"items": []map[string]interface{}{
+					{"id": po.Items[0].ID, "received_quantity": qty},
+				},
+			}
+			urlPath := fmt.Sprintf("/api/v1/purchase-orders/%d/receive", po.ID)
+			return client.MakeRequest("PUT", urlPath, payload, testutil.WithAuth(), testutil.WithHeader("Idempotency-Key", key))
+		}
+
+		It("should receive both orders independently when the same idempotency key is reused across purchase orders", func(ctx SpecContext) {
+			poA := poWithItem(testProducts[0].ID)
+			poB := poWithItem(testProducts[1].ID)
+			key := uuid.New().String()
+
+			resp, err := receive(poA, 30, key)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(resp.StatusCode).To(Equal(200))
+
+			// Same key on a DIFFERENT order must apply, not be silently dropped.
+			resp, err = receive(poB, 50, key)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(resp.StatusCode).To(Equal(200))
+
+			Expect(onHand(ctx, testProducts[0].ID).Equal(decimal.NewFromInt(30))).To(BeTrue(),
+				"PO-A on-hand should be 30, got %s", onHand(ctx, testProducts[0].ID).String())
+			Expect(onHand(ctx, testProducts[1].ID).Equal(decimal.NewFromInt(50))).To(BeTrue(),
+				"PO-B on-hand should be 50 (not dropped), got %s", onHand(ctx, testProducts[1].ID).String())
+		})
+
+		It("should apply exactly once under concurrent same-key submits on the same order without erroring", func(ctx SpecContext) {
+			po := poWithItem(testProducts[0].ID)
+			key := uuid.New().String()
+
+			var wg sync.WaitGroup
+			start := make(chan struct{})
+			codes := make([]int, 2)
+			errs := make([]error, 2)
+			for i := 0; i < 2; i++ {
+				wg.Add(1)
+				go func(i int) {
+					defer wg.Done()
+					<-start
+					resp, err := receive(po, 40, key)
+					if err != nil {
+						errs[i] = err
+						return
+					}
+					codes[i] = resp.StatusCode
+				}(i)
+			}
+			close(start)
+			wg.Wait()
+
+			for i := 0; i < 2; i++ {
+				Expect(errs[i]).NotTo(HaveOccurred())
+				Expect(codes[i]).To(Equal(200), "concurrent same-key submit must not 500")
+			}
+			// Applied exactly once.
+			Expect(onHand(ctx, testProducts[0].ID).Equal(decimal.NewFromInt(40))).To(BeTrue(),
+				"on-hand should be 40 (applied once), got %s", onHand(ctx, testProducts[0].ID).String())
+			var txnCount int64
+			err := tenv.DB.WithContext(ctx).Model(&models.InventoryTransaction{}).
+				Where("purchase_order_item_id = ? AND transaction_type = ?",
+					po.Items[0].ID, models.InventoryTransactionTypePurchase).
+				Count(&txnCount).Error
+			Expect(err).NotTo(HaveOccurred())
+			Expect(txnCount).To(Equal(int64(1)))
+		})
+
+		It("should apply both orders under concurrent same-key submits across purchase orders", func(ctx SpecContext) {
+			poA := poWithItem(testProducts[0].ID)
+			poB := poWithItem(testProducts[1].ID)
+			key := uuid.New().String()
+			pos := []*models.PurchaseOrder{poA, poB}
+
+			var wg sync.WaitGroup
+			start := make(chan struct{})
+			codes := make([]int, 2)
+			errs := make([]error, 2)
+			for i := 0; i < 2; i++ {
+				wg.Add(1)
+				go func(i int) {
+					defer wg.Done()
+					<-start
+					resp, err := receive(pos[i], 25, key)
+					if err != nil {
+						errs[i] = err
+						return
+					}
+					codes[i] = resp.StatusCode
+				}(i)
+			}
+			close(start)
+			wg.Wait()
+
+			for i := 0; i < 2; i++ {
+				Expect(errs[i]).NotTo(HaveOccurred())
+				Expect(codes[i]).To(Equal(200), "cross-PO concurrent same-key must not 500")
+			}
+			Expect(onHand(ctx, testProducts[0].ID).Equal(decimal.NewFromInt(25))).To(BeTrue(),
+				"PO-A on-hand should be 25, got %s", onHand(ctx, testProducts[0].ID).String())
+			Expect(onHand(ctx, testProducts[1].ID).Equal(decimal.NewFromInt(25))).To(BeTrue(),
+				"PO-B on-hand should be 25, got %s", onHand(ctx, testProducts[1].ID).String())
 		})
 
 		It("should not receive purchase order if decimal places is larger than unit decimal places", func(ctx SpecContext) {
