@@ -26,6 +26,16 @@ import (
 	"gorm.io/gorm"
 )
 
+// corsAllowHeaders are the request headers permitted by CORS. Idempotency-Key is
+// required so the browser preflight for PO receive passes (matching is case-insensitive).
+var corsAllowHeaders = []string{
+	echo.HeaderOrigin,
+	echo.HeaderContentType,
+	echo.HeaderAccept,
+	echo.HeaderAuthorization,
+	"Idempotency-Key",
+}
+
 // SetupServer creates and configures the Echo server with all routes and middleware
 // Returns the configured Echo instance without starting it
 func SetupServer(
@@ -176,7 +186,7 @@ func SetupServer(
 	e.Use(echoMiddleware.CORSWithConfig(echoMiddleware.CORSConfig{
 		AllowOrigins: cfg.Server.CORSAllowedOrigins,
 		AllowMethods: []string{echo.GET, echo.POST, echo.PUT, echo.DELETE, echo.OPTIONS},
-		AllowHeaders: []string{echo.HeaderOrigin, echo.HeaderContentType, echo.HeaderAccept, echo.HeaderAuthorization},
+		AllowHeaders: corsAllowHeaders,
 	}))
 
 	e.Use(middleware.LanguageMiddleware())
