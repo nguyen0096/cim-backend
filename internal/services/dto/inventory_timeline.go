@@ -44,6 +44,7 @@ type TimelineProductMetrics struct {
 	TotalDisposed    float64 `json:"total_disposed"`
 	TotalTransferIn  float64 `json:"total_transfer_in"`
 	TotalTransferred float64 `json:"total_transferred"`
+	TotalAdjustment  float64 `json:"total_adjustment"`
 	TotalRevenue     float64 `json:"total_revenue"`
 }
 

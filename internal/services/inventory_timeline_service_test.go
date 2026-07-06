@@ -369,6 +369,41 @@ func Test_GetInventoryTimeline_PurchaseTxnPOID(t *testing.T) {
 	assert.Equal(t, tlPOID, *resp.Products[0].Transactions[0].POID)
 }
 
+func Test_GetInventoryTimeline_ReconcileStockUp_EmitsAdjustmentRowAndMetric(t *testing.T) {
+	ctx := context.Background()
+	invRepo := repositorymocks.NewInventoryRepository(t)
+	itemRepo := repositorymocks.NewInventoryItemRepository(t)
+	spRepo := repositorymocks.NewSellingPriceRepository(t)
+	svc := NewInventoryTimelineService(invRepo, itemRepo, spRepo)
+
+	stockUp := &repository.InventoryTransactionWithCounter{
+		InventoryTransaction: &models.InventoryTransaction{
+			Base:            models.Base{ID: 7, CreatedAt: time.Date(2026, 4, 12, 0, 0, 0, 0, time.UTC)},
+			InventoryItemID: tlItemID,
+			TransactionType: models.InventoryTransactionTypeReconcileStockUp,
+			Quantity:        decimal.NewFromInt(30),
+			Price:           0,
+		},
+	}
+
+	tlSetupItems(ctx, itemRepo, tlWidgetItems())
+	tlOnTxns(ctx, invRepo, 1, []*models.InventoryTransaction{}, []*repository.InventoryTransactionWithCounter{stockUp})
+	spRepo.On("GetPOItemsWithPriceByIDs", ctx, []uint(nil), tlInventoryID).Return(map[uint]*repository.POItemSellingPriceInfo{}, nil)
+
+	resp, err := svc.GetInventoryTimeline(ctx, tlReq())
+	require.NoError(t, err)
+	require.Len(t, resp.Products[0].Transactions, 1)
+	txn := resp.Products[0].Transactions[0]
+	assert.Equal(t, "adjustment", txn.TransactionType)
+	assert.Equal(t, 30.0, txn.Quantity)
+	require.NotNil(t, txn.CostPrice)
+	assert.Equal(t, 0.0, *txn.CostPrice)
+	assert.Nil(t, txn.POID)
+	assert.Equal(t, 30.0, resp.Products[0].Metrics.TotalAdjustment)
+	// Ending stock foots: beginning 0 + adjustment 30.
+	assert.Equal(t, 30.0, resp.Products[0].EndingStock)
+}
+
 func Test_GetInventoryTimeline_OutOfPeriodCounterStillResolves(t *testing.T) {
 	ctx := context.Background()
 	invRepo := repositorymocks.NewInventoryRepository(t)

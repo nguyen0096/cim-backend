@@ -60,8 +60,6 @@ const (
 	ErrKeyReconItemImmutable                = "recon_item_immutable"
 	ErrKeyReconItemCannotDeleteStatus       = "recon_item_cannot_delete_status"
 	ErrKeyReconItemInvalidTransition        = "recon_item_invalid_transition"
-	ErrKeyReconItemCountExceedsBaseline     = "recon_item_count_exceeds_baseline"
-	ErrKeyReconItemAggregateExceedsBaseline = "recon_item_aggregate_exceeds_baseline"
 	ErrKeyReconItemNoSnapshotBaseline       = "recon_item_no_snapshot_baseline"
 	ErrKeyReconItemNegativeQuantity         = "recon_item_negative_quantity"
 	ErrKeyReconItemDuplicateLine            = "recon_item_duplicate_line"
@@ -278,14 +276,6 @@ var ErrorMessages = map[string]ErrorMessage{
 	ErrKeyReconItemInvalidTransition: {
 		EN: "Invalid reconciliation item status transition from %s to %s",
 		VI: "Chuyển trạng thái mục kiểm kê không hợp lệ từ %s sang %s",
-	},
-	ErrKeyReconItemCountExceedsBaseline: {
-		EN: "Counted quantity %s for product \"%s\" exceeds the quantity recorded at the start of reconciliation %s",
-		VI: "Số lượng đếm được %s cho sản phẩm «%s» vượt quá số lượng ghi nhận tại thời điểm bắt đầu đối soát %s",
-	},
-	ErrKeyReconItemAggregateExceedsBaseline: {
-		EN: "Total counted quantity %s for product \"%s\" across all staff submissions exceeds the quantity recorded at the start of reconciliation %s",
-		VI: "Tổng số lượng đếm được %s cho sản phẩm «%s» trên tất cả các phiếu kiểm kê của nhân viên vượt quá số lượng ghi nhận tại thời điểm bắt đầu đối soát %s",
 	},
 	ErrKeyReconItemNoSnapshotBaseline: {
 		EN: "Product \"%s\" has no quantity recorded at the start of reconciliation for this reconciliation",
@@ -702,18 +692,6 @@ func ErrReconItemCannotDeleteStatus(ctx context.Context, itemID uint, status str
 func ErrReconItemInvalidTransition(ctx context.Context, from, to string) *AppError {
 	return NewAppError(ErrorCodeConflict,
 		fmt.Sprintf(getErrorMessage(ctx, ErrKeyReconItemInvalidTransition), from, to), nil)
-}
-
-// ErrReconItemCountExceedsBaseline is a 400/validation: counted exceeds the snapshot baseline.
-func ErrReconItemCountExceedsBaseline(ctx context.Context, productName string, counted, baseline decimal.Decimal) *AppError {
-	return NewAppError(ErrorCodeValidation,
-		fmt.Sprintf(getErrorMessage(ctx, ErrKeyReconItemCountExceedsBaseline), counted.String(), productName, baseline.String()), nil)
-}
-
-// ErrReconItemAggregateExceedsBaseline is a 400/validation: the summed count across rows exceeds the baseline.
-func ErrReconItemAggregateExceedsBaseline(ctx context.Context, productName string, total, baseline decimal.Decimal) *AppError {
-	return NewAppError(ErrorCodeValidation,
-		fmt.Sprintf(getErrorMessage(ctx, ErrKeyReconItemAggregateExceedsBaseline), total.String(), productName, baseline.String()), nil)
 }
 
 // ErrReconItemNoSnapshotBaseline is a 400/validation: the counted item has no snapshot baseline.

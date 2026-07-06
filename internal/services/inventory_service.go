@@ -957,6 +957,10 @@ func (s *inventoryService) transferInventory(
 
 	destIvtrItemChanges := make(map[uint]*models.InventoryItemChange, 0) // product_id -> change
 	transferTransactionCreator := func(consumeItem *models.InventoryItem, consumeTxn *models.InventoryTransaction, quantity decimal.Decimal) []*models.InventoryTransaction {
+		// Propagate found-stock provenance: a transfer_in that consumes a zero-cost
+		// reconcile layer (a stock-up or an already-found transfer_in) is itself a
+		// found layer, so the marker carries across any number of transfer hops.
+		fromFound := consumeTxn.IsAdjustment || consumeTxn.TransactionType == models.InventoryTransactionTypeReconcileStockUp
 		txns := []*models.InventoryTransaction{
 			{
 				InventoryItemID:      consumeItem.ID,
@@ -970,6 +974,7 @@ func (s *inventoryService) transferInventory(
 				Price:                consumeTxn.Price,
 				Quantity:             quantity,
 				CounterTransactionID: &consumeTxn.ID,
+				IsAdjustment:         fromFound,
 			},
 		}
 
@@ -1657,7 +1662,8 @@ func (s *inventoryService) GetMonthlyTransactionReport(ctx context.Context, inve
 			models.InventoryTransactionTypeTransferOut:
 			consumeTxns = append(consumeTxns, txn)
 		case models.InventoryTransactionTypePurchase,
-			models.InventoryTransactionTypeTransferIn:
+			models.InventoryTransactionTypeTransferIn,
+			models.InventoryTransactionTypeReconcileStockUp:
 			periodSourceTxns = append(periodSourceTxns, txn)
 		}
 	}

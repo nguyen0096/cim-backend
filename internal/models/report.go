@@ -16,6 +16,10 @@ const (
 	ReportNameTmplMonthlyTransactionReport = "Xuất nhập tồn tháng %s - %s"
 )
 
+// AdjustmentCategoryLabel is the VI display for the reconcile-correction category
+// (source-view report row + in/out export row + timeline).
+const AdjustmentCategoryLabel = "Điều chỉnh do kiểm kê sai"
+
 // Report represents a generated report file,
 // contains metadata about the report.
 type Report struct {

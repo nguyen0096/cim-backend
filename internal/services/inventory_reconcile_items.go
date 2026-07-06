@@ -96,19 +96,13 @@ func (s *inventoryService) guardOwnership(ctx context.Context, item *models.Reco
 }
 
 // validateCountsAgainstSnapshot validates a child payload (non-negative quantities,
-// per-row count-label rule, snapshot baseline present, and aggregate counted quantity
-// per item across siblings plus this payload not exceeding the baseline) and returns
-// the normalized payload bytes. excludeItemID is the row being replaced on update (0
-// on create); siblingRows is the parent's live child rows loaded under the FOR UPDATE lock.
-func (s *inventoryService) validateCountsAgainstSnapshot(ctx context.Context, submissionID uint, items []dto.ReconciliationCountItem, excludeItemID uint, siblingRows []models.ReconciliationRequestItem) (json.RawMessage, error) {
+// per-row count-label rule, snapshot baseline present) and returns the normalized
+// payload bytes. Counts may exceed the baseline; the overage is surfaced as a review
+// anomaly and applied as a stock-up at process time.
+func (s *inventoryService) validateCountsAgainstSnapshot(ctx context.Context, submissionID uint, items []dto.ReconciliationCountItem) (json.RawMessage, error) {
 	baselines, err := s.snapshotRepo.GetPrevQuantitiesBySubmission(ctx, submissionID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to load snapshot baselines: %w", err)
-	}
-
-	totals, err := sumLiveSiblingCounts(siblingRows, excludeItemID)
-	if err != nil {
-		return nil, err
 	}
 
 	for _, item := range items {
@@ -126,18 +120,9 @@ func (s *inventoryService) validateCountsAgainstSnapshot(ctx context.Context, su
 			return nil, pkg.ErrReconItemLabelTooLong(ctx, item.InventoryItemID, maxReconItemLabelLength)
 		}
 
-		baseline, ok := baselines[item.InventoryItemID]
-		if !ok {
+		if _, ok := baselines[item.InventoryItemID]; !ok {
 			return nil, pkg.ErrReconItemNoSnapshotBaseline(ctx, s.resolveProductName(ctx, item.InventoryItemID))
 		}
-		if quantity.GreaterThan(baseline) {
-			return nil, pkg.ErrReconItemCountExceedsBaseline(ctx, s.resolveProductName(ctx, item.InventoryItemID), quantity, baseline)
-		}
-		total := totals[item.InventoryItemID].Add(quantity)
-		if total.GreaterThan(baseline) {
-			return nil, pkg.ErrReconItemAggregateExceedsBaseline(ctx, s.resolveProductName(ctx, item.InventoryItemID), total, baseline)
-		}
-		totals[item.InventoryItemID] = total
 	}
 
 	if err := validateCountLabelDistinctness(ctx, items); err != nil {
@@ -163,6 +148,25 @@ func (s *inventoryService) resolveProductName(ctx context.Context, itemID uint) 
 		return it.Product.Name
 	}
 	return ""
+}
+
+// resolveProductNames resolves product display names for inventory item ids,
+// omitting any that error, are missing, or have a soft-deleted product.
+func (s *inventoryService) resolveProductNames(ctx context.Context, itemIDs []uint) map[uint]string {
+	names := make(map[uint]string, len(itemIDs))
+	if len(itemIDs) == 0 {
+		return names
+	}
+	items, err := s.inventoryItemRepo.GetByIDs(ctx, itemIDs)
+	if err != nil {
+		return names
+	}
+	for id, it := range s.buildItemMap(items) {
+		if it.Product != nil && it.Product.Name != "" {
+			names[id] = it.Product.Name
+		}
+	}
+	return names
 }
 
 // validateCountLabelDistinctness requires each item's counts to have distinct trimmed
@@ -217,32 +221,6 @@ func validateRowLabel(ctx context.Context, ownerEmail, rawLabel string, excludeI
 		return "", pkg.ErrReconRowLabelConflict(ctx, label)
 	}
 	return label, nil
-}
-
-// sumLiveSiblingCounts returns the total counted quantity per inventory_item_id across
-// the supplied live child rows, excluding the row with id excludeItemID (0 excludes nothing).
-func sumLiveSiblingCounts(rows []models.ReconciliationRequestItem, excludeItemID uint) (map[uint]decimal.Decimal, error) {
-	totals := make(map[uint]decimal.Decimal)
-	for _, row := range rows {
-		if row.ID == excludeItemID {
-			continue
-		}
-		if len(row.Payload) == 0 {
-			continue
-		}
-		var parsed reconItemPayload
-		if err := json.Unmarshal(row.Payload, &parsed); err != nil {
-			return nil, fmt.Errorf("failed to parse sibling reconciliation item %d payload: %w", row.ID, err)
-		}
-		for _, line := range parsed.Items {
-			cur, ok := totals[line.InventoryItemID]
-			if !ok {
-				cur = decimal.Zero
-			}
-			totals[line.InventoryItemID] = cur.Add(line.Quantity)
-		}
-	}
-	return totals, nil
 }
 
 // reconItemPayload is the on-row JSON shape for a child item: counts only.
@@ -300,7 +278,7 @@ func (s *inventoryService) CreateReconciliationItem(ctx context.Context, req dto
 			return err
 		}
 
-		payloadBytes, err := s.validateCountsAgainstSnapshot(txCtx, req.SubmissionID, req.Items, 0, siblingRows)
+		payloadBytes, err := s.validateCountsAgainstSnapshot(txCtx, req.SubmissionID, req.Items)
 		if err != nil {
 			return err
 		}
@@ -356,7 +334,7 @@ func (s *inventoryService) UpdateReconciliationItem(ctx context.Context, req dto
 			return err
 		}
 
-		payloadBytes, err := s.validateCountsAgainstSnapshot(txCtx, req.SubmissionID, req.Items, item.ID, siblingRows)
+		payloadBytes, err := s.validateCountsAgainstSnapshot(txCtx, req.SubmissionID, req.Items)
 		if err != nil {
 			return err
 		}

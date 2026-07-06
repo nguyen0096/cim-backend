@@ -263,7 +263,9 @@ func TestCreateReconciliationItem_HappyPath(t *testing.T) {
 	assert.NoError(t, mock.ExpectationsWereMet())
 }
 
-func TestCreateReconciliationItem_CountedExceedsSnapshot_Rejected(t *testing.T) {
+func TestCreateReconciliationItem_CountedExceedsSnapshot_Allowed(t *testing.T) {
+	// Over-snapshot counts are now accepted; the overage is surfaced as a review
+	// anomaly and applied as a stock-up at process time.
 	gormDB, mock := newInventoryServiceTestDB(t)
 	svc := newReconItemServiceReal(gormDB)
 	ctx := reconCtx(reconStaffEmail)
@@ -274,32 +276,23 @@ func TestCreateReconciliationItem_CountedExceedsSnapshot_Rejected(t *testing.T) 
 	expectParentReconcileLoad(mock, submissionID)
 	expectSiblingRows(mock, submissionID, nil)
 	expectSnapshotBaselines(mock, map[uint]string{10: "100"})
-	// counted 120 > baseline 100 -> validation error, rollback, no insert.
-	// resolveProductName resolves item 10 -> "Sản phẩm A" on the rejecting branch.
-	expectInventoryItemsByIDs(mock, map[uint]string{10: "Sản phẩm A"})
-	mock.ExpectRollback()
+	mock.ExpectQuery(regexp.QuoteMeta(`INSERT INTO "reconciliation_request_items"`)).
+		WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(1))
+	mock.ExpectCommit()
 
-	// VI locale so we assert the issue's exact reworded VI string.
-	ctx = pkg.WithLanguage(ctx, pkg.LangVI)
 	_, err := svc.CreateReconciliationItem(ctx, dto.CreateReconciliationItemRequest{
 		SubmissionID: submissionID,
 		Items:        []dto.ReconciliationCountItem{{InventoryItemID: 10, Quantity: decPtr(120)}},
 	})
-	require.Error(t, err)
-	assert.Equal(t, pkg.ErrorCodeValidation, appErrCode(t, err))
-	// Message renders the product NAME and the new wording, never the raw item ID.
-	assert.Contains(t, err.Error(), "Sản phẩm A")
-	assert.Contains(t, err.Error(), "số lượng ghi nhận tại thời điểm bắt đầu đối soát")
-	assert.NotContains(t, err.Error(), "sản phẩm 10")
-	assert.NotContains(t, err.Error(), "số liệu nền")
+	require.NoError(t, err, "counted 120 > baseline 100 must now be accepted")
 	assert.NoError(t, mock.ExpectationsWereMet())
 }
 
-func TestCreateReconciliationItem_CountedExceedsSnapshot_NilProduct_Graceful(t *testing.T) {
-	// The rejecting item's product is soft-deleted, so GetByIDs (Unscoped) returns the
-	// item but the scoped Product preload finds no row -> Product == nil.
-	// resolveProductName's nil-guard must return "" (no panic), and the message renders
-	// an empty name inside guillemets («») with the new wording.
+func TestCreateReconciliationItem_NoSnapshotBaseline_NilProduct_Graceful(t *testing.T) {
+	// A counted item with no snapshot baseline is still rejected. When its product is
+	// soft-deleted, GetByIDs (Unscoped) returns the item but the scoped Product preload
+	// finds no row -> Product == nil. resolveProductName's nil-guard must return "" (no
+	// panic), and the message renders an empty name inside guillemets («»).
 	gormDB, mock := newInventoryServiceTestDB(t)
 	svc := newReconItemServiceReal(gormDB)
 	ctx := reconCtx(reconStaffEmail)
@@ -307,24 +300,25 @@ func TestCreateReconciliationItem_CountedExceedsSnapshot_NilProduct_Graceful(t *
 
 	mock.ExpectBegin()
 	expectParentReconcileLoad(mock, submissionID)
+	// Baseline map has item 10 only; counted item 99 has no snapshot -> reject.
 	expectSiblingRows(mock, submissionID, nil)
 	expectSnapshotBaselines(mock, map[uint]string{10: "100"})
 	// Soft-deleted product: item resolves, product preload finds nothing.
-	expectInventoryItemNilProduct(mock, 10)
+	expectInventoryItemNilProduct(mock, 99)
 	mock.ExpectRollback()
 
 	// VI locale so we assert the reworded VI string + empty-name guillemets.
 	ctx = pkg.WithLanguage(ctx, pkg.LangVI)
 	_, err := svc.CreateReconciliationItem(ctx, dto.CreateReconciliationItemRequest{
 		SubmissionID: submissionID,
-		Items:        []dto.ReconciliationCountItem{{InventoryItemID: 10, Quantity: decPtr(120)}},
+		Items:        []dto.ReconciliationCountItem{{InventoryItemID: 99, Quantity: decPtr(1)}},
 	})
 	require.Error(t, err)
 	assert.Equal(t, pkg.ErrorCodeValidation, appErrCode(t, err))
 	// Empty name renders inside guillemets; new wording present; no raw ID, no old jargon.
 	assert.Contains(t, err.Error(), "«»")
 	assert.Contains(t, err.Error(), "số lượng ghi nhận tại thời điểm bắt đầu đối soát")
-	assert.NotContains(t, err.Error(), "sản phẩm 10")
+	assert.NotContains(t, err.Error(), "sản phẩm 99")
 	assert.NotContains(t, err.Error(), "số liệu nền")
 	assert.NoError(t, mock.ExpectationsWereMet())
 }
@@ -1309,15 +1303,13 @@ func TestUpdateReconciliationItem_KeepsOwnLabel_ExcludedFromUniqueness_Allowed(t
 	assert.NoError(t, mock.ExpectationsWereMet())
 }
 
-// ============================ AGGREGATE (cross-row) BASELINE ============================
+// ============================ AGGREGATE (cross-row) OVERAGE ALLOWED ============================
 
-func TestCreateReconciliationItem_AggregateExceedsBaseline_SecondRowRejected(t *testing.T) {
+func TestCreateReconciliationItem_AggregateExceedsBaseline_SecondRowAllowed(t *testing.T) {
 	// Two staff rows of 80 each against a baseline of 100: the FIRST row already
 	// counts 80 (a live sibling, blank label); a SECOND row of 80 under a DISTINCT
-	// label ("dock") alone passes the per-row check (80 <= 100) but 80 + 80 = 160 >
-	// 100, so the aggregate guard must reject it. The distinct label clears the
-	// issue-#73 label rule so the AGGREGATE error is the one that fires (not the
-	// label-required error).
+	// label ("dock") makes the aggregate 160 > 100. The cross-row overage block is
+	// removed, so the second row is now accepted.
 	gormDB, mock := newInventoryServiceTestDB(t)
 	svc := newReconItemServiceReal(gormDB)
 	ctx := reconCtx(reconStaffEmail)
@@ -1328,28 +1320,15 @@ func TestCreateReconciliationItem_AggregateExceedsBaseline_SecondRowRejected(t *
 	// One existing live sibling row already counted 80 of item 10.
 	expectSiblingRows(mock, submissionID, []siblingRow{{id: 700, payload: reconLine(10, 80)}})
 	expectSnapshotBaselines(mock, map[uint]string{10: "100"})
-	// resolveProductName resolves item 10 -> "Sản phẩm A" on the aggregate-reject branch.
-	expectInventoryItemsByIDs(mock, map[uint]string{10: "Sản phẩm A"})
-	mock.ExpectRollback()
+	mock.ExpectQuery(regexp.QuoteMeta(`INSERT INTO "reconciliation_request_items"`)).
+		WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(701))
+	mock.ExpectCommit()
 
-	// VI locale so we assert the issue's exact reworded VI string.
-	ctx = pkg.WithLanguage(ctx, pkg.LangVI)
 	_, err := svc.CreateReconciliationItem(ctx, dto.CreateReconciliationItemRequest{
 		SubmissionID: submissionID,
 		Items:        []dto.ReconciliationCountItem{{InventoryItemID: 10, Quantity: decPtr(80), Label: "dock"}},
 	})
-	require.Error(t, err)
-	assert.Equal(t, pkg.ErrorCodeValidation, appErrCode(t, err))
-	// Specifically the aggregate error (total 160 across staff submissions), not the
-	// per-row exceeds error. The builder now takes the product NAME (not the item ID),
-	// so both sides resolve to the same name-bearing message.
-	var appErr *pkg.AppError
-	require.ErrorAs(t, err, &appErr)
-	assert.Equal(t,
-		pkg.ErrReconItemAggregateExceedsBaseline(ctx, "Sản phẩm A", decimal.NewFromInt(160), decimal.NewFromInt(100)).Error(),
-		appErr.Error())
-	assert.Contains(t, appErr.Error(), "Sản phẩm A")
-	assert.Contains(t, appErr.Error(), "số lượng ghi nhận tại thời điểm bắt đầu đối soát")
+	require.NoError(t, err, "aggregate 80 + 80 = 160 > baseline 100 must now be accepted")
 	assert.NoError(t, mock.ExpectationsWereMet())
 }
 
@@ -1380,9 +1359,9 @@ func TestCreateReconciliationItem_FragmentedCounts_Allowed(t *testing.T) {
 	assert.NoError(t, mock.ExpectationsWereMet())
 }
 
-func TestCreateReconciliationItem_AggregateMultiItem_OneOverRejected(t *testing.T) {
-	// Multi-item payload: item 10 aggregate stays within baseline, item 11 pushes
-	// over. The whole create must be rejected (atomic — nothing persists).
+func TestCreateReconciliationItem_AggregateMultiItem_OverageAllowed(t *testing.T) {
+	// Multi-item payload where item 11's aggregate pushes over its baseline. With the
+	// overage block removed, the whole create is accepted.
 	gormDB, mock := newInventoryServiceTestDB(t)
 	svc := newReconItemServiceReal(gormDB)
 	ctx := reconCtx(reconStaffEmail)
@@ -1395,17 +1374,18 @@ func TestCreateReconciliationItem_AggregateMultiItem_OneOverRejected(t *testing.
 		{id: 700, payload: `{"items":[{"inventory_item_id":10,"quantity":"50"},{"inventory_item_id":11,"quantity":"25"}]}`},
 	})
 	expectSnapshotBaselines(mock, map[uint]string{10: "100", 11: "30"})
-	mock.ExpectRollback()
+	mock.ExpectQuery(regexp.QuoteMeta(`INSERT INTO "reconciliation_request_items"`)).
+		WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(701))
+	mock.ExpectCommit()
 
 	_, err := svc.CreateReconciliationItem(ctx, dto.CreateReconciliationItemRequest{
 		SubmissionID: submissionID,
 		Items: []dto.ReconciliationCountItem{
-			{InventoryItemID: 10, Quantity: decPtr(40)}, // 50+40=90 <= 100 OK
-			{InventoryItemID: 11, Quantity: decPtr(10)}, // 25+10=35 > 30 REJECT
+			{InventoryItemID: 10, Quantity: decPtr(40)}, // 50+40=90 <= 100
+			{InventoryItemID: 11, Quantity: decPtr(10)}, // 25+10=35 > 30, now accepted
 		},
 	})
-	require.Error(t, err)
-	assert.Equal(t, pkg.ErrorCodeValidation, appErrCode(t, err))
+	require.NoError(t, err, "item 11 aggregate 35 > baseline 30 must now be accepted")
 	assert.NoError(t, mock.ExpectationsWereMet())
 }
 
@@ -1437,12 +1417,10 @@ func TestUpdateReconciliationItem_StaffWhileOpen_OK(t *testing.T) {
 	assert.NoError(t, mock.ExpectationsWereMet())
 }
 
-func TestUpdateReconciliationItem_AggregatePushesOverBaseline_Rejected(t *testing.T) {
+func TestUpdateReconciliationItem_AggregatePushesOverBaseline_Allowed(t *testing.T) {
 	// The row under update (777) currently counts 30; a SIBLING row (700) counts 80
-	// (blank label). Updating 777 from 30 to 50 under a DISTINCT label ("dock"):
-	// 80 (sibling) + 50 (new) = 130 > 100. Rejected on the AGGREGATE guard (the
-	// distinct label clears the issue-#73 label rule so the aggregate check is the
-	// one that fires). The row's OWN old value of 30 is EXCLUDED from the sibling sum.
+	// (blank label). Updating 777 to 50 under a DISTINCT label ("dock") makes the
+	// aggregate 130 > 100. With the overage block removed, the update is accepted.
 	gormDB, mock := newInventoryServiceTestDB(t)
 	svc := newReconItemServiceReal(gormDB)
 	ctx := reconCtx(reconStaffEmail)
@@ -1452,55 +1430,9 @@ func TestUpdateReconciliationItem_AggregatePushesOverBaseline_Rejected(t *testin
 	mock.ExpectBegin()
 	expectParentReconcileLoad(mock, submissionID)
 	expectItemLoad(mock, itemID, submissionID, reconStaffEmail, string(models.ReconciliationRequestItemStatusInProgress))
-	// ListBySubmission returns BOTH the updated row (777, old 30 — excluded) and the
-	// sibling (700, 80 — counted). The exclusion is by row id inside the service.
 	expectSiblingRows(mock, submissionID, []siblingRow{
 		{id: 700, payload: reconLine(10, 80)},
 		{id: 777, payload: reconLine(10, 30)},
-	})
-	expectSnapshotBaselines(mock, map[uint]string{10: "100"})
-	// resolveProductName resolves item 10 -> "Sản phẩm A" on the aggregate-reject branch.
-	expectInventoryItemsByIDs(mock, map[uint]string{10: "Sản phẩm A"})
-	mock.ExpectRollback()
-
-	// VI locale so we assert the issue's exact reworded VI string.
-	ctx = pkg.WithLanguage(ctx, pkg.LangVI)
-	_, err := svc.UpdateReconciliationItem(ctx, dto.UpdateReconciliationItemRequest{
-		SubmissionID: submissionID,
-		ItemID:       itemID,
-		Items:        []dto.ReconciliationCountItem{{InventoryItemID: 10, Quantity: decPtr(50), Label: "dock"}},
-	})
-	require.Error(t, err)
-	assert.Equal(t, pkg.ErrorCodeValidation, appErrCode(t, err))
-	var appErr *pkg.AppError
-	require.ErrorAs(t, err, &appErr)
-	assert.Equal(t,
-		pkg.ErrReconItemAggregateExceedsBaseline(ctx, "Sản phẩm A", decimal.NewFromInt(130), decimal.NewFromInt(100)).Error(),
-		appErr.Error())
-	assert.Contains(t, appErr.Error(), "Sản phẩm A")
-	assert.Contains(t, appErr.Error(), "số lượng ghi nhận tại thời điểm bắt đầu đối soát")
-	assert.NoError(t, mock.ExpectationsWereMet())
-}
-
-func TestUpdateReconciliationItem_StaysWithinExcludingOwnOldValue_Allowed(t *testing.T) {
-	// Sibling (700) counts 40 (blank label); the updated row (777) currently counts
-	// 80. Updating 777 to 60 under a DISTINCT label ("dock"): if its own OLD 80 were
-	// wrongly counted, 40+80+60 would exceed; with the row excluded, 40 (sibling) +
-	// 60 (new) = 100 <= 100, so it is allowed. This proves the update path excludes
-	// the row being replaced from the sibling sum (the distinct label clears the
-	// issue-#73 rule so the aggregate path is what is exercised).
-	gormDB, mock := newInventoryServiceTestDB(t)
-	svc := newReconItemServiceReal(gormDB)
-	ctx := reconCtx(reconStaffEmail)
-	const submissionID = uint(50)
-	const itemID = uint(777)
-
-	mock.ExpectBegin()
-	expectParentReconcileLoad(mock, submissionID)
-	expectItemLoad(mock, itemID, submissionID, reconStaffEmail, string(models.ReconciliationRequestItemStatusInProgress))
-	expectSiblingRows(mock, submissionID, []siblingRow{
-		{id: 700, payload: reconLine(10, 40)},
-		{id: 777, payload: reconLine(10, 80)},
 	})
 	expectSnapshotBaselines(mock, map[uint]string{10: "100"})
 	mock.ExpectExec(regexp.QuoteMeta(`UPDATE "reconciliation_request_items" SET`)).
@@ -1510,9 +1442,38 @@ func TestUpdateReconciliationItem_StaysWithinExcludingOwnOldValue_Allowed(t *tes
 	_, err := svc.UpdateReconciliationItem(ctx, dto.UpdateReconciliationItemRequest{
 		SubmissionID: submissionID,
 		ItemID:       itemID,
-		Items:        []dto.ReconciliationCountItem{{InventoryItemID: 10, Quantity: decPtr(60), Label: "dock"}},
+		Items:        []dto.ReconciliationCountItem{{InventoryItemID: 10, Quantity: decPtr(50), Label: "dock"}},
 	})
-	require.NoError(t, err, "40 (sibling) + 60 (new) == 100 must be allowed; own old 80 excluded")
+	require.NoError(t, err, "aggregate 80 + 50 = 130 > baseline 100 must now be accepted")
+	assert.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestUpdateReconciliationItem_OverBaselineSingleRow_Allowed(t *testing.T) {
+	// A single row updated to 160 against a baseline of 100 is accepted; the overage
+	// is surfaced as a review anomaly and applied as a stock-up at process time.
+	gormDB, mock := newInventoryServiceTestDB(t)
+	svc := newReconItemServiceReal(gormDB)
+	ctx := reconCtx(reconStaffEmail)
+	const submissionID = uint(50)
+	const itemID = uint(777)
+
+	mock.ExpectBegin()
+	expectParentReconcileLoad(mock, submissionID)
+	expectItemLoad(mock, itemID, submissionID, reconStaffEmail, string(models.ReconciliationRequestItemStatusInProgress))
+	expectSiblingRows(mock, submissionID, []siblingRow{
+		{id: 777, payload: reconLine(10, 30)},
+	})
+	expectSnapshotBaselines(mock, map[uint]string{10: "100"})
+	mock.ExpectExec(regexp.QuoteMeta(`UPDATE "reconciliation_request_items" SET`)).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectCommit()
+
+	_, err := svc.UpdateReconciliationItem(ctx, dto.UpdateReconciliationItemRequest{
+		SubmissionID: submissionID,
+		ItemID:       itemID,
+		Items:        []dto.ReconciliationCountItem{{InventoryItemID: 10, Quantity: decPtr(160)}},
+	})
+	require.NoError(t, err, "counted 160 > baseline 100 must now be accepted")
 	assert.NoError(t, mock.ExpectationsWereMet())
 }
 

@@ -36,7 +36,15 @@ func (s *inventoryService) SynthesizeSubmissionPayload(ctx context.Context, subm
 		return nil, err
 	}
 
-	return synthesizeReconcile(submission.InventoryID, rows, baselines, managerOwned)
+	// Product names for anomaly messages (be-94: name, not raw id). Snapshot items
+	// cover the overage case, which only fires when a baseline exists.
+	baselineIDs := make([]uint, 0, len(baselines))
+	for id := range baselines {
+		baselineIDs = append(baselineIDs, id)
+	}
+	productNames := s.resolveProductNames(ctx, baselineIDs)
+
+	return synthesizeReconcile(submission.InventoryID, rows, baselines, managerOwned, productNames)
 }
 
 // synthesizeReconcile is the pure core of SynthesizeSubmissionPayload.
@@ -45,6 +53,7 @@ func synthesizeReconcile(
 	rows []models.ReconciliationRequestItem,
 	baselines map[uint]decimal.Decimal,
 	managerOwned map[uint]bool,
+	productNames map[uint]string,
 ) (*dto.SynthesizedReconcile, error) {
 	totals := make(map[uint]decimal.Decimal)
 	for _, row := range rows {
@@ -76,6 +85,14 @@ func synthesizeReconcile(
 		return nil, err
 	}
 
+	// productLabel names the product (be-94) when known, else falls back to the id.
+	productLabel := func(id uint) string {
+		if name, ok := productNames[id]; ok && name != "" {
+			return fmt.Sprintf("«%s»", name)
+		}
+		return fmt.Sprintf("(inventory_item_id=%d)", id)
+	}
+
 	var anomalies []string
 	items := make([]dto.QuantityItem, 0, len(itemIDs))
 	for _, id := range itemIDs {
@@ -85,23 +102,24 @@ func synthesizeReconcile(
 		// Anomaly: counted item with no snapshot row. Surface it and fall back to zero baseline.
 		if !hasBaseline {
 			anomalies = append(anomalies, fmt.Sprintf(
-				"sản phẩm (inventory_item_id=%d) không có số lượng nền (snapshot) — cần kiểm tra lại", id))
+				"sản phẩm %s không có số lượng nền (snapshot) — cần kiểm tra lại", productLabel(id)))
 			baseline = decimal.Zero
 		}
 
-		// Anomaly: counted exceeds baseline. Surface it and cap emitted at baseline so
-		// a downstream consume (snapshot - counted) can never go negative.
-		emitted := counted
-		if counted.GreaterThan(baseline) {
-			if hasBaseline {
-				anomalies = append(anomalies, fmt.Sprintf(
-					"tổng số lượng kiểm đếm của sản phẩm (inventory_item_id=%d) là %s vượt quá số lượng nền %s — cần kiểm tra lại",
-					id, counted.String(), baseline.String()))
-			}
-			emitted = baseline
+		// Anomaly: counted exceeds baseline. Surface it; the true counted flows through
+		// so the overage is applied as a stock-up at process time.
+		if hasBaseline && counted.GreaterThan(baseline) {
+			anomalies = append(anomalies, fmt.Sprintf(
+				"tổng số lượng kiểm đếm của sản phẩm %s là %s vượt quá số lượng nền %s — cần kiểm tra lại",
+				productLabel(id), counted.String(), baseline.String()))
 		}
 
-		quantity := emitted
+		// No snapshot row (defensive; the write guard blocks this): emit the zero
+		// baseline so apply neither consumes nor stocks up.
+		quantity := counted
+		if !hasBaseline {
+			quantity = baseline
+		}
 		items = append(items, dto.QuantityItem{
 			InventoryItemID: id,
 			Quantity:        &quantity,

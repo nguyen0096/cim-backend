@@ -321,9 +321,8 @@ func (r *inventoryItemRepository) populateConsumableTransactions(
 			models.GetIDs(items)).
 		Where("inventory_transactions.transaction_type IN ?",
 			models.GetConsumableTransactionTypes()).
-		Where("inventory_transactions.id >= COALESCE(inventory_items.consuming_transaction_id, 0)").
 		Where("inventory_transactions.consumed_quantity < inventory_transactions.quantity").
-		Order("inventory_transactions.created_at ASC").
+		Order("inventory_transactions.created_at ASC, inventory_transactions.id ASC").
 		Find(&transactions).Error
 	if err != nil {
 		return fmt.Errorf("failed to get active purchase transactions: %w", err)

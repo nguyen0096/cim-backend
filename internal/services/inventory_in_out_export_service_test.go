@@ -114,8 +114,6 @@ func TestExport_HappyPath_UploadsAndReturnsURL(t *testing.T) {
 	}
 
 	invRepo.On("GetByID", ctx, ioInvID).Return(ioInventory(), nil)
-	invRepo.On("GetTransactionsByInventoryIDs", ctx, ioInvID, (*time.Time)(nil), mock.Anything).
-		Return([]*models.InventoryTransaction{}, nil)
 	invRepo.On("GetTransactionsByInventoryIDsWithCounter", ctx, ioInvID, mock.Anything, mock.Anything).
 		Return([]*repository.InventoryTransactionWithCounter{purchase}, nil)
 	invRepo.On("GetTransactionsByInventoryIDsWithCounter", ctx, ioInvID, (*time.Time)(nil), mock.Anything).
@@ -175,8 +173,6 @@ func TestExport_PreconditionMissingSellingPrice(t *testing.T) {
 	}
 
 	invRepo.On("GetByID", ctx, ioInvID).Return(ioInventory(), nil)
-	invRepo.On("GetTransactionsByInventoryIDs", ctx, ioInvID, (*time.Time)(nil), mock.Anything).
-		Return([]*models.InventoryTransaction{}, nil)
 	invRepo.On("GetTransactionsByInventoryIDsWithCounter", ctx, ioInvID, mock.Anything, mock.Anything).
 		Return([]*repository.InventoryTransactionWithCounter{purchase}, nil)
 	invRepo.On("GetTransactionsByInventoryIDsWithCounter", ctx, ioInvID, (*time.Time)(nil), mock.Anything).
@@ -235,8 +231,6 @@ func TestExport_IgnoreMissingSellingPriceBypassesPrecondition(t *testing.T) {
 	}
 
 	invRepo.On("GetByID", ctx, ioInvID).Return(ioInventory(), nil)
-	invRepo.On("GetTransactionsByInventoryIDs", ctx, ioInvID, (*time.Time)(nil), mock.Anything).
-		Return([]*models.InventoryTransaction{}, nil)
 	invRepo.On("GetTransactionsByInventoryIDsWithCounter", ctx, ioInvID, mock.Anything, mock.Anything).
 		Return([]*repository.InventoryTransactionWithCounter{purchase}, nil)
 	invRepo.On("GetTransactionsByInventoryIDsWithCounter", ctx, ioInvID, (*time.Time)(nil), mock.Anything).
@@ -292,8 +286,6 @@ func TestExport_CrossInventoryTransferInResolvesSourcePOI(t *testing.T) {
 	}
 
 	invRepo.On("GetByID", ctx, ioInvID).Return(ioInventory(), nil)
-	invRepo.On("GetTransactionsByInventoryIDs", ctx, ioInvID, (*time.Time)(nil), mock.Anything).
-		Return([]*models.InventoryTransaction{}, nil)
 	invRepo.On("GetTransactionsByInventoryIDsWithCounter", ctx, ioInvID, mock.Anything, mock.Anything).
 		Return([]*repository.InventoryTransactionWithCounter{transferIn}, nil)
 	invRepo.On("GetTransactionsByInventoryIDsWithCounter", ctx, ioInvID, (*time.Time)(nil), mock.Anything).
@@ -324,16 +316,24 @@ func TestExport_FractionalCarryOverDoesNotConfusePrecondition(t *testing.T) {
 
 	const fracPOI = uint(800)
 	poiID := uint(fracPOI)
-	mkHist := func(id uint, ttype models.InventoryTransactionType, qty string, day int) *models.InventoryTransaction {
-		return &models.InventoryTransaction{
-			Base:                models.Base{ID: id, CreatedAt: time.Date(2026, 3, day, 12, 0, 0, 0, time.UTC)},
-			InventoryItemID:     ioItemID,
-			TransactionType:     ttype,
-			Quantity:            decimal.RequireFromString(qty),
-			PurchaseOrderItemID: &poiID,
+	mkHist := func(id uint, ttype models.InventoryTransactionType, qty string, day int) *repository.InventoryTransactionWithCounter {
+		t := &repository.InventoryTransactionWithCounter{
+			InventoryTransaction: &models.InventoryTransaction{
+				Base:            models.Base{ID: id, CreatedAt: time.Date(2026, 3, day, 12, 0, 0, 0, time.UTC)},
+				InventoryItemID: ioItemID,
+				TransactionType: ttype,
+				Quantity:        decimal.RequireFromString(qty),
+			},
 		}
+		// Purchases carry their own POI; consumes resolve the source POI via the counter.
+		if ttype == models.InventoryTransactionTypePurchase {
+			t.PurchaseOrderItemID = &poiID
+		} else {
+			t.CounterPOIID = &poiID
+		}
+		return t
 	}
-	historical := []*models.InventoryTransaction{
+	historical := []*repository.InventoryTransactionWithCounter{
 		mkHist(1, models.InventoryTransactionTypePurchase, "0.1", 1),
 		mkHist(2, models.InventoryTransactionTypePurchase, "0.2", 2),
 		mkHist(3, models.InventoryTransactionTypeSell, "0.3", 5),
@@ -350,11 +350,9 @@ func TestExport_FractionalCarryOverDoesNotConfusePrecondition(t *testing.T) {
 	}
 
 	invRepo.On("GetByID", ctx, ioInvID).Return(ioInventory(), nil)
-	invRepo.On("GetTransactionsByInventoryIDs", ctx, ioInvID, (*time.Time)(nil), mock.Anything).
-		Return(historical, nil)
-	invRepo.On("GetTransactionsByInventoryIDsWithCounter", ctx, ioInvID, mock.Anything, mock.Anything).
-		Return([]*repository.InventoryTransactionWithCounter{}, nil)
 	invRepo.On("GetTransactionsByInventoryIDsWithCounter", ctx, ioInvID, (*time.Time)(nil), mock.Anything).
+		Return(historical, nil)
+	invRepo.On("GetTransactionsByInventoryIDsWithCounter", ctx, ioInvID, mock.MatchedBy(func(t *time.Time) bool { return t != nil }), mock.Anything).
 		Return([]*repository.InventoryTransactionWithCounter{}, nil)
 	spRepo.On("GetPOItemsWithPriceByIDs", ctx, mock.Anything, ioInvID).
 		Return(poInfo, nil)

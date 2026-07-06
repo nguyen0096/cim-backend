@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/shopspring/decimal"
 )
@@ -257,7 +258,7 @@ func (s *inventoryService) StartProcessing(ctx context.Context, submissionID uin
 			return fmt.Errorf("failed to synthesize reconciliation payload: %w", err)
 		}
 
-		if err := s.applyReconcileSnapshotAware(txCtx, parent.InventoryID, syn); err != nil {
+		if err := s.applyReconcileSnapshotAware(txCtx, parent, syn); err != nil {
 			return err
 		}
 
@@ -289,11 +290,13 @@ func (s *inventoryService) StartProcessing(ctx context.Context, submissionID uin
 	return result, nil
 }
 
-// applyReconcileSnapshotAware applies the synthesized reconcile, consuming
-// snapshot − counted per item FIFO against live stock.
+// applyReconcileSnapshotAware applies the synthesized reconcile per item: when counted
+// is below snapshot it consumes the shortfall FIFO (sell); when counted is above snapshot
+// it raises stock by the surplus with a reconcile_stock_up txn. Both the sell and stock-up
+// txns are backdated to the parent submission's created_at (reconciliation initiation time).
 func (s *inventoryService) applyReconcileSnapshotAware(
 	ctx context.Context,
-	inventoryID uint,
+	parent *models.InventorySubmission,
 	syn *dto.SynthesizedReconcile,
 ) error {
 	itemIDs := models.GetIDs(syn.Request.Items)
@@ -301,13 +304,14 @@ func (s *inventoryService) applyReconcileSnapshotAware(
 		return nil
 	}
 
-	activeItems, err := s.getActiveInventoryItems(ctx, inventoryID, itemIDs)
+	activeItems, err := s.getActiveInventoryItems(ctx, parent.InventoryID, itemIDs)
 	if err != nil {
 		return fmt.Errorf("failed to load active inventory items for reconcile apply: %w", err)
 	}
 	activeItemMap := s.buildItemMap(activeItems)
 
 	itemConsumeQuantity := make(map[uint]decimal.Decimal)
+	itemStockUpQuantity := make(map[uint]decimal.Decimal)
 	for _, line := range syn.Request.Items {
 		if line.Quantity == nil {
 			return pkg.ErrInvalidRequestBody(fmt.Errorf("counted quantity missing for inventory item %d", line.InventoryItemID))
@@ -315,19 +319,21 @@ func (s *inventoryService) applyReconcileSnapshotAware(
 		if _, exists := activeItemMap[line.InventoryItemID]; !exists {
 			return pkg.ErrInventoryItemNotFound(ctx, line.InventoryItemID)
 		}
-		consume := line.PrevQuantity.Sub(*line.Quantity)
-		if consume.IsNegative() {
-			// Defensive: synthesis caps counted at snapshot, so this is unreachable.
-			consume = decimal.Zero
+		delta := line.PrevQuantity.Sub(*line.Quantity)
+		switch {
+		case delta.IsPositive():
+			itemConsumeQuantity[line.InventoryItemID] = delta
+		case delta.IsNegative():
+			itemStockUpQuantity[line.InventoryItemID] = delta.Neg()
 		}
-		itemConsumeQuantity[line.InventoryItemID] = consume
 	}
 
-	ps := newProcessingState(s, &models.InventorySubmission{InventoryID: inventoryID})
+	ps := newProcessingState(s, parent)
 
 	consumeHandler := func(item *models.InventoryItem, consumeTxn *models.InventoryTransaction, quantity decimal.Decimal) []*models.InventoryTransaction {
 		return []*models.InventoryTransaction{
 			{
+				Base:                 models.Base{CreatedAt: parent.CreatedAt},
 				InventoryItemID:      item.ID,
 				TransactionType:      models.InventoryTransactionTypeSell,
 				Price:                consumeTxn.Price,
@@ -341,10 +347,43 @@ func (s *inventoryService) applyReconcileSnapshotAware(
 	if err != nil {
 		return fmt.Errorf("failed to consume FIFO for reconcile apply: %w", err)
 	}
+
+	stockUpChanges, stockUpTxns := buildReconcileStockUps(activeItemMap, itemStockUpQuantity, parent.CreatedAt)
+	ivtrItemChanges = append(ivtrItemChanges, stockUpChanges...)
+	txns = append(txns, stockUpTxns...)
+
 	if err := s.inventoryItemRepo.SaveInventoryItemChanges(ctx, ivtrItemChanges, txns); err != nil {
 		return fmt.Errorf("failed to save inventory item changes for reconcile apply: %w", err)
 	}
 	return nil
+}
+
+// buildReconcileStockUps raises each item's on-hand by its surplus and emits a backdated,
+// consumable reconcile_stock_up txn (Price 0) so the on-hand/consumable invariant holds.
+func buildReconcileStockUps(
+	activeItemMap map[uint]*models.InventoryItem,
+	itemStockUpQuantity map[uint]decimal.Decimal,
+	backdatedAt time.Time,
+) ([]*models.InventoryItemChange, []*models.InventoryTransaction) {
+	changes := make([]*models.InventoryItemChange, 0, len(itemStockUpQuantity))
+	txns := make([]*models.InventoryTransaction, 0, len(itemStockUpQuantity))
+	for itemID, surplus := range itemStockUpQuantity {
+		item := activeItemMap[itemID]
+		changes = append(changes, &models.InventoryItemChange{
+			InventoryItem:    item,
+			OriginalQuantity: item.Quantity,
+		})
+		item.Quantity = item.Quantity.Add(surplus)
+		txns = append(txns, &models.InventoryTransaction{
+			Base:            models.Base{CreatedAt: backdatedAt},
+			InventoryItemID: itemID,
+			TransactionType: models.InventoryTransactionTypeReconcileStockUp,
+			Price:           0,
+			Quantity:        surplus,
+			IsAdjustment:    true,
+		})
+	}
+	return changes, txns
 }
 
 // buildDriftWarnings renders one localized warning line per offending consuming submission.

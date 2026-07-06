@@ -71,7 +71,10 @@ func (s *inventoryInOutExportService) Export(ctx context.Context, req dto.Invent
 
 	items := buildItemInfos(inventory)
 
-	historicalTxns, err := s.inventoryRepo.GetTransactionsByInventoryIDs(ctx, req.InventoryID, nil, &startDate)
+	// Historical (pre-window) and period txns, both with the counter join so
+	// the shaper can resolve source POIs (purchase: own; consume: counter) and
+	// route found-stock (reconcile_stock_up + its consumes) to adjustment rows.
+	historicalTxns, err := s.inventoryRepo.GetTransactionsByInventoryIDsWithCounter(ctx, req.InventoryID, nil, &startDate)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get historical transactions: %w", err)
 	}
@@ -80,23 +83,9 @@ func (s *inventoryInOutExportService) Export(ctx context.Context, req dto.Invent
 		return nil, fmt.Errorf("failed to get period transactions: %w", err)
 	}
 
-	// Resolve historical consume txns to their source POI via the period
-	// algorithm: walk all consume txns to surface CounterPOIID. For
-	// historical (pre-window) consume txns we need an extra fetch — query
-	// txns-with-counter for the open-ended range up to startDate.
-	historicalConsumeWithCounter, err := s.inventoryRepo.GetTransactionsByInventoryIDsWithCounter(ctx, req.InventoryID, nil, &startDate)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get historical transactions with counter: %w", err)
-	}
-
-	// Build the canonical historical txn list with PurchaseOrderItemID set
-	// to the resolved source POI for every txn (purchase: own; consume:
-	// counter). The shaper consumes this directly.
-	resolvedHistorical := resolveHistoricalPOIs(historicalTxns, historicalConsumeWithCounter)
-
 	// Collect all POI IDs we need metadata for: every txn (period + historical)
 	// that touches a POI, regardless of date predicate on the source PO.
-	poItemIDs := collectPOItemIDs(resolvedHistorical, periodTxns)
+	poItemIDs := collectPOItemIDs(historicalTxns, periodTxns)
 
 	poInfo, err := s.sellingPriceRepo.GetPOItemsWithPriceByIDs(ctx, poItemIDs, req.InventoryID)
 	if err != nil {
@@ -128,7 +117,7 @@ func (s *inventoryInOutExportService) Export(ctx context.Context, req dto.Invent
 	// a selling price — unless the caller opts to ignore it, in which case the
 	// export proceeds and uncomputable values render as "-".
 	if !req.IgnoreMissingSellingPrice {
-		if missing := s.checkMissingSellingPrices(items, resolvedHistorical, periodTxns, poInfo); len(missing) > 0 {
+		if missing := s.checkMissingSellingPrices(items, historicalTxns, periodTxns, poInfo); len(missing) > 0 {
 			return nil, newMissingSellingPriceError(missing)
 		}
 	}
@@ -139,7 +128,7 @@ func (s *inventoryInOutExportService) Export(ctx context.Context, req dto.Invent
 		EndDate:        endDate,
 		InventoryID:    req.InventoryID,
 		Items:          items,
-		HistoricalTxns: resolvedHistorical,
+		HistoricalTxns: historicalTxns,
 		PeriodTxns:     periodTxns,
 		POInfo:         poInfo,
 	})
@@ -214,68 +203,26 @@ func buildItemInfos(inventory *models.Inventory) []*excelpkg.ItemInfo {
 	return items
 }
 
-// resolveHistoricalPOIs returns a list of historical txns where every txn's
-// PurchaseOrderItemID points at the resolved source POI:
-//   - for purchases / transfer-ins: their own PurchaseOrderItemID is unchanged
-//   - for consumes (sell/disposal/transfer-out): copy the counter POI from
-//     the with-counter query.
-func resolveHistoricalPOIs(
-	plain []*models.InventoryTransaction,
-	withCounter []*repository.InventoryTransactionWithCounter,
-) []*models.InventoryTransaction {
-	counterByID := make(map[uint]*uint, len(withCounter))
-	for _, w := range withCounter {
-		if w == nil || w.InventoryTransaction == nil {
-			continue
-		}
-		counterByID[w.ID] = w.CounterPOIID
-	}
-
-	out := make([]*models.InventoryTransaction, 0, len(plain))
-	for _, t := range plain {
-		if t == nil {
-			continue
-		}
-		clone := *t
-		switch t.TransactionType {
-		case models.InventoryTransactionTypeSell,
-			models.InventoryTransactionTypeDisposal,
-			models.InventoryTransactionTypeTransferOut,
-			models.InventoryTransactionTypeTransferIn:
-			// Override with counter POI if available — for consumes this
-			// is the resolved source; for transfer-in it's the source PO
-			// in the originating inventory.
-			if counterPOI, ok := counterByID[t.ID]; ok && counterPOI != nil {
-				p := *counterPOI
-				clone.PurchaseOrderItemID = &p
-			}
-		}
-		out = append(out, &clone)
-	}
-	return out
-}
-
 func collectPOItemIDs(
-	historical []*models.InventoryTransaction,
+	historical []*repository.InventoryTransactionWithCounter,
 	period []*repository.InventoryTransactionWithCounter,
 ) []uint {
 	seen := make(map[uint]struct{})
-	for _, t := range historical {
-		if t.PurchaseOrderItemID != nil && *t.PurchaseOrderItemID > 0 {
-			seen[*t.PurchaseOrderItemID] = struct{}{}
+	add := func(txns []*repository.InventoryTransactionWithCounter) {
+		for _, t := range txns {
+			if t == nil || t.InventoryTransaction == nil {
+				continue
+			}
+			if t.PurchaseOrderItemID != nil && *t.PurchaseOrderItemID > 0 {
+				seen[*t.PurchaseOrderItemID] = struct{}{}
+			}
+			if t.CounterPOIID != nil && *t.CounterPOIID > 0 {
+				seen[*t.CounterPOIID] = struct{}{}
+			}
 		}
 	}
-	for _, t := range period {
-		if t == nil || t.InventoryTransaction == nil {
-			continue
-		}
-		if t.PurchaseOrderItemID != nil && *t.PurchaseOrderItemID > 0 {
-			seen[*t.PurchaseOrderItemID] = struct{}{}
-		}
-		if t.CounterPOIID != nil && *t.CounterPOIID > 0 {
-			seen[*t.CounterPOIID] = struct{}{}
-		}
-	}
+	add(historical)
+	add(period)
 	out := make([]uint, 0, len(seen))
 	for id := range seen {
 		out = append(out, id)
@@ -288,7 +235,7 @@ func collectPOItemIDs(
 // price. "In scope" = a POI that would appear as an export row.
 func (s *inventoryInOutExportService) checkMissingSellingPrices(
 	items []*excelpkg.ItemInfo,
-	historical []*models.InventoryTransaction,
+	historical []*repository.InventoryTransactionWithCounter,
 	period []*repository.InventoryTransactionWithCounter,
 	poInfo map[uint]*repository.POItemSellingPriceInfo,
 ) []dto.MissingSellingPricePO {
@@ -320,13 +267,27 @@ func (s *inventoryInOutExportService) checkMissingSellingPrices(
 	}
 
 	for _, t := range historical {
-		if t.PurchaseOrderItemID == nil {
+		if t == nil || t.InventoryTransaction == nil {
 			continue
 		}
 		if _, ok := itemIDs[t.InventoryItemID]; !ok {
 			continue
 		}
-		st := get(*t.PurchaseOrderItemID)
+		var poi uint
+		switch t.TransactionType {
+		case models.InventoryTransactionTypePurchase:
+			if t.PurchaseOrderItemID != nil {
+				poi = *t.PurchaseOrderItemID
+			}
+		default:
+			if t.CounterPOIID != nil {
+				poi = *t.CounterPOIID
+			}
+		}
+		if poi == 0 {
+			continue
+		}
+		st := get(poi)
 		st.begin = st.begin.Add(t.TransactionType.StockDelta(t.Quantity))
 	}
 	for _, t := range period {

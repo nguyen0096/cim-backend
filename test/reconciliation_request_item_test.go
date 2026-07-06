@@ -132,34 +132,31 @@ var _ = Describe("Reconciliation request item lifecycle", func() {
 		DeferCleanup(func() { tenv.ContextfulDB().Unscoped().Delete(item) })
 	})
 
-	It("rejects a counted quantity greater than the snapshot baseline", func() {
-		_, err := svc.CreateReconciliationItem(staffCtx, dto.CreateReconciliationItemRequest{
+	It("accepts a counted quantity greater than the snapshot baseline", func() {
+		item, err := svc.CreateReconciliationItem(staffCtx, dto.CreateReconciliationItemRequest{
 			SubmissionID: submission.ID,
-			Items:        countItems(101), // > snapshot 100
+			Items:        countItems(101), // > snapshot 100, now accepted
 		})
-		Expect(err).To(HaveOccurred())
-		Expect(pkg.IsErrorCode(err, pkg.ErrorCodeValidation)).To(BeTrue())
+		Expect(err).NotTo(HaveOccurred())
+		DeferCleanup(func() { tenv.ContextfulDB().Unscoped().Delete(item) })
 	})
 
-	It("rejects a second row when the aggregate across live rows exceeds the baseline", func() {
-		// First row counts 80 of the item (baseline 100) — allowed.
+	It("accepts a second row even when the aggregate across live rows exceeds the baseline", func() {
+		// First row counts 80 of the item (baseline 100).
 		first, err := svc.CreateReconciliationItem(staffCtx, dto.CreateReconciliationItemRequest{
 			SubmissionID: submission.ID, Items: countItems(80),
 		})
 		Expect(err).NotTo(HaveOccurred())
 		DeferCleanup(func() { tenv.ContextfulDB().Unscoped().Delete(first) })
 
-		// Second row of 80 passes per-row (80 <= 100) but 80 + 80 = 160 > 100: the
-		// aggregate guard (sum across live sibling rows under the parent lock) must
-		// reject it. Count labels are per-ROW (issue #73 re-scope), so a sibling's blank
-		// count does NOT force this row's count to be labelled — both rows may be blank;
-		// the AGGREGATE quantity error is the one that fires. Different staff member to
-		// model real fragmented counts.
-		_, err = svc.CreateReconciliationItem(otherCtx, dto.CreateReconciliationItemRequest{
+		// Second row of 80 makes the aggregate 160 > 100. The overage block is removed,
+		// so the second row is accepted; the surplus is surfaced at review and applied
+		// as a stock-up at process time.
+		second, err := svc.CreateReconciliationItem(otherCtx, dto.CreateReconciliationItemRequest{
 			SubmissionID: submission.ID, Items: countItems(80),
 		})
-		Expect(err).To(HaveOccurred())
-		Expect(pkg.IsErrorCode(err, pkg.ErrorCodeValidation)).To(BeTrue())
+		Expect(err).NotTo(HaveOccurred())
+		DeferCleanup(func() { tenv.ContextfulDB().Unscoped().Delete(second) })
 	})
 
 	It("allows fragmented counts that sum to exactly the baseline (60 + 40 == 100)", func() {
@@ -198,35 +195,26 @@ var _ = Describe("Reconciliation request item lifecycle", func() {
 		DeferCleanup(func() { tenv.ContextfulDB().Unscoped().Delete(second) })
 	})
 
-	It("on update, excludes the row's own old value from the aggregate", func() {
-		// Sibling counts 40; the row under update currently counts 80. Updating it to
-		// 60 must pass (40 + 60 == 100); if its own old 80 were counted it would fail.
+	It("on update, accepts a count that pushes the aggregate over the baseline", func() {
 		sibling, err := svc.CreateReconciliationItem(otherCtx, dto.CreateReconciliationItemRequest{
 			SubmissionID: submission.ID, Items: countItems(40),
 		})
 		Expect(err).NotTo(HaveOccurred())
 		DeferCleanup(func() { tenv.ContextfulDB().Unscoped().Delete(sibling) })
 
-		// A 2nd row counts the same item with a blank count label — allowed (count
-		// labels are per-ROW); exercises the aggregate path: 40 + 50 == 90 <= 100.
 		row, err := svc.CreateReconciliationItem(staffCtx, dto.CreateReconciliationItemRequest{
-			SubmissionID: submission.ID, Items: countItems(50), // 40 + 50 == 90 <= 100 OK
+			SubmissionID: submission.ID, Items: countItems(50),
 		})
 		Expect(err).NotTo(HaveOccurred())
 		DeferCleanup(func() { tenv.ContextfulDB().Unscoped().Delete(row) })
 
+		// Updating to 80 makes the aggregate 40 + 80 = 120 > 100; the overage block is
+		// removed, so the update is now accepted.
 		updated, err := svc.UpdateReconciliationItem(staffCtx, dto.UpdateReconciliationItemRequest{
-			SubmissionID: submission.ID, ItemID: row.ID, Items: countItems(60),
-		})
-		Expect(err).NotTo(HaveOccurred(), "40 (sibling) + 60 (new) == 100; own old 50 excluded")
-		Expect(updated.Status).To(Equal(string(models.ReconciliationRequestItemStatusInProgress)))
-
-		// Pushing it to 80 now (40 + 80 = 120 > 100) must be rejected.
-		_, err = svc.UpdateReconciliationItem(staffCtx, dto.UpdateReconciliationItemRequest{
 			SubmissionID: submission.ID, ItemID: row.ID, Items: countItems(80),
 		})
-		Expect(err).To(HaveOccurred())
-		Expect(pkg.IsErrorCode(err, pkg.ErrorCodeValidation)).To(BeTrue())
+		Expect(err).NotTo(HaveOccurred(), "aggregate 40 + 80 = 120 > baseline 100 must now be accepted")
+		Expect(updated.Status).To(Equal(string(models.ReconciliationRequestItemStatusInProgress)))
 	})
 
 	It("locks staff out once the submission is closed, and lets admin edit + reopen", func() {

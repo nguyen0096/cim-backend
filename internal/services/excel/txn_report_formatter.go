@@ -648,6 +648,8 @@ func (f *TxnReportFormatter) writeSourceTransactionRows(
 		sourceType = "Mua hàng"
 	} else if source.TransactionType == models.InventoryTransactionTypeTransferIn {
 		sourceType = "Chuyển kho"
+	} else if source.TransactionType == models.InventoryTransactionTypeReconcileStockUp {
+		sourceType = models.AdjustmentCategoryLabel
 	}
 
 	// Consumed quantity from source transaction

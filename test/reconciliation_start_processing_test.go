@@ -173,6 +173,75 @@ var _ = Describe("Reconciliation start-processing apply", func() {
 		Expect(sold.Equal(decimal.NewFromInt(40))).To(BeTrue(), "Sell total should be snapshot-counted = 40, got %s", sold)
 	})
 
+	It("books a backdated reconcile_stock_up when the count exceeds the snapshot (surplus raises stock)", func() {
+		// Backdate the submission so the stock-up's created_at is verifiably the
+		// reconciliation-initiation time, not wall-clock insert time.
+		backdated := time.Now().Add(-720 * time.Hour).UTC().Truncate(time.Microsecond)
+		Expect(tenv.ContextfulDB().Model(&models.InventorySubmission{}).
+			Where("id = ?", sub.ID).Update("created_at", backdated).Error).NotTo(HaveOccurred())
+
+		// Counted 130 against snapshot 100 -> surplus 30 -> live 100 + 30 = 130.
+		item, err := svc.CreateReconciliationItem(staffCtx, dto.CreateReconciliationItemRequest{
+			SubmissionID: sub.ID, Items: countItems(130),
+		})
+		Expect(err).NotTo(HaveOccurred())
+		DeferCleanup(func() { tenv.ContextfulDB().Unscoped().Delete(item) })
+
+		_, err = svc.CloseReconciliation(adminCtx, sub.ID)
+		Expect(err).NotTo(HaveOccurred())
+
+		res, err := svc.StartProcessing(adminCtx, sub.ID)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(res.DriftDetected).To(BeFalse())
+		Expect(res.Submission.ReconcileStatus).To(Equal(models.ReconcileLifecycleStatusProcessed))
+
+		Expect(itemQty().Equal(decimal.NewFromInt(130))).To(BeTrue(), "live should be 130 (100 + surplus 30), got %s", itemQty())
+
+		// No Sell booked; exactly one reconcile_stock_up of 30, unconsumed, price 0, backdated.
+		var sells int64
+		Expect(tenv.ContextfulDB().Model(&models.InventoryTransaction{}).
+			Where("inventory_item_id = ? AND transaction_type = ?", itm.ID, models.InventoryTransactionTypeSell).
+			Count(&sells).Error).NotTo(HaveOccurred())
+		Expect(sells).To(BeZero(), "an over-snapshot count must not book a Sell")
+
+		var stockUps []models.InventoryTransaction
+		Expect(tenv.ContextfulDB().
+			Where("inventory_item_id = ? AND transaction_type = ?", itm.ID, models.InventoryTransactionTypeReconcileStockUp).
+			Find(&stockUps).Error).NotTo(HaveOccurred())
+		Expect(stockUps).To(HaveLen(1))
+		su := stockUps[0]
+		Expect(su.Quantity.Equal(decimal.NewFromInt(30))).To(BeTrue(), "stock-up quantity must be the surplus 30, got %s", su.Quantity)
+		Expect(su.ConsumedQuantity.IsZero()).To(BeTrue(), "stock-up must be fully unconsumed")
+		Expect(su.Price).To(Equal(0.0), "stock-up price must be 0")
+		Expect(su.CreatedAt).To(BeTemporally("~", backdated, time.Second), "stock-up must be backdated to submission created_at")
+	})
+
+	It("backdates reconcile sell transactions to the submission created_at", func() {
+		backdated := time.Now().Add(-720 * time.Hour).UTC().Truncate(time.Microsecond)
+		Expect(tenv.ContextfulDB().Model(&models.InventorySubmission{}).
+			Where("id = ?", sub.ID).Update("created_at", backdated).Error).NotTo(HaveOccurred())
+
+		item, err := svc.CreateReconciliationItem(staffCtx, dto.CreateReconciliationItemRequest{
+			SubmissionID: sub.ID, Items: countItems(60),
+		})
+		Expect(err).NotTo(HaveOccurred())
+		DeferCleanup(func() { tenv.ContextfulDB().Unscoped().Delete(item) })
+
+		_, err = svc.CloseReconciliation(adminCtx, sub.ID)
+		Expect(err).NotTo(HaveOccurred())
+		_, err = svc.StartProcessing(adminCtx, sub.ID)
+		Expect(err).NotTo(HaveOccurred())
+
+		var sells []models.InventoryTransaction
+		Expect(tenv.ContextfulDB().
+			Where("inventory_item_id = ? AND transaction_type = ?", itm.ID, models.InventoryTransactionTypeSell).
+			Find(&sells).Error).NotTo(HaveOccurred())
+		Expect(sells).NotTo(BeEmpty())
+		for _, s := range sells {
+			Expect(s.CreatedAt).To(BeTemporally("~", backdated, time.Second), "reconcile Sell must be backdated to submission created_at")
+		}
+	})
+
 	// Audit-only reconcile: counts EQUAL the snapshot, so there is no delta.
 	// It must still close and finalize as `processed` with ZERO stock mutation and
 	// no phantom Sell — not be rejected/no-op'd as "nothing to do".
@@ -290,6 +359,50 @@ var _ = Describe("Reconciliation start-processing apply", func() {
 		Expect(res.DriftDetected).To(BeFalse())
 		Expect(itemQty().Equal(decimal.NewFromInt(80))).To(BeTrue(),
 			"live should be 130 - (100-50)=80; the +30 PO survives, got %s", itemQty())
+	})
+
+	It("stock-up side: a PO received between snapshot and process double-counts by design (decision #5, mitigated by the overage alert)", func() {
+		// Mirror of Reading B for the surplus side. Snapshot 100. A PO of +30 arrives
+		// DURING the count → live 130, and the physical count sees it → counted 130.
+		// Surplus = counted(130) − snapshot(100) = 30, applied additively on top of
+		// live → on-hand = 130 + 30 = 160. The +30 is counted twice (once in the PO
+		// purchase, once in the stock-up). This is the ACCEPTED behavior (human
+		// decision #5); the review-time overage alert flags it. Pinned so it can't
+		// silently change. Do NOT "fix" the double-count here — out of scope.
+		item, err := svc.CreateReconciliationItem(staffCtx, dto.CreateReconciliationItemRequest{
+			SubmissionID: sub.ID, Items: countItems(130),
+		})
+		Expect(err).NotTo(HaveOccurred())
+		DeferCleanup(func() { tenv.ContextfulDB().Unscoped().Delete(item) })
+
+		setStock(130)
+		extraPO := &models.InventoryTransaction{
+			InventoryItemID: itm.ID,
+			SupplierID:      &supplier.ID,
+			TransactionType: models.InventoryTransactionTypePurchase,
+			Price:           10.0,
+			Quantity:        decimal.NewFromInt(30),
+		}
+		Expect(tenv.ContextfulDB().Create(extraPO).Error).NotTo(HaveOccurred())
+
+		_, err = svc.CloseReconciliation(adminCtx, sub.ID)
+		Expect(err).NotTo(HaveOccurred())
+
+		res, err := svc.StartProcessing(adminCtx, sub.ID)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(res.DriftDetected).To(BeFalse())
+		Expect(itemQty().Equal(decimal.NewFromInt(160))).To(BeTrue(),
+			"accepted decision-#5 double-count: live 130 + surplus (130-100)=30 = 160, got %s", itemQty())
+
+		var stockUps []models.InventoryTransaction
+		Expect(tenv.ContextfulDB().Where("inventory_item_id = ? AND transaction_type = ?", itm.ID, models.InventoryTransactionTypeReconcileStockUp).Find(&stockUps).Error).NotTo(HaveOccurred())
+		Expect(stockUps).To(HaveLen(1))
+		Expect(stockUps[0].Quantity.Equal(decimal.NewFromInt(30))).To(BeTrue(), "stock-up must be counted-snapshot = 30, got %s", stockUps[0].Quantity)
+
+		var sells int64
+		Expect(tenv.ContextfulDB().Model(&models.InventoryTransaction{}).
+			Where("inventory_item_id = ? AND transaction_type = ?", itm.ID, models.InventoryTransactionTypeSell).Count(&sells).Error).NotTo(HaveOccurred())
+		Expect(sells).To(BeZero(), "an over-snapshot count must not book a Sell")
 	})
 
 	It("rolls back with a warning payload when a consuming submission processed in the window (drift)", func() {

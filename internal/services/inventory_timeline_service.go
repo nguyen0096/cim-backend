@@ -198,6 +198,24 @@ func (s *inventoryTimelineService) GetInventoryTimeline(ctx context.Context, req
 		}
 
 		pd := dataByProduct[pid]
+
+		// reconcile_stock_up surfaces as its own zero-cost "adjustment" row (no PO)
+		// and metric, and contributes to the stock aggregate so ending stock foots.
+		if txn.TransactionType == models.InventoryTransactionTypeReconcileStockUp {
+			zero := 0.0
+			pd.transactions = append(pd.transactions, dto.TimelineTransaction{
+				TransactionID:   txn.ID,
+				TransactionType: "adjustment",
+				Date:            txn.CreatedAt.Format("2006-01-02"),
+				Quantity:        qty,
+				CostPrice:       &zero,
+			})
+			d, _ := txn.TransactionType.StockDelta(txn.Quantity).Float64()
+			pd.periodStockDelta += d
+			pd.metrics.TotalAdjustment += qty
+			continue
+		}
+
 		costPrice := txn.Price
 
 		txnType := string(txn.TransactionType)

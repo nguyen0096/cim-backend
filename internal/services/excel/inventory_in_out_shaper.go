@@ -25,8 +25,8 @@ type ShaperInput struct {
 
 	InventoryID  uint
 	Items        []*ItemInfo // inventory items in scope (one per product+inventory)
-	HistoricalTxns []*models.InventoryTransaction              // txns strictly before StartDate
-	PeriodTxns   []*repository.InventoryTransactionWithCounter // txns within [StartDate, EndDate+1d)
+	HistoricalTxns []*repository.InventoryTransactionWithCounter // txns strictly before StartDate
+	PeriodTxns   []*repository.InventoryTransactionWithCounter   // txns within [StartDate, EndDate+1d)
 
 	// POInfo: keyed by purchase_order_item_id. Includes POIs referenced by
 	// any in-window txn AND any POI with remaining stock at any point in
@@ -54,6 +54,10 @@ type ExportRow struct {
 	POItemID     uint
 	POID         uint
 	PONumber     string
+
+	// AdjustmentSourceTxnID is the reconcile_stock_up txn id keying a zero-cost
+	// adjustment (found-stock) row family. 0 for normal PO-item rows.
+	AdjustmentSourceTxnID uint
 
 	PurchasePrice decimal.Decimal
 	// SellingPrice is nil when the POI has no effective price; the writer then
@@ -150,16 +154,92 @@ func BuildExportRows(in ShaperInput) *ExportRows {
 		return r
 	}
 
+	// Zero-cost adjustment (found-stock) rows, keyed by reconcile_stock_up txn id.
+	rowByAdjustment := make(map[uint]*ExportRow)
+	getOrCreateAdjustmentRow := func(txnID uint, productID uint) *ExportRow {
+		if r, ok := rowByAdjustment[txnID]; ok {
+			return r
+		}
+		var productName, unitName string
+		for _, it := range in.Items {
+			if it.ProductID == productID {
+				productName = it.ProductName
+				unitName = it.UnitName
+				break
+			}
+		}
+		r := &ExportRow{
+			ProductID:             productID,
+			ProductName:           productName,
+			UnitName:              unitName,
+			PONumber:              models.AdjustmentCategoryLabel,
+			PurchasePrice:         decimal.Zero,
+			SellingPrice:          nil,
+			DailyPurchases:        make(map[int]decimal.Decimal),
+			AdjustmentSourceTxnID: txnID,
+		}
+		rowByAdjustment[txnID] = r
+		return r
+	}
+
+	// Found-stock layer txn ids: reconcile_stock_ups and transfer-ins flagged
+	// IsAdjustment (set at transfer time, so found provenance carries across any
+	// number of transfer hops). A consume of found stock references one of these
+	// via counter_transaction_id, so membership routes both the receipt layer and
+	// its consumes onto the same adjustment row — including a re-sale of units
+	// transferred (once or many times) into another inventory.
+	foundLayerIDs := make(map[uint]bool)
+	markFound := func(txns []*repository.InventoryTransactionWithCounter) {
+		for _, t := range txns {
+			if t == nil || t.InventoryTransaction == nil {
+				continue
+			}
+			if t.IsAdjustment || t.TransactionType == models.InventoryTransactionTypeReconcileStockUp {
+				foundLayerIDs[t.ID] = true
+			}
+		}
+	}
+	markFound(in.HistoricalTxns)
+	markFound(in.PeriodTxns)
+
+	// adjustmentKey returns the adjustment row key for a txn: a found receipt layer
+	// keys on its own id; a consume of found stock keys on its counter (that layer).
+	adjustmentKey := func(t *repository.InventoryTransactionWithCounter) (uint, bool) {
+		if t == nil || t.InventoryTransaction == nil {
+			return 0, false
+		}
+		switch t.TransactionType {
+		case models.InventoryTransactionTypeReconcileStockUp, models.InventoryTransactionTypeTransferIn:
+			if foundLayerIDs[t.ID] {
+				return t.ID, true
+			}
+		case models.InventoryTransactionTypeSell, models.InventoryTransactionTypeDisposal, models.InventoryTransactionTypeTransferOut:
+			if t.CounterTransactionID != nil && foundLayerIDs[*t.CounterTransactionID] {
+				return *t.CounterTransactionID, true
+			}
+		}
+		return 0, false
+	}
+
 	// --- (3) historical txns → beginning stock per POI (FIFO already applied
 	//     in DB via counter_transaction_id; we just sum deltas attributed
-	//     to each POI).
+	//     to each POI). Found-stock (reconcile_stock_up and its consumes) go to
+	//     the adjustment row family instead.
 	for _, t := range in.HistoricalTxns {
-		poiID := historicalPOI(t)
-		if poiID == 0 {
+		if t == nil || t.InventoryTransaction == nil {
 			continue
 		}
 		productID := lookupProductID(itemToProduct, t.InventoryItemID)
 		if productID == 0 {
+			continue
+		}
+		if adjID, ok := adjustmentKey(t); ok {
+			row := getOrCreateAdjustmentRow(adjID, productID)
+			row.BeginningStock = row.BeginningStock.Add(t.TransactionType.StockDelta(t.Quantity))
+			continue
+		}
+		poiID := windowPOI(t)
+		if poiID == 0 {
 			continue
 		}
 		row := getOrCreateRow(poiID, productID)
@@ -181,6 +261,34 @@ func BuildExportRows(in ShaperInput) *ExportRows {
 		if productID == 0 {
 			continue
 		}
+
+		// Found-stock: the stock-up is the window "in"; sells/disposals/transfers
+		// of found units are the window "out". Attributed to the adjustment row.
+		if adjID, ok := adjustmentKey(t); ok {
+			row := getOrCreateAdjustmentRow(adjID, productID)
+			qty := t.Quantity
+			addDaily := func() {
+				if day := dayIndex(in.StartDate, t.CreatedAt); day >= 0 && day < dayCount {
+					row.DailyPurchases[day] = row.DailyPurchases[day].Add(qty)
+				}
+			}
+			switch t.TransactionType {
+			case models.InventoryTransactionTypeReconcileStockUp:
+				row.TotalPurchasedAmount = row.TotalPurchasedAmount.Add(qty)
+				addDaily()
+			case models.InventoryTransactionTypeTransferIn:
+				row.TotalTransferredIn = row.TotalTransferredIn.Add(qty)
+				addDaily()
+			case models.InventoryTransactionTypeSell:
+				row.SubtotalSold = row.SubtotalSold.Add(qty)
+			case models.InventoryTransactionTypeDisposal:
+				row.TotalDisposedAmount = row.TotalDisposedAmount.Add(qty)
+			case models.InventoryTransactionTypeTransferOut:
+				row.TotalTransferredOut = row.TotalTransferredOut.Add(qty)
+			}
+			continue
+		}
+
 		poiID := windowPOI(t)
 		if poiID == 0 {
 			continue
@@ -226,8 +334,15 @@ func BuildExportRows(in ShaperInput) *ExportRows {
 	//   Inclusion rule: drop rows where beginning_stock == 0 AND no in-window
 	//   activity (i.e. POI fully depleted before window start with no
 	//   in-window movement).
-	out := make([]*ExportRow, 0, len(rowByPOItem))
+	allRows := make([]*ExportRow, 0, len(rowByPOItem)+len(rowByAdjustment))
 	for _, r := range rowByPOItem {
+		allRows = append(allRows, r)
+	}
+	for _, r := range rowByAdjustment {
+		allRows = append(allRows, r)
+	}
+	out := make([]*ExportRow, 0, len(allRows))
+	for _, r := range allRows {
 		windowIn := r.TotalPurchasedAmount.Add(r.TotalTransferredIn)
 		windowOut := r.SubtotalSold.Add(r.TotalDisposedAmount).Add(r.TotalTransferredOut)
 		r.EndingStock = r.BeginningStock.Add(windowIn).Sub(windowOut)
@@ -254,7 +369,10 @@ func BuildExportRows(in ShaperInput) *ExportRows {
 		if a.PONumber != b.PONumber {
 			return a.PONumber < b.PONumber
 		}
-		return a.POItemID < b.POItemID
+		if a.POItemID != b.POItemID {
+			return a.POItemID < b.POItemID
+		}
+		return a.AdjustmentSourceTxnID < b.AdjustmentSourceTxnID
 	})
 
 	return &ExportRows{
@@ -265,35 +383,7 @@ func BuildExportRows(in ShaperInput) *ExportRows {
 	}
 }
 
-// historicalPOI returns the POI id this historical txn attributes to. For
-// purchases / transfer-ins the txn carries its own purchase_order_item_id;
-// for consumes the source POI is resolved via the counter purchase txn — the
-// service layer is expected to expand HistoricalTxns to include that linkage,
-// but in the simpler shaper we only count purchases / transfer-ins toward
-// beginning stock and use the period query (which DOES join the counter) to
-// model FIFO attribution within the window. This conservative approach
-// matches the inventory_timeline_service algorithm.
-//
-// Net effect: BeginningStock here = sum of in-stock POI receipts before the
-// window minus the consumes that historically depleted those POIs. That
-// requires us to also process historical consumes; we do this by deferring
-// to caller-supplied HistoricalTxns and using StockDelta on whichever POI
-// the historical txn referenced (purchase: own POI; consume: counter POI
-// not available without a join — so for consumes we expect the orchestrator
-// to use the same join to resolve them, and pass them in here with the POI
-// already resolved on PurchaseOrderItemID).
-//
-// To keep the shaper purely data-driven, we treat the txn's
-// PurchaseOrderItemID as the resolved POI for ALL historical txns. The
-// orchestrator must populate it correctly (purchase: own; consume: counter).
-func historicalPOI(t *models.InventoryTransaction) uint {
-	if t == nil || t.PurchaseOrderItemID == nil {
-		return 0
-	}
-	return *t.PurchaseOrderItemID
-}
-
-// windowPOI returns the source POI for a period txn. Purchases use their
+// windowPOI returns the source POI for a txn. Purchases use their
 // own PurchaseOrderItemID; consumes use the counter purchase's POI.
 func windowPOI(t *repository.InventoryTransactionWithCounter) uint {
 	if t == nil || t.InventoryTransaction == nil {

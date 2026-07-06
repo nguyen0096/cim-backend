@@ -76,7 +76,7 @@ func TestSynthesizeReconcile_SumsByItemAcrossRowsAndItems(t *testing.T) {
 	}
 	baselines := baselineMap(map[uint]string{1: "100", 2: "100", 3: "100"})
 
-	syn, err := synthesizeReconcile(7, rows, baselines, nil)
+	syn, err := synthesizeReconcile(7, rows, baselines, nil, nil)
 	require.NoError(t, err)
 	assert.Equal(t, uint(7), syn.Request.InventoryID)
 	assert.Empty(t, syn.Anomalies)
@@ -110,7 +110,7 @@ func TestSynthesizeReconcile_SessionGrainedBreakdown(t *testing.T) {
 	}
 	baselines := baselineMap(map[uint]string{1: "100", 2: "100"})
 
-	syn, err := synthesizeReconcile(7, rows, baselines, nil)
+	syn, err := synthesizeReconcile(7, rows, baselines, nil, nil)
 	require.NoError(t, err)
 	assert.Empty(t, syn.Anomalies)
 
@@ -149,7 +149,7 @@ func TestSynthesizeReconcile_DistinctSessionsSameCountLabelStayDistinct(t *testi
 	}
 	baselines := baselineMap(map[uint]string{1: "100"})
 
-	syn, err := synthesizeReconcile(7, rows, baselines, nil)
+	syn, err := synthesizeReconcile(7, rows, baselines, nil, nil)
 	require.NoError(t, err)
 	require.Len(t, syn.Breakdown, 3, "distinct sessions with the same count-label stay distinct")
 	assert.Equal(t, "aisle-1", syn.Breakdown[0].SessionLabel)
@@ -171,7 +171,7 @@ func TestSynthesizeReconcile_SingleSessionBreakdown(t *testing.T) {
 	}
 	baselines := baselineMap(map[uint]string{1: "100"})
 
-	syn, err := synthesizeReconcile(7, rows, baselines, nil)
+	syn, err := synthesizeReconcile(7, rows, baselines, nil, nil)
 	require.NoError(t, err)
 	require.Len(t, syn.Breakdown, 1)
 	assert.Equal(t, dto.ReconcileItemBreakdown{
@@ -188,7 +188,7 @@ func TestSynthesizeReconcile_BlankSessionAndCountLabel(t *testing.T) {
 	}
 	baselines := baselineMap(map[uint]string{1: "100"})
 
-	syn, err := synthesizeReconcile(7, rows, baselines, nil)
+	syn, err := synthesizeReconcile(7, rows, baselines, nil, nil)
 	require.NoError(t, err)
 	require.Len(t, syn.Breakdown, 1)
 	assert.Equal(t, dto.ReconcileItemBreakdown{
@@ -206,7 +206,7 @@ func TestSynthesizeReconcile_SameCountLabelSameSessionSummed(t *testing.T) {
 	}
 	baselines := baselineMap(map[uint]string{1: "100"})
 
-	syn, err := synthesizeReconcile(7, rows, baselines, nil)
+	syn, err := synthesizeReconcile(7, rows, baselines, nil, nil)
 	require.NoError(t, err)
 	require.Len(t, syn.Breakdown, 1)
 	assert.True(t, syn.Breakdown[0].Quantity.Equal(decimal.NewFromInt(15)))
@@ -220,7 +220,7 @@ func TestSynthesizeReconcile_DecimalMath(t *testing.T) {
 	}
 	baselines := baselineMap(map[uint]string{1: "100"})
 
-	syn, err := synthesizeReconcile(1, rows, baselines, nil)
+	syn, err := synthesizeReconcile(1, rows, baselines, nil, nil)
 	require.NoError(t, err)
 	require.Len(t, syn.Request.Items, 1)
 	assert.True(t, syn.Request.Items[0].Quantity.Equal(decimal.RequireFromString("15.75")),
@@ -232,41 +232,56 @@ func TestSynthesizeReconcile_EmptyPayloadRowsAndNoRows(t *testing.T) {
 	// A row with an empty payload contributes nothing.
 	empty := models.ReconciliationRequestItem{Status: models.ReconciliationRequestItemStatusInProgress}
 	empty.ID = 1
-	syn, err := synthesizeReconcile(1, []models.ReconciliationRequestItem{empty}, map[uint]decimal.Decimal{}, nil)
+	syn, err := synthesizeReconcile(1, []models.ReconciliationRequestItem{empty}, map[uint]decimal.Decimal{}, nil, nil)
 	require.NoError(t, err)
 	assert.Empty(t, syn.Request.Items)
 
 	// No rows at all -> empty items, in_progress label.
-	syn, err = synthesizeReconcile(1, nil, map[uint]decimal.Decimal{}, nil)
+	syn, err = synthesizeReconcile(1, nil, map[uint]decimal.Decimal{}, nil, nil)
 	require.NoError(t, err)
 	assert.Empty(t, syn.Request.Items)
 	assert.Equal(t, dto.ReconcileReviewLabelInProgress, syn.Label)
 }
 
-func TestSynthesizeReconcile_AggregateExceedsBaselineIsSurfacedAndCapped(t *testing.T) {
-	// Two rows of 80 against baseline 100 sum to 160 (> baseline). The Part-4 write
-	// guard should make this impossible; synthesis must still surface it as an
-	// anomaly and cap the emitted counted at the baseline so a downstream consume
-	// can never go negative.
+func TestSynthesizeReconcile_AggregateExceedsBaselineIsSurfacedNotCapped(t *testing.T) {
+	// Two rows of 80 against baseline 100 sum to 160 (> baseline). Over-snapshot counts
+	// are now allowed: synthesis surfaces the overage as an anomaly and emits the true
+	// counted (160) so the surplus is applied as a stock-up at process time.
 	rows := []models.ReconciliationRequestItem{
 		childRow(1, models.ReconciliationRequestItemStatusInProgress, line(1, "80")),
 		childRow(2, models.ReconciliationRequestItemStatusInProgress, line(1, "80")),
 	}
 	baselines := baselineMap(map[uint]string{1: "100"})
 
-	syn, err := synthesizeReconcile(1, rows, baselines, nil)
+	syn, err := synthesizeReconcile(1, rows, baselines, nil, nil)
 	require.NoError(t, err)
 	require.Len(t, syn.Request.Items, 1)
 	require.Len(t, syn.Anomalies, 1)
-	assert.True(t, syn.Request.Items[0].Quantity.Equal(decimal.NewFromInt(100)),
-		"emitted counted must be capped at baseline 100, got %s", syn.Request.Items[0].Quantity)
+	assert.True(t, syn.Request.Items[0].Quantity.Equal(decimal.NewFromInt(160)),
+		"emitted counted must be the true total 160 (not capped), got %s", syn.Request.Items[0].Quantity)
+	assert.True(t, syn.Request.Items[0].PrevQuantity.Equal(decimal.NewFromInt(100)),
+		"prev quantity must remain the baseline 100")
+}
+
+func TestSynthesizeReconcile_OverageAnomalyNamesProduct(t *testing.T) {
+	// be-94 alignment: the overage anomaly names the product, not a raw id.
+	rows := []models.ReconciliationRequestItem{
+		childRow(1, models.ReconciliationRequestItemStatusInProgress, line(1, "160")),
+	}
+	baselines := baselineMap(map[uint]string{1: "100"})
+
+	syn, err := synthesizeReconcile(1, rows, baselines, nil, map[uint]string{1: "Bột mì"})
+	require.NoError(t, err)
+	require.Len(t, syn.Anomalies, 1)
+	assert.Contains(t, syn.Anomalies[0], "«Bột mì»", "overage anomaly must name the product")
+	assert.NotContains(t, syn.Anomalies[0], "inventory_item_id", "overage anomaly must not expose a raw id when the name is known")
 }
 
 func TestSynthesizeReconcile_MissingBaselineIsSurfaced(t *testing.T) {
 	rows := []models.ReconciliationRequestItem{
 		childRow(1, models.ReconciliationRequestItemStatusInProgress, line(9, "5")),
 	}
-	syn, err := synthesizeReconcile(1, rows, map[uint]decimal.Decimal{}, nil) // no baseline for item 9
+	syn, err := synthesizeReconcile(1, rows, map[uint]decimal.Decimal{}, nil, nil) // no baseline for item 9
 	require.NoError(t, err)
 	require.Len(t, syn.Request.Items, 1)
 	require.Len(t, syn.Anomalies, 1)
@@ -286,7 +301,7 @@ func TestSynthesizeReconcile_LabelAggregatesSessionReadiness(t *testing.T) {
 			childRow(1, models.ReconciliationRequestItemStatusReadyForReview, line(1, "10")),
 			childRow(2, models.ReconciliationRequestItemStatusReadyForReview, line(1, "20")),
 		}
-		syn, err := synthesizeReconcile(1, rows, baselines, nil)
+		syn, err := synthesizeReconcile(1, rows, baselines, nil, nil)
 		require.NoError(t, err)
 		assert.Equal(t, dto.ReconcileReviewLabelReadyForReview, syn.Label)
 	})
@@ -296,13 +311,13 @@ func TestSynthesizeReconcile_LabelAggregatesSessionReadiness(t *testing.T) {
 			childRow(1, models.ReconciliationRequestItemStatusReadyForReview, line(1, "10")),
 			childRow(2, models.ReconciliationRequestItemStatusInProgress, line(1, "20")),
 		}
-		syn, err := synthesizeReconcile(1, rows, baselines, nil)
+		syn, err := synthesizeReconcile(1, rows, baselines, nil, nil)
 		require.NoError(t, err)
 		assert.Equal(t, dto.ReconcileReviewLabelInProgress, syn.Label)
 	})
 
 	t.Run("zero live rows => in_progress (nothing to review)", func(t *testing.T) {
-		syn, err := synthesizeReconcile(1, nil, map[uint]decimal.Decimal{}, nil)
+		syn, err := synthesizeReconcile(1, nil, map[uint]decimal.Decimal{}, nil, nil)
 		require.NoError(t, err)
 		assert.Equal(t, dto.ReconcileReviewLabelInProgress, syn.Label)
 	})
@@ -312,7 +327,7 @@ func TestSynthesizeReconcile_LabelAggregatesSessionReadiness(t *testing.T) {
 		// by the aggregate (it is a live session marked done).
 		empty := models.ReconciliationRequestItem{Status: models.ReconciliationRequestItemStatusReadyForReview}
 		empty.ID = 1
-		syn, err := synthesizeReconcile(1, []models.ReconciliationRequestItem{empty}, map[uint]decimal.Decimal{}, nil)
+		syn, err := synthesizeReconcile(1, []models.ReconciliationRequestItem{empty}, map[uint]decimal.Decimal{}, nil, nil)
 		require.NoError(t, err)
 		assert.Empty(t, syn.Request.Items)
 		assert.Equal(t, dto.ReconcileReviewLabelReadyForReview, syn.Label)
