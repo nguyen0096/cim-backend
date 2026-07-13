@@ -335,6 +335,15 @@ definitions:
     - action
     - submission_id
     type: object
+  dto.SubmissionItemWarning:
+    properties:
+      code:
+        type: string
+      inventory_item_id:
+        type: integer
+      message:
+        type: string
+    type: object
   dto.SubmissionResponse:
     properties:
       approval_status:
@@ -361,6 +370,15 @@ definitions:
         $ref: '#/definitions/models.Inventory'
       inventory_id:
         type: integer
+      item_warnings:
+        description: |-
+          ItemWarnings is the structured, per-item counterpart of Warnings: each entry
+          carries the inventory_item_id, a stable machine code, and the localized
+          message so the FE can attach it to the item row. Session/submission-level
+          warnings that are not item-scoped stay in Warnings only.
+        items:
+          $ref: '#/definitions/dto.SubmissionItemWarning'
+        type: array
       items:
         items:
           $ref: '#/definitions/dto.QuantityItem'

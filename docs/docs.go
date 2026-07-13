@@ -6542,6 +6542,20 @@ const docTemplate = `{
                 }
             }
         },
+        "dto.SubmissionItemWarning": {
+            "type": "object",
+            "properties": {
+                "code": {
+                    "type": "string"
+                },
+                "inventory_item_id": {
+                    "type": "integer"
+                },
+                "message": {
+                    "type": "string"
+                }
+            }
+        },
         "dto.SubmissionResponse": {
             "type": "object",
             "properties": {
@@ -6575,6 +6589,13 @@ const docTemplate = `{
                 },
                 "inventory_id": {
                     "type": "integer"
+                },
+                "item_warnings": {
+                    "description": "ItemWarnings is the structured, per-item counterpart of Warnings: each entry\ncarries the inventory_item_id, a stable machine code, and the localized\nmessage so the FE can attach it to the item row. Session/submission-level\nwarnings that are not item-scoped stay in Warnings only.",
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/dto.SubmissionItemWarning"
+                    }
                 },
                 "items": {
                     "type": "array",

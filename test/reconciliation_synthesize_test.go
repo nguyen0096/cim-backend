@@ -266,6 +266,12 @@ var _ = Describe("Reconciliation synthesize + list/detail/label/warnings", func(
 		Expect(resp.Warnings).NotTo(BeEmpty(), "snapshot 100 vs live 110 must raise a drift warning")
 		Expect(resp.Items[0].PrevQuantity.Equal(decimal.NewFromInt(100))).To(BeTrue())
 		Expect(resp.Items[0].CurrentQuantity.Equal(decimal.NewFromInt(110))).To(BeTrue())
+
+		// The drift is also surfaced structured per-item so the FE can attach it to the row.
+		Expect(resp.ItemWarnings).To(HaveLen(1))
+		Expect(resp.ItemWarnings[0].InventoryItemID).To(Equal(itm.ID))
+		Expect(resp.ItemWarnings[0].Code).To(Equal(dto.SubmissionItemWarningStockChanged))
+		Expect(resp.ItemWarnings[0].Message).To(Equal(resp.Warnings[0]))
 	})
 
 	It("excludes a soft-deleted child row from the synthesized total", func() {

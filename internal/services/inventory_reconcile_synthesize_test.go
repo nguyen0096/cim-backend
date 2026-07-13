@@ -277,6 +277,30 @@ func TestSynthesizeReconcile_OverageAnomalyNamesProduct(t *testing.T) {
 	assert.NotContains(t, syn.Anomalies[0], "inventory_item_id", "overage anomaly must not expose a raw id when the name is known")
 }
 
+func TestSynthesizeReconcile_ItemAnomaliesCarryItemIDAndCode(t *testing.T) {
+	// Item 1 overshoots its baseline (overage); item 9 has no baseline (no_baseline).
+	// Each anomaly must surface a structured per-item entry with the item id + code.
+	rows := []models.ReconciliationRequestItem{
+		childRow(1, models.ReconciliationRequestItemStatusInProgress, line(1, "160")),
+		childRow(2, models.ReconciliationRequestItemStatusInProgress, line(9, "5")),
+	}
+	baselines := baselineMap(map[uint]string{1: "100"}) // no baseline for item 9
+
+	syn, err := synthesizeReconcile(1, rows, baselines, nil, map[uint]string{1: "Bột mì"})
+	require.NoError(t, err)
+	require.Len(t, syn.ItemAnomalies, 2)
+
+	// Ordered by inventory_item_id: item 1 overage, then item 9 no_baseline.
+	assert.Equal(t, uint(1), syn.ItemAnomalies[0].InventoryItemID)
+	assert.Equal(t, dto.SubmissionItemWarningOverage, syn.ItemAnomalies[0].Code)
+	assert.Contains(t, syn.ItemAnomalies[0].Message, "«Bột mì»")
+	assert.Equal(t, syn.Anomalies[0], syn.ItemAnomalies[0].Message, "structured message mirrors the string anomaly")
+
+	assert.Equal(t, uint(9), syn.ItemAnomalies[1].InventoryItemID)
+	assert.Equal(t, dto.SubmissionItemWarningNoBaseline, syn.ItemAnomalies[1].Code)
+	assert.Equal(t, syn.Anomalies[1], syn.ItemAnomalies[1].Message)
+}
+
 func TestSynthesizeReconcile_MissingBaselineIsSurfaced(t *testing.T) {
 	rows := []models.ReconciliationRequestItem{
 		childRow(1, models.ReconciliationRequestItemStatusInProgress, line(9, "5")),

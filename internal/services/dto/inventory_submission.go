@@ -24,6 +24,9 @@ type SynthesizedReconcile struct {
 	Request   ReconcileInventoryRequest
 	Label     ReconcileReviewLabel
 	Anomalies []string
+	// ItemAnomalies is the structured, per-item view of Anomalies for rows that
+	// carry an inventory_item_id.
+	ItemAnomalies []SubmissionItemWarning
 	// Breakdown carries the session-grained contributions behind Request: one
 	// entry per (count session, inventory_item, count-label). Review/audit-only,
 	// not used by the apply math.
@@ -75,6 +78,28 @@ type ReconciliationItemResponse struct {
 	UpdatedAt    string                   `json:"updated_at"`
 }
 
+// Stable machine codes for SubmissionItemWarning, consumed by the FE for styling.
+const (
+	// SubmissionItemWarningStockChanged: an item's live stock differs from the
+	// baseline captured when the submission was created (reconcile).
+	SubmissionItemWarningStockChanged = "stock_changed"
+	// SubmissionItemWarningInsufficientQuantity: the requested dispose/transfer
+	// quantity exceeds the item's available quantity.
+	SubmissionItemWarningInsufficientQuantity = "insufficient_quantity"
+	// SubmissionItemWarningNoBaseline: a counted item has no snapshot baseline row.
+	SubmissionItemWarningNoBaseline = "no_baseline"
+	// SubmissionItemWarningOverage: the counted total exceeds the snapshot baseline.
+	SubmissionItemWarningOverage = "overage"
+)
+
+// SubmissionItemWarning is a per-item warning attachable to an item row: the
+// inventory_item_id it concerns, a stable machine code, and the localized message.
+type SubmissionItemWarning struct {
+	InventoryItemID uint   `json:"inventory_item_id"`
+	Code            string `json:"code"`
+	Message         string `json:"message"`
+}
+
 // SubmissionResponse represents a simplified pending submission
 type SubmissionResponse struct {
 	ID                     uint                              `json:"id"`
@@ -88,6 +113,11 @@ type SubmissionResponse struct {
 	Reason                 string                            `json:"reason,omitempty"`
 	Errors                 json.RawMessage                   `json:"error,omitempty" swaggertype:"object"`
 	Warnings               []string                          `json:"warnings,omitempty"`
+	// ItemWarnings is the structured, per-item counterpart of Warnings: each entry
+	// carries the inventory_item_id, a stable machine code, and the localized
+	// message so the FE can attach it to the item row. Session/submission-level
+	// warnings that are not item-scoped stay in Warnings only.
+	ItemWarnings []SubmissionItemWarning `json:"item_warnings,omitempty"`
 	// ReviewLabel is set only for active reconcile submissions; aggregated on read
 	// from per-session readiness. Empty for every other submission.
 	ReviewLabel ReconcileReviewLabel `json:"review_label,omitempty"`

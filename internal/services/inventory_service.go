@@ -567,21 +567,24 @@ func formatSubmissionItems(
 	return summaries, nil
 }
 
+// formatWarnings returns the localized summary strings (back-compat) alongside
+// the structured per-item warnings for item-scoped conditions.
 func formatWarnings(
 	submission models.InventorySubmission,
 	items []dto.QuantityItem,
 	itemsMap map[uint]*models.InventoryItem,
-) []string {
+) ([]string, []dto.SubmissionItemWarning) {
 	if items == nil || itemsMap == nil {
-		return []string{}
+		return []string{}, nil
 	}
 
 	// Only show warnings for pending submissions
 	if submission.ApprovalStatus != models.InventorySubmissionApprovalStatusPending {
-		return nil
+		return nil, nil
 	}
 
 	warnings := make([]string, 0)
+	var itemWarnings []dto.SubmissionItemWarning
 
 	for _, item := range items {
 		// Skip if inventory item doesn't exist
@@ -618,6 +621,11 @@ func formatWarnings(
 				warning := fmt.Sprintf("Sản phẩm %s không đủ số lượng khả dụng (hiện tại: %s) để %s %s",
 					inventoryItem.Product.Name, inventoryItem.Quantity, operation, *item.Quantity)
 				warnings = append(warnings, warning)
+				itemWarnings = append(itemWarnings, dto.SubmissionItemWarning{
+					InventoryItemID: item.InventoryItemID,
+					Code:            dto.SubmissionItemWarningInsufficientQuantity,
+					Message:         warning,
+				})
 			}
 		case models.InventorySubmissionTypeReconcile:
 			// Check if prev_quantity is not equal to current item quantity
@@ -627,11 +635,16 @@ func formatWarnings(
 					item.PrevQuantity,
 					inventoryItem.Quantity)
 				warnings = append(warnings, warning)
+				itemWarnings = append(itemWarnings, dto.SubmissionItemWarning{
+					InventoryItemID: item.InventoryItemID,
+					Code:            dto.SubmissionItemWarningStockChanged,
+					Message:         warning,
+				})
 			}
 		}
 	}
 
-	return warnings
+	return warnings, itemWarnings
 }
 
 // ProcessSubmission approves or rejects a pending inventory submission
@@ -1227,13 +1240,14 @@ func (s *inventoryService) ListSubmissions(ctx context.Context, params models.Li
 			return nil, 0, fmt.Errorf("failed to format submission items: %w", err)
 		}
 
-		warnings := formatWarnings(submission, items, inventoryItemMap)
+		warnings, itemWarnings := formatWarnings(submission, items, inventoryItemMap)
 
 		var label dto.ReconcileReviewLabel
 		var countBreakdown []dto.ReconcileItemBreakdown
 		if syn, ok := synthesized[submission.ID]; ok {
 			label = syn.Label
 			warnings = append(warnings, syn.Anomalies...)
+			itemWarnings = append(itemWarnings, syn.ItemAnomalies...)
 			// Per-(item, label) breakdown behind each summed line, with product_name resolved when possible.
 			countBreakdown = make([]dto.ReconcileItemBreakdown, len(syn.Breakdown))
 			for j, b := range syn.Breakdown {
@@ -1253,6 +1267,7 @@ func (s *inventoryService) ListSubmissions(ctx context.Context, params models.Li
 			ApprovalStatus:  submission.ApprovalStatus,
 			Errors:          s.formatProcessingErrors(submission.Error),
 			Warnings:        warnings,
+			ItemWarnings:    itemWarnings,
 			Items:           items,
 			ReviewLabel:     label,
 			CountBreakdown:  countBreakdown,
@@ -1489,6 +1504,8 @@ func (s *inventoryService) UpdateSubmission(ctx context.Context, req dto.UpdateS
 		return nil, fmt.Errorf("failed to format submission items: %w", err)
 	}
 
+	warnings, itemWarnings := formatWarnings(*submission, req.Items, inventoryItemMap)
+
 	// Build response
 	response := &dto.SubmissionResponse{
 		ID:              submission.ID,
@@ -1498,7 +1515,8 @@ func (s *inventoryService) UpdateSubmission(ctx context.Context, req dto.UpdateS
 		Status:          submission.ProcessingStatus,
 		ApprovalStatus:  submission.ApprovalStatus,
 		Items:           items,
-		Warnings:        formatWarnings(*submission, req.Items, inventoryItemMap),
+		Warnings:        warnings,
+		ItemWarnings:    itemWarnings,
 		ReconcileStatus: submission.ReconcileStatus,
 		Reason:          submission.Reason,
 		CreatedBy:       submission.CreatedBy,

@@ -94,6 +94,7 @@ func synthesizeReconcile(
 	}
 
 	var anomalies []string
+	var itemAnomalies []dto.SubmissionItemWarning
 	items := make([]dto.QuantityItem, 0, len(itemIDs))
 	for _, id := range itemIDs {
 		counted := totals[id]
@@ -101,17 +102,29 @@ func synthesizeReconcile(
 
 		// Anomaly: counted item with no snapshot row. Surface it and fall back to zero baseline.
 		if !hasBaseline {
-			anomalies = append(anomalies, fmt.Sprintf(
-				"sản phẩm %s không có số lượng nền (snapshot) — cần kiểm tra lại", productLabel(id)))
+			msg := fmt.Sprintf(
+				"sản phẩm %s không có số lượng nền (snapshot) — cần kiểm tra lại", productLabel(id))
+			anomalies = append(anomalies, msg)
+			itemAnomalies = append(itemAnomalies, dto.SubmissionItemWarning{
+				InventoryItemID: id,
+				Code:            dto.SubmissionItemWarningNoBaseline,
+				Message:         msg,
+			})
 			baseline = decimal.Zero
 		}
 
 		// Anomaly: counted exceeds baseline. Surface it; the true counted flows through
 		// so the overage is applied as a stock-up at process time.
 		if hasBaseline && counted.GreaterThan(baseline) {
-			anomalies = append(anomalies, fmt.Sprintf(
+			msg := fmt.Sprintf(
 				"tổng số lượng kiểm đếm của sản phẩm %s là %s vượt quá số lượng nền %s — cần kiểm tra lại",
-				productLabel(id), counted.String(), baseline.String()))
+				productLabel(id), counted.String(), baseline.String())
+			anomalies = append(anomalies, msg)
+			itemAnomalies = append(itemAnomalies, dto.SubmissionItemWarning{
+				InventoryItemID: id,
+				Code:            dto.SubmissionItemWarningOverage,
+				Message:         msg,
+			})
 		}
 
 		// No snapshot row (defensive; the write guard blocks this): emit the zero
@@ -132,9 +145,10 @@ func synthesizeReconcile(
 			InventoryID: inventoryID,
 			Items:       items,
 		},
-		Label:     aggregateReviewLabel(rows, managerOwned),
-		Anomalies: anomalies,
-		Breakdown: breakdownLines,
+		Label:         aggregateReviewLabel(rows, managerOwned),
+		Anomalies:     anomalies,
+		ItemAnomalies: itemAnomalies,
+		Breakdown:     breakdownLines,
 	}, nil
 }
 
