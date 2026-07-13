@@ -298,7 +298,11 @@ func (s *inventoryService) CreateReconciliationItem(ctx context.Context, req dto
 	if err != nil {
 		return nil, err
 	}
-	resp, err := toReconciliationItemResponse(created)
+	names, err := s.resolveReconItemProductNames(ctx, created)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := toReconciliationItemResponse(created, names)
 	if err != nil {
 		return nil, err
 	}
@@ -351,7 +355,11 @@ func (s *inventoryService) UpdateReconciliationItem(ctx context.Context, req dto
 	if err != nil {
 		return nil, err
 	}
-	resp, err := toReconciliationItemResponse(updated)
+	names, err := s.resolveReconItemProductNames(ctx, updated)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := toReconciliationItemResponse(updated, names)
 	if err != nil {
 		return nil, err
 	}
@@ -400,7 +408,11 @@ func (s *inventoryService) SetReconciliationItemReadiness(ctx context.Context, r
 	if err != nil {
 		return nil, err
 	}
-	resp, err := toReconciliationItemResponse(updated)
+	names, err := s.resolveReconItemProductNames(ctx, updated)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := toReconciliationItemResponse(updated, names)
 	if err != nil {
 		return nil, err
 	}
@@ -471,9 +483,18 @@ func (s *inventoryService) ListReconciliationItems(ctx context.Context, submissi
 		}
 	}
 
+	ptrs := make([]*models.ReconciliationRequestItem, len(rows))
+	for i := range rows {
+		ptrs[i] = &rows[i]
+	}
+	names, err := s.resolveReconItemProductNames(ctx, ptrs...)
+	if err != nil {
+		return nil, err
+	}
+
 	responses := make([]dto.ReconciliationItemResponse, 0, len(rows))
 	for i := range rows {
-		resp, mapErr := toReconciliationItemResponse(&rows[i])
+		resp, mapErr := toReconciliationItemResponse(&rows[i], names)
 		if mapErr != nil {
 			return nil, mapErr
 		}
@@ -482,8 +503,33 @@ func (s *inventoryService) ListReconciliationItems(ctx context.Context, submissi
 	return responses, nil
 }
 
-// toReconciliationItemResponse maps a persisted row to the FE row response shape.
-func toReconciliationItemResponse(row *models.ReconciliationRequestItem) (dto.ReconciliationItemResponse, error) {
+// resolveReconItemProductNames resolves product display names for every distinct
+// inventory_item across the rows' payloads via the by-id resolver, so
+// removed/discontinued items (absent from the inventory-items list) still resolve.
+func (s *inventoryService) resolveReconItemProductNames(ctx context.Context, rows ...*models.ReconciliationRequestItem) (map[uint]string, error) {
+	seen := make(map[uint]struct{})
+	ids := make([]uint, 0)
+	for _, row := range rows {
+		if row == nil || len(row.Payload) == 0 {
+			continue
+		}
+		var parsed reconItemPayload
+		if err := json.Unmarshal(row.Payload, &parsed); err != nil {
+			return nil, fmt.Errorf("failed to parse reconciliation item %d payload: %w", row.ID, err)
+		}
+		for _, line := range parsed.Items {
+			if _, ok := seen[line.InventoryItemID]; !ok {
+				seen[line.InventoryItemID] = struct{}{}
+				ids = append(ids, line.InventoryItemID)
+			}
+		}
+	}
+	return s.resolveProductNames(ctx, ids), nil
+}
+
+// toReconciliationItemResponse maps a persisted row to the FE row response shape,
+// stamping each line's product name from productNames.
+func toReconciliationItemResponse(row *models.ReconciliationRequestItem, productNames map[uint]string) (dto.ReconciliationItemResponse, error) {
 	lines := make([]dto.ReconciliationItemLine, 0)
 	if len(row.Payload) > 0 {
 		var parsed reconItemPayload
@@ -496,6 +542,7 @@ func toReconciliationItemResponse(row *models.ReconciliationRequestItem) (dto.Re
 				InventoryItemID: line.InventoryItemID,
 				Quantity:        line.Quantity,
 				Label:           line.Label,
+				ProductName:     productNames[line.InventoryItemID],
 			})
 		}
 	}

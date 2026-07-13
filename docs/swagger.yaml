@@ -245,6 +245,11 @@ definitions:
         type: integer
       label:
         type: string
+      product_name:
+        description: |-
+          ProductName is the resolved product name for InventoryItemID, resolved by id
+          so removed/discontinued items still render; omitted when unresolved.
+        type: string
       quantity:
         type: number
     type: object
@@ -406,6 +411,11 @@ definitions:
   dto.UpdatePurchaseOrderDeliveryStatusRequest:
     properties:
       confirmation_notes:
+        type: string
+      idempotency_key:
+        description: |-
+          IdempotencyKey deduplicates repeated submits of the same receive action
+          (double-click, refresh, retry). Sourced from the Idempotency-Key header or body.
         type: string
       items:
         items:
@@ -800,6 +810,12 @@ definitions:
         $ref: '#/definitions/models.InventoryItem'
       inventory_item_id:
         type: integer
+      is_adjustment:
+        description: |-
+          IsAdjustment marks a zero-cost reconcile-correction stock layer: a
+          reconcile_stock_up, or a transfer_in that consumed such a layer (set at
+          transfer time so it propagates across any number of transfer hops).
+        type: boolean
       price:
         type: number
       purchase_order_item_id:
@@ -824,6 +840,7 @@ definitions:
     - sell
     - transfer_out
     - transfer_in
+    - reconcile_stock_up
     type: string
     x-enum-varnames:
     - InventoryTransactionTypePurchase
@@ -831,6 +848,7 @@ definitions:
     - InventoryTransactionTypeSell
     - InventoryTransactionTypeTransferOut
     - InventoryTransactionTypeTransferIn
+    - InventoryTransactionTypeReconcileStockUp
   models.Menu:
     properties:
       created_at:

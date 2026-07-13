@@ -1644,3 +1644,97 @@ func TestDeleteReconciliationItem_NotOwned_Forbidden(t *testing.T) {
 	assert.Equal(t, pkg.ErrorCodeForbidden, appErrCode(t, err))
 	assert.NoError(t, mock.ExpectationsWereMet())
 }
+
+// ==================== PRODUCT NAME IN PAYLOAD ====================
+
+// TestCreateReconciliationItem_ProductNamePopulated_RemovedItem proves the Create
+// response carries product_name resolved by id. resolveReconItemProductNames uses
+// GetByIDs (Unscoped), so a removed/discontinued item — absent from the scoped
+// inventory-items list the FE loads — still resolves.
+func TestCreateReconciliationItem_ProductNamePopulated_RemovedItem(t *testing.T) {
+	gormDB, mock := newInventoryServiceTestDB(t)
+	svc := newReconItemServiceReal(gormDB)
+	ctx := reconCtx(reconStaffEmail)
+	const submissionID = uint(50)
+
+	mock.ExpectBegin()
+	expectParentReconcileLoad(mock, submissionID)
+	expectSiblingRows(mock, submissionID, nil)
+	expectSnapshotBaselines(mock, map[uint]string{10: "100"})
+	mock.ExpectQuery(regexp.QuoteMeta(`INSERT INTO "reconciliation_request_items"`)).
+		WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(777))
+	mock.ExpectCommit()
+	// Post-commit name resolution via GetByIDs (Unscoped): the removed item resolves.
+	expectInventoryItemsByIDs(mock, map[uint]string{10: "Sản phẩm đã gỡ"})
+
+	item, err := svc.CreateReconciliationItem(ctx, dto.CreateReconciliationItemRequest{
+		SubmissionID: submissionID,
+		Items:        []dto.ReconciliationCountItem{{InventoryItemID: 10, Quantity: decPtr(80)}},
+	})
+	require.NoError(t, err)
+	require.Len(t, item.Items, 1)
+	assert.Equal(t, uint(10), item.Items[0].InventoryItemID)
+	assert.Equal(t, "Sản phẩm đã gỡ", item.Items[0].ProductName)
+	assert.NoError(t, mock.ExpectationsWereMet())
+}
+
+// TestUpdateReconciliationItem_ProductNamePopulated proves the Update response
+// carries the resolved product_name.
+func TestUpdateReconciliationItem_ProductNamePopulated(t *testing.T) {
+	gormDB, mock := newInventoryServiceTestDB(t)
+	svc := newReconItemServiceReal(gormDB)
+	ctx := reconCtx(reconStaffEmail)
+	const submissionID = uint(50)
+	const itemID = uint(777)
+
+	mock.ExpectBegin()
+	expectParentReconcileLoad(mock, submissionID)
+	expectItemLoad(mock, itemID, submissionID, reconStaffEmail, string(models.ReconciliationRequestItemStatusInProgress))
+	expectSiblingRows(mock, submissionID, []siblingRow{{id: 777, payload: reconLine(10, 90)}})
+	expectSnapshotBaselines(mock, map[uint]string{10: "100"})
+	mock.ExpectExec(regexp.QuoteMeta(`UPDATE "reconciliation_request_items" SET`)).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectCommit()
+	expectInventoryItemsByIDs(mock, map[uint]string{10: "Sản phẩm X"})
+
+	updated, err := svc.UpdateReconciliationItem(ctx, dto.UpdateReconciliationItemRequest{
+		SubmissionID: submissionID,
+		ItemID:       itemID,
+		Items:        []dto.ReconciliationCountItem{{InventoryItemID: 10, Quantity: decPtr(55)}},
+	})
+	require.NoError(t, err)
+	require.Len(t, updated.Items, 1)
+	assert.Equal(t, "Sản phẩm X", updated.Items[0].ProductName)
+	assert.NoError(t, mock.ExpectationsWereMet())
+}
+
+// TestListReconciliationItems_ProductNamePopulated_RemovedItem proves the List
+// response resolves product_name per line in one batched by-id read, covering a
+// removed/off-list item.
+func TestListReconciliationItems_ProductNamePopulated_RemovedItem(t *testing.T) {
+	gormDB, mock := newInventoryServiceTestDB(t)
+	svc := newReconItemServiceReal(gormDB)
+	ctx := reconManageCtx("manager@cim.local")
+	const submissionID = uint(50)
+
+	// Non-locking submission load (List uses GetByID, not FOR UPDATE).
+	mock.ExpectQuery(regexp.QuoteMeta(`SELECT * FROM "inventory_submissions"`)).
+		WillReturnRows(sqlmock.NewRows([]string{"id", "submission_type", "reconcile_status"}).
+			AddRow(submissionID, string(models.InventorySubmissionTypeReconcile), string(models.ReconcileLifecycleStatusOpen)))
+	mock.ExpectQuery(regexp.QuoteMeta(`SELECT count(*) FROM "reconciliation_snapshots"`)).
+		WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(1))
+	// recon_manage -> ListBySubmission (all rows).
+	mock.ExpectQuery(regexp.QuoteMeta(`SELECT * FROM "reconciliation_request_items"`)+`.*submission_id`).
+		WithArgs(submissionID).
+		WillReturnRows(sqlmock.NewRows([]string{"id", "submission_id", "created_by", "status", "payload"}).
+			AddRow(777, submissionID, reconStaffEmail, string(models.ReconciliationRequestItemStatusInProgress), []byte(reconLine(10, 80))))
+	// One batched GetByIDs resolves names (Unscoped -> removed item resolves).
+	expectInventoryItemsByIDs(mock, map[uint]string{10: "Sản phẩm đã gỡ"})
+
+	resp, err := svc.ListReconciliationItems(ctx, submissionID)
+	require.NoError(t, err)
+	require.Len(t, resp, 1)
+	require.Len(t, resp[0].Items, 1)
+	assert.Equal(t, "Sản phẩm đã gỡ", resp[0].Items[0].ProductName)
+	assert.NoError(t, mock.ExpectationsWereMet())
+}

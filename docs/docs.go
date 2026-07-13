@@ -6409,6 +6409,10 @@ const docTemplate = `{
                 "label": {
                     "type": "string"
                 },
+                "product_name": {
+                    "description": "ProductName is the resolved product name for InventoryItemID, resolved by id\nso removed/discontinued items still render; omitted when unresolved.",
+                    "type": "string"
+                },
                 "quantity": {
                     "type": "number"
                 }
@@ -6648,6 +6652,10 @@ const docTemplate = `{
             ],
             "properties": {
                 "confirmation_notes": {
+                    "type": "string"
+                },
+                "idempotency_key": {
+                    "description": "IdempotencyKey deduplicates repeated submits of the same receive action\n(double-click, refresh, retry). Sourced from the Idempotency-Key header or body.",
                     "type": "string"
                 },
                 "items": {
@@ -7226,6 +7234,10 @@ const docTemplate = `{
                 "inventory_item_id": {
                     "type": "integer"
                 },
+                "is_adjustment": {
+                    "description": "IsAdjustment marks a zero-cost reconcile-correction stock layer: a\nreconcile_stock_up, or a transfer_in that consumed such a layer (set at\ntransfer time so it propagates across any number of transfer hops).",
+                    "type": "boolean"
+                },
                 "price": {
                     "type": "number"
                 },
@@ -7259,14 +7271,16 @@ const docTemplate = `{
                 "disposal",
                 "sell",
                 "transfer_out",
-                "transfer_in"
+                "transfer_in",
+                "reconcile_stock_up"
             ],
             "x-enum-varnames": [
                 "InventoryTransactionTypePurchase",
                 "InventoryTransactionTypeDisposal",
                 "InventoryTransactionTypeSell",
                 "InventoryTransactionTypeTransferOut",
-                "InventoryTransactionTypeTransferIn"
+                "InventoryTransactionTypeTransferIn",
+                "InventoryTransactionTypeReconcileStockUp"
             ]
         },
         "models.Menu": {

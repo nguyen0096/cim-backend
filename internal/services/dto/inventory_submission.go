@@ -55,6 +55,9 @@ type ReconciliationItemLine struct {
 	InventoryItemID uint            `json:"inventory_item_id"`
 	Quantity        decimal.Decimal `json:"quantity"`
 	Label           string          `json:"label"`
+	// ProductName is the resolved product name for InventoryItemID, resolved by id
+	// so removed/discontinued items still render; omitted when unresolved.
+	ProductName string `json:"product_name,omitempty"`
 }
 
 // ReconciliationItemResponse is the row (count-session) response returned by

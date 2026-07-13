@@ -34,6 +34,7 @@ var _ = Describe("Reconciliation request item lifecycle", func() {
 		adminCtx     context.Context
 		inventory    *models.Inventory
 		inventoryItm *models.InventoryItem
+		product      *models.Product
 		submission   *models.InventorySubmission
 		baseline     = decimal.NewFromInt(100)
 	)
@@ -82,7 +83,7 @@ var _ = Describe("Reconciliation request item lifecycle", func() {
 		})
 
 		unit := fixture.WithUnit(db, fixture.ValidBaseUnit())
-		product := fixture.WithProduct(db, fixture.ValidProduct(unit.ID))
+		product = fixture.WithProduct(db, fixture.ValidProduct(unit.ID))
 
 		inventoryItm = &models.InventoryItem{
 			InventoryID: inventory.ID,
@@ -130,6 +131,34 @@ var _ = Describe("Reconciliation request item lifecycle", func() {
 		Expect(item.Status).To(Equal(string(models.ReconciliationRequestItemStatusInProgress)))
 		Expect(item.CreatedBy).To(Equal(staffEmail))
 		DeferCleanup(func() { tenv.ContextfulDB().Unscoped().Delete(item) })
+	})
+
+	It("returns product_name for a removed/off-list item across Create/Update/List", func() {
+		db := tenv.ContextfulDB()
+		// Remove the item from the scoped inventory-items list (soft delete). The by-id
+		// resolver (Unscoped) must still resolve its product name into the payload.
+		Expect(db.Delete(inventoryItm).Error).NotTo(HaveOccurred())
+
+		created, err := svc.CreateReconciliationItem(staffCtx, dto.CreateReconciliationItemRequest{
+			SubmissionID: submission.ID, Items: countItems(80),
+		})
+		Expect(err).NotTo(HaveOccurred())
+		DeferCleanup(func() { tenv.ContextfulDB().Unscoped().Delete(created) })
+		Expect(created.Items).To(HaveLen(1))
+		Expect(created.Items[0].ProductName).To(Equal(product.Name))
+
+		updated, err := svc.UpdateReconciliationItem(staffCtx, dto.UpdateReconciliationItemRequest{
+			SubmissionID: submission.ID, ItemID: created.ID, Items: countItems(70),
+		})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(updated.Items).To(HaveLen(1))
+		Expect(updated.Items[0].ProductName).To(Equal(product.Name))
+
+		listed, err := svc.ListReconciliationItems(adminCtx, submission.ID)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(listed).NotTo(BeEmpty())
+		Expect(listed[0].Items).To(HaveLen(1))
+		Expect(listed[0].Items[0].ProductName).To(Equal(product.Name))
 	})
 
 	It("accepts a counted quantity greater than the snapshot baseline", func() {
