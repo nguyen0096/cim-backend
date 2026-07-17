@@ -23,6 +23,9 @@ type InventorySubmissionRepository interface {
 	Create(ctx context.Context, submission *models.InventorySubmission) error
 	GetPendingSubmissions(ctx context.Context, inventoryID uint) ([]models.InventorySubmission, error)
 	GetByID(ctx context.Context, id uint) (*models.InventorySubmission, error)
+	// GetByIDWithInventory loads a submission with its Inventory preloaded, matching
+	// the ListSubmissions read shape.
+	GetByIDWithInventory(ctx context.Context, id uint) (*models.InventorySubmission, error)
 	// GetByIDForUpdate loads a submission holding a row-level write lock.
 	GetByIDForUpdate(ctx context.Context, id uint) (*models.InventorySubmission, error)
 	UpdateApprovalStatus(ctx context.Context, id uint, status models.SubmissionApprovalStatus, reason string) error
@@ -89,6 +92,16 @@ func (r *inventorySubmissionRepository) GetPendingSubmissions(ctx context.Contex
 func (r *inventorySubmissionRepository) GetByID(ctx context.Context, id uint) (*models.InventorySubmission, error) {
 	var submission models.InventorySubmission
 	err := r.DB(ctx).WithContext(ctx).First(&submission, id).Error
+	if err != nil {
+		return nil, err
+	}
+	return &submission, nil
+}
+
+// GetByIDWithInventory retrieves a submission by ID with its Inventory preloaded.
+func (r *inventorySubmissionRepository) GetByIDWithInventory(ctx context.Context, id uint) (*models.InventorySubmission, error) {
+	var submission models.InventorySubmission
+	err := r.DB(ctx).WithContext(ctx).Preload("Inventory").First(&submission, id).Error
 	if err != nil {
 		return nil, err
 	}

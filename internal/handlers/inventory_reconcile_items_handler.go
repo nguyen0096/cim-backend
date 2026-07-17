@@ -11,6 +11,30 @@ import (
 // Staff reconciliation child-item endpoints, nested under the parent submission
 // (/inventories/submissions/:id/...); ids come from the path, not the body.
 
+// GetSubmission returns one submission by id, the same DTO ListSubmissions yields.
+// @Summary Get submission by ID
+// @Description Returns a single inventory submission by id as the SAME DTO element ListSubmissions returns (synthesized items, count_breakdown, review_label, warnings for an active reconcile). Lets the FE load one reconciliation without paging the submissions list. 404 if the id does not exist.
+// @Tags inventories
+// @Produce json
+// @Param id path int true "Submission ID"
+// @Success 200 {object} dto.SubmissionResponse
+// @Failure 403 {object} map[string]string
+// @Failure 404 {object} map[string]string
+// @Security BearerAuth
+// @Router /inventories/submissions/{id} [get]
+func (h *InventoryHandler) GetSubmission(c echo.Context) error {
+	submissionID, err := pkg.ExtractIDParam(c)
+	if err != nil {
+		return err
+	}
+
+	submission, err := h.inventoryService.GetSubmissionByID(c.Request().Context(), submissionID)
+	if err != nil {
+		return err
+	}
+	return c.JSON(http.StatusOK, submission)
+}
+
 // CreateReconciliationItem files a new staff count-session row under a reconcile.
 // @Summary Create reconciliation item
 // @Description Staff submits a count session (optional row label + counted quantities, each with an optional count label) as a new in_progress row under an initiated reconcile submission. Counts must not exceed the per-item snapshot baseline.

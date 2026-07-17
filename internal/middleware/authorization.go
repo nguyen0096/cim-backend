@@ -237,6 +237,14 @@ var customRouteMappings = []RouteMapping{
 		Resource:    "inventory-submissions",
 		Action:      "recon_item_view",
 	},
+	// Single submission by id: shares the recon_item_view read gate. Default
+	// extraction would otherwise map this 3-segment path to inventory-items:view.
+	{
+		Method:      "GET",
+		PathPattern: "/inventories/submissions/*",
+		Resource:    "inventory-submissions",
+		Action:      "recon_item_view",
+	},
 	{
 		Method:      "*",
 		PathPattern: "/inventories/*/dispose",

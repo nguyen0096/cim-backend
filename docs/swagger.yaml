@@ -2778,6 +2778,41 @@ paths:
       tags:
       - inventories
   /inventories/submissions/{id}:
+    get:
+      description: Returns a single inventory submission by id as the SAME DTO element
+        ListSubmissions returns (synthesized items, count_breakdown, review_label,
+        warnings for an active reconcile). Lets the FE load one reconciliation without
+        paging the submissions list. 404 if the id does not exist.
+      parameters:
+      - description: Submission ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.SubmissionResponse'
+        "403":
+          description: Forbidden
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Get submission by ID
+      tags:
+      - inventories
     put:
       consumes:
       - application/json

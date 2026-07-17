@@ -101,6 +101,47 @@ func TestListReconciliationItems_PathScopedSubmissionID(t *testing.T) {
 	mockService.AssertExpectations(t)
 }
 
+// TestGetSubmission_PathScopedID asserts the by-id handler passes the path
+// submission id to the service and returns the submission DTO at 200.
+func TestGetSubmission_PathScopedID(t *testing.T) {
+	handler, mockService, e := newReconItemHandler(t)
+
+	const pathSubmissionID uint = 50
+	mockService.
+		On("GetSubmissionByID", mock.Anything, pathSubmissionID).
+		Return(&dto.SubmissionResponse{ID: pathSubmissionID, ReviewLabel: dto.ReconcileReviewLabelInProgress}, nil).
+		Once()
+
+	req, err := createRequest(http.MethodGet, "/inventories/submissions/50", nil)
+	require.NoError(t, err)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetPath("/inventories/submissions/:id")
+	c.SetParamNames("id")
+	c.SetParamValues("50")
+
+	require.NoError(t, handler.GetSubmission(c))
+	assert.Equal(t, http.StatusOK, rec.Code)
+	assert.Contains(t, rec.Body.String(), `"review_label":"in_progress"`)
+	mockService.AssertExpectations(t)
+}
+
+// TestGetSubmission_InvalidPathID asserts a non-numeric id errors before the
+// service is called.
+func TestGetSubmission_InvalidPathID(t *testing.T) {
+	handler, mockService, e := newReconItemHandler(t)
+
+	req, _ := createRequest(http.MethodGet, "/inventories/submissions/abc", nil)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetPath("/inventories/submissions/:id")
+	c.SetParamNames("id")
+	c.SetParamValues("abc")
+
+	require.Error(t, handler.GetSubmission(c))
+	mockService.AssertNotCalled(t, "GetSubmissionByID", mock.Anything, mock.Anything)
+}
+
 // TestUpdateReconciliationItem_PathScopedIDs asserts both parent and child ids
 // come from the path, never the body.
 func TestUpdateReconciliationItem_PathScopedIDs(t *testing.T) {

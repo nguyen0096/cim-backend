@@ -65,6 +65,15 @@ func TestExtractResourceAndAction_ReconciliationChildItems(t *testing.T) {
 	}
 }
 
+// TestExtractResourceAndAction_GetSubmissionByID locks the by-id read route to
+// inventory-submissions:recon_item_view. Without its custom mapping the 3-segment
+// path would default to inventory-items:view (segments >= 3 rule).
+func TestExtractResourceAndAction_GetSubmissionByID(t *testing.T) {
+	resource, action := resolve(http.MethodGet, "/api/v1/inventories/submissions/50")
+	assert.Equal(t, "inventory-submissions", resource)
+	assert.Equal(t, "recon_item_view", action)
+}
+
 // TestExtractResourceAndAction_SubmissionProcessUnaffected ensures the new
 // child-item mappings (also 4 segments under /inventories/submissions/*/...) do
 // not shadow the existing submission process route. The process route has no

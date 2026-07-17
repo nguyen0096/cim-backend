@@ -966,6 +966,56 @@ const docTemplate = `{
             }
         },
         "/inventories/submissions/{id}": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Returns a single inventory submission by id as the SAME DTO element ListSubmissions returns (synthesized items, count_breakdown, review_label, warnings for an active reconcile). Lets the FE load one reconciliation without paging the submissions list. 404 if the id does not exist.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "inventories"
+                ],
+                "summary": "Get submission by ID",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Submission ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/dto.SubmissionResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            },
             "put": {
                 "security": [
                     {

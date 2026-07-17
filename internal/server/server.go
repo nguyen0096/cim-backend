@@ -270,6 +270,9 @@ func SetupServer(
 
 	inventories.POST("/:id/reconcile/initiate", inventoryHandler.InitiateReconcile)
 	inventories.POST("/:id/reconcile", inventoryHandler.ReconcileInventory)
+	// Single submission by id (unblocks cim-ui #93): same DTO as a ListSubmissions
+	// element, gated by recon_item_view (see custom route mapping).
+	inventories.GET("/submissions/:id", inventoryHandler.GetSubmission)
 	inventories.GET("/submissions/:id/reconciliation-items", inventoryHandler.ListReconciliationItems)
 	inventories.POST("/submissions/:id/reconciliation-items", inventoryHandler.CreateReconciliationItem)
 	inventories.PUT("/submissions/:id/reconciliation-items/:item_id", inventoryHandler.UpdateReconciliationItem)

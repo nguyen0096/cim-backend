@@ -26,6 +26,13 @@ func (s *inventoryService) SynthesizeSubmissionPayload(ctx context.Context, subm
 		return nil, fmt.Errorf("failed to list reconciliation items for submission %d: %w", submissionID, err)
 	}
 
+	return s.synthesizeFromRows(ctx, submission.InventoryID, submissionID, rows)
+}
+
+// synthesizeFromRows folds the given child rows into the synthesized payload. The
+// caller chooses the row scope (all rows, or one creator's own sessions), so the
+// same core drives both the manager-wide and staff-own-only views.
+func (s *inventoryService) synthesizeFromRows(ctx context.Context, inventoryID, submissionID uint, rows []models.ReconciliationRequestItem) (*dto.SynthesizedReconcile, error) {
 	baselines, err := s.snapshotRepo.GetPrevQuantitiesBySubmission(ctx, submissionID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to load snapshot baselines for submission %d: %w", submissionID, err)
@@ -44,7 +51,7 @@ func (s *inventoryService) SynthesizeSubmissionPayload(ctx context.Context, subm
 	}
 	productNames := s.resolveProductNames(ctx, baselineIDs)
 
-	return synthesizeReconcile(submission.InventoryID, rows, baselines, managerOwned, productNames)
+	return synthesizeReconcile(inventoryID, rows, baselines, managerOwned, productNames)
 }
 
 // synthesizeReconcile is the pure core of SynthesizeSubmissionPayload.

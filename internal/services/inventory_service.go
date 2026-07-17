@@ -9,6 +9,7 @@ import (
 	"cim-backend/pkg"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"time"
 
@@ -31,6 +32,8 @@ type InventoryService interface {
 
 	GetLastPurchasePrices(ctx context.Context, supplierID uint) (dto.LastPurchasePriceMap, error)
 	ListSubmissions(ctx context.Context, params models.ListParams, approvalStatuses []string, inventoryID uint, submissionTypes []string) ([]dto.SubmissionResponse, int64, error)
+	// GetSubmissionByID returns one submission as the same DTO ListSubmissions yields, scoped by id (404 if absent).
+	GetSubmissionByID(ctx context.Context, id uint) (*dto.SubmissionResponse, error)
 	// ListActiveReconciliations returns active reconcile submissions across all inventories.
 	ListActiveReconciliations(ctx context.Context, params models.ListParams, reconcileStatuses []string) ([]dto.SubmissionResponse, int64, error)
 	InitiateReconcile(ctx context.Context, req dto.InitiateReconcileRequest) (*models.InventorySubmission, error)
@@ -1233,54 +1236,155 @@ func (s *inventoryService) ListSubmissions(ctx context.Context, params models.Li
 
 	responses := make([]dto.SubmissionResponse, len(submissions))
 	for i, submission := range submissions {
-		items := submissionItemMap[submission.ID]
-
-		items, err := formatSubmissionItems(items, inventoryItemMap)
+		resp, err := s.buildSubmissionResponse(submission, submissionItemMap[submission.ID], inventoryItemMap, synthesized[submission.ID])
 		if err != nil {
-			return nil, 0, fmt.Errorf("failed to format submission items: %w", err)
+			return nil, 0, err
 		}
-
-		warnings, itemWarnings := formatWarnings(submission, items, inventoryItemMap)
-
-		var label dto.ReconcileReviewLabel
-		var countBreakdown []dto.ReconcileItemBreakdown
-		if syn, ok := synthesized[submission.ID]; ok {
-			label = syn.Label
-			warnings = append(warnings, syn.Anomalies...)
-			itemWarnings = append(itemWarnings, syn.ItemAnomalies...)
-			// Per-(item, label) breakdown behind each summed line, with product_name resolved when possible.
-			countBreakdown = make([]dto.ReconcileItemBreakdown, len(syn.Breakdown))
-			for j, b := range syn.Breakdown {
-				if inventoryItem, exists := inventoryItemMap[b.InventoryItemID]; exists && inventoryItem.Product != nil {
-					b.ProductName = inventoryItem.Product.Name
-				}
-				countBreakdown[j] = b
-			}
-		}
-
-		responses[i] = dto.SubmissionResponse{
-			ID:              submission.ID,
-			InventoryID:     submission.InventoryID,
-			Inventory:       submission.Inventory,
-			SubmissionType:  submission.SubmissionType,
-			Status:          submission.ProcessingStatus,
-			ApprovalStatus:  submission.ApprovalStatus,
-			Errors:          s.formatProcessingErrors(submission.Error),
-			Warnings:        warnings,
-			ItemWarnings:    itemWarnings,
-			Items:           items,
-			ReviewLabel:     label,
-			CountBreakdown:  countBreakdown,
-			ReconcileStatus: submission.ReconcileStatus,
-			Reason:          submission.Reason,
-			CreatedBy:       submission.CreatedBy,
-			CreatedAt:       submission.CreatedAt.Format(pkg.DateTimeFormat),
-			UpdatedBy:       submission.UpdatedBy,
-			UpdatedAt:       submission.UpdatedAt.Format(pkg.DateTimeFormat),
-		}
+		responses[i] = resp
 	}
 
 	return responses, total, nil
+}
+
+// buildSubmissionResponse assembles one SubmissionResponse from a loaded submission,
+// its raw item lines, the resolved inventory-item map, and (for a synthesized
+// reconcile) its synthesis; syn is nil otherwise. Shared by ListSubmissions and
+// GetSubmissionByID.
+func (s *inventoryService) buildSubmissionResponse(
+	submission models.InventorySubmission,
+	rawItems []dto.QuantityItem,
+	inventoryItemMap map[uint]*models.InventoryItem,
+	syn *dto.SynthesizedReconcile,
+) (dto.SubmissionResponse, error) {
+	items, err := formatSubmissionItems(rawItems, inventoryItemMap)
+	if err != nil {
+		return dto.SubmissionResponse{}, fmt.Errorf("failed to format submission items: %w", err)
+	}
+
+	warnings, itemWarnings := formatWarnings(submission, items, inventoryItemMap)
+
+	var label dto.ReconcileReviewLabel
+	var countBreakdown []dto.ReconcileItemBreakdown
+	if syn != nil {
+		label = syn.Label
+		warnings = append(warnings, syn.Anomalies...)
+		itemWarnings = append(itemWarnings, syn.ItemAnomalies...)
+		// Per-(item, label) breakdown behind each summed line, with product_name resolved when possible.
+		countBreakdown = make([]dto.ReconcileItemBreakdown, len(syn.Breakdown))
+		for j, b := range syn.Breakdown {
+			if inventoryItem, exists := inventoryItemMap[b.InventoryItemID]; exists && inventoryItem.Product != nil {
+				b.ProductName = inventoryItem.Product.Name
+			}
+			countBreakdown[j] = b
+		}
+	}
+
+	return dto.SubmissionResponse{
+		ID:              submission.ID,
+		InventoryID:     submission.InventoryID,
+		Inventory:       submission.Inventory,
+		SubmissionType:  submission.SubmissionType,
+		Status:          submission.ProcessingStatus,
+		ApprovalStatus:  submission.ApprovalStatus,
+		Errors:          s.formatProcessingErrors(submission.Error),
+		Warnings:        warnings,
+		ItemWarnings:    itemWarnings,
+		Items:           items,
+		ReviewLabel:     label,
+		CountBreakdown:  countBreakdown,
+		ReconcileStatus: submission.ReconcileStatus,
+		Reason:          submission.Reason,
+		CreatedBy:       submission.CreatedBy,
+		CreatedAt:       submission.CreatedAt.Format(pkg.DateTimeFormat),
+		UpdatedBy:       submission.UpdatedBy,
+		UpdatedAt:       submission.UpdatedAt.Format(pkg.DateTimeFormat),
+	}, nil
+}
+
+// GetSubmissionByID returns one submission built via the same construction path as
+// ListSubmissions, scoped strictly by id; a missing id yields a 404.
+func (s *inventoryService) GetSubmissionByID(ctx context.Context, id uint) (*dto.SubmissionResponse, error) {
+	submission, err := s.inventorySubmissionRepo.GetByIDWithInventory(ctx, id)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, pkg.ErrReconParentNotFound(ctx, id)
+		}
+		return nil, fmt.Errorf("failed to load submission %d: %w", id, err)
+	}
+
+	// Resolve item lines the same way ListSubmissions does, but with staff scoping.
+	// Synthesize from live child rows for an active reconcile (empty payload, any
+	// caller) OR for a staff caller viewing a session-model reconcile whose payload
+	// was persisted at processing time: re-synthesizing from the caller's OWN rows
+	// scopes items/count_breakdown to their sessions, so a processed reconcile's
+	// persisted manager-wide payload never discloses another staff member's counts
+	// (mirrors ListReconciliationItems). A manager keeps reading the persisted
+	// payload (the applied source of truth) unchanged; otherwise read the payload.
+	isManager := pkg.HasPermission(ctx, pkg.RBACResourceInventorySubmissions, pkg.RBACActionReconManage)
+	synthesize := isReconcilePayloadSynthesized(*submission)
+	if !synthesize && !isManager && submission.SubmissionType == models.InventorySubmissionTypeReconcile {
+		hasSnapshots, snapErr := s.snapshotRepo.ExistsForSubmission(ctx, submission.ID)
+		if snapErr != nil {
+			return nil, fmt.Errorf("failed to check reconciliation snapshots for submission %d: %w", submission.ID, snapErr)
+		}
+		synthesize = hasSnapshots
+	}
+
+	var rawItems []dto.QuantityItem
+	var syn *dto.SynthesizedReconcile
+	if synthesize {
+		// reconItemRowsForCaller folds all sessions for a manager, own-only for staff.
+		rows, rowsErr := s.reconItemRowsForCaller(ctx, submission.ID)
+		if rowsErr != nil {
+			return nil, rowsErr
+		}
+		syn, err = s.synthesizeFromRows(ctx, submission.InventoryID, submission.ID, rows)
+		if err != nil {
+			return nil, fmt.Errorf("failed to synthesize reconcile submission %d: %w", submission.ID, err)
+		}
+		rawItems = syn.Request.Items
+	} else {
+		var genericPayload struct {
+			Items []dto.QuantityItem `json:"items"`
+		}
+		if err := json.Unmarshal(submission.Payload, &genericPayload); err == nil {
+			rawItems = genericPayload.Items
+		}
+	}
+
+	inventoryItems, err := s.inventoryItemRepo.GetByIDs(ctx, models.GetIDs(rawItems))
+	if err != nil {
+		return nil, fmt.Errorf("failed to get inventory items: %w", err)
+	}
+	inventoryItemMap := s.buildItemMap(inventoryItems)
+
+	resp, err := s.buildSubmissionResponse(*submission, rawItems, inventoryItemMap, syn)
+	if err != nil {
+		return nil, err
+	}
+	return &resp, nil
+}
+
+// reconItemRowsForCaller returns the reconcile child rows visible to the caller,
+// mirroring ListReconciliationItems: recon_manage sees all sessions; every other
+// caller sees only their own, so synthesized per-session provenance stays scoped.
+func (s *inventoryService) reconItemRowsForCaller(ctx context.Context, submissionID uint) ([]models.ReconciliationRequestItem, error) {
+	if pkg.HasPermission(ctx, pkg.RBACResourceInventorySubmissions, pkg.RBACActionReconManage) {
+		rows, err := s.reconItemRepo.ListBySubmission(ctx, submissionID)
+		if err != nil {
+			return nil, fmt.Errorf("failed to list reconciliation items: %w", err)
+		}
+		return rows, nil
+	}
+	callerEmail, err := pkg.GetUserEmailFromContext(ctx)
+	if err != nil {
+		return nil, pkg.ErrUnauthorized("user not authenticated", err)
+	}
+	rows, err := s.reconItemRepo.ListBySubmissionAndCreator(ctx, submissionID, callerEmail)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list reconciliation items: %w", err)
+	}
+	return rows, nil
 }
 
 // ListActiveReconciliations returns the cross-inventory active reconcile queue,
