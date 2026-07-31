@@ -26,7 +26,7 @@ N/A
 
 - **Human ping handle:** GitHub `@nguyen0096` + Telegram (via tg-notify).
 
-- **tg-notify:** `~/Desktop/nexus/nexus-infra/app/tg-notify` — `.venv/bin/python main.py send "…"` · `… state move <id> <STATE> --note "…" [--ping]` · `… state delete <id>` (remove a task entirely); state file `data/workflow.yaml`; monitor http://localhost:8787 (**human runs it**).
+- **tg-notify**: only use to send Telegram message notification. No need to update dashboard data (the yaml file)
 
 ## Agent Defintion
 
