@@ -236,6 +236,12 @@ func (e *BatchError) AddLocation(location string, message string) {
 	e.Locations = append(e.Locations, BatchErrorLocation{Location: location, Message: message})
 }
 
+// NewRowLocation builds the single row-error shape shared by BatchError.Locations
+// and the tool responses that report rejected rows outside an error envelope.
+func NewRowLocation(row int, message string) BatchErrorLocation {
+	return BatchErrorLocation{Row: row, Location: fmt.Sprintf("row:%d", row), Message: message}
+}
+
 // BatchError represents a batch error with code, message, cause, and locations.
 // This error is usually used by data import to return multiple errors in a single error.
 type BatchError struct {
@@ -244,6 +250,8 @@ type BatchError struct {
 }
 
 type BatchErrorLocation struct {
+	// Row is the 1-based spreadsheet row, omitted when the location is not row-based.
+	Row      int    `json:"row,omitempty"`
 	Location string `json:"location"`
 	Message  string `json:"message"`
 }

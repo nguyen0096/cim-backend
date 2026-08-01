@@ -25,6 +25,11 @@ type ProductRepository interface {
 	Count(ctx context.Context, status, productType string, supplierID uint) (int64, error)
 	CountSearch(ctx context.Context, query string, status, productType string, supplierID uint) (int64, error)
 	AnyProductUsingUnitID(ctx context.Context, unitID uint) (bool, error)
+	// GetByUpperNamesUnscoped matches products case-insensitively on the exact
+	// trimmed name, diacritic-sensitively, and includes soft-deleted rows so the
+	// caller can report a deleted name instead of creating a duplicate. GetByNames
+	// is byte-exact and cannot serve this.
+	GetByUpperNamesUnscoped(ctx context.Context, upperNames []string) ([]models.Product, error)
 
 	// v1 - AGENTS MUST CONFIRM BEFORE MODIFYING SECTION BELOW THIS LINE
 	List(ctx context.Context, limit, offset int, sortBy, sortOrder, status, productType string, supplierID uint) ([]models.Product, error)
@@ -82,6 +87,21 @@ func (r *productRepository) GetByNames(ctx context.Context, names []string) ([]m
 	products := []models.Product{}
 	if err := r.db.WithContext(ctx).Where("name IN ?", names).Find(&products).Error; err != nil {
 		return nil, err
+	}
+	return products, nil
+}
+
+func (r *productRepository) GetByUpperNamesUnscoped(ctx context.Context, upperNames []string) ([]models.Product, error) {
+	if len(upperNames) == 0 {
+		return nil, nil
+	}
+	products := []models.Product{}
+	if err := r.DB(ctx).WithContext(ctx).
+		Unscoped().
+		Preload("Unit").
+		Where("UPPER(TRIM(name)) IN ?", upperNames).
+		Find(&products).Error; err != nil {
+		return nil, fmt.Errorf("failed to look up products by name: %w", err)
 	}
 	return products, nil
 }

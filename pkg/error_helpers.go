@@ -50,19 +50,19 @@ const (
 
 	// Reconciliation Request Item Error Keys
 
-	ErrKeyReconItemNotFound                 = "recon_item_not_found"
-	ErrKeyReconParentNotFound               = "recon_parent_not_found"
-	ErrKeyReconParentNotInitiated           = "recon_parent_not_initiated"
-	ErrKeyReconParentNotInFlight            = "recon_parent_not_in_flight"
-	ErrKeyReconItemMissingQuantity          = "recon_item_missing_quantity"
-	ErrKeyReconItemNotOwned                 = "recon_item_not_owned"
-	ErrKeyReconItemNotInParent              = "recon_item_not_in_parent"
-	ErrKeyReconItemImmutable                = "recon_item_immutable"
-	ErrKeyReconItemCannotDeleteStatus       = "recon_item_cannot_delete_status"
-	ErrKeyReconItemInvalidTransition        = "recon_item_invalid_transition"
-	ErrKeyReconItemNoSnapshotBaseline       = "recon_item_no_snapshot_baseline"
-	ErrKeyReconItemNegativeQuantity         = "recon_item_negative_quantity"
-	ErrKeyReconItemDuplicateLine            = "recon_item_duplicate_line"
+	ErrKeyReconItemNotFound           = "recon_item_not_found"
+	ErrKeyReconParentNotFound         = "recon_parent_not_found"
+	ErrKeyReconParentNotInitiated     = "recon_parent_not_initiated"
+	ErrKeyReconParentNotInFlight      = "recon_parent_not_in_flight"
+	ErrKeyReconItemMissingQuantity    = "recon_item_missing_quantity"
+	ErrKeyReconItemNotOwned           = "recon_item_not_owned"
+	ErrKeyReconItemNotInParent        = "recon_item_not_in_parent"
+	ErrKeyReconItemImmutable          = "recon_item_immutable"
+	ErrKeyReconItemCannotDeleteStatus = "recon_item_cannot_delete_status"
+	ErrKeyReconItemInvalidTransition  = "recon_item_invalid_transition"
+	ErrKeyReconItemNoSnapshotBaseline = "recon_item_no_snapshot_baseline"
+	ErrKeyReconItemNegativeQuantity   = "recon_item_negative_quantity"
+	ErrKeyReconItemDuplicateLine      = "recon_item_duplicate_line"
 
 	// Per-count label keys
 
@@ -129,6 +129,47 @@ const (
 
 	// Unit Error Keys
 	ErrKeyUnitConversionAlreadyExists = "unit_conversion_already_exists"
+
+	// Initial Stock Import Error Keys (request level)
+
+	ErrKeyInitialStockFileRequired       = "initial_stock_file_required"
+	ErrKeyInitialStockInvalidFileType    = "initial_stock_invalid_file_type"
+	ErrKeyInitialStockFileTooLarge       = "initial_stock_file_too_large"
+	ErrKeyInitialStockEmptyFile          = "initial_stock_empty_file"
+	ErrKeyInitialStockInvalidDryRun      = "initial_stock_invalid_dry_run"
+	ErrKeyInitialStockInventoryRequired  = "initial_stock_inventory_required"
+	ErrKeyInitialStockSheetNameRequired  = "initial_stock_sheet_name_required"
+	ErrKeyInitialStockSheetNotFound      = "initial_stock_sheet_not_found"
+	ErrKeyInitialStockHeaderMismatch     = "initial_stock_header_mismatch"
+	ErrKeyInitialStockNoDataRows         = "initial_stock_no_data_rows"
+	ErrKeyInitialStockParseFailed        = "initial_stock_parse_failed"
+	ErrKeyInitialStockInventoryNotFound  = "initial_stock_inventory_not_found"
+	ErrKeyInitialStockAlreadyImported    = "initial_stock_already_imported"
+	ErrKeyInitialStockReconcileOpen      = "initial_stock_reconcile_open"
+	ErrKeyInitialStockKeyPayloadMismatch = "initial_stock_key_payload_mismatch"
+	ErrKeyInitialStockKeyTooLong         = "initial_stock_key_too_long"
+
+	// Initial Stock Import row-level keys. Always rendered Vietnamese: BatchError
+	// never localizes Locations, and the frontend owns only the row label.
+
+	ErrKeyInitialStockRowNameRequired       = "initial_stock_row_name_required"
+	ErrKeyInitialStockRowDuplicateName      = "initial_stock_row_duplicate_name"
+	ErrKeyInitialStockRowQuantityInvalid    = "initial_stock_row_quantity_invalid"
+	ErrKeyInitialStockRowQuantityNegative   = "initial_stock_row_quantity_negative"
+	ErrKeyInitialStockRowQuantityScale      = "initial_stock_row_quantity_scale"
+	ErrKeyInitialStockRowUnitRequired       = "initial_stock_row_unit_required"
+	ErrKeyInitialStockRowUnitMismatch       = "initial_stock_row_unit_mismatch"
+	ErrKeyInitialStockRowUnitSoftDeleted    = "initial_stock_row_unit_soft_deleted"
+	ErrKeyInitialStockRowUnitAmbiguous      = "initial_stock_row_unit_ambiguous"
+	ErrKeyInitialStockRowProductAmbiguous   = "initial_stock_row_product_ambiguous"
+	ErrKeyInitialStockRowProductDeleted     = "initial_stock_row_product_deleted"
+	ErrKeyInitialStockRowItemSoftDeleted    = "initial_stock_row_item_soft_deleted"
+	ErrKeyInitialStockRowItemInactive       = "initial_stock_row_item_inactive"
+	ErrKeyInitialStockRowProductTypeTooLong = "initial_stock_row_product_type_too_long"
+	ErrKeyInitialStockRowNameTooLong        = "initial_stock_row_name_too_long"
+	ErrKeyInitialStockRowUnitTooLong        = "initial_stock_row_unit_too_long"
+	ErrKeyInitialStockRowQuantityTooLarge   = "initial_stock_row_quantity_too_large"
+	ErrKeyInitialStockRowResultTooLarge     = "initial_stock_row_result_too_large"
 
 	// Selling Price Error Keys
 
@@ -489,6 +530,176 @@ var ErrorMessages = map[string]ErrorMessage{
 		EN: "cannot delete: no previous selling price to take over the vacated window",
 		VI: "không thể xóa: không có giá bán trước đó để thay thế cho khoảng thời gian bị bỏ trống",
 	},
+
+	// Initial Stock Import Errors (request level)
+
+	ErrKeyInitialStockFileRequired: {
+		EN: "A file is required",
+		VI: "Vui lòng chọn file",
+	},
+	ErrKeyInitialStockInvalidFileType: {
+		EN: "File must be an .xlsx file",
+		VI: "File phải có định dạng .xlsx",
+	},
+	ErrKeyInitialStockFileTooLarge: {
+		EN: "File is too large, the maximum size is %d MB",
+		VI: "File quá lớn, kích thước tối đa là %d MB",
+	},
+	ErrKeyInitialStockEmptyFile: {
+		EN: "The uploaded file is empty",
+		VI: "File tải lên rỗng",
+	},
+	ErrKeyInitialStockInvalidDryRun: {
+		EN: `dry_run is required and must be exactly "true" or "false"`,
+		VI: `dry_run là bắt buộc và phải là "true" hoặc "false"`,
+	},
+	ErrKeyInitialStockInventoryRequired: {
+		EN: "inventory_id is required",
+		VI: "inventory_id là bắt buộc",
+	},
+	ErrKeyInitialStockSheetNameRequired: {
+		EN: "sheet_name is required",
+		VI: "sheet_name là bắt buộc",
+	},
+	ErrKeyInitialStockSheetNotFound: {
+		EN: "Sheet %q was not found in the uploaded file",
+		VI: "Không tìm thấy sheet %q trong file đã tải lên",
+	},
+	ErrKeyInitialStockHeaderMismatch: {
+		EN: "Sheet %q does not have the expected header on row 3 (STT / TÊN / ĐVT / SỐ LƯỢNG)",
+		VI: "Sheet %q không có đúng tiêu đề ở dòng 3 (STT / TÊN / ĐVT / SỐ LƯỢNG)",
+	},
+	ErrKeyInitialStockNoDataRows: {
+		EN: "Sheet %q contains no data rows",
+		VI: "Sheet %q không có dòng dữ liệu nào",
+	},
+	ErrKeyInitialStockParseFailed: {
+		EN: "The uploaded file could not be read as an .xlsx workbook",
+		VI: "Không thể đọc file tải lên dưới dạng workbook .xlsx",
+	},
+	ErrKeyInitialStockInventoryNotFound: {
+		EN: "Inventory %d was not found or is not active",
+		VI: "Không tìm thấy kho %d hoặc kho không hoạt động",
+	},
+	ErrKeyInitialStockAlreadyImported: {
+		EN: "Initial stock has already been loaded into inventory %d",
+		VI: "Kho %d đã được nạp tồn kho ban đầu",
+	},
+	ErrKeyInitialStockReconcileOpen: {
+		EN: "Inventory %d has a reconciliation in progress. Process or cancel it before loading initial stock",
+		VI: "Kho %d đang có phiên kiểm kê. Vui lòng xử lý hoặc hủy phiên kiểm kê trước khi nạp tồn kho ban đầu",
+	},
+	ErrKeyInitialStockKeyPayloadMismatch: {
+		EN: "This Idempotency-Key was already used for a different file or sheet",
+		VI: "Idempotency-Key này đã được dùng cho file hoặc sheet khác",
+	},
+	ErrKeyInitialStockKeyTooLong: {
+		EN: "Idempotency-Key is longer than %d characters",
+		VI: "Idempotency-Key dài hơn %d ký tự",
+	},
+
+	// Initial Stock Import Errors (row level)
+
+	ErrKeyInitialStockRowNameRequired: {
+		EN: "Product name is empty",
+		VI: "Tên sản phẩm để trống",
+	},
+	ErrKeyInitialStockRowDuplicateName: {
+		EN: "Product name %q appears more than once in this sheet",
+		VI: "Tên sản phẩm %q xuất hiện nhiều lần trong sheet này",
+	},
+	ErrKeyInitialStockRowQuantityInvalid: {
+		EN: "Quantity %q is not a number",
+		VI: "Số lượng %q không phải là số",
+	},
+	ErrKeyInitialStockRowQuantityNegative: {
+		EN: "Quantity %s must not be negative",
+		VI: "Số lượng %s không được âm",
+	},
+	ErrKeyInitialStockRowQuantityScale: {
+		EN: "Quantity has %d decimal places, more than the allowed %d",
+		VI: "Số lượng có %d chữ số thập phân, nhiều hơn mức cho phép %d",
+	},
+	ErrKeyInitialStockRowUnitRequired: {
+		EN: "Unit is empty",
+		VI: "Đơn vị để trống",
+	},
+	ErrKeyInitialStockRowUnitMismatch: {
+		EN: "Sheet unit %q does not match the unit %q already used for this product",
+		VI: "Đơn vị %q trong sheet không khớp với đơn vị %q đang dùng cho sản phẩm này",
+	},
+	ErrKeyInitialStockRowUnitAmbiguous: {
+		EN: "Unit %q matches %d existing units",
+		VI: "Đơn vị %q khớp với %d đơn vị đang tồn tại",
+	},
+	ErrKeyInitialStockRowUnitSoftDeleted: {
+		EN: "Unit %q exists but has been deleted (unit id %d); restore it before loading",
+		VI: "Đơn vị %q đã tồn tại nhưng đã bị xóa (đơn vị id %d); vui lòng phục hồi trước khi nạp",
+	},
+	ErrKeyInitialStockRowProductAmbiguous: {
+		EN: "Product name %q matches %d existing products",
+		VI: "Tên sản phẩm %q khớp với %d sản phẩm đang tồn tại",
+	},
+	ErrKeyInitialStockRowProductDeleted: {
+		EN: "Product %q exists but has been deleted (product id %d); restore it before loading",
+		VI: "Sản phẩm %q đã tồn tại nhưng đã bị xóa (sản phẩm id %d); vui lòng phục hồi trước khi nạp",
+	},
+	ErrKeyInitialStockRowItemSoftDeleted: {
+		EN: "This product's inventory item has been deleted (inventory item id %d); restore it before loading",
+		VI: "Mục tồn kho của sản phẩm này đã bị xóa (mục tồn kho id %d); vui lòng phục hồi trước khi nạp",
+	},
+	ErrKeyInitialStockRowItemInactive: {
+		EN: "This product's inventory item is inactive (inventory item id %d); activate it before loading",
+		VI: "Mục tồn kho của sản phẩm này đang không hoạt động (mục tồn kho id %d); vui lòng kích hoạt trước khi nạp",
+	},
+	ErrKeyInitialStockRowProductTypeTooLong: {
+		EN: "Product type %q is longer than 20 characters",
+		VI: "Loại sản phẩm %q dài hơn 20 ký tự",
+	},
+	ErrKeyInitialStockRowNameTooLong: {
+		EN: "Product name is %d characters, longer than the allowed %d",
+		VI: "Tên sản phẩm dài %d ký tự, vượt quá mức cho phép %d",
+	},
+	ErrKeyInitialStockRowUnitTooLong: {
+		EN: "Unit %q is %d characters, longer than the allowed %d",
+		VI: "Đơn vị %q dài %d ký tự, vượt quá mức cho phép %d",
+	},
+	ErrKeyInitialStockRowQuantityTooLarge: {
+		EN: "Quantity %s is too large; at most %d digits before the decimal point are allowed",
+		VI: "Số lượng %s quá lớn; chỉ cho phép tối đa %d chữ số trước dấu thập phân",
+	},
+	ErrKeyInitialStockRowResultTooLarge: {
+		EN: "Adding %s to the current on-hand %s exceeds the maximum storable quantity",
+		VI: "Cộng %s vào tồn kho hiện tại %s sẽ vượt quá số lượng tối đa có thể lưu",
+	},
+}
+
+// RowMessage renders a row-level import message in Vietnamese regardless of the
+// request language: BatchError.MarshalJSON emits Locations verbatim, and the
+// frontend localizes only the row label, not the reason.
+func RowMessage(key string, args ...interface{}) string {
+	tmpl := GetErrorMessageByLang(key, LangVI)
+	if tmpl == "" {
+		return key
+	}
+	if len(args) == 0 {
+		return tmpl
+	}
+	return fmt.Sprintf(tmpl, args...)
+}
+
+// ErrInitialStock builds a keyed AppError for the initial-stock tool. Every
+// request-level failure carries a MessageKey so the frontend can branch on it
+// without parsing prose; Message is the English fallback.
+func ErrInitialStock(code ErrorCode, key string, args ...interface{}) *AppError {
+	fallback := GetErrorMessageByLang(key, LangEN)
+	if len(args) > 0 {
+		fallback = fmt.Sprintf(fallback, args...)
+	}
+	err := NewAppError(code, fallback, nil)
+	err.MessageKey = key
+	err.MessageArgs = args
+	return err
 }
 
 // getErrorMessage returns the message for the given error key based on context language

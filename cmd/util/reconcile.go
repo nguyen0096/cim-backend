@@ -374,7 +374,8 @@ func parseSub(sub models.InventorySubmission) (parsedSub, error) {
 }
 
 // loadActiveItems loads the active inventory items (with FIFO-ordered consumable
-// purchase txns) for the unique item ids referenced across the submissions.
+// stock layers, which may be purchases, transfers-in, reconcile stock-ups or
+// opening-stock loads) for the unique item ids referenced across the submissions.
 func loadActiveItems(ctx context.Context, db *gorm.DB, inventoryID uint, itemIDs []uint) (map[uint]*models.InventoryItem, error) {
 	var items []*models.InventoryItem
 	err := db.WithContext(ctx).
@@ -526,7 +527,7 @@ func resolveItem(in itemInput) (startStock decimal.Decimal, steps []correctedSte
 			k := rangeIndexFor(recs, p.createdAt)
 			if k < 0 {
 				return decimal.Zero, nil, nil, nil, nil, nil, fmt.Errorf(
-					"item %d purchase txn %d (created_at %s) did not map to any range", in.itemID, p.txnID, p.createdAt.Format(time.RFC3339))
+					"item %d stock layer txn %d (created_at %s) did not map to any range", in.itemID, p.txnID, p.createdAt.Format(time.RFC3339))
 			}
 			rangePurchases[k] = rangePurchases[k].Add(p.quantity)
 		}
@@ -792,7 +793,7 @@ func computeResolution(ctx context.Context, db *gorm.DB, inventoryID uint, recon
 			}
 			if p.consumedQuantity.GreaterThan(decimal.Zero) {
 				return nil, fmt.Errorf(
-					"assumption failed: item %d purchase txn %d already has consumed_quantity %s > 0; this one-off assumes an unconsumed ledger",
+					"assumption failed: item %d stock layer txn %d already has consumed_quantity %s > 0; this one-off assumes an unconsumed ledger",
 					id, p.txnID, p.consumedQuantity.String())
 			}
 		}

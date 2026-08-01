@@ -100,6 +100,123 @@ definitions:
     - inventory_id
     - items
     type: object
+  dto.InitialStockBlocking:
+    properties:
+      key:
+        type: string
+      message:
+        type: string
+    type: object
+  dto.InitialStockImportResponse:
+    properties:
+      blocking:
+        items:
+          $ref: '#/definitions/dto.InitialStockBlocking'
+        type: array
+      dry_run:
+        type: boolean
+      errors:
+        items:
+          $ref: '#/definitions/pkg.BatchErrorLocation'
+        type: array
+      inventory_id:
+        type: integer
+      items_created:
+        type: integer
+      products_created:
+        type: integer
+      products_matched:
+        type: integer
+      rows:
+        items:
+          $ref: '#/definitions/dto.InitialStockImportRow'
+        type: array
+      rows_failed:
+        type: integer
+      rows_ok:
+        description: |-
+          Operator-facing detail the client does not render.
+          RowsOnItemsWithExistingStock is the additive-load guard: a non-zero count on a
+          sheet the operator believes to be a first load means the on-hand is already
+          there and the load would double it.
+        type: integer
+      rows_on_items_with_existing_stock:
+        type: integer
+      rows_processed:
+        description: Read by the client.
+        type: integer
+      rows_skipped:
+        type: integer
+      sheet_name:
+        type: string
+      total_quantity:
+        type: string
+      transactions_created:
+        type: integer
+      units_created:
+        type: integer
+    type: object
+  dto.InitialStockImportRow:
+    properties:
+      actions:
+        items:
+          type: string
+        type: array
+      current_quantity:
+        type: string
+      name:
+        type: string
+      product_id:
+        type: integer
+      product_type:
+        type: string
+      quantity:
+        type: string
+      resulting_quantity:
+        type: string
+      row:
+        type: integer
+      unit:
+        type: string
+      unit_decimal_places:
+        type: integer
+    type: object
+  dto.InitialStockInventoriesResponse:
+    properties:
+      data:
+        items:
+          $ref: '#/definitions/dto.InitialStockInventoryOption'
+        type: array
+    type: object
+  dto.InitialStockInventoryOption:
+    properties:
+      id:
+        type: integer
+      location:
+        type: string
+      name:
+        type: string
+      status:
+        type: string
+    type: object
+  dto.InitialStockSheetInfo:
+    properties:
+      data_row_count:
+        type: integer
+      has_expected_header:
+        type: boolean
+      name:
+        type: string
+      reason:
+        type: string
+    type: object
+  dto.InitialStockSheetsResponse:
+    properties:
+      sheets:
+        items:
+          $ref: '#/definitions/dto.InitialStockSheetInfo'
+        type: array
+    type: object
   dto.LastPurchasePriceMap:
     additionalProperties:
       additionalProperties:
@@ -859,6 +976,7 @@ definitions:
     - transfer_out
     - transfer_in
     - reconcile_stock_up
+    - initial
     type: string
     x-enum-varnames:
     - InventoryTransactionTypePurchase
@@ -867,6 +985,7 @@ definitions:
     - InventoryTransactionTypeTransferOut
     - InventoryTransactionTypeTransferIn
     - InventoryTransactionTypeReconcileStockUp
+    - InventoryTransactionTypeInitial
   models.Menu:
     properties:
       created_at:
@@ -1522,6 +1641,10 @@ definitions:
         type: string
       message:
         type: string
+      row:
+        description: Row is the 1-based spreadsheet row, omitted when the location
+          is not row-based.
+        type: integer
     type: object
   pkg.ErrorCode:
     enum:
@@ -5255,6 +5378,125 @@ paths:
       summary: Update supplier status
       tags:
       - suppliers
+  /tools/initial-stock/import:
+    post:
+      consumes:
+      - multipart/form-data
+      description: Developer-only. dry_run=true previews and writes nothing; dry_run=false
+        applies in one transaction. Send Idempotency-Key on apply only; a committed
+        key replays the original result.
+      parameters:
+      - description: Apply-only idempotency key
+        in: header
+        name: Idempotency-Key
+        type: string
+      - description: .xlsx workbook
+        in: formData
+        name: file
+        required: true
+        type: file
+      - description: Target inventory
+        in: formData
+        name: inventory_id
+        required: true
+        type: integer
+      - description: Byte-exact sheet name from the sheet listing
+        in: formData
+        name: sheet_name
+        required: true
+        type: string
+      - description: Exactly \
+        in: formData
+        name: dry_run
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.InitialStockImportResponse'
+        "400":
+          description: Bad request or per-row validation errors
+          schema:
+            additionalProperties: true
+            type: object
+        "403":
+          description: Forbidden
+          schema:
+            additionalProperties: true
+            type: object
+        "404":
+          description: Unknown inventory
+          schema:
+            additionalProperties: true
+            type: object
+        "409":
+          description: Already imported, reconcile open, or key reuse
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Load pre-app opening stock from a workbook
+      tags:
+      - tools
+  /tools/initial-stock/sheets:
+    post:
+      consumes:
+      - multipart/form-data
+      description: Returns every sheet with its header verdict and data row count
+        so the client needs no spreadsheet parser.
+      parameters:
+      - description: .xlsx workbook
+        in: formData
+        name: file
+        required: true
+        type: file
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.InitialStockSheetsResponse'
+        "400":
+          description: Bad request
+          schema:
+            additionalProperties: true
+            type: object
+        "403":
+          description: Forbidden
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: List the worksheets of an initial-stock workbook
+      tags:
+      - tools
+  /tools/inventories:
+    get:
+      description: 'Developer-only picker source: active, non-deleted inventories.
+        An empty list is a success.'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.InitialStockInventoriesResponse'
+        "403":
+          description: Forbidden
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - BearerAuth: []
+      summary: List inventories for the initial-stock tool
+      tags:
+      - tools
   /units:
     get:
       consumes:

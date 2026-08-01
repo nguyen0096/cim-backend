@@ -370,7 +370,7 @@ func (r *purchaseOrderRepository) ReceiveInventory(ctx context.Context, req dto.
 					fmt.Sprintf("received quantity must not be negative for purchase order item %d", reqItem.ID), nil)
 			}
 
-			receivedQuantityDecimalPlaces := getDecimalPlaces(reqItem.ReceivedQuantity)
+			receivedQuantityDecimalPlaces := pkg.DecimalPlaces(reqItem.ReceivedQuantity)
 			if receivedQuantityDecimalPlaces > poi.ProductUnit.DecimalPlaces {
 				return pkg.ErrQuantityHavingMoreDecimalPlacesThanProductUnit(ctx,
 					receivedQuantityDecimalPlaces, poi.ProductUnit.DecimalPlaces, poi.ProductUnit.Name)
@@ -781,18 +781,4 @@ func (r *purchaseOrderRepository) findAllUnitsWithRootBaseUnit(ctx context.Conte
 	}
 
 	return allUnits, nil
-}
-
-// getDecimalPlaces returns the number of decimal places in a decimal.Decimal
-// This counts the actual significant decimal places (e.g., "100.11" has 2, "100.00" has 0)
-func getDecimalPlaces(d decimal.Decimal) int {
-	// Convert to string and count decimal places
-	// The String() method will show the actual decimal places without trailing zeros
-	str := d.String()
-	parts := strings.Split(str, ".")
-	if len(parts) == 1 {
-		return 0
-	}
-	// Count actual decimal places (trailing zeros are already removed by String())
-	return len(parts[1])
 }

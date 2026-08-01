@@ -5527,6 +5527,181 @@ const docTemplate = `{
                 }
             }
         },
+        "/tools/initial-stock/import": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Developer-only. dry_run=true previews and writes nothing; dry_run=false applies in one transaction. Send Idempotency-Key on apply only; a committed key replays the original result.",
+                "consumes": [
+                    "multipart/form-data"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "tools"
+                ],
+                "summary": "Load pre-app opening stock from a workbook",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Apply-only idempotency key",
+                        "name": "Idempotency-Key",
+                        "in": "header"
+                    },
+                    {
+                        "type": "file",
+                        "description": ".xlsx workbook",
+                        "name": "file",
+                        "in": "formData",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Target inventory",
+                        "name": "inventory_id",
+                        "in": "formData",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Byte-exact sheet name from the sheet listing",
+                        "name": "sheet_name",
+                        "in": "formData",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Exactly \\",
+                        "name": "dry_run",
+                        "in": "formData",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/dto.InitialStockImportResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad request or per-row validation errors",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "404": {
+                        "description": "Unknown inventory",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "409": {
+                        "description": "Already imported, reconcile open, or key reuse",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
+        "/tools/initial-stock/sheets": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Returns every sheet with its header verdict and data row count so the client needs no spreadsheet parser.",
+                "consumes": [
+                    "multipart/form-data"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "tools"
+                ],
+                "summary": "List the worksheets of an initial-stock workbook",
+                "parameters": [
+                    {
+                        "type": "file",
+                        "description": ".xlsx workbook",
+                        "name": "file",
+                        "in": "formData",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/dto.InitialStockSheetsResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
+        "/tools/inventories": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Developer-only picker source: active, non-deleted inventories. An empty list is a success.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "tools"
+                ],
+                "summary": "List inventories for the initial-stock tool",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/dto.InitialStockInventoriesResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
         "/units": {
             "get": {
                 "security": [
@@ -6255,6 +6430,178 @@ const docTemplate = `{
                     "minItems": 1,
                     "items": {
                         "$ref": "#/definitions/dto.QuantityItem"
+                    }
+                }
+            }
+        },
+        "dto.InitialStockBlocking": {
+            "type": "object",
+            "properties": {
+                "key": {
+                    "type": "string"
+                },
+                "message": {
+                    "type": "string"
+                }
+            }
+        },
+        "dto.InitialStockImportResponse": {
+            "type": "object",
+            "properties": {
+                "blocking": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/dto.InitialStockBlocking"
+                    }
+                },
+                "dry_run": {
+                    "type": "boolean"
+                },
+                "errors": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/pkg.BatchErrorLocation"
+                    }
+                },
+                "inventory_id": {
+                    "type": "integer"
+                },
+                "items_created": {
+                    "type": "integer"
+                },
+                "products_created": {
+                    "type": "integer"
+                },
+                "products_matched": {
+                    "type": "integer"
+                },
+                "rows": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/dto.InitialStockImportRow"
+                    }
+                },
+                "rows_failed": {
+                    "type": "integer"
+                },
+                "rows_ok": {
+                    "description": "Operator-facing detail the client does not render.\nRowsOnItemsWithExistingStock is the additive-load guard: a non-zero count on a\nsheet the operator believes to be a first load means the on-hand is already\nthere and the load would double it.",
+                    "type": "integer"
+                },
+                "rows_on_items_with_existing_stock": {
+                    "type": "integer"
+                },
+                "rows_processed": {
+                    "description": "Read by the client.",
+                    "type": "integer"
+                },
+                "rows_skipped": {
+                    "type": "integer"
+                },
+                "sheet_name": {
+                    "type": "string"
+                },
+                "total_quantity": {
+                    "type": "string"
+                },
+                "transactions_created": {
+                    "type": "integer"
+                },
+                "units_created": {
+                    "type": "integer"
+                }
+            }
+        },
+        "dto.InitialStockImportRow": {
+            "type": "object",
+            "properties": {
+                "actions": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "current_quantity": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "product_id": {
+                    "type": "integer"
+                },
+                "product_type": {
+                    "type": "string"
+                },
+                "quantity": {
+                    "type": "string"
+                },
+                "resulting_quantity": {
+                    "type": "string"
+                },
+                "row": {
+                    "type": "integer"
+                },
+                "unit": {
+                    "type": "string"
+                },
+                "unit_decimal_places": {
+                    "type": "integer"
+                }
+            }
+        },
+        "dto.InitialStockInventoriesResponse": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/dto.InitialStockInventoryOption"
+                    }
+                }
+            }
+        },
+        "dto.InitialStockInventoryOption": {
+            "type": "object",
+            "properties": {
+                "id": {
+                    "type": "integer"
+                },
+                "location": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                }
+            }
+        },
+        "dto.InitialStockSheetInfo": {
+            "type": "object",
+            "properties": {
+                "data_row_count": {
+                    "type": "integer"
+                },
+                "has_expected_header": {
+                    "type": "boolean"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "reason": {
+                    "type": "string"
+                }
+            }
+        },
+        "dto.InitialStockSheetsResponse": {
+            "type": "object",
+            "properties": {
+                "sheets": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/dto.InitialStockSheetInfo"
                     }
                 }
             }
@@ -7343,7 +7690,8 @@ const docTemplate = `{
                 "sell",
                 "transfer_out",
                 "transfer_in",
-                "reconcile_stock_up"
+                "reconcile_stock_up",
+                "initial"
             ],
             "x-enum-varnames": [
                 "InventoryTransactionTypePurchase",
@@ -7351,7 +7699,8 @@ const docTemplate = `{
                 "InventoryTransactionTypeSell",
                 "InventoryTransactionTypeTransferOut",
                 "InventoryTransactionTypeTransferIn",
-                "InventoryTransactionTypeReconcileStockUp"
+                "InventoryTransactionTypeReconcileStockUp",
+                "InventoryTransactionTypeInitial"
             ]
         },
         "models.Menu": {
@@ -8290,6 +8639,10 @@ const docTemplate = `{
                 },
                 "message": {
                     "type": "string"
+                },
+                "row": {
+                    "description": "Row is the 1-based spreadsheet row, omitted when the location is not row-based.",
+                    "type": "integer"
                 }
             }
         },

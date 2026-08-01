@@ -20,6 +20,12 @@ const (
 // (source-view report row + in/out export row + timeline).
 const AdjustmentCategoryLabel = "Điều chỉnh do kiểm kê sai"
 
+// OpeningStockCategoryLabel is the VI display for the pre-app opening-stock
+// category (source-view report row + in/out export row). Deliberately distinct from
+// AdjustmentCategoryLabel: opening stock was never a counting error, so labelling it
+// as one would misstate where the stock came from.
+const OpeningStockCategoryLabel = "Tồn đầu kỳ"
+
 // Report represents a generated report file,
 // contains metadata about the report.
 type Report struct {

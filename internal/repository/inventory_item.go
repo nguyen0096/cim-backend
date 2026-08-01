@@ -97,6 +97,11 @@ type InventoryItemRepository interface {
 	GetActiveInventoryItems(ctx context.Context, inventoryID uint, ids []uint) ([]*models.InventoryItem, error)
 	GetActiveInventoryItemsByProductIDs(ctx context.Context, inventoryID uint, productIDs []uint) ([]*models.InventoryItem, error)
 	GetByIDs(ctx context.Context, ids []uint) ([]*models.InventoryItem, error)
+	// GetByInventoryAndProductIDsUnscoped returns items for the inventory including
+	// inactive and soft-deleted rows, fully hydrated. idx_inventory_items_unique is
+	// not partial, so a soft-deleted or inactive row still occupies the key and must
+	// be visible to the caller rather than silently skipped.
+	GetByInventoryAndProductIDsUnscoped(ctx context.Context, inventoryID uint, productIDs []uint) ([]*models.InventoryItem, error)
 	Update(ctx context.Context, items []*models.InventoryItem, transactions []*models.InventoryTransaction) error
 	SaveInventoryItemChanges(ctx context.Context, items []*models.InventoryItemChange, transactions []*models.InventoryTransaction) error
 }
@@ -356,6 +361,27 @@ func (r *inventoryItemRepository) GetByIDs(ctx context.Context, ids []uint) ([]*
 		return nil, fmt.Errorf("failed to get inventory items by IDs: %w", err)
 	}
 
+	return items, nil
+}
+
+func (r *inventoryItemRepository) GetByInventoryAndProductIDsUnscoped(
+	ctx context.Context,
+	inventoryID uint,
+	productIDs []uint,
+) ([]*models.InventoryItem, error) {
+	if len(productIDs) == 0 {
+		return []*models.InventoryItem{}, nil
+	}
+	var items []*models.InventoryItem
+	err := r.DB(ctx).WithContext(ctx).
+		Unscoped().
+		Preload("Unit").
+		Where("inventory_id = ?", inventoryID).
+		Where("product_id IN ?", productIDs).
+		Find(&items).Error
+	if err != nil {
+		return nil, fmt.Errorf("failed to get inventory items by product IDs: %w", err)
+	}
 	return items, nil
 }
 

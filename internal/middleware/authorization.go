@@ -295,6 +295,28 @@ var customRouteMappings = []RouteMapping{
 		Resource:    "revenue-expenses",
 		Action:      "create",
 	},
+	// Developer tools. All three endpoints share one permission; without these
+	// mappings the derivation yields ("tools","view"/"create"), which no role holds,
+	// so the failure mode is fail-closed. developer-tools:view is not route-backed:
+	// it exists only to make the screen visible via GET /users/permissions.
+	{
+		Method:      "GET",
+		PathPattern: "/tools/inventories",
+		Resource:    "initial-stock-import",
+		Action:      "import",
+	},
+	{
+		Method:      "POST",
+		PathPattern: "/tools/initial-stock/sheets",
+		Resource:    "initial-stock-import",
+		Action:      "import",
+	},
+	{
+		Method:      "POST",
+		PathPattern: "/tools/initial-stock/import",
+		Resource:    "initial-stock-import",
+		Action:      "import",
+	},
 }
 
 // matchPathPattern checks if a path matches a pattern (supports * as wildcard for path segments)

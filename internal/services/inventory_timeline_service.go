@@ -199,6 +199,19 @@ func (s *inventoryTimelineService) GetInventoryTimeline(ctx context.Context, req
 
 		pd := dataByProduct[pid]
 
+		// An opening-stock load is invisible here: no row and no TotalAdjustment
+		// contribution. Its visibility is scoped to the in/out export and the monthly
+		// report, where it foots as its own `Tồn đầu kỳ` row family; the timeline has
+		// no per-category label, so a row here would be indistinguishable from a count
+		// correction and would fold opening stock into Tổng điều chỉnh. The stock
+		// aggregate still takes the delta so ending stock foots. Nothing in this file
+		// reads IsAdjustment, so this is not implied by that flag either way.
+		if txn.TransactionType == models.InventoryTransactionTypeInitial {
+			d, _ := txn.TransactionType.StockDelta(txn.Quantity).Float64()
+			pd.periodStockDelta += d
+			continue
+		}
+
 		// reconcile_stock_up surfaces as its own zero-cost "adjustment" row (no PO)
 		// and metric, and contributes to the stock aggregate so ending stock foots.
 		if txn.TransactionType == models.InventoryTransactionTypeReconcileStockUp {

@@ -263,8 +263,8 @@ func TestDispose_PostDatedFIFOSource_ErrorsAndWritesNothing(t *testing.T) {
 	if err == nil {
 		t.Fatalf("expected temporal-FIFO error, got nil")
 	}
-	// Error must name the post-dated source purchase txn id.
-	if want := fmt.Sprintf("purchase txn %d", postSrc); !strings.Contains(err.Error(), want) {
+	// Error must name the post-dated source stock layer txn id.
+	if want := fmt.Sprintf("stock layer txn %d", postSrc); !strings.Contains(err.Error(), want) {
 		t.Fatalf("error %q does not mention post-dated source %q", err.Error(), want)
 	}
 

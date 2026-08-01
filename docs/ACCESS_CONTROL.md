@@ -26,6 +26,39 @@ The access control system provides fine-grained permissions for different user r
 - **Permissions**: Read-only access
 - **Operations**: view only for all resources except prices
 
+### 4. Developer
+
+Standalone maintenance role. It is **not** derived from `admin` and does not imply it,
+so an account holding `developer` sees exactly one screen and can call only the
+developer tool endpoints. It holds exactly three permissions:
+
+| permission | purpose |
+|---|---|
+| `developer-tools:view` | Screen visibility only; not backed by any route. The frontend gates the sidebar entry and page guard on this string and nothing else. |
+| `initial-stock-import:import` | All three initial-stock tool endpoints (`GET /tools/inventories`, `POST /tools/initial-stock/sheets`, `POST /tools/initial-stock/import`). |
+| `permissions:view` | `GET /users/permissions`. Without it the account 403s on its first call and the UI renders a full-screen error panel, making the account unusable. |
+
+`inventories:view` is deliberately **not** granted: it maps to both the Inventory and
+Inventory Timeline screens in the frontend, which would give a standalone developer
+three sidebar entries. The tool supplies its own inventory list instead.
+
+Two operational notes:
+
+- **`g` rows and the DB role resolve two different things — do not conflate them.**
+  API *enforcement* passes the **`users.role` column** as the Casbin subject
+  (`internal/middleware/authorization.go`), so a `g, <uid>, <role>` row alone grants
+  no API access. But `GET /users/permissions` — the only thing the frontend gates
+  screens on — resolves by **Firebase UID against the `g` rows**
+  (`UserService.GetUserPermissions` → `CasbinService.GetUserPermissions(user.UID)` →
+  `GetRolesForUser`), so a `g` row *does* change what the UI shows. A UID with **no**
+  `g` row is opportunistically bound to its DB role in memory on first request
+  (`authorization.go:67-68`), and that sync fires **only** when the UID has zero `g`
+  rows — so adding an explicit `g` row suppresses it and replaces, rather than
+  extends, that account's payload. Change `g` rows and `users.role` together.
+- `rbac_policy.csv` is copied into the image at build time (`Dockerfile`) and loaded
+  once at boot with no reload path, so **new policy rows only take effect after a
+  redeploy**.
+
 ## Resources and Actions
 
 The system defines the following resources:
@@ -37,6 +70,8 @@ The system defines the following resources:
 - `excel` - Excel import/export operations
 - `settings` - System settings
 - `prices` - Pricing information and reports
+- `developer-tools` - Developer tool screen visibility
+- `initial-stock-import` - Opening-stock loader endpoints
 
 Actions available:
 

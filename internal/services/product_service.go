@@ -35,6 +35,8 @@ type ProductService interface {
 	ListProducts(ctx context.Context, limit, offset int, sortBy, sortOrder, status, productType string, supplierID uint) ([]models.Product, error)
 	GetMapByNames(ctx context.Context, names []string) (map[string]*models.Product, error)
 	ImportProductsFromCSV(ctx context.Context, csvReader io.Reader) (int, error)
+	// UpdateProductTypesInSettings merges the given types into the product_types setting.
+	UpdateProductTypesInSettings(ctx context.Context, newProductTypes []string) error
 	ImportProductsFromExcel(ctx context.Context, excelReader io.Reader) (int, error)
 	ExportProductsToCSV(ctx context.Context, writer io.Writer, status, productType string, supplierID uint) error
 	ExportProductsToExcel(ctx context.Context, writer io.Writer, status, productType string, supplierID uint) error
@@ -135,8 +137,8 @@ func (s *productService) CountSearchProducts(ctx context.Context, query string, 
 	return s.productRepo.CountSearch(ctx, query, status, productType, supplierID)
 }
 
-// updateProductTypesInSettings updates the product_types setting with new product types from import
-func (s *productService) updateProductTypesInSettings(ctx context.Context, newProductTypes []string) error {
+// UpdateProductTypesInSettings updates the product_types setting with new product types from import
+func (s *productService) UpdateProductTypesInSettings(ctx context.Context, newProductTypes []string) error {
 	if len(newProductTypes) == 0 {
 		return nil
 	}
@@ -463,7 +465,7 @@ func (s *productService) ImportProductsFromCSV(ctx context.Context, csvReader io
 	for _, productType := range productTypesMap {
 		productTypes = append(productTypes, productType)
 	}
-	if err := s.updateProductTypesInSettings(ctx, productTypes); err != nil {
+	if err := s.UpdateProductTypesInSettings(ctx, productTypes); err != nil {
 		// Log error but don't fail the import
 		// The import was successful, just the settings update failed
 		return createdCount, fmt.Errorf("import completed but failed to update product types in settings: %w", err)
@@ -765,7 +767,7 @@ func (s *productService) ImportProductsFromExcel(ctx context.Context, excelReade
 	for _, productType := range productTypesMap {
 		productTypes = append(productTypes, productType)
 	}
-	if err := s.updateProductTypesInSettings(ctx, productTypes); err != nil {
+	if err := s.UpdateProductTypesInSettings(ctx, productTypes); err != nil {
 		// Log error but don't fail the import
 		// The import was successful, just the settings update failed
 		return createdCount, fmt.Errorf("import completed but failed to update product types in settings: %w", err)

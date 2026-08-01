@@ -389,6 +389,12 @@ func (f *TxnReportFormatter) writeDataRows(file *excelize.File, items []*models.
 	for _, item := range items {
 		// Check if this is source transaction view
 		if item.SourceTransaction != nil {
+			// An unlabelled source type (an opening-stock load, or a type added later)
+			// is omitted entirely: a blank-labelled zero-price row would be a worse
+			// leak than no row, and reserving one would leave a gap in the sheet.
+			if _, ok := txnReportSourceLabel(item.SourceTransaction.TransactionType); !ok {
+				continue
+			}
 			if err := f.writeSourceTransactionRows(file, rowNum, serialNum, item, dataStyle, dataStyleBold, numberStyle, slStyle); err != nil {
 				return err
 			}
@@ -623,6 +629,23 @@ func (f *TxnReportFormatter) writeItemPORow(
 	return nil
 }
 
+// txnReportSourceLabel returns the Vietnamese label for a source layer type and
+// whether the type is presentable in this report at all.
+func txnReportSourceLabel(t models.InventoryTransactionType) (string, bool) {
+	switch t {
+	case models.InventoryTransactionTypePurchase:
+		return "Mua hàng", true
+	case models.InventoryTransactionTypeTransferIn:
+		return "Chuyển kho", true
+	case models.InventoryTransactionTypeReconcileStockUp:
+		return models.AdjustmentCategoryLabel, true
+	case models.InventoryTransactionTypeInitial:
+		return models.OpeningStockCategoryLabel, true
+	default:
+		return "", false
+	}
+}
+
 // writeSourceTransactionRows writes rows for source transaction view
 func (f *TxnReportFormatter) writeSourceTransactionRows(
 	file *excelize.File,
@@ -642,15 +665,8 @@ func (f *TxnReportFormatter) writeSourceTransactionRows(
 	}
 
 	// Get source type display name
-	sourceType := ""
+	sourceType, _ := txnReportSourceLabel(source.TransactionType)
 	unitPrice := source.Price
-	if source.TransactionType == models.InventoryTransactionTypePurchase {
-		sourceType = "Mua hàng"
-	} else if source.TransactionType == models.InventoryTransactionTypeTransferIn {
-		sourceType = "Chuyển kho"
-	} else if source.TransactionType == models.InventoryTransactionTypeReconcileStockUp {
-		sourceType = models.AdjustmentCategoryLabel
-	}
 
 	// Consumed quantity from source transaction
 	consumedQty := source.ConsumedQuantity

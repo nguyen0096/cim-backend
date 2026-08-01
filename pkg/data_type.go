@@ -3,6 +3,9 @@ package pkg
 import (
 	"fmt"
 	"strconv"
+	"strings"
+
+	"github.com/shopspring/decimal"
 )
 
 func Ptr[T any](v T) *T {
@@ -27,4 +30,14 @@ func ToString(v interface{}) string {
 	default:
 		return fmt.Sprintf("%v", v)
 	}
+}
+
+// DecimalPlaces returns the number of significant decimal places in d
+// (e.g. "100.11" -> 2, "100.00" -> 0). decimal.String() drops trailing zeros.
+func DecimalPlaces(d decimal.Decimal) int {
+	parts := strings.Split(d.String(), ".")
+	if len(parts) == 1 {
+		return 0
+	}
+	return len(parts[1])
 }

@@ -38,6 +38,9 @@ type InventoryRepository interface {
 
 	// ExistsByID reports whether an inventory row with the given id exists.
 	ExistsByID(ctx context.Context, id uint) (bool, error)
+
+	// ListActive returns every active, non-deleted inventory ordered by name.
+	ListActive(ctx context.Context) ([]models.Inventory, error)
 }
 
 // InventoryTransactionWithCounter is an InventoryTransaction with its counter transaction's
@@ -71,6 +74,19 @@ func (r *inventoryRepository) ExistsByID(ctx context.Context, id uint) (bool, er
 		return false, err
 	}
 	return exists, nil
+}
+
+func (r *inventoryRepository) ListActive(ctx context.Context) ([]models.Inventory, error) {
+	var inventories []models.Inventory
+	err := r.DB(ctx).WithContext(ctx).
+		Model(&models.Inventory{}).
+		Where("status = ?", models.InventoryStatusActive).
+		Order("name ASC").
+		Find(&inventories).Error
+	if err != nil {
+		return nil, fmt.Errorf("failed to list active inventories: %w", err)
+	}
+	return inventories, nil
 }
 
 func (r *inventoryRepository) GetByID(ctx context.Context, id uint) (*models.Inventory, error) {

@@ -14,15 +14,20 @@ const (
 	// surplus found during reconciliation. Zero-cost, consumable; surfaced as its
 	// own "adjustment" category in reports, timeline, and the in/out export.
 	InventoryTransactionTypeReconcileStockUp InventoryTransactionType = "reconcile_stock_up"
+	// InventoryTransactionTypeInitial loads pre-app opening stock. Zero-cost,
+	// consumable, stamped at run time so it sorts last in FIFO. Invisible in every
+	// reporting surface: on-hand and FIFO are its only visible effects.
+	InventoryTransactionTypeInitial InventoryTransactionType = "initial"
 )
 
 // StockDelta returns the signed quantity for this transaction type.
-// Positive for types that increase stock (purchase, transfer_in, reconcile_stock_up),
+// Positive for types that increase stock (purchase, transfer_in, reconcile_stock_up, initial),
 // negative for types that decrease stock (sell, disposal, transfer_out).
 // Returns zero for unknown types.
 func (t InventoryTransactionType) StockDelta(qty decimal.Decimal) decimal.Decimal {
 	switch t {
-	case InventoryTransactionTypePurchase, InventoryTransactionTypeTransferIn, InventoryTransactionTypeReconcileStockUp:
+	case InventoryTransactionTypePurchase, InventoryTransactionTypeTransferIn,
+		InventoryTransactionTypeReconcileStockUp, InventoryTransactionTypeInitial:
 		return qty
 	case InventoryTransactionTypeSell, InventoryTransactionTypeDisposal, InventoryTransactionTypeTransferOut:
 		return qty.Neg()
@@ -37,6 +42,7 @@ func GetConsumableTransactionTypes() []InventoryTransactionType {
 		InventoryTransactionTypePurchase,
 		InventoryTransactionTypeTransferIn,
 		InventoryTransactionTypeReconcileStockUp,
+		InventoryTransactionTypeInitial,
 	}
 }
 
@@ -47,7 +53,7 @@ type InventoryTransaction struct {
 	InventoryItem        *InventoryItem           `json:"inventory_item" gorm:"foreignKey:InventoryItemID"`
 	SupplierID           *uint                    `json:"supplier_id"`
 	Supplier             *Supplier                `json:"supplier,omitempty" gorm:"foreignKey:SupplierID" validate:"-"`
-	TransactionType      InventoryTransactionType `json:"transaction_type" gorm:"not null;check:transaction_type IN ('purchase', 'disposal', 'sell', 'transfer_out', 'transfer_in', 'reconcile_stock_up')"`
+	TransactionType      InventoryTransactionType `json:"transaction_type" gorm:"not null;check:transaction_type IN ('purchase', 'disposal', 'sell', 'transfer_out', 'transfer_in', 'reconcile_stock_up', 'initial')"`
 	Price                float64                  `json:"price" gorm:"not null"`
 	Quantity             decimal.Decimal          `json:"quantity" gorm:"type:decimal(10,2);not null"`
 	ConsumedQuantity     decimal.Decimal          `json:"consumed_quantity" gorm:"type:decimal(10,2)"`

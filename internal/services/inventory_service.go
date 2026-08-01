@@ -976,7 +976,12 @@ func (s *inventoryService) transferInventory(
 		// Propagate found-stock provenance: a transfer_in that consumes a zero-cost
 		// reconcile layer (a stock-up or an already-found transfer_in) is itself a
 		// found layer, so the marker carries across any number of transfer hops.
-		fromFound := consumeTxn.IsAdjustment || consumeTxn.TransactionType == models.InventoryTransactionTypeReconcileStockUp
+		// `initial` is included so transferred opening stock lands as a flagged,
+		// footing adjustment row at the destination instead of an unmarked zero-cost
+		// layer indistinguishable from a genuine one.
+		fromFound := consumeTxn.IsAdjustment ||
+			consumeTxn.TransactionType == models.InventoryTransactionTypeReconcileStockUp ||
+			consumeTxn.TransactionType == models.InventoryTransactionTypeInitial
 		txns := []*models.InventoryTransaction{
 			{
 				InventoryItemID:      consumeItem.ID,
@@ -1785,7 +1790,8 @@ func (s *inventoryService) GetMonthlyTransactionReport(ctx context.Context, inve
 			consumeTxns = append(consumeTxns, txn)
 		case models.InventoryTransactionTypePurchase,
 			models.InventoryTransactionTypeTransferIn,
-			models.InventoryTransactionTypeReconcileStockUp:
+			models.InventoryTransactionTypeReconcileStockUp,
+			models.InventoryTransactionTypeInitial:
 			periodSourceTxns = append(periodSourceTxns, txn)
 		}
 	}

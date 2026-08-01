@@ -41,12 +41,15 @@ const (
 	RoleChef            UserRole = "chef"
 	RoleWaiter          UserRole = "waiter"
 	RoleCashier         UserRole = "cashier"
+	// RoleDeveloper is standalone: it holds only the developer-tools screen and the
+	// tool endpoints, and is not derived from nor does it imply admin.
+	RoleDeveloper UserRole = "developer"
 )
 
 // IsValidRole checks if the role is valid
 func (r UserRole) IsValidRole() bool {
 	switch r {
-	case RoleAdmin, RoleRestaurantAdmin, RoleAccountant, RoleStaff, RoleBotForm, RoleChef, RoleWaiter, RoleCashier:
+	case RoleAdmin, RoleRestaurantAdmin, RoleAccountant, RoleStaff, RoleBotForm, RoleChef, RoleWaiter, RoleCashier, RoleDeveloper:
 		return true
 	default:
 		return false

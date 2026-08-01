@@ -74,6 +74,7 @@ func SetupServer(
 	saleOrderRepo := repository.NewSaleOrderRepository(baseRepo)
 	revenueExpenseFinalizationRepo := repository.NewRevenueExpenseFinalizationRepository(baseRepo)
 	sellingPriceRepo := repository.NewSellingPriceRepository(baseRepo)
+	initialStockImportRepo := repository.NewInitialStockImportRepository(baseRepo)
 
 	// Initialize S3 client for R2
 	s3Client, err := services.NewS3Client(cfg)
@@ -101,6 +102,7 @@ func SetupServer(
 	sellingPriceService := services.NewSellingPriceService(sellingPriceRepo, productRepo, db)
 	inventoryTimelineService := services.NewInventoryTimelineService(inventoryRepo, inventoryItemRepo, sellingPriceRepo)
 	inventoryInOutExportService := services.NewInventoryInOutExportService(inventoryRepo, sellingPriceRepo, s3Client, cfg.R2.ExportPrefix)
+	initialStockImportService := services.NewInitialStockImportService(baseRepo, inventoryRepo, inventoryItemRepo, inventorySubmissionRepo, productRepo, unitRepo, initialStockImportRepo, unitService, productService)
 
 	// Initialize handlers
 	userHandler := handlers.NewUserHandler(userService, firebaseAuth)
@@ -120,6 +122,7 @@ func SetupServer(
 	sellingPriceHandler := handlers.NewSellingPriceHandler(sellingPriceService)
 	inventoryTimelineHandler := handlers.NewInventoryTimelineHandler(inventoryTimelineService)
 	inventoryInOutExportHandler := handlers.NewInventoryInOutExportHandler(inventoryInOutExportService)
+	initialStockImportHandler := handlers.NewInitialStockImportHandler(initialStockImportService)
 
 	// Initialize Echo
 	e := echo.New()
@@ -395,6 +398,12 @@ func SetupServer(
 	saleOrders.GET("/:id", saleOrderHandler.GetSaleOrder)
 	saleOrders.PUT("/:id", saleOrderHandler.UpdateSaleOrder)
 	saleOrders.PUT("/:id/status", saleOrderHandler.UpdateSaleOrderStatus)
+
+	// Developer tool routes (developer role only, see customRouteMappings).
+	tools := api.Group("/tools")
+	tools.GET("/inventories", initialStockImportHandler.ListInventories)
+	tools.POST("/initial-stock/sheets", initialStockImportHandler.ListSheets)
+	tools.POST("/initial-stock/import", initialStockImportHandler.Import)
 
 	// Selling Price routes
 	sellingPrices := api.Group("/selling-prices")

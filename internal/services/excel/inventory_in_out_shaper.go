@@ -156,7 +156,7 @@ func BuildExportRows(in ShaperInput) *ExportRows {
 
 	// Zero-cost adjustment (found-stock) rows, keyed by reconcile_stock_up txn id.
 	rowByAdjustment := make(map[uint]*ExportRow)
-	getOrCreateAdjustmentRow := func(txnID uint, productID uint) *ExportRow {
+	getOrCreateAdjustmentRow := func(txnID uint, productID uint, label string) *ExportRow {
 		if r, ok := rowByAdjustment[txnID]; ok {
 			return r
 		}
@@ -172,7 +172,7 @@ func BuildExportRows(in ShaperInput) *ExportRows {
 			ProductID:             productID,
 			ProductName:           productName,
 			UnitName:              unitName,
-			PONumber:              models.AdjustmentCategoryLabel,
+			PONumber:              label,
 			PurchasePrice:         decimal.Zero,
 			SellingPrice:          nil,
 			DailyPurchases:        make(map[int]decimal.Decimal),
@@ -188,37 +188,53 @@ func BuildExportRows(in ShaperInput) *ExportRows {
 	// via counter_transaction_id, so membership routes both the receipt layer and
 	// its consumes onto the same adjustment row — including a re-sale of units
 	// transferred (once or many times) into another inventory.
-	foundLayerIDs := make(map[uint]bool)
+	// Value is the row label. A layer is labelled by its own movement: opening stock
+	// and a counting correction are both PO-less zero-cost layers keyed the same way,
+	// but they are not the same event. A transferred layer inherits only
+	// adjustment-ness through IsAdjustment, which does not record origin, so it shows
+	// under the generic adjustment label at the destination — the same behaviour
+	// transferred reconcile_stock_up has always had.
+	foundLayerIDs := make(map[uint]string)
 	markFound := func(txns []*repository.InventoryTransactionWithCounter) {
 		for _, t := range txns {
 			if t == nil || t.InventoryTransaction == nil {
 				continue
 			}
 			if t.IsAdjustment || t.TransactionType == models.InventoryTransactionTypeReconcileStockUp {
-				foundLayerIDs[t.ID] = true
+				label := models.AdjustmentCategoryLabel
+				if t.TransactionType == models.InventoryTransactionTypeInitial {
+					label = models.OpeningStockCategoryLabel
+				}
+				foundLayerIDs[t.ID] = label
 			}
 		}
 	}
 	markFound(in.HistoricalTxns)
 	markFound(in.PeriodTxns)
 
-	// adjustmentKey returns the adjustment row key for a txn: a found receipt layer
-	// keys on its own id; a consume of found stock keys on its counter (that layer).
-	adjustmentKey := func(t *repository.InventoryTransactionWithCounter) (uint, bool) {
+	// adjustmentKey returns the adjustment row key and its label for a txn: a found
+	// receipt layer keys on its own id; a consume of found stock keys on its counter
+	// (that layer), so both land on the same row under that layer's label.
+	adjustmentKey := func(t *repository.InventoryTransactionWithCounter) (uint, string, bool) {
 		if t == nil || t.InventoryTransaction == nil {
-			return 0, false
+			return 0, "", false
 		}
 		switch t.TransactionType {
-		case models.InventoryTransactionTypeReconcileStockUp, models.InventoryTransactionTypeTransferIn:
-			if foundLayerIDs[t.ID] {
-				return t.ID, true
+		case models.InventoryTransactionTypeReconcileStockUp,
+			models.InventoryTransactionTypeInitial,
+			models.InventoryTransactionTypeTransferIn:
+			if label, ok := foundLayerIDs[t.ID]; ok {
+				return t.ID, label, true
 			}
 		case models.InventoryTransactionTypeSell, models.InventoryTransactionTypeDisposal, models.InventoryTransactionTypeTransferOut:
-			if t.CounterTransactionID != nil && foundLayerIDs[*t.CounterTransactionID] {
-				return *t.CounterTransactionID, true
+			if t.CounterTransactionID == nil {
+				return 0, "", false
+			}
+			if label, ok := foundLayerIDs[*t.CounterTransactionID]; ok {
+				return *t.CounterTransactionID, label, true
 			}
 		}
-		return 0, false
+		return 0, "", false
 	}
 
 	// --- (3) historical txns → beginning stock per POI (FIFO already applied
@@ -233,8 +249,8 @@ func BuildExportRows(in ShaperInput) *ExportRows {
 		if productID == 0 {
 			continue
 		}
-		if adjID, ok := adjustmentKey(t); ok {
-			row := getOrCreateAdjustmentRow(adjID, productID)
+		if adjID, label, ok := adjustmentKey(t); ok {
+			row := getOrCreateAdjustmentRow(adjID, productID, label)
 			row.BeginningStock = row.BeginningStock.Add(t.TransactionType.StockDelta(t.Quantity))
 			continue
 		}
@@ -264,8 +280,8 @@ func BuildExportRows(in ShaperInput) *ExportRows {
 
 		// Found-stock: the stock-up is the window "in"; sells/disposals/transfers
 		// of found units are the window "out". Attributed to the adjustment row.
-		if adjID, ok := adjustmentKey(t); ok {
-			row := getOrCreateAdjustmentRow(adjID, productID)
+		if adjID, label, ok := adjustmentKey(t); ok {
+			row := getOrCreateAdjustmentRow(adjID, productID, label)
 			qty := t.Quantity
 			addDaily := func() {
 				if day := dayIndex(in.StartDate, t.CreatedAt); day >= 0 && day < dayCount {
@@ -273,7 +289,11 @@ func BuildExportRows(in ShaperInput) *ExportRows {
 				}
 			}
 			switch t.TransactionType {
-			case models.InventoryTransactionTypeReconcileStockUp:
+			// Both are the window "in" for their row. Omitting `initial` here would
+			// leave windowIn at 0 while its consumes still land in windowOut, so the
+			// row would foot negative.
+			case models.InventoryTransactionTypeReconcileStockUp,
+				models.InventoryTransactionTypeInitial:
 				row.TotalPurchasedAmount = row.TotalPurchasedAmount.Add(qty)
 				addDaily()
 			case models.InventoryTransactionTypeTransferIn:

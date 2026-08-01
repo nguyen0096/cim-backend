@@ -15,6 +15,11 @@ import (
 type UnitRepository interface {
 	GetByID(ctx context.Context, id uint) (*models.Unit, error)
 	GetByTypeAndName(ctx context.Context, unitType, name string) (*models.Unit, error)
+	// GetByTypeAndNamesUnscoped matches units on UPPER(TRIM(name)) or
+	// UPPER(TRIM(symbol)) against already-normalized names, including soft-deleted
+	// rows: idx_units_unit_type_name is not partial, so a soft-deleted unit still
+	// blocks creating the same name.
+	GetByTypeAndNamesUnscoped(ctx context.Context, unitType string, names []string) ([]models.Unit, error)
 	GetByNames(ctx context.Context, names []string) ([]models.Unit, error)
 	Delete(ctx context.Context, id uint) error
 	Restore(ctx context.Context, id uint) error
@@ -306,6 +311,23 @@ func (r *unitRepository) findAllUnitsWithRootBaseUnit(ctx context.Context, rootB
 
 	collectUnits(rootBaseUnitID)
 	return allUnits, nil
+}
+
+func (r *unitRepository) GetByTypeAndNamesUnscoped(ctx context.Context, unitType string, names []string) ([]models.Unit, error) {
+	if len(names) == 0 {
+		return nil, nil
+	}
+	var units []models.Unit
+	// Compared UPPER(TRIM(...)) so a stored `Kg` matches the sheet label `KG`; the
+	// caller passes already-normalized labels. Diacritics are never folded.
+	err := r.DB(ctx).WithContext(ctx).
+		Unscoped().
+		Where("unit_type = ? AND (UPPER(TRIM(name)) IN ? OR UPPER(TRIM(symbol)) IN ?)", unitType, names, names).
+		Find(&units).Error
+	if err != nil {
+		return nil, fmt.Errorf("failed to look up units by name: %w", err)
+	}
+	return units, nil
 }
 
 func (r *unitRepository) GetByTypeAndName(ctx context.Context, unitType, name string) (*models.Unit, error) {
