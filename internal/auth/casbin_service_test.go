@@ -10,7 +10,7 @@ import (
 
 func TestGetUserPermissions(t *testing.T) {
 	// Create a test enforcer with in-memory adapter
-	enforcer, err := casbin.NewEnforcer("../../rbac_model.conf", false)
+	enforcer, err := casbin.NewSyncedEnforcer("../../rbac_model.conf", false)
 	require.NoError(t, err)
 
 	// Create CasbinService with test enforcer
@@ -102,7 +102,7 @@ func TestGetUserPermissions(t *testing.T) {
 
 	t.Run("should return error when getting user roles fails", func(t *testing.T) {
 		// Create service with invalid enforcer to trigger error
-		invalidEnforcer, err := casbin.NewEnforcer("../../rbac_model.conf", false)
+		invalidEnforcer, err := casbin.NewSyncedEnforcer("../../rbac_model.conf", false)
 		require.NoError(t, err)
 
 		// Remove all policies to simulate error condition
@@ -120,7 +120,7 @@ func TestGetUserPermissions(t *testing.T) {
 
 func TestDenyRules(t *testing.T) {
 	// Create a test enforcer
-	enforcer, err := casbin.NewEnforcer("../../rbac_model.conf", false)
+	enforcer, err := casbin.NewSyncedEnforcer("../../rbac_model.conf", false)
 	require.NoError(t, err)
 
 	// Create CasbinService with test enforcer

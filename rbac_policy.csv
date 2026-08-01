@@ -178,19 +178,6 @@ p, cashier, sale-order-items, view, allow
 p, cashier, sale-order-items, update, allow
 p, cashier, sale-order-items, update_status, allow
 
-# The developer role's p rows are inert until an account's users.role is set to
-# 'developer'. The matching `g, <uid>, developer` rows are deliberately NOT here:
-# GET /users/permissions resolves by Firebase UID against these g rows, so adding
-# them would collapse both named accounts' frontend payload to three strings on the
-# next redeploy, before the role assignment has been confirmed.
 p, developer, developer-tools, view, allow
 p, developer, initial-stock-import, import, allow
 p, developer, permissions, view, allow
-
-g, demoAdminUid0000000000000000, admin
-g, demoAdminUid0000000000000000, restaurant-admin
-g, demoMaintAdminUid00000000000, admin
-g, demoMaintAdminUid00000000000, restaurant-admin
-g, demoAccountantUid00000000000, accountant
-g, demoStaffUid0000000000000000, staff
-g, demoBotFormUid00000000000000, bot_form

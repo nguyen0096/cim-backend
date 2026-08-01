@@ -16,7 +16,10 @@ import (
 
 // CasbinService handles authorization using Casbin
 type CasbinService struct {
-	enforcer *casbin.Enforcer
+	// SyncedEnforcer, not Enforcer: AuthorizationMiddleware seeds a user's role
+	// into the enforcer at request time, so concurrent requests mutate and read
+	// the policy and role manager at once.
+	enforcer *casbin.SyncedEnforcer
 }
 
 // NewCasbinService creates a new Casbin service with PostgreSQL adapter
@@ -25,7 +28,7 @@ func NewCasbinService(db *gorm.DB, casbinCfg config.CasbinConfig) (*CasbinServic
 	fileAdapter := fileadapter.NewAdapter(casbinCfg.PolicyFile)
 
 	// Initialize Casbin enforcer
-	enforcer, err := casbin.NewEnforcer(casbinCfg.ModelFile, fileAdapter)
+	enforcer, err := casbin.NewSyncedEnforcer(casbinCfg.ModelFile, fileAdapter)
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize casbin enforcer: %w", err)
 	}
@@ -171,6 +174,6 @@ func (c *CasbinService) GetUserPermissions(user string) ([]string, error) {
 }
 
 // GetEnforcer returns the Casbin enforcer (for testing purposes)
-func (c *CasbinService) GetEnforcer() *casbin.Enforcer {
+func (c *CasbinService) GetEnforcer() *casbin.SyncedEnforcer {
 	return c.enforcer
 }

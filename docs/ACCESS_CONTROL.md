@@ -42,22 +42,37 @@ developer tool endpoints. It holds exactly three permissions:
 Inventory Timeline screens in the frontend, which would give a standalone developer
 three sidebar entries. The tool supplies its own inventory list instead.
 
-Two operational notes:
+Because `users.role` holds one role, an account assigned `developer` is developer-only
+while the assignment lasts. The update endpoint below rejects `developer`, so it is
+assigned by migration.
 
-- **`g` rows and the DB role resolve two different things — do not conflate them.**
-  API *enforcement* passes the **`users.role` column** as the Casbin subject
-  (`internal/middleware/authorization.go`), so a `g, <uid>, <role>` row alone grants
-  no API access. But `GET /users/permissions` — the only thing the frontend gates
-  screens on — resolves by **Firebase UID against the `g` rows**
-  (`UserService.GetUserPermissions` → `CasbinService.GetUserPermissions(user.UID)` →
-  `GetRolesForUser`), so a `g` row *does* change what the UI shows. A UID with **no**
-  `g` row is opportunistically bound to its DB role in memory on first request
-  (`authorization.go:67-68`), and that sync fires **only** when the UID has zero `g`
-  rows — so adding an explicit `g` row suppresses it and replaces, rather than
-  extends, that account's payload. Change `g` rows and `users.role` together.
-- `rbac_policy.csv` is copied into the image at build time (`Dockerfile`) and loaded
-  once at boot with no reload path, so **new policy rows only take effect after a
-  redeploy**.
+## Role Assignment and Revocation
+
+Each user holds exactly one role, in the `users.role` column. Authorization passes it
+to Casbin as the subject, and the `p, <role>, <resource>, <action>, <effect>` rows in
+`rbac_policy.csv` define what that role can do.
+
+- **Assign a role**: the Users screen, backed by `PUT /api/v1/users/:id` (admin only).
+  `:id` is the `users.id` UUID, not the Firebase UID, and the body is the whole record —
+  `{"name": …, "role": …, "status": …}`, with `role` and `status` both required.
+  Effective on the user's next request. `role` accepts only `admin`, `accountant`,
+  `staff` and `bot_form` (`dto.UpdateUserRequest`); every other role, including
+  `developer` and `restaurant-admin`, is rejected with 400 and must be set by migration.
+
+  The call **returns 500 even when it succeeds**: the row is written, then the path UUID
+  is passed to Firebase as a UID and rejected (`user_handler.go:123-137`). Check the
+  record instead of retrying.
+- **Revoke access**: set `status` to `inactive` or `pending`, checked at
+  `authorization.go:45` before any Casbin call, so it applies on the next request.
+  Disabling the Firebase account does **not** revoke: `VerifyToken` calls
+  `VerifyIDToken` (`firebase_auth.go:49`), which ignores revocation and disabled state,
+  so an unexpired token keeps working until it expires. Neither needs a deploy.
+- **Change what a role can do**: edit its `p` rows. `rbac_policy.csv` is baked into the
+  image (`Dockerfile:42-43`) and loaded once at boot
+  (`internal/auth/casbin_service.go:26-38`), so this requires a redeploy.
+
+Do not add `g, <uid>, <role>` rows: they grant no API access and desynchronise the
+sidebar from it.
 
 ## Resources and Actions
 
@@ -138,7 +153,7 @@ Users are managed through:
 - `GET /api/v1/users` - List all users
 - `GET /api/v1/users/search` - Search users by name or email
 - `GET /api/v1/users/role/:role` - Get users by role
-- `PUT /api/v1/users/:uid/role` - Update user role
+- `PUT /api/v1/users/:id` - Update a user (name, role, status)
 - `DELETE /api/v1/users/:id` - Delete user
 
 ## Usage Examples
@@ -155,11 +170,12 @@ curl -X POST "http://localhost:8080/api/v1/auth/verify-token" \
 ### 2. Updating user role (Admin only)
 
 ```bash
-# Promote user to admin
-curl -X PUT "http://localhost:8080/api/v1/users/firebase-uid/role" \
+# Promote user to admin. Path parameter is the users.id UUID. Returns 500 on success;
+# see Role Assignment and Revocation.
+curl -X PUT "http://localhost:8080/api/v1/users/550e8400-e29b-41d4-a716-446655440000" \
   -H "Authorization: Bearer admin-token" \
   -H "Content-Type: application/json" \
-  -d '{"role": "admin"}'
+  -d '{"name": "John Doe", "role": "admin", "status": "active"}'
 ```
 
 ### 3. Testing permissions
