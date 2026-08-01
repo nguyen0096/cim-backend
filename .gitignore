@@ -62,3 +62,7 @@ tmp/**
 
 # Stray compiled simulate binary (if `go build ./cmd/simulate` is run from repo root)
 /simulate
+
+# Agent instructions (local only)
+AGENTS.md
+CLAUDE.md
