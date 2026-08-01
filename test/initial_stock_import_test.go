@@ -142,7 +142,7 @@ var _ = Describe("Initial stock import tool", func() {
 			})
 
 			for _, role := range []models.UserRole{
-				models.RoleAdmin, models.RoleRestaurantAdmin, models.RoleAccountant, models.RoleStaff,
+				models.RoleAdmin, models.RoleAccountant, models.RoleStaff,
 				models.RoleBotForm, models.RoleChef, models.RoleWaiter, models.RoleCashier,
 			} {
 				other := testutil.NewClient(tenv, role)

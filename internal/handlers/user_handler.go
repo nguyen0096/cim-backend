@@ -120,7 +120,7 @@ func (h *UserHandler) UpdateUser(c echo.Context) error {
 	}
 
 	// Get current user (admin performing the action)
-	err := h.userService.UpdateUser(c.Request().Context(), userID, "", req.Name, req.Role, req.Status, false)
+	err := h.userService.UpdateUser(c.Request().Context(), userID, "", req.Name, req.Role, req.Status)
 	if err != nil {
 		if appErr, ok := err.(*pkg.AppError); ok {
 			return c.JSON(appErr.HTTPStatus(), map[string]string{"error": appErr.Message})

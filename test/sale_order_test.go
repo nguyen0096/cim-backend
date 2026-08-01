@@ -118,7 +118,7 @@ var _ = Describe("Sale Order API", func() {
 
 		Context("when user has authorized role", func() {
 			It("should list sale orders by pagination request/response", func() {
-				client := testutil.NewClient(tenv, models.RoleRestaurantAdmin)
+				client := testutil.NewClient(tenv, models.RoleWaiter)
 
 				resp, err := client.MakeRequest("GET", "/api/v1/sale-orders?page=1&limit=20", nil, testutil.WithAuth())
 				Expect(err).NotTo(HaveOccurred())
@@ -136,7 +136,7 @@ var _ = Describe("Sale Order API", func() {
 			})
 
 			It("should list sale orders by tag", func() {
-				client := testutil.NewClient(tenv, models.RoleRestaurantAdmin)
+				client := testutil.NewClient(tenv, models.RoleWaiter)
 
 				resp, err := client.MakeRequest("GET", "/api/v1/sale-orders?tag=1", nil, testutil.WithAuth())
 				Expect(err).NotTo(HaveOccurred())
@@ -228,7 +228,7 @@ var _ = Describe("Sale Order API", func() {
 
 		Context("when user has authorized role", func() {
 			It("should update sale order by create new record referencing the previous one and check DB must exist 2 records", func() {
-				client := testutil.NewClient(tenv, models.RoleRestaurantAdmin)
+				client := testutil.NewClient(tenv, models.RoleWaiter)
 
 				updateData := map[string]interface{}{
 					"status": "completed",
@@ -359,7 +359,7 @@ var _ = Describe("Sale Order API", func() {
 
 		Context("when user has authorized role", func() {
 			It("should cancel sale order and check DB must exist only 1 record", func() {
-				client := testutil.NewClient(tenv, models.RoleRestaurantAdmin)
+				client := testutil.NewClient(tenv, models.RoleWaiter)
 
 				// Cancel the order by updating status to cancelled
 				// Note: This assumes UpdateSaleOrder handles cancellation differently (doesn't create new record)
@@ -453,7 +453,7 @@ var _ = Describe("Sale Order API", func() {
 
 		Context("when user has authorized role", func() {
 			It("should update sale order status to served and check DB must exist only 1 record", func() {
-				client := testutil.NewClient(tenv, models.RoleRestaurantAdmin)
+				client := testutil.NewClient(tenv, models.RoleWaiter)
 
 				// Update status to served using UpdateSaleOrder endpoint
 				updateData := map[string]interface{}{
@@ -553,7 +553,7 @@ var _ = Describe("Sale Order API", func() {
 
 		Context("when user has authorized role", func() {
 			It("should get sale order by ID", func() {
-				client := testutil.NewClient(tenv, models.RoleRestaurantAdmin)
+				client := testutil.NewClient(tenv, models.RoleWaiter)
 
 				resp, err := client.MakeRequest("GET", fmt.Sprintf("/api/v1/sale-orders/%d", testSaleOrder.ID), nil, testutil.WithAuth())
 				Expect(err).NotTo(HaveOccurred())

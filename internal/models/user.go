@@ -13,7 +13,7 @@ type User struct {
 	UID       string         `json:"uid" gorm:"index"` // Firebase UID
 	Email     string         `json:"email" gorm:"uniqueIndex;not null"`
 	Name      string         `json:"name"`
-	Role      UserRole       `json:"role" gorm:"default:'staff'"`                                                    // admin, restaurant-admin, accountant, staff, bot_form, chef, waiter, cashier
+	Role      UserRole       `json:"role" gorm:"default:'staff'"`                                                    // admin, accountant, staff, bot_form, chef, waiter, cashier, developer
 	Type      UserType       `json:"type" gorm:"default:'user'"`                                                     // developer, user
 	Status    string         `json:"status" gorm:"default:active;check:status IN ('active', 'pending', 'inactive')"` // active, pending, inactive
 	CreatedAt time.Time      `json:"created_at"`
@@ -33,14 +33,13 @@ const (
 type UserRole string
 
 const (
-	RoleAdmin           UserRole = "admin"
-	RoleRestaurantAdmin UserRole = "restaurant-admin"
-	RoleAccountant      UserRole = "accountant"
-	RoleStaff           UserRole = "staff"
-	RoleBotForm         UserRole = "bot_form"
-	RoleChef            UserRole = "chef"
-	RoleWaiter          UserRole = "waiter"
-	RoleCashier         UserRole = "cashier"
+	RoleAdmin      UserRole = "admin"
+	RoleAccountant UserRole = "accountant"
+	RoleStaff      UserRole = "staff"
+	RoleBotForm    UserRole = "bot_form"
+	RoleChef       UserRole = "chef"
+	RoleWaiter     UserRole = "waiter"
+	RoleCashier    UserRole = "cashier"
 	// RoleDeveloper is standalone: it holds only the developer-tools screen and the
 	// tool endpoints, and is not derived from nor does it imply admin.
 	RoleDeveloper UserRole = "developer"
@@ -49,7 +48,7 @@ const (
 // IsValidRole checks if the role is valid
 func (r UserRole) IsValidRole() bool {
 	switch r {
-	case RoleAdmin, RoleRestaurantAdmin, RoleAccountant, RoleStaff, RoleBotForm, RoleChef, RoleWaiter, RoleCashier, RoleDeveloper:
+	case RoleAdmin, RoleAccountant, RoleStaff, RoleBotForm, RoleChef, RoleWaiter, RoleCashier, RoleDeveloper:
 		return true
 	default:
 		return false

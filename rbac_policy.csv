@@ -65,23 +65,6 @@ p, admin, users, create, allow
 p, admin, users, update, allow
 p, admin, users, delete, allow
 
-p, restaurant-admin, menus, view, allow
-p, restaurant-admin, menus, create, allow
-p, restaurant-admin, menus, update, allow
-p, restaurant-admin, menus, delete, allow
-p, restaurant-admin, menu-items, view, allow
-p, restaurant-admin, menu-items, create, allow
-p, restaurant-admin, menu-items, update, allow
-p, restaurant-admin, menu-items, delete, allow
-p, restaurant-admin, sale-orders, view, allow
-p, restaurant-admin, sale-orders, create, allow
-p, restaurant-admin, sale-orders, update, allow
-p, restaurant-admin, sale-orders, update_status, allow
-p, restaurant-admin, sale-order-items, view, allow
-p, restaurant-admin, sale-order-items, create, allow
-p, restaurant-admin, sale-order-items, update, allow
-p, restaurant-admin, sale-order-items, update_status, allow
-
 p, admin, selling-prices, view, allow
 p, admin, selling-prices, create, allow
 p, admin, selling-prices, update, allow
@@ -181,3 +164,11 @@ p, cashier, sale-order-items, update_status, allow
 p, developer, developer-tools, view, allow
 p, developer, initial-stock-import, import, allow
 p, developer, permissions, view, allow
+
+# Maintenance accounts, by Firebase UID. Only these two UIDs may appear as a g
+# subject: every other account has none and is seeded with its users.role at
+# internal/middleware/authorization.go:67-70.
+g, demoMaintAdminUid00000000000, admin
+g, demoMaintAdminUid00000000000, developer
+g, demoRootAdminUid000000000000, admin
+g, demoRootAdminUid000000000000, developer

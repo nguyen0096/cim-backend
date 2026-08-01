@@ -55,23 +55,13 @@ func AuthorizationMiddleware(casbinService *auth.CasbinService, userService *ser
 					userRole = string(user.Role)
 				}
 
+				// Repoint the row at the UID the token presents. The token UID, not the
+				// stored one, is what enforcement uses, so this only keeps the row honest.
 				if user.UID != userUID {
-					// Update UID and handle Casbin policy updates
-					user.UID = userUID
-					if err := userService.UpdateUser(c.Request().Context(), user.ID.String(), userUID, user.Name, string(user.Role), user.Status, true); err != nil {
+					if err := userService.UpdateUserUID(c.Request().Context(), user, userUID); err != nil {
 						fmt.Printf("Error updating user UID: %v\n", err)
 						// Continue anyway, this is not critical for authorization
 					}
-				}
-
-				if roles, err := casbinService.GetRolesForUser(userUID); err == nil && len(roles) == 0 {
-					if err := casbinService.AddRoleForUser(userUID, string(user.Role)); err != nil {
-						fmt.Printf("Error adding role to user: %v\n", err)
-						// Continue anyway, this is not critical for authorization
-					}
-				} else if err != nil {
-					fmt.Printf("Error getting roles for user: %v\n", err)
-					// Continue anyway, this is not critical for authorization
 				}
 			}
 
@@ -82,7 +72,12 @@ func AuthorizationMiddleware(casbinService *auth.CasbinService, userService *ser
 				})
 			}
 
-			allowed, err := casbinService.Enforce(userRole, resource, action)
+			// Derived per request, never stored: a policy-file UID enforces as itself,
+			// anyone else as the users.role just read. No binding is created, so a role
+			// change is effective on the next request in every process.
+			subject := casbinService.EnforcementSubject(userUID, userRole)
+
+			allowed, err := casbinService.Enforce(subject, resource, action)
 			if err != nil {
 				fmt.Printf("Authorization error for user %s: %v\n", userUID, err)
 				return c.JSON(http.StatusInternalServerError, map[string]string{
@@ -99,8 +94,12 @@ func AuthorizationMiddleware(casbinService *auth.CasbinService, userService *ser
 
 			reqCtx := c.Request().Context()
 			reqCtx = context.WithValue(reqCtx, pkg.AuthContextKeyUserRole, userRole)
+			// Handlers that report what the caller may do must use the subject that was
+			// enforced, not re-derive one: the row this was derived from may since have
+			// failed to persist, and re-reading it would report a different account.
+			reqCtx = context.WithValue(reqCtx, pkg.AuthContextKeyEnforcementSubject, subject)
 
-			permissions, err := getUserPermissions(casbinService, userRole)
+			permissions, err := getUserPermissions(casbinService, subject)
 			if err != nil {
 				fmt.Printf("Error getting user permissions: %v\n", err)
 				// Continue anyway, permissions are optional for handlers
@@ -416,18 +415,13 @@ func pathToResource(path string) string {
 	}
 }
 
-// getUserPermissions retrieves all permissions for a given role
-func getUserPermissions(casbinService *auth.CasbinService, userRole string) (map[pkg.UserPermission]struct{}, error) {
-	// Get all policies for the role from Casbin
-	enforcer := casbinService.GetEnforcer()
-	if enforcer == nil {
-		return nil, fmt.Errorf("casbin enforcer not available")
-	}
-
-	// Get all policies where the subject is the user role
-	policies, err := enforcer.GetFilteredPolicy(0, userRole)
+// getUserPermissions builds the map pkg.HasPermission reads, for the subject
+// EnforcementSubject derived. A policy-bound UID holds no direct p rows, so the g rows
+// have to be followed; for a role subject this is that role's own rows.
+func getUserPermissions(casbinService *auth.CasbinService, subject string) (map[pkg.UserPermission]struct{}, error) {
+	policies, err := casbinService.ImplicitPermissions(subject)
 	if err != nil {
-		return nil, fmt.Errorf("error getting filtered policies: %w", err)
+		return nil, fmt.Errorf("error getting implicit permissions: %w", err)
 	}
 
 	permissions := make(map[pkg.UserPermission]struct{})
@@ -442,16 +436,4 @@ func getUserPermissions(casbinService *auth.CasbinService, userRole string) (map
 	}
 
 	return permissions, nil
-}
-
-// RequirePermission is a helper function to check permissions in handlers
-func RequirePermission(casbinService *auth.CasbinService, userRole, resource, action string) error {
-	allowed, err := casbinService.Enforce(userRole, resource, action)
-	if err != nil {
-		return fmt.Errorf("authorization check failed: %w", err)
-	}
-	if !allowed {
-		return fmt.Errorf("access denied: %s role cannot %s %s", userRole, action, resource)
-	}
-	return nil
 }

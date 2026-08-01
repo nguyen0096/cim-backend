@@ -13,11 +13,12 @@ func _() {
 	_ = x[AuthContextKeyUserName-2]
 	_ = x[AuthContextKeyUserRole-3]
 	_ = x[AuthContextKeyUserPermissions-4]
+	_ = x[AuthContextKeyEnforcementSubject-5]
 }
 
-const _AuthContextKey_name = "AuthContextKeyUserIDAuthContextKeyUserEmailAuthContextKeyUserNameAuthContextKeyUserRoleAuthContextKeyUserPermissions"
+const _AuthContextKey_name = "AuthContextKeyUserIDAuthContextKeyUserEmailAuthContextKeyUserNameAuthContextKeyUserRoleAuthContextKeyUserPermissionsAuthContextKeyEnforcementSubject"
 
-var _AuthContextKey_index = [...]uint8{0, 20, 43, 65, 87, 116}
+var _AuthContextKey_index = [...]uint8{0, 20, 43, 65, 87, 116, 148}
 
 func (i AuthContextKey) String() string {
 	if i < 0 || i >= AuthContextKey(len(_AuthContextKey_index)-1) {

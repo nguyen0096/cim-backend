@@ -15,6 +15,10 @@ const (
 	AuthContextKeyUserName
 	AuthContextKeyUserRole
 	AuthContextKeyUserPermissions
+	// AuthContextKeyEnforcementSubject carries the Casbin subject the request was
+	// actually enforced on. Anything reporting what the caller may do must read this
+	// rather than re-deriving, which can differ from what was enforced.
+	AuthContextKeyEnforcementSubject
 )
 
 const (
@@ -70,6 +74,15 @@ func GetUserIDFromContext(ctx context.Context) (string, error) {
 	}
 
 	return userID, nil
+}
+
+// GetEnforcementSubjectFromContext gets the Casbin subject the request was enforced on
+func GetEnforcementSubjectFromContext(ctx context.Context) (string, error) {
+	subject, ok := ctx.Value(AuthContextKeyEnforcementSubject).(string)
+	if !ok {
+		return "", fmt.Errorf("enforcement subject not found in context")
+	}
+	return subject, nil
 }
 
 // WithUserEmail adds user email to the context
