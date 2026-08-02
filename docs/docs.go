@@ -6445,6 +6445,30 @@ const docTemplate = `{
                 }
             }
         },
+        "dto.InitialStockImportError": {
+            "type": "object",
+            "properties": {
+                "location": {
+                    "type": "string"
+                },
+                "message": {
+                    "type": "string"
+                },
+                "name": {
+                    "description": "Name, Unit and Quantity are the cells as the parser read them: trimmed, never\nnormalized or coerced, so a row rejected for an unparseable quantity still shows\nthe text that has to be fixed. A blank cell is an empty string, never null.",
+                    "type": "string"
+                },
+                "quantity": {
+                    "type": "string"
+                },
+                "row": {
+                    "type": "integer"
+                },
+                "unit": {
+                    "type": "string"
+                }
+            }
+        },
         "dto.InitialStockImportResponse": {
             "type": "object",
             "properties": {
@@ -6460,7 +6484,7 @@ const docTemplate = `{
                 "errors": {
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/pkg.BatchErrorLocation"
+                        "$ref": "#/definitions/dto.InitialStockImportError"
                     }
                 },
                 "inventory_id": {
@@ -6531,6 +6555,7 @@ const docTemplate = `{
                     "type": "integer"
                 },
                 "product_type": {
+                    "description": "ProductType is the type that will be in effect after the load, not the sheet's\nvalue: a matched product keeps its own, and Warnings names the ignored one.",
                     "type": "string"
                 },
                 "quantity": {
@@ -6547,6 +6572,13 @@ const docTemplate = `{
                 },
                 "unit_decimal_places": {
                     "type": "integer"
+                },
+                "warnings": {
+                    "description": "Warnings are rendered Vietnamese strings for conditions that do not stop the row\nfrom importing. Always an array, empty when the row has none. Distinct from\nInitialStockImportResponse.Errors, whose rows are dropped.",
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
                 }
             }
         },

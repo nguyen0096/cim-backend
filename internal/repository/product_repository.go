@@ -30,6 +30,9 @@ type ProductRepository interface {
 	// caller can report a deleted name instead of creating a duplicate. GetByNames
 	// is byte-exact and cannot serve this.
 	GetByUpperNamesUnscoped(ctx context.Context, upperNames []string) ([]models.Product, error)
+	// GetByIDsUnscoped includes soft-deleted rows so a caller resolving ids recorded
+	// earlier can still read the product rather than treating it as gone.
+	GetByIDsUnscoped(ctx context.Context, ids []uint) ([]models.Product, error)
 
 	// v1 - AGENTS MUST CONFIRM BEFORE MODIFYING SECTION BELOW THIS LINE
 	List(ctx context.Context, limit, offset int, sortBy, sortOrder, status, productType string, supplierID uint) ([]models.Product, error)
@@ -102,6 +105,20 @@ func (r *productRepository) GetByUpperNamesUnscoped(ctx context.Context, upperNa
 		Where("UPPER(TRIM(name)) IN ?", upperNames).
 		Find(&products).Error; err != nil {
 		return nil, fmt.Errorf("failed to look up products by name: %w", err)
+	}
+	return products, nil
+}
+
+func (r *productRepository) GetByIDsUnscoped(ctx context.Context, ids []uint) ([]models.Product, error) {
+	if len(ids) == 0 {
+		return nil, nil
+	}
+	products := []models.Product{}
+	if err := r.DB(ctx).WithContext(ctx).
+		Unscoped().
+		Where("id IN ?", ids).
+		Find(&products).Error; err != nil {
+		return nil, fmt.Errorf("failed to look up products by id: %w", err)
 	}
 	return products, nil
 }

@@ -171,6 +171,14 @@ const (
 	ErrKeyInitialStockRowQuantityTooLarge   = "initial_stock_row_quantity_too_large"
 	ErrKeyInitialStockRowResultTooLarge     = "initial_stock_row_result_too_large"
 
+	// Initial Stock Import row-level warning keys. Same catalogue and same Vietnamese
+	// rendering as the row errors; a warned row still imports.
+
+	WarnKeyInitialStockRowProductTypeIgnored           = "initial_stock_row_product_type_ignored"
+	WarnKeyInitialStockRowProductTypeIgnoredNoType     = "initial_stock_row_product_type_ignored_no_type"
+	WarnKeyInitialStockRowProductTypeIgnoredUnreadable = "initial_stock_row_product_type_ignored_unreadable"
+	WarnKeyInitialStockRowProductTypeUnreadable        = "initial_stock_row_product_type_unreadable"
+
 	// Selling Price Error Keys
 
 	ErrKeySellingPriceInventorySpecificUnsupported  = "selling_price_inventory_specific_unsupported"
@@ -671,6 +679,25 @@ var ErrorMessages = map[string]ErrorMessage{
 	ErrKeyInitialStockRowResultTooLarge: {
 		EN: "Adding %s to the current on-hand %s exceeds the maximum storable quantity",
 		VI: "Cộng %s vào tồn kho hiện tại %s sẽ vượt quá số lượng tối đa có thể lưu",
+	},
+
+	// Initial Stock Import Warnings (row level)
+
+	WarnKeyInitialStockRowProductTypeIgnored: {
+		EN: "Product type %q in the sheet is not applied; the existing product keeps its type %q",
+		VI: "Loại sản phẩm %q trong sheet không được áp dụng; sản phẩm đã tồn tại giữ loại %q",
+	},
+	WarnKeyInitialStockRowProductTypeIgnoredNoType: {
+		EN: "Product type %q in the sheet is not applied; the existing product keeps no product type",
+		VI: "Loại sản phẩm %q trong sheet không được áp dụng; sản phẩm đã tồn tại không có loại sản phẩm",
+	},
+	WarnKeyInitialStockRowProductTypeIgnoredUnreadable: {
+		EN: "Product type %q in the sheet was not applied; the product this row loaded can no longer be read, so its type cannot be shown",
+		VI: "Loại sản phẩm %q trong sheet đã không được áp dụng; không còn đọc được sản phẩm mà dòng này đã nạp nên không thể hiển thị loại của nó",
+	},
+	WarnKeyInitialStockRowProductTypeUnreadable: {
+		EN: "The product type cannot be shown: the product this row loaded can no longer be read",
+		VI: "Không thể hiển thị loại sản phẩm: không còn đọc được sản phẩm mà dòng này đã nạp",
 	},
 }
 

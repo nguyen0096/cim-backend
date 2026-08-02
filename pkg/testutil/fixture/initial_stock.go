@@ -30,6 +30,9 @@ type InitialStockRowSpec struct {
 	Unit     string
 	Quantity string
 	Category string
+	// Blank leaves the whole row, STT included, unwritten: the stray empty line a real
+	// sheet carries in the middle of its data.
+	Blank bool
 }
 
 // InitialStockRows builds n rows with deterministic names and the given unit.
@@ -93,6 +96,9 @@ func CreateInitialStockWorkbook(sheets []InitialStockSheetSpec) []byte {
 		}
 		for r, row := range spec.Rows {
 			at := headerRow + 1 + r
+			if row.Blank {
+				continue
+			}
 			set(1, at, r+1)
 			set(2, at, row.Name)
 			set(3, at, row.Unit)

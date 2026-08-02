@@ -40,7 +40,9 @@ func openInitialStockWorkbook(data []byte) (f *excelize.File, err error) {
 }
 
 // parseInitialStockSheet reads the data rows of a sheet: header fixed at row 3,
-// data from row 4, stopping at the first fully empty row. Returns
+// data from row 4 to the last row of the sheet. A fully empty row carries nothing to
+// lose and is skipped, never taken as the end of the data: ending there would drop
+// everything below it without any count or error reflecting the loss. Returns
 // errInitialStockHeaderMismatch when the header does not match.
 func parseInitialStockSheet(f *excelize.File, sheetName string) (rows []sheetRow, err error) {
 	defer func() {
@@ -68,7 +70,7 @@ func parseInitialStockSheet(f *excelize.File, sheetName string) (rows []sheetRow
 	for i := initialStockHeaderRow; i < len(raw); i++ {
 		record := raw[i]
 		if isEmptyRecord(record) {
-			break
+			continue
 		}
 		out = append(out, sheetRow{
 			SheetRow:    i + 1,

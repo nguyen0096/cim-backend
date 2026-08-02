@@ -107,6 +107,25 @@ definitions:
       message:
         type: string
     type: object
+  dto.InitialStockImportError:
+    properties:
+      location:
+        type: string
+      message:
+        type: string
+      name:
+        description: |-
+          Name, Unit and Quantity are the cells as the parser read them: trimmed, never
+          normalized or coerced, so a row rejected for an unparseable quantity still shows
+          the text that has to be fixed. A blank cell is an empty string, never null.
+        type: string
+      quantity:
+        type: string
+      row:
+        type: integer
+      unit:
+        type: string
+    type: object
   dto.InitialStockImportResponse:
     properties:
       blocking:
@@ -117,7 +136,7 @@ definitions:
         type: boolean
       errors:
         items:
-          $ref: '#/definitions/pkg.BatchErrorLocation'
+          $ref: '#/definitions/dto.InitialStockImportError'
         type: array
       inventory_id:
         type: integer
@@ -169,6 +188,9 @@ definitions:
       product_id:
         type: integer
       product_type:
+        description: |-
+          ProductType is the type that will be in effect after the load, not the sheet's
+          value: a matched product keeps its own, and Warnings names the ignored one.
         type: string
       quantity:
         type: string
@@ -180,6 +202,14 @@ definitions:
         type: string
       unit_decimal_places:
         type: integer
+      warnings:
+        description: |-
+          Warnings are rendered Vietnamese strings for conditions that do not stop the row
+          from importing. Always an array, empty when the row has none. Distinct from
+          InitialStockImportResponse.Errors, whose rows are dropped.
+        items:
+          type: string
+        type: array
     type: object
   dto.InitialStockInventoriesResponse:
     properties:

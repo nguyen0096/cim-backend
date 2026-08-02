@@ -1,7 +1,5 @@
 package dto
 
-import "cim-backend/pkg"
-
 // Planned actions reported per sheet row. Closed enum, pinned by the frontend contract.
 const (
 	InitialStockActionCreateProduct     = "create_product"
@@ -50,16 +48,38 @@ type InitialStockImportRequest struct {
 
 // InitialStockImportRow is the per-row plan. Quantities are decimal strings, never floats.
 type InitialStockImportRow struct {
-	Row               int      `json:"row"`
-	Name              string   `json:"name"`
-	Unit              string   `json:"unit"`
-	Quantity          string   `json:"quantity"`
-	ProductType       string   `json:"product_type"`
-	ProductID         uint     `json:"product_id"`
-	Actions           []string `json:"actions"`
+	Row      int    `json:"row"`
+	Name     string `json:"name"`
+	Unit     string `json:"unit"`
+	Quantity string `json:"quantity"`
+	// ProductType is the type that will be in effect after the load, not the sheet's
+	// value: a matched product keeps its own, and Warnings names the ignored one.
+	ProductType string   `json:"product_type"`
+	ProductID   uint     `json:"product_id"`
+	Actions     []string `json:"actions"`
+	// Warnings are rendered Vietnamese strings for conditions that do not stop the row
+	// from importing. Always an array, empty when the row has none. Distinct from
+	// InitialStockImportResponse.Errors, whose rows are dropped.
+	Warnings          []string `json:"warnings"`
 	CurrentQuantity   string   `json:"current_quantity"`
 	ResultingQuantity string   `json:"resulting_quantity"`
 	UnitDecimalPlaces int      `json:"unit_decimal_places"`
+}
+
+// InitialStockImportError is one rejected row: the shared row-error fields plus the
+// sheet values it was rejected on, so the client can render it in the same table as a
+// plan row instead of an empty-celled stub. Row, Location and Message are the shape
+// pkg.NewRowLocation produces; the values are additive.
+type InitialStockImportError struct {
+	Row      int    `json:"row"`
+	Location string `json:"location"`
+	Message  string `json:"message"`
+	// Name, Unit and Quantity are the cells as the parser read them: trimmed, never
+	// normalized or coerced, so a row rejected for an unparseable quantity still shows
+	// the text that has to be fixed. A blank cell is an empty string, never null.
+	Name     string `json:"name"`
+	Unit     string `json:"unit"`
+	Quantity string `json:"quantity"`
 }
 
 // InitialStockBlocking is a non-row condition that would refuse an apply. A dry-run
@@ -73,12 +93,12 @@ type InitialStockBlocking struct {
 // One flat surface: the six counters the client reads sit alongside the five it does
 // not, rather than being duplicated into a nested summary.
 type InitialStockImportResponse struct {
-	DryRun      bool                     `json:"dry_run"`
-	InventoryID uint                     `json:"inventory_id"`
-	SheetName   string                   `json:"sheet_name"`
-	Blocking    []InitialStockBlocking   `json:"blocking"`
-	Rows        []InitialStockImportRow  `json:"rows"`
-	Errors      []pkg.BatchErrorLocation `json:"errors"`
+	DryRun      bool                      `json:"dry_run"`
+	InventoryID uint                      `json:"inventory_id"`
+	SheetName   string                    `json:"sheet_name"`
+	Blocking    []InitialStockBlocking    `json:"blocking"`
+	Rows        []InitialStockImportRow   `json:"rows"`
+	Errors      []InitialStockImportError `json:"errors"`
 
 	// Read by the client.
 	RowsProcessed       int `json:"rows_processed"`

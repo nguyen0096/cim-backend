@@ -25,6 +25,7 @@ type planRow struct {
 	currentQty decimal.Decimal
 	unitDP     int
 	actions    []string
+	warnings   []string
 }
 
 // importPlan is the resolved, write-ready form of an accepted sheet.
@@ -37,11 +38,11 @@ type importPlan struct {
 	productTypes []string
 }
 
-// rowRejections accumulates per-row failures in sheet order, in the single row
-// shape shared by the dry-run response and BatchError.Locations.
+// rowRejections accumulates per-row failures in sheet order, carrying the sheet
+// values so a rejected row renders beside the planned ones.
 type rowRejections struct {
 	failed map[int]bool
-	locs   []pkg.BatchErrorLocation
+	locs   []dto.InitialStockImportError
 }
 
 func newRowRejections() *rowRejections {
@@ -50,18 +51,26 @@ func newRowRejections() *rowRejections {
 
 // add records the first rejection for a row; later ones are dropped so a row
 // yields exactly one reason.
-func (r *rowRejections) add(row int, key string, args ...interface{}) {
-	if r.failed[row] {
+func (r *rowRejections) add(row sheetRow, key string, args ...interface{}) {
+	if r.failed[row.SheetRow] {
 		return
 	}
-	r.failed[row] = true
-	r.locs = append(r.locs, pkg.NewRowLocation(row, pkg.RowMessage(key, args...)))
+	r.failed[row.SheetRow] = true
+	loc := pkg.NewRowLocation(row.SheetRow, pkg.RowMessage(key, args...))
+	r.locs = append(r.locs, dto.InitialStockImportError{
+		Row:      loc.Row,
+		Location: loc.Location,
+		Message:  loc.Message,
+		Name:     row.Name,
+		Unit:     row.Unit,
+		Quantity: row.RawQuantity,
+	})
 }
 
-func (r *rowRejections) sorted() []pkg.BatchErrorLocation {
+func (r *rowRejections) sorted() []dto.InitialStockImportError {
 	sort.SliceStable(r.locs, func(i, j int) bool { return r.locs[i].Row < r.locs[j].Row })
 	if r.locs == nil {
-		return []pkg.BatchErrorLocation{}
+		return []dto.InitialStockImportError{}
 	}
 	return r.locs
 }
@@ -73,7 +82,7 @@ func (s *initialStockImportService) buildPlan(
 	ctx context.Context,
 	inventoryID uint,
 	rows []sheetRow,
-) (*importPlan, []pkg.BatchErrorLocation, error) {
+) (*importPlan, []dto.InitialStockImportError, error) {
 	rej := newRowRejections()
 	plan := &importPlan{inventoryID: inventoryID, rowsRead: len(rows)}
 
@@ -110,7 +119,7 @@ func (s *initialStockImportService) buildPlan(
 		// existing product's type is never rewritten by this tool.
 		if matched == nil {
 			if n := utf8.RuneCountInString(row.ProductType); n > initialStockProductTypeMaxLen {
-				rej.add(row.SheetRow, pkg.ErrKeyInitialStockRowProductTypeTooLong, row.ProductType)
+				rej.add(row, pkg.ErrKeyInitialStockRowProductTypeTooLong, row.ProductType)
 				continue
 			}
 		}
@@ -134,11 +143,11 @@ func (s *initialStockImportService) buildPlan(
 		// label-match check, so the two can be different units and pairing the label
 		// with this id would send the operator to inspect the wrong one.
 		if governing != nil && governing.DeletedAt.Valid {
-			rej.add(row.SheetRow, pkg.ErrKeyInitialStockRowUnitSoftDeleted, governing.Name, governing.ID)
+			rej.add(row, pkg.ErrKeyInitialStockRowUnitSoftDeleted, governing.Name, governing.ID)
 			continue
 		}
 		if governing != nil && !unitLabelMatches(unitLabel, governing) {
-			rej.add(row.SheetRow, pkg.ErrKeyInitialStockRowUnitMismatch, row.Unit, governing.Name)
+			rej.add(row, pkg.ErrKeyInitialStockRowUnitMismatch, row.Unit, governing.Name)
 			continue
 		}
 
@@ -151,18 +160,18 @@ func (s *initialStockImportService) buildPlan(
 			lookup := unitsByLabel[unitLabel]
 			switch {
 			case lookup.ambiguous > 0:
-				rej.add(row.SheetRow, pkg.ErrKeyInitialStockRowUnitAmbiguous, row.Unit, lookup.ambiguous)
+				rej.add(row, pkg.ErrKeyInitialStockRowUnitAmbiguous, row.Unit, lookup.ambiguous)
 				continue
 			case lookup.match != nil:
 				effective = lookup.match
 			case lookup.deletedID != 0:
-				rej.add(row.SheetRow, pkg.ErrKeyInitialStockRowUnitSoftDeleted, row.Unit, lookup.deletedID)
+				rej.add(row, pkg.ErrKeyInitialStockRowUnitSoftDeleted, row.Unit, lookup.deletedID)
 				continue
 			default:
 				// This run creates the unit with the label as both name and symbol, so
 				// the narrower symbol column governs, and only now.
 				if n := utf8.RuneCountInString(row.Unit); n > initialStockUnitSymbolMaxLen {
-					rej.add(row.SheetRow, pkg.ErrKeyInitialStockRowUnitTooLong,
+					rej.add(row, pkg.ErrKeyInitialStockRowUnitTooLong,
 						row.Unit, n, initialStockUnitSymbolMaxLen)
 					continue
 				}
@@ -180,7 +189,7 @@ func (s *initialStockImportService) buildPlan(
 		}
 		qty := quantities[row.SheetRow]
 		if scale := pkg.DecimalPlaces(qty); scale > allowed {
-			rej.add(row.SheetRow, pkg.ErrKeyInitialStockRowQuantityScale, scale, allowed)
+			rej.add(row, pkg.ErrKeyInitialStockRowQuantityScale, scale, allowed)
 			continue
 		}
 
@@ -190,7 +199,7 @@ func (s *initialStockImportService) buildPlan(
 			current = item.Quantity
 		}
 		if exceedsStorableQuantity(current.Add(qty)) {
-			rej.add(row.SheetRow, pkg.ErrKeyInitialStockRowResultTooLarge, qty.String(), current.String())
+			rej.add(row, pkg.ErrKeyInitialStockRowResultTooLarge, qty.String(), current.String())
 			continue
 		}
 
@@ -215,6 +224,7 @@ func (s *initialStockImportService) buildPlan(
 		case matched != nil:
 			pr.product = matched
 			pr.actions = append(pr.actions, dto.InitialStockActionMatchProduct)
+			pr.warnings = appendProductTypeWarning(pr.warnings, row.ProductType, matched.ProductType)
 		default:
 			pending, ok := newProducts[nameKey]
 			if !ok {
@@ -263,6 +273,19 @@ func (s *initialStockImportService) buildPlan(
 	return plan, rej.sorted(), nil
 }
 
+// appendProductTypeWarning reports a sheet type the load will not apply. Compared
+// verbatim rather than normalized: any value the matched product does not already
+// carry is ignored, case included.
+func appendProductTypeWarning(warnings []string, sheetType, keptType string) []string {
+	if sheetType == "" || sheetType == keptType {
+		return warnings
+	}
+	if keptType == "" {
+		return append(warnings, pkg.RowMessage(pkg.WarnKeyInitialStockRowProductTypeIgnoredNoType, sheetType))
+	}
+	return append(warnings, pkg.RowMessage(pkg.WarnKeyInitialStockRowProductTypeIgnored, sheetType, keptType))
+}
+
 // validateRowSyntax checks everything decidable from the sheet alone and returns
 // the parsed quantity per accepted row.
 func (s *initialStockImportService) validateRowSyntax(rows []sheetRow, rej *rowRejections) map[int]decimal.Decimal {
@@ -276,20 +299,20 @@ func (s *initialStockImportService) validateRowSyntax(rows []sheetRow, rej *rowR
 	quantities := make(map[int]decimal.Decimal, len(rows))
 	for _, row := range rows {
 		if row.Name == "" {
-			rej.add(row.SheetRow, pkg.ErrKeyInitialStockRowNameRequired)
+			rej.add(row, pkg.ErrKeyInitialStockRowNameRequired)
 			continue
 		}
 		if nameCounts[upperTrim(row.Name)] > 1 {
-			rej.add(row.SheetRow, pkg.ErrKeyInitialStockRowDuplicateName, row.Name)
+			rej.add(row, pkg.ErrKeyInitialStockRowDuplicateName, row.Name)
 			continue
 		}
 		if utf8.RuneCountInString(row.Name) > initialStockProductNameMaxLen {
-			rej.add(row.SheetRow, pkg.ErrKeyInitialStockRowNameTooLong,
+			rej.add(row, pkg.ErrKeyInitialStockRowNameTooLong,
 				utf8.RuneCountInString(row.Name), initialStockProductNameMaxLen)
 			continue
 		}
 		if row.Unit == "" {
-			rej.add(row.SheetRow, pkg.ErrKeyInitialStockRowUnitRequired)
+			rej.add(row, pkg.ErrKeyInitialStockRowUnitRequired)
 			continue
 		}
 		// Only the name column is a syntax concern: a label this long can still name an
@@ -297,22 +320,22 @@ func (s *initialStockImportService) validateRowSyntax(rows []sheetRow, rej *rowR
 		// narrower symbol column. The symbol width is enforced in resolveUnits, on the
 		// create path only.
 		if n := utf8.RuneCountInString(row.Unit); n > initialStockUnitNameMaxLen {
-			rej.add(row.SheetRow, pkg.ErrKeyInitialStockRowUnitTooLong, row.Unit, n, initialStockUnitNameMaxLen)
+			rej.add(row, pkg.ErrKeyInitialStockRowUnitTooLong, row.Unit, n, initialStockUnitNameMaxLen)
 			continue
 		}
 		qty := decimal.Zero
 		if row.RawQuantity != "" {
 			parsed, err := decimal.NewFromString(row.RawQuantity)
 			if err != nil {
-				rej.add(row.SheetRow, pkg.ErrKeyInitialStockRowQuantityInvalid, row.RawQuantity)
+				rej.add(row, pkg.ErrKeyInitialStockRowQuantityInvalid, row.RawQuantity)
 				continue
 			}
 			if parsed.IsNegative() {
-				rej.add(row.SheetRow, pkg.ErrKeyInitialStockRowQuantityNegative, parsed.String())
+				rej.add(row, pkg.ErrKeyInitialStockRowQuantityNegative, parsed.String())
 				continue
 			}
 			if exceedsStorableQuantity(parsed) {
-				rej.add(row.SheetRow, pkg.ErrKeyInitialStockRowQuantityTooLarge,
+				rej.add(row, pkg.ErrKeyInitialStockRowQuantityTooLarge,
 					parsed.String(), initialStockMaxIntegerDigits)
 				continue
 			}
@@ -441,11 +464,11 @@ func (s *initialStockImportService) resolveProducts(
 		key := upperTrim(row.Name)
 		switch {
 		case len(live[key]) > 1:
-			rej.add(row.SheetRow, pkg.ErrKeyInitialStockRowProductAmbiguous, row.Name, len(live[key]))
+			rej.add(row, pkg.ErrKeyInitialStockRowProductAmbiguous, row.Name, len(live[key]))
 		case len(live[key]) == 1:
 			matched[key] = live[key][0]
 		case len(deleted[key]) > 0:
-			rej.add(row.SheetRow, pkg.ErrKeyInitialStockRowProductDeleted, row.Name, deleted[key][0].ID)
+			rej.add(row, pkg.ErrKeyInitialStockRowProductDeleted, row.Name, deleted[key][0].ID)
 		}
 	}
 	return matched, nil
@@ -503,7 +526,7 @@ func (s *initialStockImportService) resolveItems(
 			continue
 		}
 		if blocker, ok := blocked[key]; ok {
-			rej.add(row.SheetRow, blockedKey[key], blocker.ID)
+			rej.add(row, blockedKey[key], blocker.ID)
 		}
 	}
 	return active, nil
@@ -517,7 +540,7 @@ func (p *importPlan) response(req dto.InitialStockImportRequest, blocking []dto.
 		SheetName:   req.SheetName,
 		Blocking:    blocking,
 		Rows:        make([]dto.InitialStockImportRow, 0, len(p.rows)),
-		Errors:      []pkg.BatchErrorLocation{},
+		Errors:      []dto.InitialStockImportError{},
 	}
 
 	total := decimal.Zero
@@ -527,14 +550,21 @@ func (p *importPlan) response(req dto.InitialStockImportRequest, blocking []dto.
 
 	for _, row := range p.rows {
 		resulting := row.currentQty.Add(row.quantity)
+		warnings := row.warnings
+		if warnings == nil {
+			warnings = []string{}
+		}
 		resp.Rows = append(resp.Rows, dto.InitialStockImportRow{
-			Row:               row.src.SheetRow,
-			Name:              row.src.Name,
-			Unit:              row.src.Unit,
-			Quantity:          row.quantity.String(),
-			ProductType:       row.src.ProductType,
+			Row:      row.src.SheetRow,
+			Name:     row.src.Name,
+			Unit:     row.src.Unit,
+			Quantity: row.quantity.String(),
+			// The product carries the type that will be in effect: its own when matched,
+			// the sheet's only on the create path.
+			ProductType:       row.product.ProductType,
 			ProductID:         row.product.ID,
 			Actions:           row.actions,
+			Warnings:          warnings,
 			CurrentQuantity:   row.currentQty.String(),
 			ResultingQuantity: resulting.String(),
 			UnitDecimalPlaces: row.unitDP,

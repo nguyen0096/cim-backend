@@ -2,6 +2,8 @@ package apptest
 
 import (
 	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -79,6 +81,15 @@ func decodeImportResponse(resp *http.Response) *dto.InitialStockImportResponse {
 	Expect(json.Unmarshal(body, &raw)).To(Succeed())
 	Expect(string(raw["dry_run"])).To(Or(Equal("true"), Equal("false")),
 		"dry_run must be echoed as a JSON boolean, got %s", string(raw["dry_run"]))
+	// Pinned contract: every row carries warnings as an array, never null.
+	var rawRows struct {
+		Rows []map[string]json.RawMessage `json:"rows"`
+	}
+	Expect(json.Unmarshal(body, &rawRows)).To(Succeed())
+	for i, row := range rawRows.Rows {
+		Expect(string(row["warnings"])).To(HavePrefix("["),
+			"row %d: warnings must be a JSON array, got %s", i, string(row["warnings"]))
+	}
 	return &out
 }
 
@@ -225,6 +236,74 @@ var _ = Describe("Initial stock import tool", func() {
 		})
 	})
 
+	// A blank line in the middle of a real sheet used to end the read there, dropping
+	// everything below it with no count and no error saying so.
+	Describe("blank rows", func() {
+		blankRowSheet := func() ([]byte, []string) {
+			names := []string{
+				fmt.Sprintf("BLANKA %s", suffix),
+				fmt.Sprintf("BLANKB %s", suffix),
+				fmt.Sprintf("BLANKC %s", suffix),
+			}
+			// Sheet rows: 4 A, 5 blank, 6 B, 7 blank, 8 blank, 9 C.
+			return singleSheet([]fixture.InitialStockRowSpec{
+				{Name: names[0], Unit: unit.Name, Quantity: "1", Category: "NƯỚC"},
+				{Blank: true},
+				{Name: names[1], Unit: unit.Name, Quantity: "2", Category: "NƯỚC"},
+				{Blank: true},
+				{Blank: true},
+				{Name: names[2], Unit: unit.Name, Quantity: "3", Category: "NƯỚC"},
+			}), names
+		}
+
+		It("reads every row below a blank one, and the sheet listing counts the same rows", func() {
+			data, names := blankRowSheet()
+
+			listing := post(developer, initialStockSheetsPath, &testutil.MultipartFormData{
+				Fields: map[string]string{}, Files: initialStockFile(data, "initial_stock.xlsx"),
+			})
+			Expect(listing.StatusCode).To(Equal(http.StatusOK))
+			rawListing, err := io.ReadAll(listing.Body)
+			Expect(err).NotTo(HaveOccurred())
+			var sheets dto.InitialStockSheetsResponse
+			Expect(json.Unmarshal(rawListing, &sheets)).To(Succeed())
+			Expect(sheets.Sheets).To(HaveLen(1))
+			Expect(sheets.Sheets[0].DataRowCount).To(Equal(3),
+				"the listing must count what the import will read: %s", string(rawListing))
+
+			dry := decodeImportResponse(runImport(data, "true"))
+			Expect(dry.Errors).To(BeEmpty())
+			Expect(dry.RowsProcessed).To(Equal(3))
+			Expect(dry.RowsOK).To(Equal(3))
+			Expect(dry.Rows).To(HaveLen(3))
+			for i, row := range dry.Rows {
+				Expect(row.Name).To(Equal(names[i]))
+			}
+			Expect([]int{dry.Rows[0].Row, dry.Rows[1].Row, dry.Rows[2].Row}).To(Equal([]int{4, 6, 9}),
+				"a skipped blank row must not renumber the rows below it")
+		})
+
+		It("loads every row below a blank one on apply", func() {
+			data, names := blankRowSheet()
+			cleanupLoaded(names...)
+
+			applied := decodeImportResponse(runImport(data, "false"))
+			Expect(applied.RowsProcessed).To(Equal(3))
+			Expect(applied.TotalQuantity).To(Equal("6"))
+
+			db := tenv.ContextfulDB()
+			for _, name := range names {
+				var loaded int64
+				Expect(db.Model(&models.InventoryItem{}).
+					Joins("JOIN products p ON p.id = inventory_items.product_id").
+					Where("inventory_items.inventory_id = ? AND UPPER(TRIM(p.name)) = ?",
+						inventory.ID, strings.ToUpper(name)).
+					Count(&loaded).Error).NotTo(HaveOccurred())
+				Expect(loaded).To(Equal(int64(1)), "%s must be loaded, not truncated away", name)
+			}
+		})
+	})
+
 	Describe("inventory picker", func() {
 		It("returns the minimal shape under the data key", func() {
 			resp, err := developer.MakeRequest(http.MethodGet, initialStockInventoriesPath, nil, testutil.WithAuth())
@@ -345,6 +424,62 @@ var _ = Describe("Initial stock import tool", func() {
 				Where("transaction_type = ?", models.InventoryTransactionTypeInitial).
 				Count(&txns).Error).NotTo(HaveOccurred())
 			Expect(txns).To(BeZero())
+		})
+	})
+
+	Describe("matched product type", func() {
+		It("keeps the product's type, previews it, and warns naming both values", func() {
+			db := tenv.ContextfulDB()
+			typed := fixture.WithProduct(db, models.Product{
+				Name: fmt.Sprintf("PTTYPED %s", suffix), UnitID: unit.ID, Status: "active", ProductType: "CƠM",
+			})
+			untyped := fixture.WithProduct(db, models.Product{
+				Name: fmt.Sprintf("PTNONE %s", suffix), UnitID: unit.ID, Status: "active",
+			})
+			agreeing := fixture.WithProduct(db, models.Product{
+				Name: fmt.Sprintf("PTSAME %s", suffix), UnitID: unit.ID, Status: "active", ProductType: "NƯỚC",
+			})
+			fresh := fmt.Sprintf("PTNEW %s", suffix)
+
+			data := singleSheet([]fixture.InitialStockRowSpec{
+				{Name: typed.Name, Unit: unit.Name, Quantity: "1", Category: "NƯỚC"},
+				{Name: untyped.Name, Unit: unit.Name, Quantity: "1", Category: "NƯỚC"},
+				{Name: agreeing.Name, Unit: unit.Name, Quantity: "1", Category: "NƯỚC"},
+				{Name: fresh, Unit: unit.Name, Quantity: "1", Category: "NƯỚC"},
+			})
+
+			dry := decodeImportResponse(runImport(data, "true"))
+			Expect(dry.Errors).To(BeEmpty(), "a differing type warns, it never rejects: %v", dry.Errors)
+			Expect(dry.Rows).To(HaveLen(4))
+
+			Expect(dry.Rows[0].ProductType).To(Equal("CƠM"), "the preview must show the type that will be in effect")
+			Expect(dry.Rows[0].Warnings).To(Equal([]string{
+				pkg.RowMessage(pkg.WarnKeyInitialStockRowProductTypeIgnored, "NƯỚC", "CƠM")}))
+
+			Expect(dry.Rows[1].ProductType).To(BeEmpty())
+			Expect(dry.Rows[1].Warnings).To(Equal([]string{
+				pkg.RowMessage(pkg.WarnKeyInitialStockRowProductTypeIgnoredNoType, "NƯỚC")}))
+
+			Expect(dry.Rows[2].ProductType).To(Equal("NƯỚC"))
+			Expect(dry.Rows[2].Warnings).To(BeEmpty(), "an agreeing type is not a warning")
+
+			Expect(dry.Rows[3].ProductType).To(Equal("NƯỚC"), "a new product does take the sheet's type")
+			Expect(dry.Rows[3].Warnings).To(BeEmpty())
+
+			cleanupLoaded(typed.Name, untyped.Name, agreeing.Name, fresh)
+			applied := decodeImportResponse(runImport(data, "false"))
+			Expect(applied.Rows).To(HaveLen(4))
+			Expect(applied.Rows[0].Warnings).To(HaveLen(1), "the warning survives the apply response")
+
+			for _, expected := range []struct {
+				id   uint
+				kind string
+			}{{typed.ID, "CƠM"}, {untyped.ID, ""}, {agreeing.ID, "NƯỚC"}} {
+				var reloaded models.Product
+				Expect(db.First(&reloaded, expected.id).Error).NotTo(HaveOccurred())
+				Expect(reloaded.ProductType).To(Equal(expected.kind),
+					"product %d must keep its own type", expected.id)
+			}
 		})
 	})
 
@@ -530,6 +665,159 @@ var _ = Describe("Initial stock import tool", func() {
 			mismatch := runImport(otherData, "false", testutil.WithHeader("Idempotency-Key", key))
 			Expect(mismatch.StatusCode).To(Equal(http.StatusConflict))
 			Expect(testutil.ParseResponse(mismatch)["key"]).To(Equal(pkg.ErrKeyInitialStockKeyPayloadMismatch))
+		})
+
+		// A receipt written before per-row warnings existed stores the sheet's
+		// product_type on every row and no warnings key at all. Replaying it verbatim
+		// would report a type that was never applied as the effective one, which is the
+		// lie the warning exists to remove. The payload below is the shape the pre-change
+		// response marshalled: same keys, same order, warnings absent.
+		It("restates a pre-change receipt so a replay tells the same truth a fresh run would", func() {
+			db := tenv.ContextfulDB()
+			matched := fixture.WithProduct(db, models.Product{
+				Name: fmt.Sprintf("LEGMATCH %s", suffix), UnitID: unit.ID, Status: "active", ProductType: "CƠM",
+			})
+			created := fixture.WithProduct(db, models.Product{
+				Name: fmt.Sprintf("LEGNEW %s", suffix), UnitID: unit.ID, Status: "active", ProductType: "NƯỚC",
+			})
+			// A row whose product no longer exists at all: no effective type is readable.
+			goneID := created.ID + 1000000
+
+			data := singleSheet([]fixture.InitialStockRowSpec{
+				{Name: matched.Name, Unit: unit.Name, Quantity: "3", Category: "NƯỚC"},
+			})
+			sum := sha256.Sum256(data)
+
+			key := uuid.NewString()
+			legacy := fmt.Sprintf(`{
+				"dry_run": false, "inventory_id": %d, "sheet_name": "TON",
+				"blocking": [],
+				"rows": [
+					{"row":4,"name":%q,"unit":%q,"quantity":"3","product_type":"NƯỚC","product_id":%d,
+					 "actions":["match_product","create_transaction"],
+					 "current_quantity":"0","resulting_quantity":"3","unit_decimal_places":2},
+					{"row":5,"name":%q,"unit":%q,"quantity":"1","product_type":"NƯỚC","product_id":%d,
+					 "actions":["create_product","create_item","create_transaction"],
+					 "current_quantity":"0","resulting_quantity":"1","unit_decimal_places":2},
+					{"row":6,"name":"LEGGONE","unit":%q,"quantity":"2","product_type":"NƯỚC","product_id":%d,
+					 "actions":["match_product","create_item","create_transaction"],
+					 "current_quantity":"0","resulting_quantity":"2","unit_decimal_places":2}
+				],
+				"errors": [],
+				"rows_processed": 3, "products_created": 1, "products_matched": 2,
+				"items_created": 2, "transactions_created": 3, "rows_skipped": 0,
+				"rows_ok": 3, "rows_failed": 0, "units_created": 0,
+				"total_quantity": "6", "rows_on_items_with_existing_stock": 0
+			}`, inventory.ID, matched.Name, unit.Name, matched.ID,
+				created.Name, unit.Name, created.ID, unit.Name, goneID)
+			Expect(json.Valid([]byte(legacy))).To(BeTrue())
+			Expect(legacy).NotTo(ContainSubstring("warnings"), "the fixture must be the pre-change shape")
+
+			receipt := &models.InitialStockImport{
+				IdempotencyKey: key, InventoryID: inventory.ID, SheetName: "TON",
+				FileName: "initial_stock.xlsx", FileSHA256: hex.EncodeToString(sum[:]),
+				RowCount: 3, ResultSummary: json.RawMessage(legacy), CreatedBy: "legacy@cim.local",
+			}
+			Expect(db.Create(receipt).Error).NotTo(HaveOccurred())
+			DeferCleanup(func() { db.Exec("DELETE FROM initial_stock_imports WHERE id = ?", receipt.ID) })
+
+			replay := runImport(data, "false", testutil.WithHeader("Idempotency-Key", key))
+			Expect(replay.StatusCode).To(Equal(http.StatusOK))
+			body := decodeImportResponse(replay)
+			Expect(body.Rows).To(HaveLen(3))
+
+			// Matched: the product's own type, and the warning naming both values.
+			Expect(body.Rows[0].ProductType).To(Equal("CƠM"),
+				"a replay must not report the ignored sheet type as effective")
+			Expect(body.Rows[0].Warnings).To(Equal([]string{
+				pkg.RowMessage(pkg.WarnKeyInitialStockRowProductTypeIgnored, "NƯỚC", "CƠM")}))
+
+			// Created: the sheet type was applied, so the stored value already stands.
+			Expect(body.Rows[1].ProductType).To(Equal("NƯỚC"))
+			Expect(body.Rows[1].Warnings).To(BeEmpty())
+
+			// Product gone: no effective type can be stated, and the row says why.
+			Expect(body.Rows[2].ProductType).To(BeEmpty())
+			Expect(body.Rows[2].Warnings).To(Equal([]string{
+				pkg.RowMessage(pkg.WarnKeyInitialStockRowProductTypeIgnoredUnreadable, "NƯỚC")}))
+
+			// The recorded outcome itself is replayed untouched.
+			Expect(body.RowsProcessed).To(Equal(3))
+			Expect(body.ProductsMatched).To(Equal(2))
+			Expect(body.TotalQuantity).To(Equal("6"))
+			Expect(body.Rows[0].ResultingQuantity).To(Equal("3"))
+
+			var layers int64
+			Expect(db.Model(&models.InventoryTransaction{}).
+				Joins("JOIN inventory_items ii ON ii.id = inventory_transactions.inventory_item_id").
+				Where("ii.inventory_id = ?", inventory.ID).Count(&layers).Error).NotTo(HaveOccurred())
+			Expect(layers).To(BeZero(), "a replay must write nothing")
+		})
+
+		// An unreadable product and a blank sheet cell are independent facts. Reporting
+		// the first only when the second is non-blank leaves product_type:"" with no
+		// warning, which reads as "the product has no type" — a claim the code cannot
+		// make. The soft-deleted row pins the other half: it is still readable, so it
+		// answers for its own type rather than falling into the unreadable branch.
+		It("always says an unreadable product's type cannot be shown, blank sheet cell or not", func() {
+			db := tenv.ContextfulDB()
+			softDeleted := fixture.WithProduct(db, models.Product{
+				Name: fmt.Sprintf("LEGSOFT %s", suffix), UnitID: unit.ID, Status: "active", ProductType: "CƠM",
+			})
+			Expect(db.Delete(&models.Product{}, softDeleted.ID).Error).NotTo(HaveOccurred())
+			var stillThere models.Product
+			Expect(db.Unscoped().First(&stillThere, softDeleted.ID).Error).NotTo(HaveOccurred())
+			Expect(stillThere.DeletedAt.Valid).To(BeTrue(), "the fixture must be soft-deleted, not purged")
+
+			goneID := softDeleted.ID + 1000000
+			data := singleSheet([]fixture.InitialStockRowSpec{
+				{Name: fmt.Sprintf("LEGBLANK %s", suffix), Unit: unit.Name, Quantity: "1", Category: "NƯỚC"},
+			})
+			sum := sha256.Sum256(data)
+			key := uuid.NewString()
+
+			legacy := fmt.Sprintf(`{
+				"dry_run": false, "inventory_id": %d, "sheet_name": "TON",
+				"blocking": [],
+				"rows": [
+					{"row":4,"name":"LEGBLANKGONE","unit":%q,"quantity":"1","product_type":"","product_id":%d,
+					 "actions":["match_product","create_transaction"],
+					 "current_quantity":"0","resulting_quantity":"1","unit_decimal_places":2},
+					{"row":5,"name":%q,"unit":%q,"quantity":"1","product_type":"NƯỚC","product_id":%d,
+					 "actions":["match_product","create_transaction"],
+					 "current_quantity":"0","resulting_quantity":"1","unit_decimal_places":2}
+				],
+				"errors": [],
+				"rows_processed": 2, "products_created": 0, "products_matched": 2,
+				"items_created": 0, "transactions_created": 2, "rows_skipped": 0,
+				"rows_ok": 2, "rows_failed": 0, "units_created": 0,
+				"total_quantity": "2", "rows_on_items_with_existing_stock": 0
+			}`, inventory.ID, unit.Name, goneID, softDeleted.Name, unit.Name, softDeleted.ID)
+			Expect(json.Valid([]byte(legacy))).To(BeTrue())
+			Expect(legacy).NotTo(ContainSubstring("warnings"))
+
+			receipt := &models.InitialStockImport{
+				IdempotencyKey: key, InventoryID: inventory.ID, SheetName: "TON",
+				FileName: "initial_stock.xlsx", FileSHA256: hex.EncodeToString(sum[:]),
+				RowCount: 2, ResultSummary: json.RawMessage(legacy), CreatedBy: "legacy@cim.local",
+			}
+			Expect(db.Create(receipt).Error).NotTo(HaveOccurred())
+			DeferCleanup(func() { db.Exec("DELETE FROM initial_stock_imports WHERE id = ?", receipt.ID) })
+
+			body := decodeImportResponse(runImport(data, "false", testutil.WithHeader("Idempotency-Key", key)))
+			Expect(body.Rows).To(HaveLen(2))
+
+			// Blank stored sheet type, product unreadable: still explained.
+			Expect(body.Rows[0].ProductType).To(BeEmpty())
+			Expect(body.Rows[0].Warnings).To(Equal([]string{
+				pkg.RowMessage(pkg.WarnKeyInitialStockRowProductTypeUnreadable)}),
+				"an empty type with no warning is indistinguishable from a product that has none")
+
+			// Soft-deleted product: readable, so it answers for its own type.
+			Expect(body.Rows[1].ProductType).To(Equal("CƠM"),
+				"a soft-deleted product is still readable and is not the unreadable case")
+			Expect(body.Rows[1].Warnings).To(Equal([]string{
+				pkg.RowMessage(pkg.WarnKeyInitialStockRowProductTypeIgnored, "NƯỚC", "CƠM")}))
 		})
 
 		// ACCEPTANCE CRITERION, binding on the frontend contract: the refusal is scoped
@@ -819,6 +1107,54 @@ var _ = Describe("Initial stock import tool", func() {
 				Where("transaction_type = ?", models.InventoryTransactionTypeInitial).
 				Count(&txns).Error).NotTo(HaveOccurred())
 			Expect(txns).To(BeZero(), "a batch with any bad row is all-or-nothing")
+		})
+
+		// The preview merges rejected rows into the plan table, so an error entry that
+		// carries only a row number and a reason renders with empty cells.
+		It("carries the rejected row's sheet values, raw and never null", func() {
+			textQty := fmt.Sprintf("RAWTEXT %s", suffix)
+			noUnit := fmt.Sprintf("RAWNOUNIT %s", suffix)
+			data := singleSheet([]fixture.InitialStockRowSpec{
+				{Name: "", Unit: unit.Name, Quantity: "7", Category: "NƯỚC"},     // row 4: blank name cell
+				{Name: textQty, Unit: unit.Name, Quantity: "1,5x", Category: ""}, // row 5: unparseable quantity
+				{Name: noUnit, Unit: "", Quantity: "", Category: "NƯỚC"},         // row 6: blank unit and quantity
+			})
+
+			dry := decodeImportResponse(runImport(data, "true"))
+			Expect(dry.Rows).To(BeEmpty())
+			Expect(dry.Errors).To(HaveLen(3))
+
+			Expect(dry.Errors[0].Row).To(Equal(4))
+			Expect(dry.Errors[0].Name).To(Equal(""), "a blank cell is an empty string, not null")
+			Expect(dry.Errors[0].Unit).To(Equal(unit.Name))
+			Expect(dry.Errors[0].Quantity).To(Equal("7"))
+			Expect(dry.Errors[0].Message).To(Equal(pkg.RowMessage(pkg.ErrKeyInitialStockRowNameRequired)))
+
+			Expect(dry.Errors[1].Row).To(Equal(5))
+			Expect(dry.Errors[1].Name).To(Equal(textQty))
+			Expect(dry.Errors[1].Unit).To(Equal(unit.Name))
+			Expect(dry.Errors[1].Quantity).To(Equal("1,5x"),
+				"the cell is echoed as read, so the operator sees what to fix")
+
+			Expect(dry.Errors[2].Row).To(Equal(6))
+			Expect(dry.Errors[2].Name).To(Equal(noUnit))
+			Expect(dry.Errors[2].Unit).To(Equal(""))
+			Expect(dry.Errors[2].Quantity).To(Equal(""))
+
+			// The values must be real JSON strings on every entry, never absent or null.
+			body, err := io.ReadAll(runImport(data, "true").Body)
+			Expect(err).NotTo(HaveOccurred())
+			var raw struct {
+				Errors []map[string]json.RawMessage `json:"errors"`
+			}
+			Expect(json.Unmarshal(body, &raw)).To(Succeed())
+			Expect(raw.Errors).To(HaveLen(3))
+			for i, entry := range raw.Errors {
+				for _, key := range []string{"name", "unit", "quantity"} {
+					Expect(string(entry[key])).To(HavePrefix(`"`),
+						"errors[%d].%s must be a JSON string: %s", i, key, string(body))
+				}
+			}
 		})
 	})
 

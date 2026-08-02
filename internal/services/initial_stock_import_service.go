@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 
 	"cim-backend/internal/models"
 	"cim-backend/internal/repository"
@@ -240,7 +241,7 @@ func (s *initialStockImportService) apply(
 				return err
 			}
 			if receipt != nil {
-				replayed, err := replayReceipt(receipt, req)
+				replayed, err := s.replayReceipt(txCtx, receipt, req)
 				if err != nil {
 					return err
 				}
@@ -282,9 +283,11 @@ func (s *initialStockImportService) apply(
 			return err
 		}
 		if len(rowErrors) > 0 {
+			// The 400 envelope keeps the shared BatchError shape: the sheet values ride
+			// on the 200 response's errors array, which is what the preview renders.
 			batch := pkg.ErrValidationBatchError()
-			for _, loc := range rowErrors {
-				batch.Locations = append(batch.Locations, loc)
+			for _, rowErr := range rowErrors {
+				batch.Locations = append(batch.Locations, pkg.NewRowLocation(rowErr.Row, rowErr.Message))
 			}
 			return batch
 		}
@@ -295,7 +298,7 @@ func (s *initialStockImportService) apply(
 		productTypes = plan.productTypes
 
 		built := plan.response(req, []dto.InitialStockBlocking{})
-		built.Errors = []pkg.BatchErrorLocation{}
+		built.Errors = []dto.InitialStockImportError{}
 		built.RowsOK = len(rows)
 
 		payload, err := json.Marshal(built)
@@ -360,7 +363,11 @@ func (s *initialStockImportService) requireActiveInventory(ctx context.Context, 
 // replayReceipt returns the stored response for a committed key, refusing when the
 // key was used for a different file or sheet: a scoped index alone would otherwise
 // report success for work never done against this payload.
-func replayReceipt(receipt *models.InitialStockImport, req dto.InitialStockImportRequest) (*dto.InitialStockImportResponse, error) {
+func (s *initialStockImportService) replayReceipt(
+	ctx context.Context,
+	receipt *models.InitialStockImport,
+	req dto.InitialStockImportRequest,
+) (*dto.InitialStockImportResponse, error) {
 	if receipt.FileSHA256 != req.FileSHA256 || receipt.SheetName != req.SheetName {
 		return nil, pkg.ErrInitialStock(pkg.ErrorCodeConflict, pkg.ErrKeyInitialStockKeyPayloadMismatch)
 	}
@@ -368,7 +375,77 @@ func replayReceipt(receipt *models.InitialStockImport, req dto.InitialStockImpor
 	if err := json.Unmarshal(receipt.ResultSummary, &stored); err != nil {
 		return nil, fmt.Errorf("failed to decode stored initial stock import result: %w", err)
 	}
+	if err := s.restateLegacyReceiptRows(ctx, stored.Rows); err != nil {
+		return nil, err
+	}
 	return &stored, nil
+}
+
+// restateLegacyReceiptRows repairs rows recorded before per-row warnings existed.
+// Such a row holds the sheet's product_type — which a matched product never took —
+// and no warning saying so, so replaying it verbatim would report an ignored value as
+// effective. A nil Warnings slice is the marker: every row written since carries at
+// least an empty array.
+//
+// A created product took the sheet's type, so its stored value is already the
+// effective one and needs no lookup. Every other row is resolved against the product
+// itself: a matched product's type is never rewritten by this tool, so reading it back
+// yields what a fresh run would report. Rows whose actions identify neither case take
+// the same path rather than being assumed created, since the receipt does not say
+// whether the stored value was applied.
+func (s *initialStockImportService) restateLegacyReceiptRows(ctx context.Context, rows []dto.InitialStockImportRow) error {
+	unresolved := make([]int, 0, len(rows))
+	ids := make([]uint, 0, len(rows))
+	for i := range rows {
+		if rows[i].Warnings != nil {
+			continue
+		}
+		rows[i].Warnings = []string{}
+		if slices.Contains(rows[i].Actions, dto.InitialStockActionCreateProduct) {
+			continue
+		}
+		unresolved = append(unresolved, i)
+		if rows[i].ProductID != 0 {
+			ids = append(ids, rows[i].ProductID)
+		}
+	}
+	if len(unresolved) == 0 {
+		return nil
+	}
+
+	// Unscoped, so a soft-deleted product is still read and still answers for its type.
+	found, err := s.productRepo.GetByIDsUnscoped(ctx, ids)
+	if err != nil {
+		return err
+	}
+	byID := make(map[uint]*models.Product, len(found))
+	for i := range found {
+		byID[found[i].ID] = &found[i]
+	}
+
+	for _, i := range unresolved {
+		sheetType := rows[i].ProductType
+		product, ok := byID[rows[i].ProductID]
+		if !ok {
+			rows[i].ProductType = ""
+			rows[i].Warnings = append(rows[i].Warnings, unreadableProductTypeWarning(sheetType))
+			continue
+		}
+		rows[i].ProductType = product.ProductType
+		rows[i].Warnings = appendProductTypeWarning(rows[i].Warnings, sheetType, product.ProductType)
+	}
+	return nil
+}
+
+// unreadableProductTypeWarning states that no effective type can be shown, naming the
+// sheet's value only when there was one. Never conditional on that value: an empty
+// product_type with no warning is indistinguishable from a product that genuinely has
+// no type, and a blank sheet cell says nothing about whether the product could be read.
+func unreadableProductTypeWarning(sheetType string) string {
+	if sheetType == "" {
+		return pkg.RowMessage(pkg.WarnKeyInitialStockRowProductTypeUnreadable)
+	}
+	return pkg.RowMessage(pkg.WarnKeyInitialStockRowProductTypeIgnoredUnreadable, sheetType)
 }
 
 // blockingConditions reports the non-row conditions that would refuse an apply, so
