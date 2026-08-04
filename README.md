@@ -2,6 +2,17 @@
 
 A Go-based backend system for order management and warehouse operations with Excel integration.
 
+## About this snapshot
+
+This is a public, read-only snapshot of a private project, published as a code sample.
+It is not maintained here and is not expected to run as-is.
+
+Before publication the history was rewritten to remove operational data: a real
+accounting spreadsheet used as a test fixture, committed build artifacts, and the
+identifiers of live user accounts. Seed emails and UIDs throughout the repository are
+synthetic placeholders. One test fixture is therefore missing, so the revenue/expense
+tests will not run; see `test/data/excel/README.md`.
+
 ## Quick Start
 
 ### Docker Compose (Recommended)
